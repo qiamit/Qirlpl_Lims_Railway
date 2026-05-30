@@ -1,72 +1,118 @@
-# Qirlpl LIMS (Web)
+# Qirlpl LIMS
 
-React + TypeScript + Vite frontend for Qirlpl LIMS, connected to Supabase.
+Monorepo for Qirlpl LIMS (Laboratory Information Management System), split into **frontend** and **backend**.
+
+## Project Structure
+
+```
+Qirlpl_Lims/
+├── frontend/          # React + TypeScript + Vite web app
+│   ├── src/
+│   ├── public/
+│   └── package.json
+├── backend/           # Supabase (PostgreSQL, Auth, Edge Functions)
+│   └── supabase/
+│       ├── migrations/
+│       ├── functions/
+│       └── config.toml
+└── package.json       # Root scripts (dev, build, db:push)
+```
 
 ## Prerequisites
 
 - Node.js 20+
 - npm 10+
 - Supabase project (URL + anon key)
-- GitHub account
-- Vercel account
+- Supabase CLI (for database migrations)
 
 ## Local Setup
 
-1. Install dependencies:
+1. Install frontend dependencies:
 
-   `npm install`
+   ```bash
+   npm install --prefix frontend
+   ```
 
-2. Create env file from template:
+2. Create frontend env file from template:
 
-   `copy .env.example .env`
+   ```bash
+   copy frontend\.env.example frontend\.env
+   ```
 
-3. Add your Supabase values in `.env`:
+3. Add your Supabase values in `frontend/.env`:
 
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
 
-4. Run locally:
+4. Run the app from repo root:
 
-   `npm run dev`
+   ```bash
+   npm run dev
+   ```
 
-## Supabase Connection
+   Or from the frontend folder:
 
-- Client is configured in `src/lib/supabaseClient.ts`.
-- Supabase CLI config exists at `supabase/config.toml`.
-- Migrations live in `supabase/migrations`.
+   ```bash
+   cd frontend
+   npm run dev
+   ```
 
-Useful commands:
+## Supabase (Backend)
 
-- `npx supabase login`
-- `npx supabase link --project-ref <your-project-ref>`
-- `npx supabase db push`
+**Connected project:** `Qirlpl_Lims`  
+**Project ref:** `tzbgywlwfcdsgrumstpu`  
+**API URL:** `https://tzbgywlwfcdsgrumstpu.supabase.co`  
+**Region:** `ap-south-1`
 
-## GitHub Connection
+- Client is configured in `frontend/src/lib/supabaseClient.ts`.
+- Supabase CLI config: `backend/supabase/config.toml`
+- Migrations: `backend/supabase/migrations`
+- Edge functions: `backend/supabase/functions`
+- Cursor MCP: configured in `.cursor/mcp.json`
 
-From repo root, initialize and connect remote:
+Link the CLI (from `backend/`):
 
-1. `git init`
-2. `git add .`
-3. `git commit -m "Initial project setup"`
-4. Create an empty GitHub repo, then:
-5. `git remote add origin https://github.com/<your-user>/<your-repo>.git`
-6. `git branch -M main`
-7. `git push -u origin main`
+```bash
+cd backend
+npx supabase login
+npx supabase link --project-ref tzbgywlwfcdsgrumstpu
+npm run db:push
+```
 
-## Vercel Connection
+From repo root:
 
-From `web` directory:
+```bash
+npm run db:push
+```
 
-1. `npx vercel login`
-2. `npx vercel link`
-3. Add production env vars in Vercel project settings:
+## GitHub
+
+**Repository:** [https://github.com/qiamit/Qirlpl_Lims](https://github.com/qiamit/Qirlpl_Lims)
+
+Remote is configured as `origin`. First-time push:
+
+```bash
+git add .
+git commit -m "Initial commit: Qirlpl LIMS frontend/backend monorepo"
+git push -u origin main
+```
+
+If prompted, sign in with your GitHub account or use a [Personal Access Token](https://github.com/settings/tokens) as the password.
+
+## Vercel Deployment
+
+Deploy from the `frontend` directory:
+
+1. `cd frontend`
+2. `npx vercel login`
+3. `npx vercel link`
+4. Add production env vars in Vercel project settings:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-4. Deploy:
-   - `npx vercel --prod`
+5. Deploy: `npx vercel --prod`
 
 ## Notes
 
 - Never commit `.env` files.
-- Only the public Supabase anon key should be used in frontend.
-- For DB changes, add SQL files under `supabase/migrations`.
+- Only the public Supabase anon key should be used in the frontend.
+- For DB changes, add SQL files under `backend/supabase/migrations`.

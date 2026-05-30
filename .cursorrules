@@ -14,13 +14,16 @@ Yeh project **Qirlpl LIMS** (Laboratory Information Management System) hai, ISO 
 
 ## Project Structure
 
-- **Root:** `Qirlpl_Lims` – poora repo yahi se start hota hai.
-- **web/** – Frontend app (React + Vite + TypeScript). Yahi main codebase hai.
-  - `web/src/` – Source code
-  - `web/src/features/` – Feature-wise modules (sample-handling, masters, settings, etc.)
-  - `web/src/components/` – Reusable UI components (shadcn/ui style)
-  - `web/src/lib/` – Shared libs (e.g. Supabase client)
-- **web/supabase/** – Supabase config: migrations, edge functions. SQL migrations yahi add karo.
+- **Root:** `Qirlpl_Lims` – monorepo root with shared scripts in `package.json`.
+- **frontend/** – React + Vite + TypeScript web app.
+  - `frontend/src/` – Source code
+  - `frontend/src/features/` – Feature-wise modules (sample-handling, masters, settings, etc.)
+  - `frontend/src/components/` – Reusable UI components (shadcn/ui style)
+  - `frontend/src/lib/` – Shared libs (e.g. Supabase client)
+- **backend/** – Supabase backend (PostgreSQL, Auth, Edge Functions).
+  - `backend/supabase/migrations/` – Versioned SQL migrations
+  - `backend/supabase/functions/` – Edge functions
+  - `backend/supabase/config.toml` – Supabase CLI config
 
 ---
 
@@ -45,10 +48,10 @@ Inke hisaab se code likho – naya dependency add karte waqt batao, taaki projec
    - Local state → `useState`, `useReducer`.
    - Shared / async data → `@tanstack/react-query` ya feature‑level hooks, jahan use ho raha ho.
 5. **Supabase:**
-   - Access hamesha `web/src/lib/supabaseClient` se.
+   - Access hamesha `frontend/src/lib/supabaseClient` se.
    - Queries: `.from('table_name').select(...)` style.
-   - Migrations: `web/supabase/migrations/` me versioned SQL files.
-6. **Paths:** Import me `@/` alias use karo (e.g. `@/components/ui/button`), jo `web/src` ko point karta hai.
+   - Migrations: `backend/supabase/migrations/` me versioned SQL files.
+6. **Paths:** Import me `@/` alias use karo (e.g. `@/components/ui/button`), jo `frontend/src` ko point karta hai.
 
 ---
 
@@ -82,7 +85,7 @@ Inke hisaab se code likho – naya dependency add karte waqt batao, taaki projec
 
 - `.env` / `.env.local` kabhi commit mat karo – Supabase URL/keys yahi rahenge.
 - Har schema change ke liye:
-  - `web/supabase/migrations/` me ek naya SQL file banao (date prefix ke sath).
+  - `backend/supabase/migrations/` me ek naya SQL file banao (date prefix ke sath).
   - Breaking changes clearly comment karo (especially Sample Handling tables pe).
 
 ---

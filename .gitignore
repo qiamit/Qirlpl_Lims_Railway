@@ -9,7 +9,8 @@ lerna-debug.log*
 
 # Dependencies & build
 node_modules
-dist
+frontend/node_modules
+frontend/dist
 dist-ssr
 *.local
 
@@ -17,7 +18,10 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-supabase-secrets.env
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+backend/supabase-secrets.env
 
 # Vite
 *.local
@@ -34,3 +38,5 @@ supabase-secrets.env
 *.sw?
 
 .vercel
+frontend/.vercel
+backend/supabase/.temp
