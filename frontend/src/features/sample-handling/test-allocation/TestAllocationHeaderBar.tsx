@@ -40,10 +40,10 @@ export function TestAllocationHeaderBar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="5">5 / page</SelectItem>
-              <SelectItem value="10">10 / page</SelectItem>
-              <SelectItem value="20">20 / page</SelectItem>
-              <SelectItem value="50">50 / page</SelectItem>
+              <SelectItem value="5">5 / Page</SelectItem>
+              <SelectItem value="10">10 / Page</SelectItem>
+              <SelectItem value="20">20 / Page</SelectItem>
+              <SelectItem value="50">50 / Page</SelectItem>
             </SelectContent>
           </Select>
         </div>

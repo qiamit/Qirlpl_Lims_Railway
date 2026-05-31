@@ -1,88 +1,70 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
+import {
+  confirmDestructiveDelete,
+  deleteSamplesByIds,
+} from '@/features/sample-handling/shared/deleteSampleRecords'
 import { supabase } from '@/lib/supabaseClient'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { FileText, Printer, Save, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react'
+import { referbackSectionsToResultsReview } from '@/features/sample-handling/completed-results/referbackIssuedTestReport'
+import { TestReportReferbackToReviewDialog } from './TestReportReferbackToReviewDialog'
+import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
+import { formatDate } from '@/lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
+import { isSampleReadyForReportPreparation } from './sampleReportReadiness'
+import { ReportResultsTable } from './ReportResultsTable'
+import { TestReportPreparationFooterBar } from './TestReportPreparationFooterBar'
+import { TestReportPreparationHeaderBar } from './TestReportPreparationHeaderBar'
+import { TestReportPreparationTable } from './TestReportPreparationTable'
+import { TestReportPrepareDialog } from './TestReportPrepareDialog'
+import {
+  buildScopedTestReportPrintHtml,
+} from './buildScopedTestReportPrintHtml'
+import { outputTestReportDocument } from './outputTestReportDocument'
+import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
+import {
+  fetchTestReportCoverDetails,
+  formatSectionReportLine,
+  type TestReportCoverDetails,
+} from './fetchTestReportCoverDetails'
+import { partBDetailsToSampleUpdate, type TestReportPartBDetails } from './testReportPartB'
+import {
+  fetchReportPrepLetterheads,
+  letterheadsToSampleUpdate,
+  type LetterheadTemplateOptions,
+  type ReportPrepLetterheadsByScope,
+} from './reportPrepLetterhead'
+import {
+  fetchReportResultRowsForSample,
+  filterReportRowsByScope,
+  getApplicableReportScopes,
+  type ReportResultRow,
+} from './reportResultRows'
+import {
+  appendReportScopeSuffix,
+  REPORT_SCOPE_TITLE,
+  stripReportScopeSuffix,
+  type ReportScopeKind,
+} from './reportScope'
+import { resolveReportScopeTemplate } from './reportScopeConfig'
+import {
+  fetchNextNablUlrNumber,
+  fetchUlrPrefix,
+  isValidNablUlrFormat,
+  sanitizeNablUlrInput,
+} from './nablUlrNumber'
+import {
+  fetchNextTestReportNumber,
+  isValidTestReportNumberFormat,
+  toCanonicalReportNumber,
+} from './formattedTestReportNumber'
+import { fetchTestReportPrefix } from './testReportNumberPrefix'
+import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 
-type ListRow = {
-  id: string
-  srfNumber: string | null
-  dateReceiving: string | null
-  clientName: string | null
-  isCodeLabel: string | null
-  reportNumber: string | null
-  draftNotes: string | null
-}
-
-type ParamLine = {
-  sectionCode: string
-  department: string | null
-  testLabel: string
-  testStartDate: string | null
-  testEndDate: string | null
-  results: string | null
-}
+type ListRow = ReportPreparationListRow
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
-const fmtDate = (v: string | null | undefined) =>
-  v ? new Date(v).toISOString().slice(0, 10) : '—'
-
-function buildPrintDocument(opts: {
-  labName: string
-  srf: string
-  client: string
-  isStandard: string
-  dateReceiving: string
-  reportNumber: string
-  notes: string
-  lines: ParamLine[]
-}) {
-  const rows = opts.lines
-    .map(
-      (l) => `
-      <tr>
-        <td>${escapeHtml(l.sectionCode)}</td>
-        <td>${escapeHtml(l.department ?? '—')}</td>
-        <td>${escapeHtml(l.testLabel)}</td>
-        <td>${escapeHtml(fmtDate(l.testStartDate))}</td>
-        <td>${escapeHtml(fmtDate(l.testEndDate))}</td>
-        <td>${escapeHtml(l.results ?? '—')}</td>
-      </tr>`,
-    )
-    .join('')
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/><title>Test report draft — ${escapeHtml(opts.srf)}</title>
-<style>
-  body{font-family:system-ui,sans-serif;margin:24px;color:#0f172a}
-  h1{font-size:18px;margin:0 0 4px}
-  .sub{color:#64748b;font-size:12px;margin-bottom:16px}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  th,td{border:1px solid #e2e8f0;padding:8px;text-align:left}
-  th{background:#f8fafc;font-weight:600}
-  .meta{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:12px;margin-bottom:16px}
-  .k{color:#64748b}
-  .notes{white-space:pre-wrap;border:1px solid #e2e8f0;padding:10px;border-radius:8px;background:#fafafa;margin-top:12px;font-size:12px}
-</style></head><body>
-  <h1>Test report — draft (Clause 7.8)</h1>
-  <div class="sub">${escapeHtml(opts.labName)} · ISO/IEC 17025:2017</div>
-  <div class="meta">
-    <span class="k">SRF</span><span>${escapeHtml(opts.srf)}</span>
-    <span class="k">Client</span><span>${escapeHtml(opts.client)}</span>
-    <span class="k">Report as per IS</span><span>${escapeHtml(opts.isStandard)}</span>
-    <span class="k">Date of receiving</span><span>${escapeHtml(opts.dateReceiving)}</span>
-    <span class="k">Report no. (draft)</span><span>${escapeHtml(opts.reportNumber || '—')}</span>
-  </div>
-  <table><thead><tr>
-    <th>Section</th><th>Department</th><th>Test parameter</th><th>Start</th><th>End</th><th>Results</th>
-  </tr></thead><tbody>${rows}</tbody></table>
-  ${opts.notes.trim() ? `<div class="notes"><strong>Preparation notes</strong><br/>${escapeHtml(opts.notes)}</div>` : ''}
-</body></html>`
-}
 
 function escapeHtml(s: string) {
   return s
@@ -93,27 +75,82 @@ function escapeHtml(s: string) {
 }
 
 export default function TestReportPreparationMasterPage() {
+  const { user, profileName, designation, departmentName } = useAuth()
+  const showDelete = canDeleteSampleHandlingRecords(designation)
   const [rows, setRows] = useState<ListRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [jumpTo, setJumpTo] = useState('')
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [active, setActive] = useState<ListRow | null>(null)
   const [reportNumber, setReportNumber] = useState('')
+  const [testReportPrefix, setTestReportPrefix] = useState('')
+  const [reportNumberLoading, setReportNumberLoading] = useState(false)
   const [draftNotes, setDraftNotes] = useState('')
-  const [paramLines, setParamLines] = useState<ParamLine[]>([])
-  const [detailLoading, setDetailLoading] = useState(false)
+  const [nablUlrNumber, setNablUlrNumber] = useState('')
+  const [ulrPrefix, setUlrPrefix] = useState('')
+  const [ulrPrefixLoading, setUlrPrefixLoading] = useState(false)
+  const [prepareResultRows, setPrepareResultRows] = useState<ReportResultRow[]>([])
+  const [prepareResultsLoading, setPrepareResultsLoading] = useState(false)
+  const [coverDetails, setCoverDetails] = useState<TestReportCoverDetails | null>(null)
+  const [partBDetails, setPartBDetails] = useState<TestReportPartBDetails | null>(null)
+  const [letterheadOptions, setLetterheadOptions] = useState<LetterheadTemplateOptions>({
+    headers: [],
+    footers: [],
+    watermarks: [],
+  })
+  const [letterheadsByScope, setLetterheadsByScope] = useState<ReportPrepLetterheadsByScope>({
+    nabl: { headerName: '', footerName: '', watermarkName: '' },
+    non_nabl: { headerName: '', footerName: '', watermarkName: '' },
+  })
+  const [coverLoading, setCoverLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
   const [issueLoading, setIssueLoading] = useState(false)
+  const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
+  const [referbackDialogOpen, setReferbackDialogOpen] = useState(false)
+  const [referbackRow, setReferbackRow] = useState<ListRow | null>(null)
+  const [referbackSubmitError, setReferbackSubmitError] = useState<string | null>(null)
+
+  const [resultsViewOpen, setResultsViewOpen] = useState(false)
+  const [resultsViewRow, setResultsViewRow] = useState<ListRow | null>(null)
+  const [resultsViewRows, setResultsViewRows] = useState<ReportResultRow[]>([])
+  const [resultsViewLoading, setResultsViewLoading] = useState(false)
+
+  const [srfViewOpen, setSrfViewOpen] = useState(false)
+  const [srfViewRow, setSrfViewRow] = useState<ListRow | null>(null)
 
   const labName = useMemo(() => {
     if (typeof window === 'undefined') return 'Laboratory'
     return window.localStorage.getItem('labSettings.labName') || 'Quality International Research & Laboratories Pvt. Ltd.'
   }, [])
+
+  const fullReportNumber = useMemo(() => toCanonicalReportNumber(reportNumber), [reportNumber])
+
+  const mapSamplesToRows = (
+    list: Record<string, unknown>[],
+    isMap: Map<string, string>,
+  ): ListRow[] =>
+    list.map((r) => {
+      const clients = r.clients as { company_name?: string } | null
+      const isId = r.test_report_is_code_id as string | null
+      return {
+        id: r.id as string,
+        srfNumber: (r.srf_number as string) ?? null,
+        dateReceiving: (r.date_of_sample_receiving as string) ?? null,
+        clientName: clients?.company_name ?? null,
+        isCodeId: isId,
+        isCodeLabel: isId ? (isMap.get(isId) ?? null) : null,
+        reportNumber: (r.test_report_number as string) ?? null,
+        draftNotes: (r.test_report_draft_notes as string) ?? null,
+        nablUlrNumber: (r.test_report_nabl_ulr_number as string) ?? null,
+      }
+    })
 
   const loadList = useCallback(async () => {
     setError(null)
@@ -122,16 +159,52 @@ export default function TestReportPreparationMasterPage() {
       const { data, error: qErr } = await supabase
         .from('samples')
         .select(
-          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, test_report_number, test_report_draft_notes, clients(company_name)',
+          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, test_report_number, test_report_draft_notes, test_report_nabl_ulr_number, stage, clients(company_name)',
         )
-        .eq('stage', 'report_preparation')
+        .in('stage', ['report_preparation', 'results_review', 'under_testing'])
         .order('updated_at', { ascending: false })
       if (qErr) throw qErr
-      const list = Array.isArray(data) ? data : []
+      const candidates = Array.isArray(data) ? data : []
+
+      const readySamples: Record<string, unknown>[] = []
+      const syncStageIds: string[] = []
+
+      for (const row of candidates) {
+        const sampleId = String((row as { id?: string }).id ?? '').trim()
+        const stage = String((row as { stage?: string }).stage ?? '').trim()
+        if (!sampleId) continue
+
+        if (stage === 'report_preparation') {
+          readySamples.push(row as Record<string, unknown>)
+          continue
+        }
+
+        // Do not pull SRFs out of Results Under Review when this page loads.
+        if (stage === 'results_review') {
+          continue
+        }
+
+        const ready = await isSampleReadyForReportPreparation(sampleId)
+        if (ready) {
+          readySamples.push(row as Record<string, unknown>)
+          if (stage !== 'report_preparation') {
+            syncStageIds.push(sampleId)
+          }
+        }
+      }
+
+      if (syncStageIds.length > 0) {
+        const { error: syncErr } = await supabase
+          .from('samples')
+          .update({ stage: 'report_preparation' })
+          .in('id', syncStageIds)
+        if (syncErr) throw syncErr
+      }
+
       const isIds = [
         ...new Set(
-          list
-            .map((r: { test_report_is_code_id?: string | null }) => r.test_report_is_code_id)
+          readySamples
+            .map((r) => r.test_report_is_code_id as string | null)
             .filter(Boolean),
         ),
       ] as string[]
@@ -149,21 +222,7 @@ export default function TestReportPreparationMasterPage() {
           isMap.set(row.id, label)
         }
       }
-      setRows(
-        list.map((r: Record<string, unknown>) => {
-          const clients = r.clients as { company_name?: string } | null
-          const isId = r.test_report_is_code_id as string | null
-          return {
-            id: r.id as string,
-            srfNumber: (r.srf_number as string) ?? null,
-            dateReceiving: (r.date_of_sample_receiving as string) ?? null,
-            clientName: clients?.company_name ?? null,
-            isCodeLabel: isId ? (isMap.get(isId) ?? null) : null,
-            reportNumber: (r.test_report_number as string) ?? null,
-            draftNotes: (r.test_report_draft_notes as string) ?? null,
-          }
-        }),
-      )
+      setRows(mapSamplesToRows(readySamples, isMap))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to load samples')
       setRows([])
@@ -176,79 +235,153 @@ export default function TestReportPreparationMasterPage() {
     void loadList()
   }, [loadList])
 
-  const loadDetail = async (sampleId: string) => {
-    setDetailLoading(true)
-    setParamLines([])
-    try {
-      const { data: allocs, error: aErr } = await supabase
-        .from('sample_allocations')
-        .select('id, section_code, department')
-        .eq('sample_id', sampleId)
-      if (aErr) throw aErr
-      const allocList = Array.isArray(allocs) ? allocs : []
-      if (allocList.length === 0) {
-        setParamLines([])
-        return
-      }
-      const allocIds = allocList.map((a: { id: string }) => a.id)
-      const { data: tas, error: tErr } = await supabase
-        .from('test_allocations')
-        .select('id, sample_allocation_id')
-        .in('sample_allocation_id', allocIds)
-      if (tErr) throw tErr
-      const taList = Array.isArray(tas) ? tas : []
-      const taIds = taList.map((t: { id: string }) => t.id)
-      const allocById = new Map(
-        allocList.map((a: { id: string; section_code: string; department: string | null }) => [
-          a.id,
-          { sectionCode: a.section_code, department: a.department },
-        ]),
-      )
-      let params: Array<{
-        test_allocation_id: string
-        test_label: string
-        test_start_date: string | null
-        test_end_date: string | null
-        results: string | null
-      }> = []
-      if (taIds.length > 0) {
-        const { data: pr, error: pErr } = await supabase
-          .from('test_allocation_parameters')
-          .select('test_allocation_id, test_label, test_start_date, test_end_date, results')
-          .in('test_allocation_id', taIds)
-        if (pErr) throw pErr
-        params = Array.isArray(pr) ? (pr as typeof params) : []
-      }
-      const taToAlloc = new Map(
-        taList.map((t: { id: string; sample_allocation_id: string }) => [t.id, t.sample_allocation_id]),
-      )
-      const lines: ParamLine[] = params.map((p) => {
-        const allocId = taToAlloc.get(p.test_allocation_id)
-        const sec = allocId ? allocById.get(allocId) : undefined
-        return {
-          sectionCode: sec?.sectionCode ?? '—',
-          department: sec?.department ?? null,
-          testLabel: p.test_label ?? '—',
-          testStartDate: p.test_start_date,
-          testEndDate: p.test_end_date,
-          results: p.results,
+  useEffect(() => {
+    if (!dialogOpen || !active) {
+      return
+    }
+    const scopes = getApplicableReportScopes(prepareResultRows)
+    setCoverLoading(true)
+    void Promise.all([
+      fetchTestReportCoverDetails(active.id, {
+        applicableScopes: scopes,
+        nablUlrNumber,
+        fallbacks: {
+          clientName: active.clientName,
+          isCodeLabel: active.isCodeLabel,
+        },
+      }),
+      fetchReportPrepLetterheads(active.id, scopes).catch(() => null),
+    ])
+      .then(([coverData, letterheadData]) => {
+        setCoverDetails(coverData)
+        setPartBDetails(coverData.partB)
+        if (letterheadData) {
+          setLetterheadOptions(letterheadData.options)
+          setLetterheadsByScope(letterheadData.letterheads)
         }
       })
-      setParamLines(lines)
-    } catch {
-      setParamLines([])
-    } finally {
-      setDetailLoading(false)
-    }
+      .catch(() => {
+        setCoverDetails(null)
+        setPartBDetails(null)
+      })
+      .finally(() => setCoverLoading(false))
+  }, [dialogOpen, active, prepareResultRows, fullReportNumber, nablUlrNumber])
+
+  const openViewSrf = (r: ListRow) => {
+    setSrfViewRow(r)
+    setSrfViewOpen(true)
+  }
+
+  const openViewResults = (r: ListRow) => {
+    setResultsViewRow(r)
+    setResultsViewOpen(true)
+    setResultsViewRows([])
+    setResultsViewLoading(true)
+    void fetchReportResultRowsForSample(r.id)
+      .then(setResultsViewRows)
+      .catch(() => setResultsViewRows([]))
+      .finally(() => setResultsViewLoading(false))
   }
 
   const openPrepare = (r: ListRow) => {
     setActive(r)
-    setReportNumber(r.reportNumber ?? '')
     setDraftNotes(r.draftNotes ?? '')
+    setNablUlrNumber('')
+    setReportNumber('')
+    setUlrPrefix('')
     setDialogOpen(true)
     setSaveMessage(null)
-    void loadDetail(r.id)
+    setPrepareResultRows([])
+    setCoverDetails(null)
+    setPartBDetails(null)
+    setLetterheadOptions({ headers: [], footers: [], watermarks: [] })
+    setLetterheadsByScope({
+      nabl: { headerName: '', footerName: '', watermarkName: '' },
+      non_nabl: { headerName: '', footerName: '', watermarkName: '' },
+    })
+    setPrepareResultsLoading(true)
+    setCoverLoading(true)
+    void fetchReportResultRowsForSample(r.id)
+      .then(setPrepareResultRows)
+      .catch(() => setPrepareResultRows([]))
+      .finally(() => setPrepareResultsLoading(false))
+    setUlrPrefixLoading(true)
+    setReportNumberLoading(true)
+    void (async () => {
+      try {
+        const [trPrefix, ulrPref] = await Promise.all([fetchTestReportPrefix(), fetchUlrPrefix()])
+        setTestReportPrefix(trPrefix)
+        setUlrPrefix(ulrPref)
+
+        const storedReport = toCanonicalReportNumber(
+          stripReportScopeSuffix(r.reportNumber ?? ''),
+        )
+        if (storedReport.length > 0 && isValidTestReportNumberFormat(storedReport, trPrefix, 'nabl')) {
+          setReportNumber(storedReport)
+        } else {
+          const { prefix, number } = await fetchNextTestReportNumber(r.id)
+          setTestReportPrefix(prefix)
+          setReportNumber(number)
+        }
+
+        const stored = sanitizeNablUlrInput(r.nablUlrNumber ?? '')
+        if (stored.length > 0 && isValidNablUlrFormat(stored, ulrPref)) {
+          setNablUlrNumber(stored)
+        } else {
+          const { ulr } = await fetchNextNablUlrNumber(r.id)
+          setNablUlrNumber(ulr)
+        }
+      } finally {
+        setUlrPrefixLoading(false)
+        setReportNumberLoading(false)
+      }
+    })()
+  }
+
+  const handlePrintScope = async (scope: ReportScopeKind) => {
+    if (!active) return
+    const base = fullReportNumber.trim()
+    const scopedRows = filterReportRowsByScope(prepareResultRows, scope)
+    if (scopedRows.length === 0) return
+    try {
+      const lh = letterheadsByScope[scope]
+      const template = await resolveReportScopeTemplate(scope, undefined, {
+        headerName: lh.headerName,
+        footerName: lh.footerName,
+        watermarkName: lh.watermarkName,
+      })
+      const printCover = coverDetails
+        ? {
+            ...coverDetails,
+            partB: partBDetails ?? coverDetails.partB,
+            sectionReportLine: formatSectionReportLine(
+              coverDetails.sectionCodes,
+              coverDetails.sectionReportNo,
+              coverDetails.reportType,
+            ),
+          }
+        : null
+      const printSettings = await fetchTestReportPrintSettings()
+      const html = buildScopedTestReportPrintHtml({
+        scope,
+        labName,
+        srf: active.srfNumber ?? active.id,
+        client: active.clientName ?? '—',
+        isStandard: active.isCodeLabel ?? '—',
+        dateReceiving: formatDate(active.dateReceiving ?? ''),
+        reportNumber: appendReportScopeSuffix(base, scope),
+        ulrNumber: scope === 'nabl' ? nablUlrNumber : undefined,
+        notes: draftNotes,
+        rows: scopedRows,
+        template,
+        coverDetails: printCover,
+        printSettings,
+      })
+      const srf = active.srfNumber ?? active.id
+      await outputTestReportDocument(html, `${REPORT_SCOPE_TITLE[scope]}-${srf}`)
+    } catch (e) {
+      setSaveMessage(e instanceof Error ? e.message : 'Print failed')
+    }
   }
 
   const filtered = useMemo(() => {
@@ -265,48 +398,63 @@ export default function TestReportPreparationMasterPage() {
     [filtered, page, pageSize],
   )
 
-  useEffect(() => {
-    setPage(1)
-  }, [search, pageSize])
+  const selectedRows = useMemo(
+    () => rows.filter((r) => selectedIds.has(r.id)),
+    [rows, selectedIds],
+  )
 
-  const handleSaveDraft = async () => {
-    if (!active) return
-    setSaveLoading(true)
-    setSaveMessage(null)
-    try {
-      const { error: uErr } = await supabase
-        .from('samples')
-        .update({
-          test_report_number: reportNumber.trim() || null,
-          test_report_draft_notes: draftNotes.trim() || null,
-        })
-        .eq('id', active.id)
-      if (uErr) throw uErr
-      setSaveMessage('Draft saved.')
-      await loadList()
-    } catch (e) {
-      setSaveMessage(
-        e instanceof Error
-          ? `${e.message} If columns are missing, run the migration: web/supabase/migrations/20260327120000_samples_report_preparation.sql`
-          : 'Save failed',
-      )
-    } finally {
-      setSaveLoading(false)
-    }
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  const printDraft = () => {
-    if (!active) return
-    const html = buildPrintDocument({
-      labName,
-      srf: active.srfNumber ?? active.id,
-      client: active.clientName ?? '—',
-      isStandard: active.isCodeLabel ?? '—',
-      dateReceiving: fmtDate(active.dateReceiving),
-      reportNumber: reportNumber.trim(),
-      notes: draftNotes,
-      lines: paramLines,
+  const toggleAllOnPage = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      paged.forEach((r) => {
+        if (checked) next.add(r.id)
+        else next.delete(r.id)
+      })
+      return next
     })
+  }
+
+  const buildListPrintHtml = (list: ListRow[]) => {
+    const rowsHtml = list
+      .map(
+        (r) => `
+      <tr>
+        <td>${escapeHtml(fmt(r.srfNumber))}</td>
+        <td>${escapeHtml(fmt(r.clientName))}</td>
+        <td>${escapeHtml(fmt(r.isCodeLabel))}</td>
+        <td>${escapeHtml(formatDate(r.dateReceiving ?? ''))}</td>
+      </tr>`,
+      )
+      .join('')
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>Test Report Preparation</title>
+<style>
+  body{font-family:system-ui,sans-serif;margin:24px;color:#0f172a}
+  h1{font-size:18px;margin:0 0 16px;text-align:center}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{border:1px solid #e2e8f0;padding:8px;text-align:center}
+  th{background:#f8fafc;font-weight:600}
+</style></head><body>
+  <h1>Test Report Preparation — SRFs ready for reporting</h1>
+  <table><thead><tr>
+    <th>SRF</th><th>Client</th><th>IS Code</th><th>Received Date</th>
+  </tr></thead><tbody>${rowsHtml}</tbody></table>
+</body></html>`
+  }
+
+  const handlePrintSelected = () => {
+    const exportRows = selectedRows.length > 0 ? selectedRows : filtered
+    if (exportRows.length === 0) return
+    const html = buildListPrintHtml(exportRows)
     const iframe = document.createElement('iframe')
     iframe.style.position = 'fixed'
     iframe.style.right = '0'
@@ -341,30 +489,128 @@ export default function TestReportPreparationMasterPage() {
     }
   }
 
+  const handleDeleteSelected = () => {
+    const ids = selectedRows.map((r) => r.id)
+    if (!confirmDestructiveDelete(ids.length, 'SRF')) return
+    void (async () => {
+      setLoading(true)
+      setSaveMessage(null)
+      try {
+        const count = await deleteSamplesByIds(ids)
+        setSelectedIds(new Set())
+        if (active && ids.includes(active.id)) {
+          setDialogOpen(false)
+          setActive(null)
+        }
+        await loadList()
+        setSaveMessage(`Deleted ${count} SRF(s) from Test Report Preparation.`)
+      } catch (e) {
+        setSaveMessage(e instanceof Error ? e.message : 'Delete failed')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, pageSize])
+
+  const handleSaveDraft = async () => {
+    if (!active) return
+    setSaveLoading(true)
+    setSaveMessage(null)
+    try {
+      const scopes = getApplicableReportScopes(prepareResultRows)
+      const partBUpdate = partBDetails ? partBDetailsToSampleUpdate(partBDetails) : {}
+      const letterheadUpdate = letterheadsToSampleUpdate(letterheadsByScope, scopes)
+      const draftPayload = {
+        test_report_number: toCanonicalReportNumber(fullReportNumber) || null,
+        test_report_draft_notes: draftNotes.trim() || null,
+        test_report_nabl_ulr_number: sanitizeNablUlrInput(nablUlrNumber) || null,
+        ...partBUpdate,
+        ...letterheadUpdate,
+      }
+      let { error: uErr } = await supabase.from('samples').update(draftPayload).eq('id', active.id)
+      if (uErr && isSupabaseMissingColumnError(uErr, 'test_report_nabl_required')) {
+        const { test_report_nabl_required: _n, ...withoutNabl } = partBUpdate
+        ;({ error: uErr } = await supabase
+          .from('samples')
+          .update({
+            test_report_number: draftPayload.test_report_number,
+            test_report_draft_notes: draftPayload.test_report_draft_notes,
+            test_report_nabl_ulr_number: draftPayload.test_report_nabl_ulr_number,
+            ...withoutNabl,
+          })
+          .eq('id', active.id))
+      }
+      if (uErr) throw uErr
+      setSaveMessage('Draft saved.')
+      await loadList()
+    } catch (e) {
+      setSaveMessage(
+        e instanceof Error
+          ? `${e.message} If columns are missing, run the migration: web/supabase/migrations/20260327120000_samples_report_preparation.sql`
+          : 'Save failed',
+      )
+    } finally {
+      setSaveLoading(false)
+    }
+  }
+
   const handleIssueReport = async () => {
     if (!active) return
-    if (!window.confirm('Issue this test report and move the SRF to Completed Results?')) return
+    const scopes = getApplicableReportScopes(prepareResultRows)
+    if (scopes.length === 0) return
+    const scopeLabel = scopes.map((s) => (s === 'nabl' ? 'NABL (A)' : 'Non-NABL (B)')).join(' & ')
+    if (
+      !window.confirm(
+        `Issue ${scopeLabel} test report(s) for this SRF and move to Issued Test Report?`,
+      )
+    ) {
+      return
+    }
     setIssueLoading(true)
     setSaveMessage(null)
     try {
-      const { error: uErr } = await supabase
-        .from('samples')
-        .update({
-          stage: 'completed',
-          test_report_number: reportNumber.trim() || null,
-          test_report_draft_notes: draftNotes.trim() || null,
-          test_report_issued_at: new Date().toISOString(),
-        })
-        .eq('id', active.id)
+      const now = new Date().toISOString()
+      const partBUpdate = partBDetails ? partBDetailsToSampleUpdate(partBDetails) : {}
+      const letterheadUpdate = letterheadsToSampleUpdate(letterheadsByScope, scopes)
+      const issuePayload: Record<string, string | boolean | null> = {
+        stage: 'completed',
+        test_report_number: toCanonicalReportNumber(fullReportNumber) || null,
+        test_report_draft_notes: draftNotes.trim() || null,
+        test_report_nabl_ulr_number: sanitizeNablUlrInput(nablUlrNumber) || null,
+        test_report_issued_at: now,
+        test_report_nabl_issued_at: scopes.includes('nabl') ? now : null,
+        test_report_non_nabl_issued_at: scopes.includes('non_nabl') ? now : null,
+        ...partBUpdate,
+        ...letterheadUpdate,
+      }
+      let { error: uErr } = await supabase.from('samples').update(issuePayload).eq('id', active.id)
+      if (uErr && isSupabaseMissingColumnError(uErr, 'test_report_nabl_required')) {
+        const { test_report_nabl_required: _n, ...withoutNabl } = partBUpdate
+        const retry: Record<string, string | boolean | null> = {
+          stage: issuePayload.stage,
+          test_report_number: issuePayload.test_report_number,
+          test_report_draft_notes: issuePayload.test_report_draft_notes,
+          test_report_nabl_ulr_number: issuePayload.test_report_nabl_ulr_number,
+          test_report_issued_at: issuePayload.test_report_issued_at,
+          test_report_nabl_issued_at: issuePayload.test_report_nabl_issued_at,
+          test_report_non_nabl_issued_at: issuePayload.test_report_non_nabl_issued_at,
+          ...withoutNabl,
+        }
+        ;({ error: uErr } = await supabase.from('samples').update(retry).eq('id', active.id))
+      }
       if (uErr) throw uErr
       setDialogOpen(false)
       setActive(null)
       await loadList()
-      setSaveMessage('Test report issued. SRF moved to Completed Results.')
+      setSaveMessage('Test report(s) issued. SRF moved to Issued Test Report.')
     } catch (e) {
       setSaveMessage(
         e instanceof Error
-          ? `${e.message} If columns are missing, run the migration file in Supabase SQL editor.`
+          ? `${e.message} If columns are missing, run migration 20260531230000_report_scope_dual_templates.sql`
           : 'Issue failed',
       )
     } finally {
@@ -372,220 +618,201 @@ export default function TestReportPreparationMasterPage() {
     }
   }
 
+  const openReferbackToReviewDialog = (row: ListRow) => {
+    if (!user?.id) {
+      setSaveMessage('Sign in to refer back to Results Under Review.')
+      return
+    }
+    setReferbackSubmitError(null)
+    setReferbackRow(row)
+    setReferbackDialogOpen(true)
+  }
+
+  const submitReferbackToResultsReview = async (
+    sections: Array<{ testAllocationId: string; reviewer: { id: string; name: string } }>,
+  ) => {
+    const row = referbackRow
+    if (!row?.id) return
+    const label = row.srfNumber?.trim() || 'this SRF'
+    setReferbackBusyId(row.id)
+    setReferbackSubmitError(null)
+    try {
+      const { allSectionsReferred } = await referbackSectionsToResultsReview(row.id, sections)
+      setReferbackDialogOpen(false)
+      setReferbackRow(null)
+      if (active?.id === row.id && allSectionsReferred) {
+        setDialogOpen(false)
+        setActive(null)
+      }
+      if (allSectionsReferred) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev)
+          next.delete(row.id)
+          return next
+        })
+      }
+      await loadList()
+      const codes = sections.length
+      setSaveMessage(
+        allSectionsReferred
+          ? `${label} — all section(s) referred back to Results Under Review.`
+          : `${label} — ${codes} section(s) referred back. SRF remains in Test Report Preparation for other sections.`,
+      )
+    } catch (e) {
+      setReferbackSubmitError(e instanceof Error ? e.message : 'Referback failed')
+    } finally {
+      setReferbackBusyId(null)
+    }
+  }
+
   return (
     <div className="p-6 space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-xl border border-border bg-card px-5 py-4 shadow-sm">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">Test Report Preparation</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            ISO/IEC 17025:2017 — Clause 7.8 · Consolidate reviewed results and issue the test report
-          </p>
-        </div>
-      </div>
+      <TestReportPreparationHeaderBar
+        search={search}
+        onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        assistantRows={filtered}
+      />
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base">SRFs ready for reporting</CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                placeholder="Search SRF, client, IS…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="max-w-xs"
-              />
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={String(pageSize)}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                aria-label="Rows per page"
-              >
-                <option value="5">5 / page</option>
-                <option value="10">10 / page</option>
-                <option value="20">20 / page</option>
-              </select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {error && <p className="text-sm text-destructive mb-3">{error}</p>}
-          {saveMessage && !dialogOpen && (
-            <p className="text-sm text-success mb-3">{saveMessage}</p>
-          )}
-          {loading ? (
-            <p className="text-sm text-muted-foreground py-6">Loading…</p>
-          ) : paged.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6">
-              No samples in test report preparation. Approve results from Results Under Review first.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead className="text-xs">SRF</TableHead>
-                  <TableHead className="text-xs">Client</TableHead>
-                  <TableHead className="text-xs">IS (report basis)</TableHead>
-                  <TableHead className="text-xs">Receiving date</TableHead>
-                  <TableHead className="text-xs">Draft report no.</TableHead>
-                  <TableHead className="text-xs text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="text-sm font-medium">{fmt(r.srfNumber)}</TableCell>
-                    <TableCell className="text-sm">{fmt(r.clientName)}</TableCell>
-                    <TableCell className="text-sm">{fmt(r.isCodeLabel)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{fmtDate(r.dateReceiving)}</TableCell>
-                    <TableCell className="text-sm">{fmt(r.reportNumber)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button type="button" size="sm" variant="outline" onClick={() => openPrepare(r)}>
-                        <FileText size={14} className="mr-1" />
-                        Prepare
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-          {!loading && paged.length > 0 && (
-            <div className="flex items-center justify-end gap-2 mt-4">
-              <span className="text-xs text-muted-foreground">
-                Page {page} / {pageCount}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                aria-label="Previous page"
-              >
-                <ChevronLeft size={16} />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                disabled={page >= pageCount}
-                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                aria-label="Next page"
-              >
-                <ChevronRight size={16} />
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <TestReportPreparationTable
+        rows={paged}
+        loading={loading}
+        error={error}
+        selectedIds={selectedIds}
+        onToggle={toggleRow}
+        onToggleAll={toggleAllOnPage}
+        onViewSrf={openViewSrf}
+        onViewResults={openViewResults}
+        onPrepare={openPrepare}
+        onReferback={openReferbackToReviewDialog}
+        referbackBusyId={referbackBusyId}
+        canReferback={Boolean(user?.id)}
+      />
 
-      <Dialog
+      <SampleSrfViewDialog
+        open={srfViewOpen}
+        onOpenChange={(o) => {
+          if (!o) setSrfViewRow(null)
+          setSrfViewOpen(o)
+        }}
+        sampleId={srfViewRow?.id ?? null}
+        fallbackSrf={srfViewRow?.srfNumber}
+        fallbackClient={srfViewRow?.clientName}
+        fallbackIsLabel={srfViewRow?.isCodeLabel}
+      />
+
+      <TestReportPreparationFooterBar
+        message={!dialogOpen ? saveMessage : null}
+        loading={loading}
+        selectedCount={selectedIds.size}
+        onPrintSelected={handlePrintSelected}
+        showDelete={showDelete}
+        onDeleteSelected={handleDeleteSelected}
+        page={page}
+        pageCount={pageCount}
+        onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
+        onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
+        jumpTo={jumpTo}
+        onJumpToChange={setJumpTo}
+        onJumpToGo={() => {
+          const n = Number(jumpTo)
+          if (!Number.isFinite(n) || n <= 0) return
+          setPage(Math.min(pageCount, Math.max(1, n)))
+        }}
+      />
+
+      <TestReportPrepareDialog
         open={dialogOpen}
         onOpenChange={(o) => {
           if (!o) setActive(null)
           setDialogOpen(o)
         }}
+        active={active}
+        reportNumber={reportNumber}
+        onReportNumberChange={setReportNumber}
+        testReportPrefix={testReportPrefix}
+        reportNumberLoading={reportNumberLoading}
+        draftNotes={draftNotes}
+        onDraftNotesChange={setDraftNotes}
+        nablUlrNumber={nablUlrNumber}
+        onNablUlrNumberChange={setNablUlrNumber}
+        ulrPrefix={ulrPrefix}
+        ulrPrefixLoading={ulrPrefixLoading}
+        letterheadOptions={letterheadOptions}
+        letterheadsByScope={letterheadsByScope}
+        onLetterheadChange={(scope, field, value) => {
+          setLetterheadsByScope((prev) => ({
+            ...prev,
+            [scope]: { ...prev[scope], [field]: value },
+          }))
+        }}
+        coverDetails={coverDetails}
+        partBDetails={partBDetails}
+        onPartBDetailsChange={setPartBDetails}
+        coverLoading={coverLoading}
+        resultRows={prepareResultRows}
+        resultsLoading={prepareResultsLoading}
+        saveMessage={dialogOpen ? saveMessage : null}
+        saveLoading={saveLoading}
+        issueLoading={issueLoading}
+        onSaveDraft={() => void handleSaveDraft()}
+        onIssueReports={() => void handleIssueReport()}
+        onPrintScope={(scope) => void handlePrintScope(scope)}
+      />
+
+      <Dialog
+        open={resultsViewOpen}
+        onOpenChange={(o) => {
+          if (!o) setResultsViewRow(null)
+          setResultsViewOpen(o)
+        }}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Test report — {active ? fmt(active.srfNumber) : '—'}</DialogTitle>
+            <DialogTitle>
+              Test Results — {resultsViewRow ? fmt(resultsViewRow.srfNumber) : '—'}
+            </DialogTitle>
           </DialogHeader>
-
-          {active && (
-            <div className="space-y-4">
-              {saveMessage && dialogOpen && (
-                <p className="text-sm text-muted-foreground">{saveMessage}</p>
+          {resultsViewRow && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Client: <span className="font-medium text-foreground">{fmt(resultsViewRow.clientName)}</span>
+                {' · '}
+                IS Code: <span className="font-medium text-foreground">{fmt(resultsViewRow.isCodeLabel)}</span>
+              </p>
+              {resultsViewLoading ? (
+                <p className="text-muted-foreground">Loading completed test results…</p>
+              ) : resultsViewRows.length === 0 ? (
+                <p className="text-muted-foreground">No completed test parameter results for this SRF.</p>
+              ) : (
+                <ReportResultsTable rows={resultsViewRows} showScope />
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tr-num">Test report number</Label>
-                  <Input
-                    id="tr-num"
-                    value={reportNumber}
-                    onChange={(e) => setReportNumber(e.target.value)}
-                    placeholder="e.g. QI/TR/250327-01"
-                  />
-                </div>
-                <div className="space-y-2 text-sm text-muted-foreground sm:pt-8">
-                  <p>
-                    <span className="font-medium text-foreground">Client:</span> {fmt(active.clientName)}
-                  </p>
-                  <p>
-                    <span className="font-medium text-foreground">IS:</span> {fmt(active.isCodeLabel)}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="tr-notes">Preparation notes (internal)</Label>
-                <Textarea
-                  id="tr-notes"
-                  value={draftNotes}
-                  onChange={(e) => setDraftNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Optional notes for the authorised signatory / report template"
-                />
-              </div>
-
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Results summary (from technical records)
-                </h4>
-                {detailLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading parameters…</p>
-                ) : paramLines.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No parameter rows linked to this SRF.</p>
-                ) : (
-                  <div className="rounded-md border overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="text-xs">Section</TableHead>
-                          <TableHead className="text-xs">Dept</TableHead>
-                          <TableHead className="text-xs">Parameter</TableHead>
-                          <TableHead className="text-xs">Start</TableHead>
-                          <TableHead className="text-xs">End</TableHead>
-                          <TableHead className="text-xs">Results</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paramLines.map((l, i) => (
-                          <TableRow key={`${l.sectionCode}-${l.testLabel}-${i}`}>
-                            <TableCell className="text-xs">{l.sectionCode}</TableCell>
-                            <TableCell className="text-xs">{fmt(l.department)}</TableCell>
-                            <TableCell className="text-xs">{l.testLabel}</TableCell>
-                            <TableCell className="text-xs">{fmtDate(l.testStartDate)}</TableCell>
-                            <TableCell className="text-xs">{fmtDate(l.testEndDate)}</TableCell>
-                            <TableCell className="text-xs max-w-[200px] truncate" title={l.results ?? ''}>
-                              {fmt(l.results)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </div>
             </div>
           )}
-
-          <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between">
-            <Button type="button" variant="outline" onClick={printDraft} disabled={!active || detailLoading}>
-              <Printer size={16} className="mr-2" />
-              Print draft
-            </Button>
-            <div className="flex flex-wrap gap-2 justify-end">
-              <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={!active || saveLoading}>
-                <Save size={16} className="mr-2" />
-                {saveLoading ? 'Saving…' : 'Save draft'}
-              </Button>
-              <Button type="button" onClick={handleIssueReport} disabled={!active || issueLoading}>
-                <CheckCircle size={16} className="mr-2" />
-                {issueLoading ? 'Issuing…' : 'Issue test report'}
-              </Button>
-            </div>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TestReportReferbackToReviewDialog
+        open={referbackDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReferbackRow(null)
+            setReferbackSubmitError(null)
+          }
+          setReferbackDialogOpen(open)
+        }}
+        sampleId={referbackRow?.id ?? null}
+        srfNumber={referbackRow?.srfNumber}
+        defaultEmployeeId={user?.id}
+        defaultDesignation={designation}
+        onSubmit={submitReferbackToResultsReview}
+        submitLoading={referbackBusyId === referbackRow?.id}
+        submitError={referbackSubmitError}
+      />
     </div>
   )
 }

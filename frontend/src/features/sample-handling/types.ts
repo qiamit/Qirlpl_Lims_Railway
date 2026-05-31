@@ -11,9 +11,19 @@ export type SampleStage =
 
 export type ConditionOnReceipt = 'acceptable' | 'damaged' | 'compromised'
 
+/** Sample Receiving Review tab — report category */
+export const RECEIVING_REPORT_TYPES = [
+  'New Report',
+  'Amendment Report',
+  'Supplementary Report',
+] as const
+
+export type ReceivingReportType = (typeof RECEIVING_REPORT_TYPES)[number]
+
 export type SampleRow = {
   id: string
   srf_number: string | null
+  referenced_srf_number: string | null
   date_of_sample_receiving: string | null
   sample_code: string | null
   sample_qr_code: string | null
@@ -51,6 +61,7 @@ export type SampleRow = {
   tentative_date_required: string | null
   tentative_date_by_lab: string | null
   sample_receiving_status: string | null
+  receiving_report_type: string | null
   client_references_path: string | null
   collection_date: string | null
   collection_location: string | null
@@ -68,6 +79,9 @@ export type SampleRow = {
   test_report_number?: string | null
   test_report_draft_notes?: string | null
   test_report_issued_at?: string | null
+  test_report_nabl_issued_at?: string | null
+  test_report_non_nabl_issued_at?: string | null
+  test_report_nabl_ulr_number?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -87,6 +101,7 @@ export type TestAllocationParameterRow = {
   testAllocationId: string
   testParameterId: string | null
   testLabel: string
+  specificRequirement?: string | null
   testStartDate: string | null
   testEndDate: string | null
   results: string | null
@@ -112,6 +127,8 @@ export type TestAllocationRow = {
   assignedEmployeeName: string | null
   /** When true, this section can be edited in the form; otherwise Edit is locked */
   referbackFromAllocation?: boolean
+  /** True when sent from Test Allocation to Sample Under Testing */
+  sentForTesting?: boolean
   /** Legacy aggregate Sample Under Testing: test start date (section-level, not per parameter) */
   testStartDate?: string | null
   /** Legacy aggregate Sample Under Testing: results (section-level, not per parameter) */
@@ -125,6 +142,8 @@ export type TestAllocationRow = {
 /** Tab 1: Customer & Sample Details */
 export type SampleReceivingFormTab1 = {
   srfNumber: string
+  /** Selected prior SRF when Report Type is Amendment / Supplementary */
+  referencedSrfNumber: string
   dateOfSampleReceiving: string
   customerId: string
   testReportAsPerIsId: string
@@ -160,6 +179,7 @@ export type SampleReceivingFormTab2 = {
   tentativeDateRequired: string
   tentativeDateByLab: string
   sampleReceivingStatus: string
+  receivingReportType: string
   clientReferencesPath: string
 }
 
@@ -177,6 +197,7 @@ export function addDays(isoDate: string, days: number): string {
 
 export const emptySampleReceivingFormTab1 = (): SampleReceivingFormTab1 => ({
   srfNumber: '',
+  referencedSrfNumber: '',
   dateOfSampleReceiving: today(),
   customerId: '',
   testReportAsPerIsId: '',
@@ -211,6 +232,7 @@ export const emptySampleReceivingFormTab2 = (): SampleReceivingFormTab2 => ({
   tentativeDateRequired: addDays(today(), 10),
   tentativeDateByLab: addDays(today(), 10),
   sampleReceivingStatus: '',
+  receivingReportType: RECEIVING_REPORT_TYPES[0],
   clientReferencesPath: '',
 })
 

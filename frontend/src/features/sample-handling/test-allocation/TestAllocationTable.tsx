@@ -1,7 +1,12 @@
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
+import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 import type { TestAllocationRow } from '../types'
-import { Pencil, Undo2 } from 'lucide-react'
+import { FlaskConical, Inbox, Pencil, Undo2 } from 'lucide-react'
+import {
+  buildTestAllocationRowAssistantContext,
+  formatTestAllocationRowTitle,
+} from './buildTestAllocationAssistantContext'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
 
@@ -13,7 +18,10 @@ export function TestAllocationTable({
   onToggle,
   onToggleAll,
   onAddTestParameter,
-  onToggleReferback,
+  onReferback,
+  onReferbackToReceiving,
+  onSendForTesting,
+  onAssistantDataChanged,
 }: {
   rows: TestAllocationRow[]
   loading: boolean
@@ -22,7 +30,10 @@ export function TestAllocationTable({
   onToggle: (sampleAllocationId: string) => void
   onToggleAll: (checked: boolean) => void
   onAddTestParameter: (row: TestAllocationRow) => void
-  onToggleReferback: (row: TestAllocationRow) => void
+  onReferback: (row: TestAllocationRow) => void
+  onReferbackToReceiving: (row: TestAllocationRow) => void
+  onSendForTesting: (row: TestAllocationRow) => void
+  onAssistantDataChanged?: () => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.sampleAllocationId))
   const someChecked = rows.some((r) => selectedIds.has(r.sampleAllocationId))
@@ -82,30 +93,59 @@ export function TestAllocationTable({
                       size="icon"
                       variant="ghost"
                       aria-label="Edit Test Parameter"
-                      title={
-                        r.referbackFromAllocation
-                          ? 'Edit test parameters'
-                          : 'Only sections referred back from Sample Allocation can be edited'
-                      }
-                      disabled={!r.referbackFromAllocation}
-                      onClick={() => r.referbackFromAllocation && onAddTestParameter(r)}
+                      title="Edit test parameters"
+                      onClick={() => onAddTestParameter(r)}
                     >
                       <Pencil size={16} />
                     </Button>
                     <Button
                       type="button"
                       size="icon"
-                      variant={r.referbackFromAllocation ? 'secondary' : 'ghost'}
-                      aria-label={r.referbackFromAllocation ? 'Clear referback' : 'Referback'}
-                      title={
-                        r.referbackFromAllocation
-                          ? 'Clear referback and lock Sample Allocation edit'
-                          : 'Mark as referred back to unlock Sample Allocation edit'
-                      }
-                      onClick={() => onToggleReferback(r)}
+                      variant="ghost"
+                      aria-label="Send for testing"
+                      title="Send for testing — moves section to Sample Under Testing"
+                      onClick={() => onSendForTesting(r)}
+                    >
+                      <FlaskConical size={16} className="text-primary" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Refer back to Sample Allocation"
+                      title="Refer back to Sample Allocation — removes test parameters; section stays in allocation"
+                      onClick={() => onReferback(r)}
                     >
                       <Undo2 size={16} />
                     </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Refer back to Sample Receiving"
+                      title="Refer back to Sample Receiving — removes section from allocation; unlocks receiving when no sections remain"
+                      onClick={() => onReferbackToReceiving(r)}
+                    >
+                      <Inbox size={16} className="text-amber-700 dark:text-amber-500" />
+                    </Button>
+                    <QiAssistant
+                      page="samples/test-allocation"
+                      pageTitle={formatTestAllocationRowTitle(r)}
+                      contextSummary={buildTestAllocationRowAssistantContext(r)}
+                      activeRecordId={r.testAllocationId ?? r.sampleAllocationId}
+                      activeRecordTable="test_allocations"
+                      isCodeId={r.isCodeId ?? undefined}
+                      triggerVariant="icon"
+                      welcomeMessage={`I'm your **Test Allocation Assistant** for **${formatTestAllocationRowTitle(r)}**. I can explain assigned tests and **update this allocation** when you ask.`}
+                      suggestedQuestions={[
+                        'Summarize test parameters assigned to this section',
+                        'Change the assigned employee for this section',
+                        'What does referback do for this section?',
+                        'Explain department and designation for this allocation',
+                      ]}
+                      onDataChanged={onAssistantDataChanged}
+                      enablePdfImport={false}
+                    />
                   </div>
                 </TableCell>
               </TableRow>

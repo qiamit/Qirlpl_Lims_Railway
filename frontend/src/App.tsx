@@ -4,17 +4,15 @@ import GlobalLayout from '@/components/layout/GlobalLayout'
 import DashboardPage from '@/features/dashboard/DashboardPage'
 import { SamplesPage } from '@/features/samples'
 import SampleReceivingMasterPage from '@/features/sample-handling/receiving/SampleReceivingMasterPage'
-import SampleStageMasterPage from '@/features/sample-handling/SampleStageMasterPage'
 import SampleAllocationMasterPage from '@/features/sample-handling/allocation/SampleAllocationMasterPage'
 import TestAllocationMasterPage from '@/features/sample-handling/test-allocation/TestAllocationMasterPage'
 import SampleUnderTestingMasterPage from '@/features/sample-handling/sample-under-testing/SampleUnderTestingMasterPage'
 import ResultsUnderReviewMasterPage from '@/features/sample-handling/results-under-review/ResultsUnderReviewMasterPage'
 import TestReportPreparationMasterPage from '@/features/sample-handling/report-preparation/TestReportPreparationMasterPage'
-import { TestingPage } from '@/features/testing'
-import { ReportingPage } from '@/features/reporting'
-import { PersonnelPage } from '@/features/personnel'
+import CompletedResultsMasterPage from '@/features/sample-handling/completed-results/CompletedResultsMasterPage'
 import LabSettingsPage from '@/features/settings/LabSettingsPage'
 import UserManagementPage from '@/features/settings/UserManagementPage'
+import AiSettingsPage from '@/features/settings/AiSettingsPage'
 import AuthPage from '@/features/auth/AuthPage'
 import ClientsPage from '@/features/masters/ClientsPage'
 import IsCodesPage from '@/features/masters/IsCodesPage'
@@ -62,11 +60,7 @@ export default function App() {
         >
           <Route index element={<DashboardPage />} />
 
-          {/* Clause 6 – Resource Requirements */}
-          <Route path="personnel" element={<PersonnelPage />} />
-
           {/* Clause 7 – Process Requirements */}
-          <Route path="sampling" element={<PlaceholderPage title="Sampling" clause="Clause 7.3" />} />
           <Route path="samples" element={<SamplesPage />} />
           <Route path="samples/receiving" element={<RequireSampleReceivingAccess><SampleReceivingMasterPage /></RequireSampleReceivingAccess>} />
           <Route path="samples/allocation" element={<RequireSampleAllocationAccess><SampleAllocationMasterPage /></RequireSampleAllocationAccess>} />
@@ -74,15 +68,13 @@ export default function App() {
           <Route path="samples/under-testing" element={<SampleUnderTestingMasterPage />} />
           <Route path="samples/results-review" element={<ResultsUnderReviewMasterPage />} />
           <Route path="samples/report-preparation" element={<TestReportPreparationMasterPage />} />
-          <Route path="samples/completed" element={<SampleStageMasterPage stage="completed" title="Completed Results" />} />
-          <Route path="testing" element={<TestingPage />} />
-          <Route path="validity" element={<PlaceholderPage title="Ensuring Validity of Results" clause="Clause 7.7" />} />
-          <Route path="reports" element={<ReportingPage />} />
+          <Route path="samples/completed" element={<CompletedResultsMasterPage />} />
 
           {/* Masters Management */}
           <Route path="masters/clients" element={<ClientsPage />} />
           <Route path="masters/is-codes" element={<IsCodesPage />} />
-          <Route path="masters/product-services" element={<ProductServicesPage />} />
+          <Route path="masters/nabl-scope" element={<ProductServicesPage />} />
+          <Route path="masters/product-services" element={<Navigate to="/masters/nabl-scope" replace />} />
           <Route path="masters/test-parameter" element={<TestParameterPage />} />
 
           {/* Top Bar Pages */}
@@ -99,6 +91,14 @@ export default function App() {
             element={
               <RequireLaboratoryDirector>
                 <UserManagementPage />
+              </RequireLaboratoryDirector>
+            }
+          />
+          <Route
+            path="lab-settings/ai-settings"
+            element={
+              <RequireLaboratoryDirector>
+                <AiSettingsPage />
               </RequireLaboratoryDirector>
             }
           />

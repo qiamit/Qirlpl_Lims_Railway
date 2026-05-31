@@ -54,6 +54,7 @@ export default {
           border: "hsl(var(--sidebar-border))",
           accent: "hsl(var(--sidebar-accent))",
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          muted: "hsl(var(--sidebar-muted))",
           ring: "hsl(var(--sidebar-ring))",
         },
         success: {
@@ -81,6 +82,10 @@ export default {
           900: "#0c416a",
           950: "#082947",
         },
+      },
+      boxShadow: {
+        soft: "0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.06)",
+        card: "0 4px 6px -1px rgb(15 23 42 / 0.05), 0 2px 4px -2px rgb(37 99 235 / 0.06)",
       },
       borderRadius: {
         lg: "var(--radius)",

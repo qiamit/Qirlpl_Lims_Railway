@@ -1,6 +1,6 @@
 import React from 'react'
 import { Save, Plus, Trash2 } from 'lucide-react'
-import { Card, CardContent, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -354,7 +354,6 @@ export function LetterheadTab(props: LetterheadTabProps) {
             <div className="flex items-center justify-between">
               <div>
                 <Label className="mb-1 block">Water Mark Templete</Label>
-                <CardDescription>Watermark can be an image or a text.</CardDescription>
               </div>
               <Dialog open={props.watermarkDialogOpen} onOpenChange={props.setWatermarkDialogOpen}>
                 <DialogTrigger asChild>

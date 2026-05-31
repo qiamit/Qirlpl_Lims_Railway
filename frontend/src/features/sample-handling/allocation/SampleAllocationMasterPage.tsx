@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import type { SampleRow } from '../types'
@@ -10,6 +11,14 @@ import { SampleAllocationFooterBar } from './SampleAllocationFooterBar'
 import { SampleAllocationForm, type SampleAllocationFormState } from './SampleAllocationForm'
 import type { AllocationSection } from './SampleAllocationForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  isSampleVisibleInAllocationList,
+  referbackSrfFromAllocationToSampleReceiving,
+  sendSrfFromAllocationToTestAllocation,
+  type AllocationSectionForTestAllocation,
+} from '../referbackFlow'
+import { buildSampleAllocationListAssistantContext } from './buildSampleAllocationAssistantContext'
+import { isSampleAllocationEditLocked, sampleAllocationEditLockedTitle, getSectionCodesInTestAllocation } from './sampleAllocationEditLock'
 
 type AllocationRecord = {
   id: string
@@ -18,6 +27,7 @@ type AllocationRecord = {
   department: string | null
   designation: string | null
   sampleQuantity: string | null
+  allocationDate: string | null
   testParameterSummary: string | null
 }
 
@@ -50,7 +60,8 @@ const readDesignationByDepartmentFromStorage = (): Record<string, string[]> => {
 }
 
 export default function SampleAllocationMasterPage() {
-  const { session } = useAuth()
+  const { session, designation } = useAuth()
+  const showDelete = canDeleteSampleHandlingRecords(designation)
   const [allocationRecords, setAllocationRecords] = useState<AllocationRecord[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -62,6 +73,7 @@ export default function SampleAllocationMasterPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
 
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [saveLoading, setSaveLoading] = useState(false)
 
   const [formOpen, setFormOpen] = useState(false)
   const [formIsEditMode, setFormIsEditMode] = useState(false)
@@ -128,7 +140,7 @@ export default function SampleAllocationMasterPage() {
     storage_conditions: null,
     storage_location: null,
     status: null,
-    stage: null,
+    stage: (r.stage as SampleRow['stage']) ?? null,
     quantity: null,
     quantity_unit: null,
     condition_on_receipt: null,
@@ -142,7 +154,7 @@ export default function SampleAllocationMasterPage() {
   const loadSamples = async (): Promise<SampleRow[]> => {
     const { data, error } = await supabase
       .from('samples')
-      .select('id, srf_number, date_of_sample_receiving, sample_code, sample_quantity, test_report_is_code_id, referback_from_allocation')
+      .select('id, srf_number, date_of_sample_receiving, sample_code, sample_quantity, test_report_is_code_id, referback_from_allocation, stage')
       .order('created_at', { ascending: false })
     if (error || !Array.isArray(data)) return []
     return (data as any[]).map(mapRow)
@@ -175,7 +187,7 @@ export default function SampleAllocationMasterPage() {
     try {
       const { data, error } = await supabase
         .from('sample_allocations')
-        .select('id, sample_id, section_code, allocation_date, department, designation, sample_quantity')
+        .select('id, sample_id, section_code, allocation_date, department, designation, quantity')
         .order('allocation_date', { ascending: false })
       if (error) throw error
       const list: AllocationRecord[] = (Array.isArray(data) ? data : []).map((r: any) => {
@@ -186,7 +198,8 @@ export default function SampleAllocationMasterPage() {
           sectionCode: r.section_code as string,
           department: (r.department as string) ?? null,
           designation: (r.designation as string) ?? null,
-          sampleQuantity: (r.sample_quantity as string) ?? null,
+          sampleQuantity: (r.quantity as string) ?? null,
+          allocationDate: (r.allocation_date as string) ?? null,
           testParameterSummary: null,
         }
       })
@@ -321,6 +334,7 @@ export default function SampleAllocationMasterPage() {
     const result: AllocationRow[] = []
     bySample.forEach((recs, sampleId) => {
       const sample = recs[0]!.sample
+      if (!isSampleVisibleInAllocationList(sample.stage)) return
       result.push({
         sampleId,
         sample,
@@ -360,13 +374,25 @@ export default function SampleAllocationMasterPage() {
     [allocationRecords],
   )
 
-  const sampleIdsWithTestAllocation = useMemo(() => {
-    const set = new Set<string>()
-    for (const rec of allocationRecords) {
-      if (sampleAllocationIdsWithTestAllocation.has(rec.id)) set.add(rec.sample.id)
-    }
-    return set
-  }, [allocationRecords, sampleAllocationIdsWithTestAllocation])
+  const allocationRecordsLite = useMemo(
+    () =>
+      allocationRecords.map((r) => ({
+        id: r.id,
+        sectionCode: r.sectionCode,
+        department: r.department,
+        designation: r.designation,
+        sampleQuantity: r.sampleQuantity,
+      })),
+    [allocationRecords],
+  )
+
+  const assistantContext = useMemo(
+    () => buildSampleAllocationListAssistantContext(filteredRows, search, allocationRecordsLite),
+    [filteredRows, search, allocationRecordsLite],
+  )
+
+  const isRowInTestAllocation = (row: AllocationRow) =>
+    isSampleAllocationEditLocked(row, sampleAllocationIdsWithTestAllocation)
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
   const pagedRows = useMemo(
@@ -409,6 +435,7 @@ export default function SampleAllocationMasterPage() {
 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return
+    if (!window.confirm(`Delete allocation(s) for ${selectedIds.size} selected SRF(s)?`)) return
     void (async () => {
       try {
         const sampleIds = Array.from(selectedIds)
@@ -424,6 +451,7 @@ export default function SampleAllocationMasterPage() {
   }
 
   const handleNew = () => {
+    setSaveMessage(null)
     setFormIsEditMode(false)
     setForm({
       sampleId: '',
@@ -437,14 +465,31 @@ export default function SampleAllocationMasterPage() {
 
   const handleSaveForm = () => {
     void (async () => {
+      setSaveLoading(true)
+      setSaveMessage(null)
       try {
-        if (!form.sampleId || form.sections.length === 0) return
+        if (!form.sampleId) {
+          setSaveMessage('Select an SRF before saving.')
+          return
+        }
+        if (form.sections.length === 0) {
+          setSaveMessage('Add at least one allocation section.')
+          return
+        }
         const allocationDate = form.allocationDate || today()
+        const sample = samples.find((s) => s.id === form.sampleId)
+        const isCodeId = sample?.test_report_is_code_id ?? null
+        const isCodeLabel =
+          form.isCodeLabel ||
+          (isCodeId ? isCodeOptions.find((o) => o.id === isCodeId)?.label ?? null : null)
+
         const { error: delErr } = await supabase
           .from('sample_allocations')
           .delete()
           .eq('sample_id', form.sampleId)
         if (delErr) throw delErr
+
+        let inserted = 0
         for (const sec of form.sections) {
           const code = sec.sectionCode.trim()
           if (!code) continue
@@ -454,31 +499,50 @@ export default function SampleAllocationMasterPage() {
             allocation_date: allocationDate,
             department: sec.department?.trim() || null,
             designation: sec.designation?.trim() || null,
-            sample_quantity: sec.sampleQuantity?.trim() || null,
+            quantity: sec.sampleQuantity?.trim() || null,
+            is_code_id: isCodeId,
+            is_code_label: isCodeLabel,
           })
           if (insErr) throw insErr
+          inserted += 1
         }
+
+        if (inserted === 0) {
+          setSaveMessage('No valid sections to save. Check section code and department/designation/qty.')
+          return
+        }
+
         const { data: stageRow } = await supabase.from('samples').select('stage').eq('id', form.sampleId).maybeSingle()
         const curStage = (stageRow as { stage?: string | null } | null)?.stage
-        if (!curStage || curStage === 'receiving' || curStage === 'allocation') {
-          await supabase
-            .from('samples')
-            .update({ stage: 'allocation' })
-            .eq('id', form.sampleId)
+        const samplePatch: { stage?: string; referback_from_allocation: boolean } = {
+          referback_from_allocation: false,
         }
+        if (!curStage || curStage === 'receiving' || curStage === 'allocation') {
+          samplePatch.stage = 'allocation'
+        }
+        const { error: stageErr } = await supabase.from('samples').update(samplePatch).eq('id', form.sampleId)
+        if (stageErr) throw stageErr
+
         setSaveMessage('Allocation saved.')
         setFormOpen(false)
         await refreshAll()
       } catch (err) {
-        setSaveMessage(err instanceof Error ? err.message : 'Unable to save allocation')
+        setSaveMessage(formatSupabaseError(err))
+      } finally {
+        setSaveLoading(false)
       }
     })()
   }
 
   const handleEdit = async (row: AllocationRow) => {
+    if (isSampleAllocationEditLocked(row, sampleAllocationIdsWithTestAllocation)) {
+      const locked = getSectionCodesInTestAllocation(row, sampleAllocationIdsWithTestAllocation)
+      setSaveMessage(sampleAllocationEditLockedTitle(locked))
+      return
+    }
     const { data, error } = await supabase
       .from('sample_allocations')
-      .select('id, section_code, allocation_date, department, designation, sample_quantity')
+      .select('id, section_code, allocation_date, department, designation, quantity')
       .eq('sample_id', row.sampleId)
       .order('section_code')
     if (error) {
@@ -490,7 +554,7 @@ export default function SampleAllocationMasterPage() {
       sectionCode: (r.section_code as string) ?? '',
       department: (r.department as string) ?? '',
       designation: (r.designation as string) ?? '',
-      sampleQuantity: (r.sample_quantity as string) ?? '',
+      sampleQuantity: (r.quantity as string) ?? '',
     }))
     const allocationDate =
       (Array.isArray(data) && data[0]?.allocation_date)
@@ -515,24 +579,72 @@ export default function SampleAllocationMasterPage() {
     return { sectionCode: code, department: '', designation: '', sampleQuantity: '' }
   }
 
-  const handleReferback = async (row: AllocationRow) => {
+  const buildSectionsForTestAllocation = (row: AllocationRow): AllocationSectionForTestAllocation[] => {
+    const recs = allocationRecords.filter((r) => r.sample.id === row.sampleId)
+    return recs.map((r) => ({
+      id: r.id,
+      sectionCode: r.sectionCode,
+      department: r.department,
+      designation: r.designation,
+      allocationDate:
+        r.allocationDate?.slice(0, 10) ??
+        row.sample.date_of_sample_receiving?.slice(0, 10) ??
+        row.sample.collection_date?.slice(0, 10) ??
+        null,
+      isCodeId: row.sample.test_report_is_code_id ?? null,
+      isCodeLabel: row.sample.test_report_is_code_label ?? null,
+      srfNumber: row.sample.srf_number ?? null,
+    }))
+  }
+
+  const handleReferbackToReceiving = async (row: AllocationRow) => {
+    const sid = row.sampleId?.trim()
+    const label = row.sample.srf_number?.trim() || 'this SRF'
+    if (!sid) {
+      setSaveMessage('Missing sample id.')
+      return
+    }
+    if (
+      !window.confirm(
+        `Refer back ${label} to Sample Receiving?\n\nAll section codes will be removed from Sample Allocation and edit will be enabled in Sample Receiving.`,
+      )
+    ) {
+      return
+    }
     try {
-      const sid = typeof row.sampleId === 'string' ? row.sampleId.trim() : ''
-      if (!sid) {
-        setSaveMessage('Missing sample id.')
-        return
-      }
-      const { error } = await supabase.from('samples').update({ referback_from_allocation: true }).eq('id', sid)
-      if (error) {
-        setSaveMessage(
-          `${formatSupabaseError(error)} Apply web/supabase/migrations (20260328120000, 20260329130000) in Supabase SQL.`,
-        )
-        return
-      }
-      setSaveMessage('Referred back. Edit is now allowed for this SRF in Sample Receiving.')
+      await referbackSrfFromAllocationToSampleReceiving(sid, row.allocationIds)
+      setSaveMessage(`${label} referred back to Sample Receiving. Edit is unlocked there.`)
       await refreshAll()
     } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : 'Referback failed')
+      setSaveMessage(err instanceof Error ? err.message : 'Refer back to Sample Receiving failed')
+    }
+  }
+
+  const handleSendToTestAllocation = async (row: AllocationRow) => {
+    const sid = row.sampleId?.trim()
+    const label = row.sample.srf_number?.trim() || 'this SRF'
+    if (!sid) {
+      setSaveMessage('Missing sample id.')
+      return
+    }
+    const sections = buildSectionsForTestAllocation(row)
+    if (sections.length === 0) {
+      setSaveMessage('No section codes on this SRF.')
+      return
+    }
+    if (
+      !window.confirm(
+        `Send ${label} to Test Allocation?\n\nAll section codes (${row.sectionCodes.join(', ')}) will appear in Test Allocation for parameter assignment. This SRF will be removed from the Sample Allocation list.`,
+      )
+    ) {
+      return
+    }
+    try {
+      await sendSrfFromAllocationToTestAllocation(sid, sections)
+      setSaveMessage(`${label} sent to Test Allocation. Open Test Allocation to assign parameters.`)
+      await refreshAll()
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : 'Send to Test Allocation failed')
     }
   }
 
@@ -547,6 +659,8 @@ export default function SampleAllocationMasterPage() {
           setPage(1)
         }}
         onNew={handleNew}
+        assistantContext={assistantContext}
+        onAssistantDataChanged={refreshAll}
       />
 
       <SampleAllocationTable
@@ -557,8 +671,11 @@ export default function SampleAllocationMasterPage() {
         onToggle={toggleRow}
         onToggleAll={toggleAll}
         onEdit={handleEdit}
-        onReferback={handleReferback}
-        sampleIdsWithTestAllocation={sampleIdsWithTestAllocation}
+        onReferbackToReceiving={handleReferbackToReceiving}
+        onSendToTestAllocation={handleSendToTestAllocation}
+        sampleAllocationIdsWithTestAllocation={sampleAllocationIdsWithTestAllocation}
+        allocationRecords={allocationRecordsLite}
+        onAssistantDataChanged={refreshAll}
       />
 
       <SampleAllocationFooterBar
@@ -576,20 +693,30 @@ export default function SampleAllocationMasterPage() {
         selectedCount={selectedIds.size}
         saveMessage={saveMessage}
         loading={listLoading}
+        showDelete={showDelete}
         onDeleteSelected={handleDeleteSelected}
-        deleteDisabled={selectedRows.some((r) => sampleIdsWithTestAllocation.has(r.sampleId))}
+        deleteDisabled={selectedRows.some((r) => isRowInTestAllocation(r))}
       />
 
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <Dialog open={formOpen} onOpenChange={(open) => {
+        setFormOpen(open)
+        if (!open) setSaveMessage(null)
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Sample Allocation</DialogTitle>
           </DialogHeader>
+          {saveMessage && (
+            <p className={`text-sm ${saveMessage === 'Allocation saved.' ? 'text-green-600' : 'text-destructive'}`}>
+              {saveMessage}
+            </p>
+          )}
           <SampleAllocationForm
             form={form}
             onChange={setForm}
             onSave={handleSaveForm}
             onClose={() => setFormOpen(false)}
+            saveLoading={saveLoading}
             samples={samples}
             departments={departments}
             designations={designations}

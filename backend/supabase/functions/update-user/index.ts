@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
   }
 
   const url = Deno.env.get('SUPABASE_URL')
-  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY')
+  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !serviceRoleKey) {
     return new Response(JSON.stringify({ error: 'Missing SUPABASE_URL or SERVICE_ROLE_KEY secret' }), {
       status: 500,
@@ -75,47 +75,84 @@ Deno.serve(async (req) => {
     })
   }
 
-  const updatePayload: Record<string, unknown> = {}
-  if (typeof body.full_name === 'string') updatePayload.full_name = body.full_name
-  if (typeof body.mobile === 'string') updatePayload.mobile = body.mobile
-  if (typeof body.designation === 'string') updatePayload.designation = body.designation
-  if (typeof body.department_name === 'string') updatePayload.department_name = body.department_name
-  if (typeof body.status === 'string') updatePayload.status = body.status
+  const profilePayload: Record<string, unknown> = {}
+  if (typeof body.full_name === 'string') profilePayload.full_name = body.full_name
+  if (typeof body.mobile === 'string') profilePayload.mobile = body.mobile
+  if (typeof body.designation === 'string') profilePayload.designation = body.designation
+  if (typeof body.department_name === 'string') profilePayload.department_name = body.department_name
+  if (typeof body.status === 'string') profilePayload.status = body.status
 
-  if (Object.keys(updatePayload).length === 0) {
-    return new Response(JSON.stringify({ error: 'No fields to update' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+  if (Object.keys(profilePayload).length > 0) {
+    const { error: profileError } = await admin
+      .from('user_profiles')
+      .upsert(
+        {
+          id: body.user_id,
+          ...profilePayload,
+        },
+        { onConflict: 'id' },
+      )
+
+    if (profileError) {
+      return new Response(JSON.stringify({ error: `Profile update failed: ${profileError.message}` }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
   }
 
-  const { error: profileError } = await admin
-    .from('user_profiles')
-    .upsert(
-      {
-        id: body.user_id,
-        ...updatePayload,
-      },
-      { onConflict: 'id' },
-    )
+  try {
+    const { data: existingUser, error: getUserError } = await admin.auth.admin.getUserById(body.user_id)
 
-  if (profileError) {
-    return new Response(JSON.stringify({ error: profileError.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
+    let existingMetadata: Record<string, unknown> = {}
+    if (!getUserError && existingUser?.user?.user_metadata) {
+      existingMetadata = existingUser.user.user_metadata as Record<string, unknown>
+    }
 
-  const { error: authError } = await admin.auth.admin.updateUserById(body.user_id, {
-    user_metadata: {
-      ...updatePayload,
-      updated_by: callerData.user.id,
-    },
-  })
+    const authMetadataPayload: Record<string, unknown> = { ...existingMetadata }
+    if (typeof body.full_name === 'string') authMetadataPayload.full_name = body.full_name
+    if (typeof body.designation === 'string') authMetadataPayload.designation = body.designation
+    if (typeof body.department_name === 'string') authMetadataPayload.department_name = body.department_name
+    if (typeof body.status === 'string') authMetadataPayload.status = body.status
+    authMetadataPayload.updated_by = callerData.user.id
 
-  if (authError) {
-    return new Response(JSON.stringify({ error: authError.message }), {
-      status: 400,
+    if (typeof body.mobile === 'string') {
+      authMetadataPayload.mobile = body.mobile
+      delete authMetadataPayload.phone
+    }
+
+    const authUpdate: {
+      user_metadata: Record<string, unknown>
+      phone?: string
+    } = {
+      user_metadata: authMetadataPayload,
+    }
+
+    // Clear auth.users.phone so Supabase does not enforce global phone uniqueness.
+    if (typeof body.mobile === 'string') {
+      authUpdate.phone = ''
+    }
+
+    const { error: authError } = await admin.auth.admin.updateUserById(body.user_id, authUpdate)
+
+    if (authError) {
+      console.error(`Auth metadata update failed for user ${body.user_id}: ${authError.message}`)
+      return new Response(JSON.stringify({
+        ok: true,
+        warning: `Profile updated but auth sync failed: ${authError.message}`,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`Auth update exception for user ${body.user_id}: ${message}`)
+    return new Response(JSON.stringify({
+      ok: true,
+      warning: `Profile updated but auth sync failed: ${message}`,
+    }), {
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

@@ -3,24 +3,21 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabaseClient'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { TestParameterHeaderBar } from './TestParameterHeaderBar'
+import { buildTestParametersListAssistantContext } from './buildTestParameterAssistantContext'
 import { TestParameterForm } from './TestParameterForm'
 import { TestParameterTable } from './TestParameterTable'
 import { TestParameterTableFooterBar } from './TestParameterFooterBar'
 import { IsCodesForm } from '@/features/masters/is-codes/IsCodesForm'
+import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { emptyIsCodeForm, normalizeText as normalizeIsText, type IsCodeForm, type IsAspect } from '@/features/masters/is-codes/types'
-import { EquipmentMasterForm } from '@/features/masters/equipment-master/EquipmentMasterForm'
-import { emptyEquipmentForm, normalizeText as normalizeEqText, type EquipmentForm, type EquipmentStatus } from '@/features/masters/equipment-master/types'
 import {
   emptyTestParameterForm,
   normalizeText,
-  normalizeNumberString,
   type AccreditationBodyRow,
   type UnitRow,
   type TestParameterForm as TestParameterFormType,
   type TestParameterRow,
 } from './types'
-
-const TEST_METHOD_NOTE_BUCKET = 'test-method-notes'
 
 const formatSupabaseError = (err: unknown) => {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -28,6 +25,33 @@ const formatSupabaseError = (err: unknown) => {
   const parts = [anyErr.message, anyErr.details, anyErr.hint, anyErr.code].filter(Boolean)
   return parts.length ? parts.join(' | ') : 'Unknown error'
 }
+
+const readListFromStorage = (key: string): string[] => {
+  if (typeof window === 'undefined') return []
+  const raw = window.localStorage.getItem(key)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? (parsed.filter((v) => typeof v === 'string') as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+const readDesignationByDepartmentFromStorage = (): Record<string, string[]> => {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = window.localStorage.getItem('userManagement.designationByDepartment')
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, string[]>
+    return {}
+  } catch {
+    return {}
+  }
+}
+
+const normLabel = (value: string | null | undefined) => (value ?? '').trim().toLowerCase()
 
 function toCsv(headers: string[], rows: Array<Record<string, string>>) {
   const esc = (v: string) => {
@@ -109,7 +133,6 @@ export default function TestParameterMasterPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const importInputRef = useRef<HTMLInputElement | null>(null)
-  const testMethodNotePopupRef = useRef<{ win: Window; rowId: string; title: string } | null>(null)
 
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
@@ -126,7 +149,6 @@ export default function TestParameterMasterPage() {
   const [form, setForm] = useState<TestParameterFormType>(() => emptyTestParameterForm())
 
   const [isCodes, setIsCodes] = useState<Array<{ id: string; displayCode: string; searchLabel: string; defaultTestMethod: string }>>([])
-  const [equipments, setEquipments] = useState<Array<{ id: string; label: string }>>([])
 
   const [accreditationBodies, setAccreditationBodies] = useState<AccreditationBodyRow[]>([])
   const [units, setUnits] = useState<UnitRow[]>([])
@@ -144,19 +166,11 @@ export default function TestParameterMasterPage() {
   const [isCodeAspectDialogOpen, setIsCodeAspectDialogOpen] = useState(false)
   const [isCodeNewAspect, setIsCodeNewAspect] = useState('')
 
-  const [equipmentDialogOpen, setEquipmentDialogOpen] = useState(false)
-  const [equipmentForm, setEquipmentForm] = useState<EquipmentForm>(() => emptyEquipmentForm())
-  const [equipmentSaveLoading, setEquipmentSaveLoading] = useState(false)
-
-  const [departments, setDepartments] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return []
-    const raw = window.localStorage.getItem('userManagement.departments')
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? (parsed.filter((v) => typeof v === 'string') as string[]) : []
-  })
-  const [designations, setDesignations] = useState<string[]>([])
-  const [testMethodNoteDownloadUrl, setTestMethodNoteDownloadUrl] = useState<string | null>(null)
+  const [departments, setDepartments] = useState<string[]>(() => readListFromStorage('userManagement.departments'))
+  const [designations, setDesignations] = useState<string[]>(() => readListFromStorage('userManagement.designations'))
+  const [designationsByDepartment, setDesignationsByDepartment] = useState<Record<string, string[]>>(
+    readDesignationByDepartmentFromStorage,
+  )
 
   useEffect(() => {
     if (searchParams.get('openAdd') === '1') {
@@ -174,142 +188,6 @@ export default function TestParameterMasterPage() {
   const canSave =
     !saveLoading &&
     normalizeText(form.itemName).length > 0
-
-  useEffect(() => {
-    if (!form.testMethodNotePath?.trim()) {
-      setTestMethodNoteDownloadUrl(null)
-      return
-    }
-    let canceled = false
-    ;(async () => {
-      const { data, error } = await supabase.storage
-        .from(TEST_METHOD_NOTE_BUCKET)
-        .createSignedUrl(form.testMethodNotePath, 60 * 60)
-      if (canceled) return
-      if (!error && data?.signedUrl) setTestMethodNoteDownloadUrl(data.signedUrl)
-      else setTestMethodNoteDownloadUrl(null)
-    })()
-    return () => {
-      canceled = true
-    }
-  }, [form.testMethodNotePath])
-
-  const handleUploadTestMethodNote = async (file: File): Promise<string | null> => {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_')
-    const path = `${crypto.randomUUID()}_${safeName}`
-    const { error } = await supabase.storage.from(TEST_METHOD_NOTE_BUCKET).upload(path, file, {
-      upsert: false,
-      contentType: file.type,
-    })
-    if (error) return null
-    return path
-  }
-
-  const getTestMethodNoteSignedUrl = async (storagePath: string): Promise<string | undefined> => {
-    try {
-      const { data, error } = await supabase.storage
-        .from(TEST_METHOD_NOTE_BUCKET)
-        .createSignedUrl(storagePath, 60 * 10)
-      if (error) throw error
-      return data?.signedUrl
-    } catch {
-      return undefined
-    }
-  }
-
-  const buildTestMethodNoteLoadingHtml = (title: string) =>
-    `<!doctype html><html><head><meta charset="utf-8"/><title>Test Method Note</title><style>body{font-family:ui-sans-serif,system-ui,sans-serif;margin:16px;}.muted{color:#64748b;font-size:12px;margin-top:8px;}</style></head><body><h1>Test Method Note</h1><div class="muted">${title}</div><div class="muted">Loading…</div></body></html>`
-
-  const buildTestMethodNotePopupHtml = (
-    title: string,
-    file: { file_name: string; storage_path: string; url?: string; error?: string } | null,
-    rowId: string,
-  ) => {
-    const esc = (s: string) =>
-      String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-    if (!file) {
-      return `<!doctype html><html><head><meta charset="utf-8"/><title>Test Method Note</title><style>body{font-family:ui-sans-serif,system-ui,sans-serif;margin:16px;}h1{font-size:18px;}.muted{color:#64748b;font-size:12px;}.empty{padding:18px;border:1px dashed #cbd5e1;border-radius:8px;color:#64748b;}</style></head><body><h1>Test Method Note</h1><div class="muted">${esc(title)}</div><div class="empty">No file.</div></body></html>`
-    }
-    const viewButton = file.url
-      ? `<a class="btn" href="${esc(file.url)}" target="_blank" rel="noreferrer">View</a>`
-      : `<span class="muted">${esc(file.error || 'Unable to load')}</span>`
-    return `<!doctype html>
-<html><head><meta charset="utf-8"/><title>Test Method Note</title><style>
-body{font-family:ui-sans-serif,system-ui,sans-serif;margin:16px;}h1{font-size:18px;}.muted{color:#64748b;font-size:12px;margin-bottom:12px;}
-.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:8px;}
-.name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.actions{display:flex;gap:8px;}
-.btn{border:1px solid #94a3b8;background:white;padding:6px 10px;border-radius:8px;cursor:pointer;text-decoration:none;color:#0f172a;font-size:12px;}
-.btn:hover{background:#f8fafc;}.danger{border-color:#fecaca;color:#991b1b;}.danger:hover{background:#fef2f2;}
-</style></head><body>
-<h1>Test Method Note</h1><div class="muted">${esc(title)}</div>
-<div class="row"><div class="name">${esc(file.file_name)}</div><div class="actions">${viewButton}
-<button class="btn danger" data-delete="1" data-row-id="${esc(rowId)}" data-name="${esc(file.file_name)}" data-path="${esc(file.storage_path)}">Delete</button></div></div>
-<script>
-window.addEventListener('click',function(e){
-  var el=e.target;if(!el||!el.getAttribute)return;
-  if(el.getAttribute('data-delete')!=='1')return;
-  var name=el.getAttribute('data-name')||'';
-  if(!window.confirm('Delete file '+name+'?'))return;
-  var rowId=el.getAttribute('data-row-id');
-  var path=el.getAttribute('data-path');
-  if(window.opener&&window.opener.postMessage) window.opener.postMessage({type:'test-parameter-note:delete',rowId:rowId,storagePath:path},'*');
-});
-</script></body></html>`
-  }
-
-  const openTestMethodNotePopup = async (row: TestParameterRow) => {
-    setSaveMessage(null)
-    const title = row.item_name || row.is_code_label || 'Test Parameter'
-    const win = window.open('', '_blank', 'width=900,height=600')
-    if (!win) {
-      setSaveMessage('Popup blocked. Please allow popups for this site.')
-      return
-    }
-    testMethodNotePopupRef.current = { win, rowId: row.id, title }
-    win.document.open()
-    win.document.write(buildTestMethodNoteLoadingHtml(title))
-    win.document.close()
-
-    const path = row.test_method_note_path?.trim()
-    if (!path) {
-      win.document.open()
-      win.document.write(buildTestMethodNotePopupHtml(title, null, row.id))
-      win.document.close()
-      return
-    }
-
-    void (async () => {
-      try {
-        const url = await getTestMethodNoteSignedUrl(path)
-        const file_name = path.split('/').pop() || path
-        const file = {
-          file_name,
-          storage_path: path,
-          ...(url ? { url } : { error: 'Unable to get link' }),
-        }
-        win.document.open()
-        win.document.write(buildTestMethodNotePopupHtml(title, file, row.id))
-        win.document.close()
-      } catch (err) {
-        win.document.open()
-        win.document.write(
-          buildTestMethodNotePopupHtml(title, {
-            file_name: path.split('/').pop() || path,
-            storage_path: path,
-            error: formatSupabaseError(err),
-          }, row.id),
-        )
-        win.document.close()
-        setSaveMessage(formatSupabaseError(err))
-      }
-    })()
-  }
 
   const loadRows = async () => {
     setListError(null)
@@ -338,15 +216,8 @@ window.addEventListener('click',function(e){
             ? (r.under_accreditation_ids as string[])
             : [],
           uncertainty_mu: (r.uncertainty_mu ? String(r.uncertainty_mu) : null) as string | null,
-          testing_charges: typeof r.testing_charges === 'number' ? (r.testing_charges as number) : null,
-          conformity: (String(r.conformity ?? 'Yes') as 'Yes' | 'No') ?? 'Yes',
           department: (r.department ? String(r.department) : null) as string | null,
           designation: (r.designation ? String(r.designation) : null) as string | null,
-          equipment_ids: Array.isArray(r.equipment_ids) ? (r.equipment_ids as string[]) : [],
-          temperature_of_test: (r.temperature_of_test ? String(r.temperature_of_test) : null) as string | null,
-          humidity_of_test: (r.humidity_of_test ? String(r.humidity_of_test) : null) as string | null,
-          testing_time: (r.testing_time ? String(r.testing_time) : null) as string | null,
-          test_method_note_path: (r.test_method_note_path ? String(r.test_method_note_path) : null) as string | null,
           acceptance_criteria: (r.acceptance_criteria ? String(r.acceptance_criteria) : null) as string | null,
           created_at: (r.created_at ? String(r.created_at) : undefined) as string | undefined,
         }))
@@ -387,26 +258,6 @@ window.addEventListener('click',function(e){
           .sort((a, b) => a.searchLabel.localeCompare(b.searchLabel)),
       )
 
-      const { data: eqData, error: eqErr } = await supabase
-        .from('equipment_master')
-        .select('id, equipment_name, range_of_instrument')
-        .order('equipment_name', { ascending: true })
-
-      if (eqErr) throw eqErr
-
-      const eqList = Array.isArray(eqData)
-        ? (eqData as Array<{ id: string; equipment_name: string; range_of_instrument: string | null }>)
-        : []
-
-      setEquipments(
-        eqList
-          .map((e) => ({
-            id: e.id,
-            label: `${e.equipment_name}${e.range_of_instrument ? ` (${e.range_of_instrument})` : ''}`,
-          }))
-          .sort((a, b) => a.label.localeCompare(b.label)),
-      )
-
       const { data: abData, error: abErr } = await supabase
         .from('accreditation_bodies')
         .select('id, name, created_at')
@@ -444,78 +295,76 @@ window.addEventListener('click',function(e){
     }
   }
 
-  const loadUserOptions = async () => {
+  const loadUserManagementOptions = async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      const { designations: labDesignations, departments: labDepartments } =
+        await fetchDesignationAndDepartmentLabels()
 
-      const accessToken = session?.access_token
-      if (!accessToken) return
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('designation, department_name, status')
+        .order('full_name', { ascending: true })
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+      const profiles = Array.isArray(profileData) ? profileData : []
+      const designationByDepartment: Record<string, string[]> = {}
+      const designationsFromProfiles = new Set<string>()
+      const departmentsFromProfiles = new Set<string>()
 
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`,
-          'x-user-jwt': accessToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      })
-
-      if (!response.ok) return
-
-      const payload = (await response.json().catch(() => null)) as unknown
-      const rows =
-        typeof payload === 'object' && payload && 'users' in payload
-          ? ((payload as { users?: unknown }).users as unknown)
-          : []
-
-      const list = Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : []
-
-      const designationsFromUsers = Array.from(
-        new Set(
-          list
-            .map((u) => String(u.designation ?? '').trim())
-            .filter((d) => d.length > 0),
-        ),
-      ).sort((a, b) => a.localeCompare(b))
-
-      setDesignations(designationsFromUsers)
-
-      const departmentsFromUsers = Array.from(
-        new Set(
-          list
-            .map((u) => String((u as { department_name?: unknown }).department_name ?? '').trim())
-            .filter((d) => d.length > 0),
-        ),
-      ).sort((a, b) => a.localeCompare(b))
-
-      setDepartments((prev) => {
-        const merged = Array.from(new Set([...(prev ?? []), ...departmentsFromUsers]))
-          .map((d) => d.trim())
-          .filter((d) => d.length > 0)
-          .sort((a, b) => a.localeCompare(b))
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('userManagement.departments', JSON.stringify(merged))
+      for (const row of profiles) {
+        if (normLabel((row as { status?: string }).status) === 'inactive') continue
+        const dept = String((row as { department_name?: string }).department_name ?? '').trim()
+        const des = String((row as { designation?: string }).designation ?? '').trim()
+        if (dept) departmentsFromProfiles.add(dept)
+        if (des) designationsFromProfiles.add(des)
+        if (dept && des) {
+          if (!designationByDepartment[dept]) designationByDepartment[dept] = []
+          if (!designationByDepartment[dept].includes(des)) designationByDepartment[dept].push(des)
         }
-        return merged
-      })
+      }
+
+      for (const k of Object.keys(designationByDepartment)) {
+        designationByDepartment[k].sort((a, b) => a.localeCompare(b))
+      }
+
+      const mergedDesignations = Array.from(
+        new Set([...labDesignations, ...designationsFromProfiles, ...readListFromStorage('userManagement.designations')]),
+      )
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+
+      const mergedDepartments = Array.from(
+        new Set([...labDepartments, ...departmentsFromProfiles, ...readListFromStorage('userManagement.departments')]),
+      )
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+
+      setDesignations(mergedDesignations)
+      setDepartments(mergedDepartments)
+      setDesignationsByDepartment(designationByDepartment)
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('userManagement.designations', JSON.stringify(mergedDesignations))
+        window.localStorage.setItem('userManagement.departments', JSON.stringify(mergedDepartments))
+        window.localStorage.setItem('userManagement.designationByDepartment', JSON.stringify(designationByDepartment))
+      }
     } catch {
-      // ignore
+      // keep storage-backed defaults
     }
   }
 
   useEffect(() => {
     void loadRows()
     void loadMasters()
-    void loadUserOptions()
+    void loadUserManagementOptions()
     void loadIsCodeAspects()
   }, [])
+
+  useEffect(() => {
+    if (!showForm) return
+    void loadUserManagementOptions()
+  }, [showForm])
 
   useEffect(() => {
     if (form.underAccreditationIds?.length) return
@@ -534,37 +383,6 @@ window.addEventListener('click',function(e){
     setJumpTo('')
   }, [search, pageSize])
 
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; rowId?: string; storagePath?: string }
-      if (!data || data?.type !== 'test-parameter-note:delete' || !data.rowId || !data.storagePath) return
-      void (async () => {
-        try {
-          const { error: stErr } = await supabase.storage
-            .from(TEST_METHOD_NOTE_BUCKET)
-            .remove([data.storagePath!])
-          if (stErr) throw stErr
-          const { error: dbErr } = await supabase
-            .from('test_parameters')
-            .update({ test_method_note_path: null })
-            .eq('id', data.rowId!)
-          if (dbErr) throw dbErr
-          await loadRows()
-          const pop = testMethodNotePopupRef.current
-          if (pop && pop.win && !pop.win.closed && pop.rowId === data.rowId) {
-            pop.win.document.open()
-            pop.win.document.write(buildTestMethodNotePopupHtml(pop.title, null, pop.rowId))
-            pop.win.document.close()
-          }
-        } catch (err) {
-          setSaveMessage(formatSupabaseError(err))
-        }
-      })()
-    }
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [])
-
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rows
@@ -578,14 +396,8 @@ window.addEventListener('click',function(e){
         r.item_name ?? '',
         r.specific_requirement ?? '',
         r.uncertainty_mu ?? '',
-        String(r.testing_charges ?? ''),
-        r.conformity ?? '',
         r.department ?? '',
         r.designation ?? '',
-        r.temperature_of_test ?? '',
-        r.humidity_of_test ?? '',
-        r.testing_time ?? '',
-        r.test_method_note_path ?? '',
       ]
         .join(' ')
         .toLowerCase()
@@ -600,6 +412,16 @@ window.addEventListener('click',function(e){
     const start = (page - 1) * pageSize
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, page, pageSize])
+
+  const assistantContext = useMemo(
+    () => buildTestParametersListAssistantContext(filteredRows, search),
+    [filteredRows, search],
+  )
+
+  const isCodeOptions = useMemo(
+    () => isCodes.map((c) => ({ id: c.id, label: c.searchLabel, displayCode: c.displayCode })),
+    [isCodes],
+  )
 
   const toggleRow = (id: string) => {
     setSelectedIds((prev) => {
@@ -634,7 +456,6 @@ window.addEventListener('click',function(e){
   const handleClear = () => {
     setSaveMessage(null)
     setForm(emptyTestParameterForm())
-    setTestMethodNoteDownloadUrl(null)
   }
 
   const handleEdit = (row: TestParameterRow) => {
@@ -650,24 +471,8 @@ window.addEventListener('click',function(e){
       specificRequirement: row.specific_requirement ?? '',
       underAccreditationIds: row.under_accreditation_ids ?? [],
       uncertaintyMu: row.uncertainty_mu ?? '',
-      testingCharges: row.testing_charges != null ? String(row.testing_charges) : '',
-      conformity: row.conformity ?? 'Yes',
       department: row.department ?? '',
       designation: row.designation ?? '',
-      equipmentIds: row.equipment_ids ?? [],
-      temperatureOfTest: row.temperature_of_test ?? '',
-      humidityOfTest: row.humidity_of_test ?? '',
-      testingTimeHr: (() => {
-        const t = row.testing_time ?? ''
-        const [hr] = t.split(':')
-        return hr ?? ''
-      })(),
-      testingTimeMin: (() => {
-        const t = row.testing_time ?? ''
-        const [, min] = t.split(':')
-        return min ?? ''
-      })(),
-      testMethodNotePath: row.test_method_note_path ?? '',
     })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -686,24 +491,8 @@ window.addEventListener('click',function(e){
       specificRequirement: row.specific_requirement ?? '',
       underAccreditationIds: row.under_accreditation_ids ?? [],
       uncertaintyMu: row.uncertainty_mu ?? '',
-      testingCharges: row.testing_charges != null ? String(row.testing_charges) : '',
-      conformity: row.conformity ?? 'Yes',
       department: row.department ?? '',
       designation: row.designation ?? '',
-      equipmentIds: row.equipment_ids ?? [],
-      temperatureOfTest: row.temperature_of_test ?? '',
-      humidityOfTest: row.humidity_of_test ?? '',
-      testingTimeHr: (() => {
-        const t = row.testing_time ?? ''
-        const [hr] = t.split(':')
-        return hr ?? ''
-      })(),
-      testingTimeMin: (() => {
-        const t = row.testing_time ?? ''
-        const [, min] = t.split(':')
-        return min ?? ''
-      })(),
-      testMethodNotePath: row.test_method_note_path ?? '',
     })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -727,18 +516,8 @@ window.addEventListener('click',function(e){
           specific_requirement: normalizeText(form.specificRequirement) || null,
           under_accreditation_ids: form.underAccreditationIds ?? [],
           uncertainty_mu: normalizeText(form.uncertaintyMu) || null,
-          testing_charges: form.testingCharges.trim() ? Number(normalizeNumberString(form.testingCharges)) : null,
-          conformity: form.conformity,
           department: normalizeText(form.department) || null,
           designation: normalizeText(form.designation) || null,
-          equipment_ids: form.equipmentIds ?? [],
-          temperature_of_test: normalizeText(form.temperatureOfTest) || null,
-          humidity_of_test: normalizeText(form.humidityOfTest) || null,
-          testing_time:
-            [form.testingTimeHr.trim(), form.testingTimeMin.trim()].filter(Boolean).length > 0
-              ? [form.testingTimeHr.trim() || '0', form.testingTimeMin.trim() || '0'].join(':')
-              : null,
-          test_method_note_path: normalizeText(form.testMethodNotePath) || null,
         }
 
         if (editingId) {
@@ -780,80 +559,6 @@ window.addEventListener('click',function(e){
       })
     }
     setIsCodeDialogOpen(true)
-  }
-
-  const openAddEquipmentForm = (typed: string) => {
-    const name = normalizeEqText(typed ?? '')
-    const base = emptyEquipmentForm()
-    setEquipmentForm({
-      ...base,
-      equipmentName: name,
-      location: 'Mechanical',
-      equipmentCode: '',
-    })
-    setEquipmentDialogOpen(true)
-  }
-
-  const canSaveEquipment =
-    !equipmentSaveLoading && normalizeEqText(equipmentForm.equipmentName).length > 0
-
-  const handleSaveEquipment = () => {
-    void (async () => {
-      setSaveMessage(null)
-      setEquipmentSaveLoading(true)
-      try {
-        const payload = {
-          equipment_name: normalizeEqText(equipmentForm.equipmentName),
-          equipment_code: normalizeEqText(equipmentForm.equipmentCode) || null,
-          status: (equipmentForm.status ?? 'Active') as EquipmentStatus,
-          make: normalizeEqText(equipmentForm.make) || null,
-          model_serial_no: normalizeEqText(equipmentForm.modelSerialNo) || null,
-          least_count: normalizeEqText(equipmentForm.leastCount) || null,
-          range_of_instrument: normalizeEqText(equipmentForm.rangeOfInstrument) || null,
-          location: normalizeEqText(equipmentForm.location) || null,
-          placed_date: equipmentForm.placedDate.trim() ? equipmentForm.placedDate : null,
-          uncertainty_mu: equipmentForm.uncertaintyMu.trim() ? Number(equipmentForm.uncertaintyMu) : null,
-          acceptance_criteria: equipmentForm.acceptanceCriteria.trim() ? Number(equipmentForm.acceptanceCriteria) : null,
-          remarks: normalizeEqText(equipmentForm.remarks) || null,
-        }
-
-        if (!payload.equipment_name) throw new Error('Name of the Equipment is required.')
-
-        // generate a simple code if not provided (keeps Equipment Master page logic intact)
-        const code = payload.equipment_code || `EQ${String(Date.now()).slice(-6)}`
-        payload.equipment_code = code
-
-        const { data, error } = await supabase
-          .from('equipment_master')
-          .insert(payload)
-          .select('id, equipment_name, range_of_instrument')
-          .single()
-        if (error) throw error
-
-        const row = data as { id: string; equipment_name: string; range_of_instrument: string | null }
-        const label = `${row.equipment_name}${row.range_of_instrument ? ` (${row.range_of_instrument})` : ''}`
-
-        setEquipmentDialogOpen(false)
-        setEquipmentForm(emptyEquipmentForm())
-        await loadMasters()
-
-        setForm((prev) => ({
-          ...prev,
-          equipmentIds: Array.from(new Set([...(prev.equipmentIds ?? []), row.id])),
-        }))
-
-        setSaveMessage(`Equipment added: ${label}`)
-      } catch (err) {
-        setSaveMessage(formatSupabaseError(err))
-      } finally {
-        setEquipmentSaveLoading(false)
-      }
-    })()
-  }
-
-  const handleClearEquipment = () => {
-    setSaveMessage(null)
-    setEquipmentForm(emptyEquipmentForm())
   }
 
   const handlePickIsFiles = (files: File[]) => {
@@ -921,7 +626,7 @@ window.addEventListener('click',function(e){
 
         const { data, error } = await supabase
           .from('is_codes')
-          .upsert(payload, { onConflict: 'is_number' })
+          .upsert(payload, { onConflict: 'is_number,revision_year' })
           .select('id, is_number, revision_year, title')
           .single()
         if (error) throw error
@@ -988,15 +693,8 @@ window.addEventListener('click',function(e){
       'specific_requirement',
       'under_accreditation_ids',
       'uncertainty_mu',
-      'testing_charges',
-      'conformity',
       'department',
       'designation',
-      'equipment_ids',
-      'temperature_of_test',
-      'humidity_of_test',
-      'testing_time',
-      'test_method_note_path',
       'created_at',
     ]
 
@@ -1010,15 +708,8 @@ window.addEventListener('click',function(e){
       specific_requirement: r.specific_requirement ?? '',
       under_accreditation_ids: (r.under_accreditation_ids ?? []).join('|'),
       uncertainty_mu: r.uncertainty_mu ?? '',
-      testing_charges: String(r.testing_charges ?? ''),
-      conformity: r.conformity ?? 'Yes',
       department: r.department ?? '',
       designation: r.designation ?? '',
-      equipment_ids: (r.equipment_ids ?? []).join('|'),
-      temperature_of_test: r.temperature_of_test ?? '',
-      humidity_of_test: r.humidity_of_test ?? '',
-      testing_time: r.testing_time ?? '',
-      test_method_note_path: r.test_method_note_path ?? '',
       created_at: r.created_at ?? '',
     }))
 
@@ -1038,21 +729,28 @@ window.addEventListener('click',function(e){
     if (exportRows.length === 0) return
 
     const esc = (s: string | null | undefined) => (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-    const fmtMoney = (v: number | null | undefined) =>
-      typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
+    const fmtAccreditation = (r: TestParameterRow) => {
+      if (!r.under_accreditation_ids?.length) return '—'
+      return (
+        r.under_accreditation_ids
+          .map((id) => accreditationBodies.find((b) => b.id === id)?.name)
+          .filter(Boolean)
+          .join(', ') || '—'
+      )
+    }
 
     const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Test Parameters</title>
       <style>body{font-family:Arial,sans-serif;font-size:12px;padding:16px}table{width:100%;border-collapse:collapse;table-layout:auto}th,td{border:1px solid #ccc;padding:6px;vertical-align:top}th{background:#f5f5f5;font-weight:600}</style>
       </head><body><h2>Test Parameters</h2>
       <table><thead><tr>
-        <th>IS Code</th><th>Name of the Test Parameter</th><th>Test Method</th><th>Specific Requirements</th><th>Uncertainty &amp; Acceptance Criteria</th><th>Testing Condition</th>
+        <th>IS Code</th><th>Name of the Test Parameter</th><th>Test Method</th><th>Specific Requirements</th><th>Uncertainty &amp; Acceptance Criteria</th><th>Under Accreditation</th>
       </tr><tr>
-        <th>IS Code · Testing Charges · View File</th><th>Test Parameter</th><th>Test Method · Clause No · Unit</th><th>Specific Requirements</th><th>Uncertainty · Acceptance Criteria · Conformity</th><th>Temperature · Humidity · Time · Under Accreditation</th>
+        <th>IS Code</th><th>Test Parameter</th><th>Test Method · Clause No · Unit</th><th>Specific Requirements</th><th>Uncertainty · Acceptance Criteria</th><th>Accreditation Bodies</th>
       </tr></thead><tbody>
       ${exportRows
         .map(
           (r) =>
-            `<tr><td>${esc(r.is_code_label)}<br/><small>₹ ${fmtMoney(r.testing_charges)}</small><br/><small>View File</small></td><td>${esc(r.item_name)}</td><td>${esc(r.test_method)}<br/><small>Clause: ${esc(r.clause_no)}</small><br/><small>Unit: ${esc(r.unit_value)}</small></td><td>${esc(r.specific_requirement)}</td><td>Uncertainty: ${esc(r.uncertainty_mu)}<br/><small>Acceptance Criteria: ${esc(r.acceptance_criteria ?? '-')}</small><br/><small>Conformity: ${r.conformity ?? 'Yes'}</small></td><td>Temperature: ${esc(r.temperature_of_test) || '-'}<br/><small>Humidity: ${esc(r.humidity_of_test) || '-'}</small><br/><small>Time: ${esc(r.testing_time) || '-'}</small><br/><small>Under Accreditation: —</small></td></tr>`,
+            `<tr><td>${esc(r.is_code_label)}</td><td>${esc(r.item_name)}</td><td>${esc(r.test_method)}<br/><small>Clause: ${esc(r.clause_no)}</small><br/><small>Unit: ${esc(r.unit_value)}</small></td><td>${esc(r.specific_requirement)}</td><td>Uncertainty: ${esc(r.uncertainty_mu)}<br/><small>Acceptance Criteria: ${esc(r.acceptance_criteria ?? '-')}</small></td><td>${esc(fmtAccreditation(r))}</td></tr>`,
         )
         .join('')}
       </tbody></table></body></html>`
@@ -1134,19 +832,8 @@ window.addEventListener('click',function(e){
             ? normalizeText(get(cells, 'under_accreditation_ids')).split('|').filter(Boolean)
             : [],
           uncertainty_mu: normalizeText(get(cells, 'uncertainty_mu')) || null,
-          testing_charges: normalizeText(get(cells, 'testing_charges'))
-            ? Number(normalizeNumberString(get(cells, 'testing_charges')))
-            : null,
-          conformity: (normalizeText(get(cells, 'conformity')) === 'No' ? 'No' : 'Yes') as 'Yes' | 'No',
           department: normalizeText(get(cells, 'department')) || null,
           designation: normalizeText(get(cells, 'designation')) || null,
-          equipment_ids: normalizeText(get(cells, 'equipment_ids'))
-            ? normalizeText(get(cells, 'equipment_ids')).split('|').filter(Boolean)
-            : [],
-          temperature_of_test: normalizeText(get(cells, 'temperature_of_test')) || null,
-          humidity_of_test: normalizeText(get(cells, 'humidity_of_test')) || null,
-          testing_time: normalizeText(get(cells, 'testing_time')) || null,
-          test_method_note_path: normalizeText(get(cells, 'test_method_note_path')) || null,
         }))
 
         const clean = payloads.filter((p) => p.item_name.trim().length > 0)
@@ -1276,6 +963,9 @@ window.addEventListener('click',function(e){
           setPage(1)
         }}
         onNew={handleNew}
+        assistantContext={assistantContext}
+        onAssistantDataChanged={() => void loadRows()}
+        isCodeOptions={isCodeOptions}
       />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -1313,12 +1003,9 @@ window.addEventListener('click',function(e){
             onAddUnit={handleAddUnit}
             onDeleteUnit={handleDeleteUnit}
             onOpenAddIsCodeForm={openAddIsCodeForm}
-            onOpenAddEquipmentForm={openAddEquipmentForm}
             departments={departments}
             designations={designations}
-            equipments={equipments}
-            onUploadTestMethodNote={handleUploadTestMethodNote}
-            testMethodNoteDownloadUrl={testMethodNoteDownloadUrl}
+            designationsByDepartment={designationsByDepartment}
           />
         </DialogContent>
       </Dialog>
@@ -1351,24 +1038,6 @@ window.addEventListener('click',function(e){
         </DialogContent>
       </Dialog>
 
-      <Dialog open={equipmentDialogOpen} onOpenChange={setEquipmentDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Add New Test Equipment</DialogTitle>
-          </DialogHeader>
-          {saveMessage && <div className="text-sm text-destructive">{saveMessage}</div>}
-          <EquipmentMasterForm
-            form={equipmentForm}
-            onChange={setEquipmentForm}
-            canSave={canSaveEquipment}
-            saveLoading={equipmentSaveLoading}
-            onSave={handleSaveEquipment}
-            onClear={handleClearEquipment}
-            locations={departments.length ? departments : ['Mechanical']}
-          />
-        </DialogContent>
-      </Dialog>
-
       <TestParameterTable
         rows={pagedRows}
         loading={listLoading}
@@ -1377,9 +1046,8 @@ window.addEventListener('click',function(e){
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
-        onCopy={handleCopy}
-        onViewFile={(row) => void openTestMethodNotePopup(row)}
         accreditationBodies={accreditationBodies}
+        onAssistantDataChanged={() => void loadRows()}
       />
 
       <TestParameterTableFooterBar

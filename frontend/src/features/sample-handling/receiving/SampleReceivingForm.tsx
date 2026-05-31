@@ -5,8 +5,15 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import type { SampleReceivingForm as FormType } from '../types'
+import {
+  RECEIVING_REPORT_TYPES,
+  type SampleReceivingForm as FormType,
+  type SampleRow,
+} from '../types'
+import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { OptionCombobox } from './OptionCombobox'
+
+export type SrfSearchOption = Pick<SampleRow, 'id' | 'srf_number' | 'client_name'>
 
 export function SampleReceivingForm({
   form,
@@ -29,6 +36,10 @@ export function SampleReceivingForm({
   onFileSelect,
   clientReferencesFileName,
   onDateOfSampleReceivingChange,
+  onReportTypeChange,
+  onSelectReferencedSrf,
+  srfSearchRows = [],
+  editingSampleId = null,
   onAddReceivingOption,
   onDeleteReceivingOption = async () => {},
 }: {
@@ -52,6 +63,10 @@ export function SampleReceivingForm({
   onFileSelect?: (file: File | null) => void
   clientReferencesFileName?: string
   onDateOfSampleReceivingChange?: (newDate: string) => void
+  onReportTypeChange?: (reportType: string) => void
+  onSelectReferencedSrf?: (sampleId: string) => void
+  srfSearchRows?: SrfSearchOption[]
+  editingSampleId?: string | null
   onAddReceivingOption?: (category: string, label: string) => Promise<void>
   onDeleteReceivingOption?: (category: string, id: string) => Promise<void>
 }) {
@@ -62,6 +77,11 @@ export function SampleReceivingForm({
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
   const [isCodeInput, setIsCodeInput] = useState('')
   const [isCodeDropdownOpen, setIsCodeDropdownOpen] = useState(false)
+  const [srfSearchInput, setSrfSearchInput] = useState('')
+  const [srfDropdownOpen, setSrfDropdownOpen] = useState(false)
+
+  const isNewReport = form.receivingReportType === RECEIVING_REPORT_TYPES[0]
+  const useReferencedSrfSearch = !editingSampleId && !isNewReport
 
   useEffect(() => {
     const current = clientOptions.find((c) => c.id === form.customerId)
@@ -78,6 +98,14 @@ export function SampleReceivingForm({
     }
   }, [form.customerId, form.testReportAsPerIsId, clientOptions, isCodeOptions])
 
+  useEffect(() => {
+    if (useReferencedSrfSearch) {
+      setSrfSearchInput(form.referencedSrfNumber)
+    } else {
+      setSrfSearchInput(form.srfNumber)
+    }
+  }, [form.referencedSrfNumber, form.srfNumber, useReferencedSrfSearch])
+
   const filteredClients = customerInput.trim()
     ? clientOptions.filter((opt) =>
         opt.label.toLowerCase().includes(customerInput.trim().toLowerCase()),
@@ -89,6 +117,18 @@ export function SampleReceivingForm({
         opt.label.toLowerCase().includes(isCodeInput.trim().toLowerCase()),
       )
     : isCodeOptions
+
+  const srfQuery = srfSearchInput.trim().toLowerCase()
+  const filteredSrfRows = (srfQuery
+    ? srfSearchRows.filter((r) => {
+        const srf = r.srf_number?.toLowerCase() ?? ''
+        const client = r.client_name?.toLowerCase() ?? ''
+        return srf.includes(srfQuery) || client.includes(srfQuery)
+      })
+    : srfSearchRows
+  )
+    .filter((r) => r.srf_number?.trim())
+    .slice(0, 25)
 
   const handleDateChange = (newDate: string) => {
     if (onDateOfSampleReceivingChange) {
@@ -109,17 +149,94 @@ export function SampleReceivingForm({
 
           <TabsContent value="details" className="space-y-5 mt-4">
             <h3 className="text-sm font-semibold">Customer & Sample Details</h3>
-            {/* Row 1: SRF 25%, Date 25%, Customer 50% - all in one line */}
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
-              <div className="space-y-2 md:col-span-1">
-                <Label>SRF Number</Label>
-                <Input value={form.srfNumber} readOnly className="bg-muted w-full" />
+            {/* Row 1: Report Type 20%, SRF 20%, Date 20%, Customer 40% */}
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-[1fr_1fr_1fr_2fr] md:items-end">
+              <div className="space-y-2 min-w-0">
+                <Label>Report Type</Label>
+                <Select
+                  value={form.receivingReportType || RECEIVING_REPORT_TYPES[0]}
+                  onValueChange={(v) => {
+                    if (onReportTypeChange) onReportTypeChange(v)
+                    else onChange({ ...form, receivingReportType: v })
+                  }}
+                >
+                  <SelectTrigger className="w-full" aria-label="Report type">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RECEIVING_REPORT_TYPES.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="space-y-2 md:col-span-1">
-                <Label>Date of Sample Receiving</Label>
+              <div className="space-y-2 min-w-0">
+                <Label>SRF Number</Label>
+                {useReferencedSrfSearch ? (
+                  <>
+                    <div className="relative">
+                      <Input
+                        value={srfSearchInput}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setSrfSearchInput(val)
+                          const base = stripReceivingReportSuffix(val)
+                          onChange({
+                            ...form,
+                            referencedSrfNumber: base,
+                            srfNumber: buildReceivingSrfFromReference(base, form.receivingReportType),
+                          })
+                        }}
+                        onFocus={() => setSrfDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setSrfDropdownOpen(false), 150)}
+                        placeholder="Search previous SRF…"
+                        autoComplete="off"
+                        className="w-full"
+                      />
+                      {srfDropdownOpen && filteredSrfRows.length > 0 && (
+                        <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
+                          <ul className="max-h-48 overflow-auto text-sm">
+                            {filteredSrfRows.map((row) => (
+                              <li key={row.id}>
+                                <button
+                                  type="button"
+                                  className="w-full px-3 py-2 text-left hover:bg-muted"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    const label = stripReceivingReportSuffix(row.srf_number ?? '')
+                                    setSrfSearchInput(label)
+                                    setSrfDropdownOpen(false)
+                                    onSelectReferencedSrf?.(row.id)
+                                  }}
+                                >
+                                  <span className="font-medium">{row.srf_number}</span>
+                                  {row.client_name ? (
+                                    <span className="text-muted-foreground"> — {row.client_name}</span>
+                                  ) : null}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                    {form.srfNumber ? (
+                      <p className="text-xs text-muted-foreground">
+                        Assigned SRF: <span className="font-medium text-foreground">{form.srfNumber}</span>
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <Input value={form.srfNumber} readOnly className="bg-muted w-full" aria-label="SRF number" />
+                )}
+              </div>
+              <div className="space-y-2 min-w-0">
+                <Label>Date of Receiving</Label>
                 <Input type="date" value={form.dateOfSampleReceiving} onChange={(e) => handleDateChange(e.target.value)} className="w-full" />
               </div>
-              <div className="space-y-1 md:col-span-2">
+              <div className="space-y-2 min-w-0">
                 <Label>Name of the Customer</Label>
                 <div className="relative">
                   <Input
@@ -282,29 +399,30 @@ export function SampleReceivingForm({
                 )}
               </div>
             </div>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="space-y-2">
+            {/* Batch Number, Date of Manufacturing, BIS Seal, IO's Signature — one horizontal line */}
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-4 md:items-end">
+              <div className="space-y-2 min-w-0">
                 <Label>Batch Number</Label>
-                <Input value={form.batchNumber} onChange={(e) => onChange({ ...form, batchNumber: e.target.value })} />
+                <Input value={form.batchNumber} onChange={(e) => onChange({ ...form, batchNumber: e.target.value })} className="w-full" />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>Date of Manufacturing</Label>
-                <Input type="date" value={form.dateOfManufacturing} onChange={(e) => onChange({ ...form, dateOfManufacturing: e.target.value })} />
+                <Input type="date" value={form.dateOfManufacturing} onChange={(e) => onChange({ ...form, dateOfManufacturing: e.target.value })} className="w-full" />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>BIS Seal</Label>
                 <Select value={form.bisSeal ? 'yes' : 'no'} onValueChange={(v) => onChange({ ...form, bisSeal: v === 'yes' })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="no">No</SelectItem>
                     <SelectItem value="yes">Yes</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>IO&apos;s Signature</Label>
                 <Select value={form.ioSignature ? 'yes' : 'no'} onValueChange={(v) => onChange({ ...form, ioSignature: v === 'yes' })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="no">No</SelectItem>
                     <SelectItem value="yes">Yes</SelectItem>
@@ -322,13 +440,13 @@ export function SampleReceivingForm({
                 <Textarea value={form.sampleDeclaration} onChange={(e) => onChange({ ...form, sampleDeclaration: e.target.value })} rows={3} />
               </div>
             </div>
-            {/* Any Other Information 50%, Mode of Disposal 25%, Nature of Sample 25% - single line */}
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
-              <div className="space-y-2 md:col-span-2">
+            {/* Any Other Information 50%, Mode of Disposal 25%, Nature of Sample 25% */}
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-[2fr_1fr_1fr] md:items-end">
+              <div className="space-y-2 min-w-0">
                 <Label>Any Other Information</Label>
                 <Textarea value={form.anyOtherInformation} onChange={(e) => onChange({ ...form, anyOtherInformation: e.target.value })} rows={1} className="w-full min-h-10 h-10 resize-none" />
               </div>
-              <div className="space-y-2 md:col-span-1">
+              <div className="space-y-2 min-w-0">
                 {onAddReceivingOption ? (
                   <OptionCombobox
                     label="Mode of Disposal"
@@ -354,7 +472,7 @@ export function SampleReceivingForm({
                   </>
                 )}
               </div>
-              <div className="space-y-2 md:col-span-1">
+              <div className="space-y-2 min-w-0">
                 {onAddReceivingOption ? (
                   <OptionCombobox
                     label="Nature of Sample"
@@ -389,7 +507,7 @@ export function SampleReceivingForm({
 
           <TabsContent value="review" className="space-y-5 mt-4">
             {/* 4 fields in a single row at top */}
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Tentative Date Required</Label>
                 <Input type="date" value={form.tentativeDateRequired} onChange={(e) => onChange({ ...form, tentativeDateRequired: e.target.value })} />
@@ -410,7 +528,7 @@ export function SampleReceivingForm({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Upload Clients References</Label>
+                <Label>Client References</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     type="file"

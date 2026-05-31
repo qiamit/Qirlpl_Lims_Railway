@@ -7,6 +7,7 @@ interface AuthState {
   session: Session | null
   loading: boolean
   designation: string
+  departmentName: string
   profileName: string
   profileReady: boolean
 }
@@ -16,6 +17,7 @@ export function useAuth(): AuthState {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [designation, setDesignation] = useState<string>('')
+  const [departmentName, setDepartmentName] = useState<string>('')
   const [profileName, setProfileName] = useState<string>('')
   const [profileReady, setProfileReady] = useState(false)
 
@@ -97,9 +99,13 @@ export function useAuth(): AuthState {
   useEffect(() => {
     if (!user) {
       setDesignation('')
+      setDepartmentName('')
       setProfileName('')
       setProfileReady(true)
-      try { localStorage.removeItem('userDesignation') } catch { /* ignore */ }
+      try {
+        localStorage.removeItem('userDesignation')
+        localStorage.removeItem('userDepartment')
+      } catch { /* ignore */ }
       return
     }
 
@@ -108,29 +114,41 @@ export function useAuth(): AuthState {
 
     const meta = user.user_metadata as Record<string, unknown>
     const metaDes = typeof meta?.designation === 'string' ? meta.designation.trim() : ''
+    const metaDeptRaw =
+      typeof meta?.department_name === 'string'
+        ? meta.department_name
+        : typeof meta?.department === 'string'
+          ? meta.department
+          : ''
+    const metaDept = metaDeptRaw.trim()
     const metaName = typeof meta?.full_name === 'string' ? meta.full_name.trim() : ''
 
-    if (metaDes) {
-      setDesignation(metaDes)
-      setProfileName(metaName || user.email || '')
-      setProfileReady(true)
-      try { localStorage.setItem('userDesignation', metaDes) } catch { /* ignore */ }
-      return
-    }
-
-    const applyFromProfile = (profileDes: string, profileNameVal: string) => {
+    const applyFromProfile = (profileDes: string, profileDept: string, profileNameVal: string) => {
       if (canceled) return
       setDesignation(profileDes)
+      setDepartmentName(profileDept || metaDept)
       setProfileName(profileNameVal || metaName || user?.email || '')
       setProfileReady(true)
+      const dept = profileDept || metaDept
       if (profileDes) {
         try { localStorage.setItem('userDesignation', profileDes) } catch { /* ignore */ }
       }
+      if (dept) {
+        try { localStorage.setItem('userDepartment', dept) } catch { /* ignore */ }
+      }
     }
 
-    const cached = (() => {
+    const cachedDesignation = (() => {
       try {
         return localStorage.getItem('userDesignation')
+      } catch {
+        return null
+      }
+    })()
+
+    const cachedDepartment = (() => {
+      try {
+        return localStorage.getItem('userDepartment')
       } catch {
         return null
       }
@@ -139,21 +157,28 @@ export function useAuth(): AuthState {
     const fetchProfile = async () => {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('designation, full_name')
+        .select('designation, department_name, full_name')
         .eq('id', user.id)
         .maybeSingle()
 
       if (canceled) return
       if (error) {
-        applyFromProfile(String(cached ?? ''), metaName || user.email || '')
+        applyFromProfile(
+          String(cachedDesignation ?? ''),
+          metaDept || String(cachedDepartment ?? ''),
+          metaName || user.email || '',
+        )
         return
       }
 
-      const row = data as { designation?: unknown; full_name?: unknown } | null
+      const row = data as { designation?: unknown; department_name?: unknown; full_name?: unknown } | null
       const profileDes = typeof row?.designation === 'string' ? row.designation.trim() : ''
+      const profileDept =
+        typeof row?.department_name === 'string' ? row.department_name.trim() : ''
       const profileFullName = typeof row?.full_name === 'string' ? row.full_name.trim() : ''
-      const finalDes = profileDes || String(cached ?? '')
-      applyFromProfile(finalDes, profileFullName || metaName || user.email || '')
+      const finalDes = profileDes || String(cachedDesignation ?? '')
+      const finalDept = profileDept || metaDept || String(cachedDepartment ?? '')
+      applyFromProfile(finalDes, finalDept, profileFullName || metaName || user.email || '')
     }
 
     void fetchProfile()
@@ -163,7 +188,7 @@ export function useAuth(): AuthState {
     }
   }, [user])
 
-  return { user, session, loading, designation, profileName, profileReady }
+  return { user, session, loading, designation, departmentName, profileName, profileReady }
 }
 
 export async function signIn(email: string, password: string) {

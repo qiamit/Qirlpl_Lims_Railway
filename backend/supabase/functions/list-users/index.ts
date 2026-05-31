@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
   }
 
   const url = Deno.env.get('SUPABASE_URL')
-  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY')
+  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !serviceRoleKey) {
     return new Response(JSON.stringify({ error: 'Missing SUPABASE_URL or SERVICE_ROLE_KEY secret' }), {
       status: 500,
@@ -109,33 +109,32 @@ Deno.serve(async (req) => {
 
     for (const u of users) {
       const profile = profilesById.get(u.id) ?? {}
-      const metadataFullName =
-        typeof u.user_metadata?.full_name === 'string' ? String(u.user_metadata.full_name).trim() : ''
+      const metadata = (u.user_metadata ?? {}) as Record<string, unknown>
+
+      // user_profiles is the authoritative source — metadata is fallback
       const profileFullName = String(
         (profile as { full_name?: unknown; name?: unknown }).full_name ?? (profile as { name?: unknown }).name ?? '',
       ).trim()
-      const fullName = metadataFullName || profileFullName
+      const metadataFullName =
+        typeof metadata.full_name === 'string' ? String(metadata.full_name).trim() : ''
+      const fullName = profileFullName || metadataFullName || ''
 
-      const metadataMobile =
-        typeof u.user_metadata?.mobile === 'string' ? String(u.user_metadata.mobile).trim() : ''
-      const profileMobile = String(
-        (profile as { mobile?: unknown; phone?: unknown }).mobile ?? (profile as { phone?: unknown }).phone ?? '',
-      ).trim()
-      const mobile = metadataMobile || profileMobile
+      const profileMobile = String((profile as { mobile?: unknown }).mobile ?? '').trim()
+      const metadataMobile = typeof metadata.mobile === 'string' ? String(metadata.mobile).trim() : ''
+      const mobile = profileMobile || metadataMobile || ''
 
-      const metadataDesignation =
-        typeof u.user_metadata?.designation === 'string' ? String(u.user_metadata.designation).trim() : ''
       const profileDesignation = String((profile as { designation?: unknown }).designation ?? '').trim()
-      const designation = metadataDesignation || profileDesignation
+      const metadataDesignation = typeof metadata.designation === 'string' ? String(metadata.designation).trim() : ''
+      const designation = profileDesignation || metadataDesignation || ''
 
-      const metadataDepartmentName =
-        typeof u.user_metadata?.department_name === 'string' ? String(u.user_metadata.department_name).trim() : ''
       const profileDepartmentName = String((profile as { department_name?: unknown }).department_name ?? '').trim()
-      const departmentName = metadataDepartmentName || profileDepartmentName
+      const metadataDepartmentName =
+        typeof metadata.department_name === 'string' ? String(metadata.department_name).trim() : ''
+      const departmentName = profileDepartmentName || metadataDepartmentName || ''
 
-      const metadataStatus = typeof u.user_metadata?.status === 'string' ? String(u.user_metadata.status).trim() : ''
-      const profileStatus = String((profile as { status?: unknown }).status ?? 'Active').trim()
-      const status = metadataStatus || profileStatus
+      const profileStatus = String((profile as { status?: unknown }).status ?? '').trim()
+      const metadataStatus = typeof metadata.status === 'string' ? String(metadata.status).trim() : ''
+      const status = profileStatus || metadataStatus || 'Active'
 
       result.push({
         id: u.id,

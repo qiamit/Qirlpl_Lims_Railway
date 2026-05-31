@@ -2,6 +2,7 @@ import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 
 export function ClientsHeaderBar({
   search,
@@ -9,15 +10,19 @@ export function ClientsHeaderBar({
   pageSize,
   onPageSizeChange,
   onNew,
+  assistantContext,
+  onAssistantDataChanged,
 }: {
   search: string
   onSearchChange: (value: string) => void
   pageSize: number
   onPageSizeChange: (size: number) => void
   onNew: () => void
+  assistantContext: string
+  onAssistantDataChanged?: () => void
 }) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-xl border border-border bg-card px-5 py-4 shadow-sm">
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between app-card px-4 py-4 sm:px-5">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
         <h1 className="text-lg font-semibold tracking-tight text-foreground whitespace-nowrap">Client Directory</h1>
         <div className="md:w-[40%]">
@@ -29,16 +34,28 @@ export function ClientsHeaderBar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="5">5 / page</SelectItem>
-              <SelectItem value="10">10 / page</SelectItem>
-              <SelectItem value="20">20 / page</SelectItem>
-              <SelectItem value="50">50 / page</SelectItem>
+              <SelectItem value="5">5 / Page</SelectItem>
+              <SelectItem value="10">10 / Page</SelectItem>
+              <SelectItem value="20">20 / Page</SelectItem>
+              <SelectItem value="50">50 / Page</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <div className="flex items-center justify-end">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <QiAssistant
+            page="clients"
+            pageTitle="Client Directory"
+            contextSummary={assistantContext}
+            suggestedQuestions={[
+              'Add a new client ABC Labs Pvt Ltd with Dr balance',
+              'Summarize clients in the current list',
+              'Update payment term for a client by company name',
+              'What is the difference between Dr and Cr balance?',
+            ]}
+            onDataChanged={onAssistantDataChanged}
+          />
           <Button type="button" variant="outline" asChild>
             <a href="https://services.gst.gov.in/services/searchtp" target="_blank" rel="noreferrer">
               Verify GST Number

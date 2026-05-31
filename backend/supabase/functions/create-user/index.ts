@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
   }
 
   const url = Deno.env.get('SUPABASE_URL')
-  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY')
+  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!url || !serviceRoleKey) {
     return new Response(JSON.stringify({ error: 'Missing SUPABASE_URL or SERVICE_ROLE_KEY secret' }), {
       status: 500,
@@ -62,13 +62,17 @@ Deno.serve(async (req) => {
     })
   }
 
+  const mobileRaw = body.mobile ?? ''
+
+  // Mobile is stored only in user_profiles + user_metadata (not auth.users.phone).
+  // Supabase Auth enforces globally unique phone numbers; email remains the only unique login identifier.
   const { data, error } = await admin.auth.admin.createUser({
     email: body.email,
     password: body.password,
     email_confirm: true,
     user_metadata: {
       full_name: body.full_name ?? '',
-      mobile: body.mobile ?? '',
+      mobile: mobileRaw,
       designation: body.designation ?? '',
       department_name: body.department_name ?? '',
       status: body.status ?? 'Active',
@@ -91,7 +95,7 @@ Deno.serve(async (req) => {
         {
           id: userId,
           full_name: body.full_name ?? '',
-          mobile: body.mobile ?? '',
+          mobile: mobileRaw,
           designation: body.designation ?? '',
           department_name: body.department_name ?? '',
           status: body.status ?? 'Active',

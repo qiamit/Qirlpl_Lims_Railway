@@ -30,6 +30,7 @@ export function TestAllocationForm({
   onChange,
   onSave,
   onClose,
+  saveLoading = false,
   testParamOptions,
   employeesFiltered,
   designationOptions = [],
@@ -40,6 +41,7 @@ export function TestAllocationForm({
   onChange: (next: TestAllocationFormState) => void
   onSave: () => void
   onClose: () => void
+  saveLoading?: boolean
   testParamOptions: TestParamOption[]
   employeesFiltered: EmployeeOption[]
   designationOptions?: string[]
@@ -266,10 +268,17 @@ export function TestAllocationForm({
           <Label>Designation</Label>
           <Select
             value={form.designation ?? ''}
-            onValueChange={(value) => onChange({ ...form, designation: value || null })}
+            onValueChange={(value) =>
+              onChange({
+                ...form,
+                designation: value || null,
+                assignedEmployeeId: '',
+                assignedEmployeeName: '',
+              })
+            }
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select designation" />
+              <SelectValue placeholder="Select designation (User Management)" />
             </SelectTrigger>
             <SelectContent>
               {designationOptions.map((d) => (
@@ -280,7 +289,7 @@ export function TestAllocationForm({
             </SelectContent>
           </Select>
           {designationOptions.length === 0 && row.department && (
-            <p className="text-xs text-muted-foreground">No designations in Test Parameters for this department.</p>
+            <p className="text-xs text-muted-foreground">No designations in User Management for this department.</p>
           )}
         </div>
         <div className="space-y-2">
@@ -295,20 +304,30 @@ export function TestAllocationForm({
                 assignedEmployeeName: emp?.name ?? '',
               })
             }}
+            disabled={!form.designation?.trim()}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select employee (filtered by dept/designation)" />
+              <SelectValue
+                placeholder={
+                  form.designation?.trim()
+                    ? 'Select employee (User Management)'
+                    : 'Select designation first'
+                }
+              />
             </SelectTrigger>
             <SelectContent>
               {employeesFiltered.map((emp) => (
                 <SelectItem key={emp.id} value={emp.id}>
-                  {emp.name} {emp.designation ? `(${emp.designation})` : ''}
+                  {emp.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {employeesFiltered.length === 0 && (row.department || form.designation) && (
-            <p className="text-xs text-muted-foreground">No employees in User Management match this department and designation.</p>
+          {form.designation?.trim() && employeesFiltered.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No active employees in User Management match department &quot;{row.department ?? '-'}&quot; and designation
+              &quot;{form.designation}&quot;.
+            </p>
           )}
         </div>
       </div>
@@ -425,11 +444,11 @@ export function TestAllocationForm({
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" onClick={onClose} disabled={saveLoading}>
           Cancel
         </Button>
-        <Button type="button" onClick={onSave}>
-          Save
+        <Button type="button" onClick={onSave} disabled={saveLoading}>
+          {saveLoading ? 'Saving…' : 'Save'}
         </Button>
       </div>
 

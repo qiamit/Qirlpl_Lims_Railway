@@ -141,7 +141,7 @@ export default function AuthPage() {
               </div>
             </div>
 
-            <Card className="shadow-lg border-border/50">
+            <Card className="border-border/80 shadow-card">
               <CardHeader className="space-y-2 pb-4">
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={20} className="text-primary" />

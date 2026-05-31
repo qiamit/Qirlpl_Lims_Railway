@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { EMAIL_INPUT_PATTERN } from '@/lib/validation'
 import type { OptionItem } from './types'
 
 type LaboratoryDetailsTabProps = {
@@ -195,23 +196,26 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
             {props.saveLoading ? 'Saving…' : 'Save'}
           </Button>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-4">
-          <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="lab-name">Name of the Laboratory</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end mt-4">
+          <div className="min-w-0 space-y-2 xl:col-span-2">
+            <div className="flex items-center min-h-[20px]">
+              <Label htmlFor="lab-name">Name of the Laboratory</Label>
+            </div>
             <Input
               id="lab-name"
+              className="w-full"
               placeholder="Enter Laboratory Name"
               value={props.labName}
               onChange={(e) => props.setLabName(e.target.value)}
             />
           </div>
 
-          <div className="space-y-2 lg:col-span-1">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="lab-type">Laboratory Type</Label>
+          <div className="min-w-0 space-y-2 xl:col-span-1">
+            <div className="flex items-center justify-between gap-2 min-h-[20px]">
+              <Label htmlFor="lab-type" className="shrink-0">Laboratory Type</Label>
               <Dialog open={labTypeDialogOpen} onOpenChange={setLabTypeDialogOpen}>
                 <DialogTrigger asChild>
-                  <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                  <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                     <Plus size={12} />
                     Add New Type
                   </button>
@@ -272,7 +276,7 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               </Dialog>
             </div>
             <Select value={props.selectedLabType} onValueChange={props.setSelectedLabType}>
-              <SelectTrigger id="lab-type">
+              <SelectTrigger id="lab-type" className="w-full">
                 <SelectValue placeholder="Select laboratory type" />
               </SelectTrigger>
               <SelectContent>
@@ -285,12 +289,12 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
             </Select>
           </div>
 
-          <div className="space-y-2 lg:col-span-1">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="lab-scale">Laboratory Scale</Label>
+          <div className="min-w-0 space-y-2 xl:col-span-1">
+            <div className="flex items-center justify-between gap-2 min-h-[20px]">
+              <Label htmlFor="lab-scale" className="shrink-0">Laboratory Scale</Label>
               <Dialog open={labScaleDialogOpen} onOpenChange={setLabScaleDialogOpen}>
                 <DialogTrigger asChild>
-                  <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                  <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                     <Plus size={12} />
                     Add New Scale
                   </button>
@@ -351,7 +355,7 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               </Dialog>
             </div>
             <Select value={props.selectedLabScale} onValueChange={props.setSelectedLabScale}>
-              <SelectTrigger id="lab-scale">
+              <SelectTrigger id="lab-scale" className="w-full">
                 <SelectValue placeholder="Select laboratory scale" />
               </SelectTrigger>
               <SelectContent>
@@ -366,23 +370,26 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
 
         </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:col-span-4">
-            <div className="space-y-2">
-              <Label htmlFor="contact-person">Contact Person Name</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end lg:col-span-4">
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center min-h-[20px]">
+                <Label htmlFor="contact-person">Contact Person Name</Label>
+              </div>
               <Input
                 id="contact-person"
+                className="w-full"
                 placeholder="Enter Contact Person Name"
                 value={props.contactPersonName}
                 onChange={(e) => props.setContactPersonName(e.target.value)}
               />
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="contact-designation">Designation of Person</Label>
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                <Label htmlFor="contact-designation" className="shrink-0">Designation</Label>
                 <Dialog open={designationDialogOpen} onOpenChange={setDesignationDialogOpen}>
                   <DialogTrigger asChild>
-                    <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                    <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                       <Plus size={12} />
                       Add New Designation
                     </button>
@@ -443,7 +450,7 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
                 </Dialog>
               </div>
               <Select value={props.selectedDesignation} onValueChange={props.setSelectedDesignation}>
-                <SelectTrigger id="contact-designation">
+                <SelectTrigger id="contact-designation" className="w-full">
                   <SelectValue placeholder="Select designation" />
                 </SelectTrigger>
                 <SelectContent>
@@ -456,12 +463,12 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="mobile">Mobile Number</Label>
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                <Label htmlFor="mobile" className="shrink-0">Mobile Number</Label>
                 <Dialog open={countryCodeDialogOpen} onOpenChange={setCountryCodeDialogOpen}>
                   <DialogTrigger asChild>
-                    <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                    <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                       <Plus size={12} />
                       Manage Codes
                     </button>
@@ -521,10 +528,10 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
                   </DialogContent>
                 </Dialog>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid w-full grid-cols-3 gap-2">
                 <div>
                   <Select value={props.selectedCountryCode} onValueChange={props.setSelectedCountryCode}>
-                    <SelectTrigger id="country-code">
+                    <SelectTrigger id="country-code" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -552,13 +559,16 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email ID</Label>
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center min-h-[20px]">
+                <Label htmlFor="email">Email ID</Label>
+              </div>
               <Input
                 id="email"
+                className="w-full"
                 type="email"
                 placeholder="Enter Email Address"
-                pattern="^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+                pattern={EMAIL_INPUT_PATTERN}
                 value={props.email}
                 onChange={(e) => props.setEmail(e.target.value)}
                 title="Enter a valid email address"
@@ -577,11 +587,14 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="space-y-2">
-            <Label htmlFor="pincode">PIN Code</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center min-h-[20px]">
+              <Label htmlFor="pincode">PIN Code</Label>
+            </div>
             <Input
               id="pincode"
+              className="w-full"
               type="text"
               maxLength={6}
               placeholder="Enter 6-digit PIN code"
@@ -590,22 +603,25 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="district">District</Label>
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center min-h-[20px]">
+              <Label htmlFor="district">District</Label>
+            </div>
             <Input
               id="district"
+              className="w-full"
               placeholder="Enter district"
               value={props.district}
               onChange={(e) => props.setDistrict(e.target.value)}
             />
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="state">State</Label>
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center justify-between gap-2 min-h-[20px]">
+              <Label htmlFor="state" className="shrink-0">State</Label>
               <Dialog open={stateDialogOpen} onOpenChange={setStateDialogOpen}>
                 <DialogTrigger asChild>
-                  <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                  <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                     <Plus size={12} />
                     Add New State
                   </button>
@@ -666,7 +682,7 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               </Dialog>
             </div>
             <Select value={props.selectedState} onValueChange={props.setSelectedState}>
-              <SelectTrigger id="state">
+              <SelectTrigger id="state" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -679,12 +695,12 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="country">Country</Label>
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center justify-between gap-2 min-h-[20px]">
+              <Label htmlFor="country" className="shrink-0">Country</Label>
               <Dialog open={countryDialogOpen} onOpenChange={setCountryDialogOpen}>
                 <DialogTrigger asChild>
-                  <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                  <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                     <Plus size={12} />
                     Add New Country
                   </button>
@@ -745,7 +761,7 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               </Dialog>
             </div>
             <Select value={props.selectedCountry} onValueChange={props.setSelectedCountry}>
-              <SelectTrigger id="country">
+              <SelectTrigger id="country" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

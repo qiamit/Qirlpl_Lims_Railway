@@ -1,8 +1,9 @@
-# Supabase
-.branches
-.temp
+# Supabase CLI local state
+.branches/
+.temp/
 
-# dotenvx
-.env.keys
+# Secrets
+.env
 .env.local
 .env.*.local
+.env.keys

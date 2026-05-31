@@ -1,12 +1,15 @@
 import { ChevronLeft, ChevronRight, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/SampleHandlingDeleteButton'
 
 export function SampleReceivingTableFooterBar({
   message,
   loading,
   selectedCount,
   onPrintSelected,
+  showDelete,
+  onDeleteSelected,
   page,
   pageCount,
   onPrevPage,
@@ -19,6 +22,8 @@ export function SampleReceivingTableFooterBar({
   loading: boolean
   selectedCount: number
   onPrintSelected: () => void
+  showDelete?: boolean
+  onDeleteSelected?: () => void
   page: number
   pageCount: number
   onPrevPage: () => void
@@ -35,6 +40,12 @@ export function SampleReceivingTableFooterBar({
             <Printer size={16} />
             Print
           </Button>
+          {showDelete && onDeleteSelected ? (
+            <SampleHandlingDeleteButton
+              disabled={loading || selectedCount === 0}
+              onClick={onDeleteSelected}
+            />
+          ) : null}
           <span className="text-xs text-muted-foreground self-center">
             Shows all SRFs (any stage). Search by SRF number (e.g. 260305) or go to next page.
           </span>

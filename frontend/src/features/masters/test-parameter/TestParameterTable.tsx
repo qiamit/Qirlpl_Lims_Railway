@@ -1,28 +1,24 @@
-import { Copy, Pencil } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
+import {
+  buildTestParameterAssistantContext,
+  formatTestParameterLabel,
+} from './buildTestParameterAssistantContext'
 import type { AccreditationBodyRow, TestParameterRow } from './types'
 
-const formatMoney = (value: number | null | undefined) => {
-  const v = typeof value === 'number' && Number.isFinite(value) ? value : 0
-  return `${v.toFixed(2)}`
-}
-
-function formatTestingCondition(
+function formatAccreditation(
   r: TestParameterRow,
   accreditationBodies: AccreditationBodyRow[],
 ): string {
-  const temp = r.temperature_of_test ? `${r.temperature_of_test} °C` : '—'
-  const humidity = r.humidity_of_test ? `${r.humidity_of_test} %` : '—'
-  const time = r.testing_time ? `${r.testing_time} Hr` : '—'
-  const acc =
-    r.under_accreditation_ids?.length && accreditationBodies.length
-      ? r.under_accreditation_ids
-          .map((id) => accreditationBodies.find((b) => b.id === id)?.name)
-          .filter(Boolean)
-          .join(', ') || '—'
-      : '—'
-  return `${temp} | ${humidity} | ${time} | ${acc}`
+  if (!r.under_accreditation_ids?.length || !accreditationBodies.length) return '—'
+  return (
+    r.under_accreditation_ids
+      .map((id) => accreditationBodies.find((b) => b.id === id)?.name)
+      .filter(Boolean)
+      .join(', ') || '—'
+  )
 }
 
 export function TestParameterTable({
@@ -33,9 +29,8 @@ export function TestParameterTable({
   onToggle,
   onToggleAll,
   onEdit,
-  onCopy,
-  onViewFile,
   accreditationBodies = [],
+  onAssistantDataChanged,
 }: {
   rows: TestParameterRow[]
   loading: boolean
@@ -44,12 +39,14 @@ export function TestParameterTable({
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
   onEdit: (row: TestParameterRow) => void
-  onCopy: (row: TestParameterRow) => void
-  onViewFile?: (row: TestParameterRow) => void
   accreditationBodies?: AccreditationBodyRow[]
+  onAssistantDataChanged?: () => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
+
+  const thClass = 'text-xs font-semibold py-2 text-center align-middle whitespace-nowrap'
+  const tdClass = 'text-center align-middle whitespace-nowrap'
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -59,105 +56,119 @@ export function TestParameterTable({
       ) : rows.length === 0 ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">No test parameters added yet.</p>
       ) : (
-        <Table>
-          <colgroup>
-            <col style={{ width: '44px' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '25%' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '33%' }} />
-            <col style={{ width: '10%' }} />
-            <col style={{ width: '10%' }} />
-            <col style={{ width: '6%' }} />
-          </colgroup>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="text-xs text-center">
-                <input
-                  type="checkbox"
-                  aria-label="Select all"
-                  checked={allChecked}
-                  ref={(el) => {
-                    if (el) el.indeterminate = !allChecked && someChecked
-                  }}
-                  onChange={(e) => onToggleAll(e.target.checked)}
-                />
-              </TableHead>
-              <TableHead className="text-xs">IS Code</TableHead>
-              <TableHead className="text-xs text-center">Name of the Test Parameter</TableHead>
-              <TableHead className="text-xs text-center">Test Method</TableHead>
-              <TableHead className="text-xs text-center">Specific Requirements</TableHead>
-              <TableHead className="text-xs text-center">UOM &amp; Conformity</TableHead>
-              <TableHead className="text-xs text-center">Testing Condition</TableHead>
-              <TableHead className="text-xs text-center">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="text-center">
+        <div className="overflow-x-auto">
+          <Table className="table-auto w-max min-w-full">
+            <TableHeader>
+              <TableRow className="bg-muted/50 border-t border-border/50">
+                <TableHead className={`${thClass} w-10`}>
                   <input
                     type="checkbox"
-                    aria-label={`Select ${r.item_name}`}
-                    checked={selectedIds.has(r.id)}
-                    onChange={() => onToggle(r.id)}
+                    aria-label="Select all"
+                    checked={allChecked}
+                    ref={(el) => {
+                      if (el) el.indeterminate = !allChecked && someChecked
+                    }}
+                    onChange={(e) => onToggleAll(e.target.checked)}
                   />
-                </TableCell>
-                <TableCell className="align-top">
-                  <div className="font-medium">{r.is_code_label || '-'}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Rs {formatMoney(r.testing_charges)}
-                  </div>
-                </TableCell>
-                <TableCell className="align-top text-center">
-                  <div className="text-xs">{r.item_name || '-'}</div>
-                </TableCell>
-                <TableCell className="align-top text-center">
-                  <div className="text-xs font-medium">{r.test_method || '-'}</div>
-                  <div className="text-xs text-muted-foreground">
-                    (Cl - {r.clause_no || '-'} | {r.unit_value || '-'})
-                  </div>
-                </TableCell>
-                <TableCell className="align-top text-center">
-                  <div className="text-xs">{r.specific_requirement || '-'}</div>
-                </TableCell>
-                <TableCell className="align-top text-center">
-                  <div className="text-xs">UOM: {r.uncertainty_mu || '-'}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {r.conformity ?? 'Yes'}
-                    {onViewFile && (
-                      <>
-                        {' | '}
-                        <button
-                          type="button"
-                          className="text-primary hover:underline inline-flex items-center gap-1"
-                          onClick={() => onViewFile(r)}
-                        >
-                          View File
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="align-top text-center">
-                  <div className="text-xs break-words max-w-[12rem]">
-                    {formatTestingCondition(r, accreditationBodies)}
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <Button type="button" size="icon" variant="ghost" aria-label="Edit" onClick={() => onEdit(r)}>
-                      <Pencil size={16} />
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" aria-label="Copy" onClick={() => onCopy(r)}>
-                      <Copy size={16} />
-                    </Button>
-                  </div>
-                </TableCell>
+                </TableHead>
+                <TableHead className={thClass}>IS Code</TableHead>
+                <TableHead className={thClass}>Test Parameter</TableHead>
+                <TableHead className={thClass}>Test Method</TableHead>
+                <TableHead className={thClass}>Requirements</TableHead>
+                <TableHead className={thClass}>UOM</TableHead>
+                <TableHead className={thClass}>Accreditation</TableHead>
+                <TableHead className={`${thClass} w-[1%]`}>Action</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className={tdClass}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${r.item_name}`}
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => onToggle(r.id)}
+                    />
+                  </TableCell>
+                  <TableCell className={tdClass}>
+                    <div className="text-sm font-medium">{r.is_code_label || '-'}</div>
+                  </TableCell>
+                  <TableCell className={tdClass}>
+                    <div className="text-sm font-medium text-foreground/90">{r.item_name || '-'}</div>
+                  </TableCell>
+                  <TableCell className={tdClass}>
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <div className="text-sm">{r.test_method || '-'}</div>
+                      {r.clause_no || r.unit_value ? (
+                        <div className="inline-flex items-center justify-center gap-1 flex-wrap">
+                          {r.clause_no && (
+                            <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                              Cl: {r.clause_no}
+                            </span>
+                          )}
+                          {r.unit_value && (
+                            <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                              Unit: {r.unit_value}
+                            </span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className={`${tdClass} whitespace-normal`}>
+                    <div className="text-sm whitespace-pre-wrap max-w-md mx-auto">
+                      {r.specific_requirement || '—'}
+                    </div>
+                  </TableCell>
+                  <TableCell className={tdClass}>
+                    {r.uncertainty_mu ? (
+                      <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+                        {r.uncertainty_mu}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className={tdClass}>
+                    <div className="text-xs">{formatAccreditation(r, accreditationBodies)}</div>
+                  </TableCell>
+                  <TableCell className={tdClass}>
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onEdit(r)}
+                        aria-label="Edit"
+                      >
+                        <Pencil size={14} />
+                      </Button>
+                      <QiAssistant
+                        page="test-parameter"
+                        pageTitle={formatTestParameterLabel(r)}
+                        contextSummary={buildTestParameterAssistantContext(r)}
+                        activeRecordId={r.id}
+                        activeRecordTable="test_parameters"
+                        isCodeId={r.is_code_id ?? undefined}
+                        triggerVariant="icon"
+                        welcomeMessage={`I'm your **Test Parameter Assistant** for **${formatTestParameterLabel(r)}** (id: \`${r.id}\`). I can explain requirements${r.is_code_id ? ' using linked IS PDFs' : ''} and **update this test parameter** when you ask.`}
+                        suggestedQuestions={[
+                          'Explain this test parameter and its requirement',
+                          'What clause in the IS standard applies here?',
+                          'Update the specific requirement for this parameter',
+                          'Change the test method for this row',
+                        ]}
+                        onDataChanged={onAssistantDataChanged}
+                        enablePdfImport={false}
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
   )

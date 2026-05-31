@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/SampleHandlingDeleteButton'
 
 export function TestAllocationFooterBar({
   page,
@@ -13,6 +14,8 @@ export function TestAllocationFooterBar({
   selectedCount,
   saveMessage,
   loading,
+  showDelete,
+  onDeleteSelected,
 }: {
   page: number
   pageCount: number
@@ -24,6 +27,8 @@ export function TestAllocationFooterBar({
   selectedCount: number
   saveMessage: string | null
   loading: boolean
+  showDelete?: boolean
+  onDeleteSelected?: () => void
 }) {
   return (
     <div className="rounded-xl border border-border bg-card px-5 py-3 shadow-sm">
@@ -32,6 +37,12 @@ export function TestAllocationFooterBar({
           <Button type="button" variant="outline" disabled>
             <Printer size={16} /> Print
           </Button>
+          {showDelete && onDeleteSelected ? (
+            <SampleHandlingDeleteButton
+              disabled={loading || selectedCount === 0}
+              onClick={onDeleteSelected}
+            />
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {saveMessage && <p className="text-sm text-success">{saveMessage}</p>}

@@ -1,6 +1,8 @@
-import { ExternalLink, Pencil, Copy } from 'lucide-react'
+import { ExternalLink, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
+import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
+import { buildIsCodeAssistantContext, formatIsCodeLabel } from './buildIsCodeAssistantContext'
 import type { IsCodeRow } from './types'
 
 export function IsCodesTable({
@@ -11,8 +13,8 @@ export function IsCodesTable({
   onToggle,
   onToggleAll,
   onEdit,
-  onCopy,
   onViewFiles,
+  onAssistantDataChanged,
 }: {
   rows: IsCodeRow[]
   loading: boolean
@@ -21,8 +23,8 @@ export function IsCodesTable({
   onToggle: (id: string) => void
   onToggleAll: () => void
   onEdit: (row: IsCodeRow) => void
-  onCopy: (row: IsCodeRow) => void
   onViewFiles: (row: IsCodeRow) => void
+  onAssistantDataChanged?: () => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
 
@@ -103,9 +105,22 @@ export function IsCodesTable({
                       <Button type="button" variant="outline" size="sm" onClick={() => onEdit(r)} aria-label="Edit">
                         <Pencil size={14} />
                       </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => onCopy(r)} aria-label="Copy">
-                        <Copy size={14} />
-                      </Button>
+                      <QiAssistant
+                        page="is-codes"
+                        pageTitle={formatIsCodeLabel(r)}
+                        contextSummary={buildIsCodeAssistantContext(r)}
+                        isCodeId={r.id}
+                        triggerVariant="icon"
+                        welcomeMessage={`I'm your **IS Code Assistant** for **${formatIsCodeLabel(r)}** — *${r.title}* (id: \`${r.id}\`). I can answer from uploaded PDFs and **update this IS** (e.g. change title) when you ask.`}
+                        suggestedQuestions={[
+                          'Summarize the scope of this standard',
+                          'What are the main testing requirements?',
+                          'Change the title of this IS code to Steel maap',
+                          'List key clauses from the uploaded PDF',
+                        ]}
+                        onDataChanged={onAssistantDataChanged}
+                        enablePdfImport={false}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

@@ -2,6 +2,10 @@ import { Copy, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import type { SampleRow } from '../types'
+import {
+  isSampleReceivingEditLocked,
+  SAMPLE_RECEIVING_EDIT_LOCKED_TITLE,
+} from './sampleReceivingEditLock'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
 const fmtDate = (v: string | null | undefined) => (v ? v.slice(0, 10) : '-')
@@ -15,6 +19,7 @@ export function SampleReceivingTable({
   onToggleAll,
   onEdit,
   onCopy,
+  sampleIdsInAllocation,
 }: {
   rows: SampleRow[]
   loading: boolean
@@ -24,9 +29,11 @@ export function SampleReceivingTable({
   onToggleAll: (checked: boolean) => void
   onEdit: (row: SampleRow) => void
   onCopy: (row: SampleRow) => void
+  sampleIdsInAllocation?: Set<string>
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
+  const allocationSampleIds = sampleIdsInAllocation ?? new Set<string>()
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -62,7 +69,9 @@ export function SampleReceivingTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
+            {rows.map((r) => {
+              const editLocked = isSampleReceivingEditLocked(r, allocationSampleIds)
+              return (
               <TableRow key={r.id}>
                 <TableCell className="text-center">
                   <input
@@ -94,7 +103,8 @@ export function SampleReceivingTable({
                       size="icon"
                       variant="ghost"
                       aria-label="Edit"
-                      disabled={Boolean(r.sample_code != null && String(r.sample_code).trim() !== '' && !r.referback_from_allocation)}
+                      title={editLocked ? SAMPLE_RECEIVING_EDIT_LOCKED_TITLE : 'Edit sample receiving record'}
+                      disabled={editLocked}
                       onClick={() => onEdit(r)}
                     >
                       <Pencil size={16} />
@@ -105,7 +115,7 @@ export function SampleReceivingTable({
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+            )})}
           </TableBody>
         </Table>
       )}

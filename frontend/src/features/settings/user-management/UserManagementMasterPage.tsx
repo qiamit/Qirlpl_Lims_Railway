@@ -1,10 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  ensureLabMasterOptionByLabel,
+  fetchDesignationAndDepartmentLabels,
+} from '@/features/settings/lab-settings/labMasterOptions'
 import { UserManagementHeaderBar } from './UserManagementHeaderBar'
 import { UserManagementTable } from './UserManagementTable'
 import { UserManagementForm } from './UserManagementForm'
 import type { UserAccount, UserForm } from './types'
+
+async function syncUserOptionsToLabMaster(users: UserAccount[]) {
+  for (const u of users) {
+    if (u.designation.trim()) {
+      await ensureLabMasterOptionByLabel('designation', u.designation)
+    }
+    if (u.departmentName.trim()) {
+      await ensureLabMasterOptionByLabel('department', u.departmentName)
+    }
+  }
+}
+
+function formatMobileForSave(mobile: string, countryCode?: string): string {
+  const trimmed = mobile.trim()
+  if (!trimmed) return ''
+  if (trimmed.startsWith('+')) return trimmed
+  if (countryCode) return `${countryCode} ${trimmed}`.trim()
+  return trimmed
+}
 
 export default function UserManagementMasterPage() {
   const { session } = useAuth()
@@ -12,21 +35,29 @@ export default function UserManagementMasterPage() {
   const [usersLoadError, setUsersLoadError] = useState<string | null>(null)
   const [userUpdateLoadingId, setUserUpdateLoadingId] = useState<string | null>(null)
   const [userUpdateError, setUserUpdateError] = useState<string | null>(null)
-  const [passwordResetLoadingId, setPasswordResetLoadingId] = useState<string | null>(null)
-  const [passwordResetMessage, setPasswordResetMessage] = useState<string | null>(null)
   const [userDialogOpen, setUserDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<UserAccount | null>(null)
   const [userDeleteTarget, setUserDeleteTarget] = useState<UserAccount | null>(null)
 
   const [designations, setDesignations] = useState<string[]>([])
-  const [departments, setDepartments] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return []
-    const raw = window.localStorage.getItem('userManagement.departments')
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? (parsed.filter((v) => typeof v === 'string') as string[]) : []
-  })
+  const [departments, setDepartments] = useState<string[]>([])
+
+  const refreshLabOptions = useCallback(async () => {
+    const { designations: des, departments: dept } = await fetchDesignationAndDepartmentLabels()
+    setDesignations(des)
+    setDepartments(dept)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('userManagement.designations', JSON.stringify(des))
+      window.localStorage.setItem('userManagement.departments', JSON.stringify(dept))
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshLabOptions().catch(() => {
+      /* defaults from lab_master_options fetch */
+    })
+  }, [refreshLabOptions])
 
   useEffect(() => {
     let canceled = false
@@ -93,41 +124,12 @@ export default function UserManagementMasterPage() {
 
       setUsers(mapped)
 
-      const uniqueDesignations = Array.from(
-        new Set(
-          mapped
-            .map((u) => u.designation)
-            .filter((d) => typeof d === 'string' && d.trim().length > 0)
-            .map((d) => d.trim()),
-        ),
-      ).sort((a, b) => a.localeCompare(b))
-
-      setDesignations((prev) => (uniqueDesignations.length > 0 ? uniqueDesignations : prev))
-      if (uniqueDesignations.length > 0) {
-        try {
-          window.localStorage.setItem('userManagement.designations', JSON.stringify(uniqueDesignations))
-        } catch {
-          /* ignore */
-        }
+      try {
+        await syncUserOptionsToLabMaster(mapped)
+        if (!canceled) await refreshLabOptions()
+      } catch {
+        /* keep UI usable if sync fails */
       }
-
-      const uniqueDepartments = Array.from(
-        new Set(
-          mapped
-            .map((u) => u.departmentName)
-            .filter((d) => typeof d === 'string' && d.trim().length > 0)
-            .map((d) => d.trim()),
-        ),
-      ).sort((a, b) => a.localeCompare(b))
-
-      setDepartments((prev) => {
-        const merged = Array.from(new Set([...(prev ?? []), ...uniqueDepartments]))
-          .map((d) => d.trim())
-          .filter((d) => d.length > 0)
-          .sort((a, b) => a.localeCompare(b))
-        window.localStorage.setItem('userManagement.departments', JSON.stringify(merged))
-        return merged
-      })
 
       const designationByDepartment: Record<string, string[]> = {}
       for (const u of mapped) {
@@ -216,43 +218,12 @@ export default function UserManagementMasterPage() {
 
     setUsers(mapped)
 
-    const uniqueDesignations = Array.from(
-      new Set(
-        mapped
-          .map((u) => u.designation)
-          .filter((d) => typeof d === 'string' && d.trim().length > 0)
-          .map((d) => d.trim()),
-      ),
-    ).sort((a, b) => a.localeCompare(b))
-
-    setDesignations(uniqueDesignations)
-    if (uniqueDesignations.length > 0) {
-      try {
-        window.localStorage.setItem('userManagement.designations', JSON.stringify(uniqueDesignations))
-      } catch {
-        /* ignore */
-      }
+    try {
+      await syncUserOptionsToLabMaster(mapped)
+      await refreshLabOptions()
+    } catch {
+      /* keep UI usable if sync fails */
     }
-
-    const uniqueDepartments = Array.from(
-      new Set(
-        mapped
-          .map((u) => u.departmentName)
-          .filter((d) => typeof d === 'string' && d.trim().length > 0)
-          .map((d) => d.trim()),
-      ),
-    ).sort((a, b) => a.localeCompare(b))
-
-    setDepartments((prev) => {
-      const merged = Array.from(new Set([...(prev ?? []), ...uniqueDepartments]))
-        .map((d) => d.trim())
-        .filter((d) => d.length > 0)
-        .sort((a, b) => a.localeCompare(b))
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('userManagement.departments', JSON.stringify(merged))
-      }
-      return merged
-    })
 
     const designationByDepartment: Record<string, string[]> = {}
     for (const u of mapped) {
@@ -331,12 +302,29 @@ export default function UserManagementMasterPage() {
         throw new Error(message)
       }
 
+      if (patch.designation) {
+        await ensureLabMasterOptionByLabel('designation', patch.designation)
+      }
+      if (patch.departmentName) {
+        await ensureLabMasterOptionByLabel('department', patch.departmentName)
+      }
+      await refreshLabOptions()
       await reloadUsers()
     } catch (err) {
       setUserUpdateError(err instanceof Error ? err.message : 'Unable to update user')
     } finally {
       setUserUpdateLoadingId(null)
     }
+  }
+
+  const persistUserLabOptions = async (formData: UserForm) => {
+    if (formData.designation.trim()) {
+      await ensureLabMasterOptionByLabel('designation', formData.designation)
+    }
+    if (formData.department.trim()) {
+      await ensureLabMasterOptionByLabel('department', formData.department)
+    }
+    await refreshLabOptions()
   }
 
   return (
@@ -348,78 +336,17 @@ export default function UserManagementMasterPage() {
 
       {usersLoadError && <p className="text-sm text-destructive">{usersLoadError}</p>}
       {userUpdateError && <p className="text-sm text-destructive">{userUpdateError}</p>}
-      {passwordResetMessage && (
-        <p className={passwordResetMessage.toLowerCase().includes('sent') ? 'text-sm text-emerald-700' : 'text-sm text-destructive'}>
-          {passwordResetMessage}
-        </p>
-      )}
-
       <UserManagementTable
         users={users}
         designations={designations}
         departments={departments}
         userUpdateLoadingId={userUpdateLoadingId}
-        passwordResetLoadingId={passwordResetLoadingId}
         updateUser={updateUser}
         onEdit={(user: UserAccount) => {
           setEditTarget(user)
           setEditDialogOpen(true)
         }}
         onDelete={(user: UserAccount) => setUserDeleteTarget(user)}
-        onResetPassword={(user: UserAccount) => {
-          if (!user?.email) {
-            setPasswordResetMessage('Missing email for the selected user.')
-            return
-          }
-
-          void (async () => {
-            setPasswordResetMessage(null)
-            setPasswordResetLoadingId(user.id)
-
-            try {
-              const {
-                data: { session: latestSession },
-              } = await supabase.auth.getSession()
-
-              const accessToken = latestSession?.access_token ?? session?.access_token
-              if (!accessToken) {
-                throw new Error('Session expired. Please log in again.')
-              }
-
-              const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-password`
-              const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-              const response = await fetch(functionUrl, {
-                method: 'POST',
-                headers: {
-                  apikey: anonKey,
-                  Authorization: `Bearer ${anonKey}`,
-                  'x-user-jwt': accessToken,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  email: user.email,
-                  redirect_to: `${window.location.origin}/auth`,
-                }),
-              })
-
-              const payload = (await response.json().catch(() => null)) as unknown
-              if (!response.ok) {
-                const message =
-                  typeof payload === 'object' && payload && 'error' in payload
-                    ? String((payload as { error?: unknown }).error)
-                    : `Reset password failed (${response.status})`
-                throw new Error(message)
-              }
-
-              setPasswordResetMessage(`Password reset email sent to ${user.email}.`)
-            } catch (err) {
-              setPasswordResetMessage(err instanceof Error ? err.message : 'Unable to reset password')
-            } finally {
-              setPasswordResetLoadingId(null)
-            }
-          })()
-        }}
       />
 
       <UserManagementForm
@@ -431,6 +358,8 @@ export default function UserManagementMasterPage() {
         departments={departments}
         setDepartments={setDepartments}
         onSave={async (formData: UserForm, countryCode?: string) => {
+          await persistUserLabOptions(formData)
+
           const {
             data: { session: latestSession },
           } = await supabase.auth.getSession()
@@ -440,7 +369,7 @@ export default function UserManagementMasterPage() {
             throw new Error('Session expired. Please log in again.')
           }
 
-          const mobileFormatted = `${countryCode} ${formData.mobile.trim()}`
+          const mobileFormatted = formatMobileForSave(formData.mobile, countryCode ?? '+91')
 
           const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`
           const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -473,21 +402,13 @@ export default function UserManagementMasterPage() {
             throw new Error(message)
           }
 
-          setDepartments((prev) => {
-            if (!formData.department.trim()) return prev
-            if (prev.some((item) => item.toLowerCase() === formData.department.toLowerCase())) return prev
-            const next = [...prev, formData.department]
-            if (typeof window !== 'undefined') {
-              window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
-            }
-            return next
-          })
-
           await reloadUsers()
         }}
+        onOptionsChanged={refreshLabOptions}
       />
 
       <UserManagementForm
+        key={editTarget?.id || 'edit-placeholder'}
         mode="edit"
         open={editDialogOpen}
         onOpenChange={(open: boolean) => {
@@ -501,21 +422,15 @@ export default function UserManagementMasterPage() {
         setDesignations={setDesignations}
         departments={departments}
         setDepartments={setDepartments}
-        onSave={async (formData: UserForm) => {
+        onSave={async (formData: UserForm, countryCode?: string) => {
           if (!editTarget) return
 
           setUserUpdateError(null)
           setUserUpdateLoadingId(editTarget.id)
 
-          setDepartments((prev) => {
-            if (!formData.department.trim()) return prev
-            if (prev.some((item) => item.toLowerCase() === formData.department.toLowerCase())) return prev
-            const next = [...prev, formData.department]
-            if (typeof window !== 'undefined') {
-              window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
-            }
-            return next
-          })
+          await persistUserLabOptions(formData)
+
+          const mobileFormatted = formatMobileForSave(formData.mobile, countryCode)
 
           try {
             const {
@@ -542,7 +457,7 @@ export default function UserManagementMasterPage() {
                 user_id: editTarget.id,
                 email: formData.email.trim(),
                 full_name: formData.name.trim(),
-                mobile: formData.mobile.trim(),
+                mobile: mobileFormatted,
                 designation: formData.designation,
                 department_name: formData.department,
                 status: formData.status,
@@ -557,6 +472,14 @@ export default function UserManagementMasterPage() {
                   : `Update failed (${response.status})`
               throw new Error(message)
             }
+            if (
+              typeof payload === 'object' &&
+              payload &&
+              'warning' in payload &&
+              String((payload as { warning?: unknown }).warning ?? '').trim()
+            ) {
+              setUserUpdateError(String((payload as { warning?: unknown }).warning))
+            }
 
             setEditDialogOpen(false)
             setEditTarget(null)
@@ -567,6 +490,7 @@ export default function UserManagementMasterPage() {
             setUserUpdateLoadingId(null)
           }
         }}
+        onOptionsChanged={refreshLabOptions}
         loading={userUpdateLoadingId === editTarget?.id}
       />
 

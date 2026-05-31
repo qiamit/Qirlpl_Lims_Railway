@@ -5,14 +5,17 @@ import { ClientsTableFooterBar } from './ClientsFooterBar'
 import { ClientsForm } from './ClientsForm'
 import { ClientsHeaderBar } from './ClientsHeaderBar'
 import { ClientsTable } from './ClientsTable'
+import { buildClientsAssistantContext } from './buildClientsAssistantContext'
 import {
   DEFAULT_COUNTRY,
   DEFAULT_STATE,
   emptyClientForm,
+  formatClientAddress,
   isValidEmail,
   isValidGst,
   isValidIndianPin,
   isValidMobile,
+  toContinuousText,
   type ClientForm as ClientFormType,
   type ClientRow,
 } from './types'
@@ -407,7 +410,7 @@ export default function ClientsMasterPage() {
           country_code: form.countryCode || null,
           mobile: form.mobile.trim() || null,
           email: form.email.trim() || null,
-          address: form.address.trim() || null,
+          address: toContinuousText(form.address) || null,
           pin_code: form.pinCode.trim() || null,
           district: form.district.trim() || null,
           state: form.state || null,
@@ -544,6 +547,11 @@ export default function ClientsMasterPage() {
     const start = (page - 1) * pageSize
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, page, pageSize])
+
+  const assistantContext = useMemo(
+    () => buildClientsAssistantContext(filteredRows, search),
+    [filteredRows, search],
+  )
 
   const toggleRow = (id: string) => {
     setSelectedIds((prev) => {
@@ -775,6 +783,8 @@ export default function ClientsMasterPage() {
           setPage(1)
         }}
         onNew={handleNew}
+        assistantContext={assistantContext}
+        onAssistantDataChanged={() => void loadClients()}
       />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -1014,7 +1024,7 @@ function buildClientsPrintHtml(rows: ClientRow[]) {
 
   const cards = rows
     .map((r) => {
-      const address = [r.address, r.district, r.pin_code, r.state, r.country].filter(Boolean).join(', ') || '-'
+      const address = formatClientAddress(r)
       const contactLine = [
         `Contact: ${r.contact_person_name || '-'}`,
         `Mobile: ${(`${r.country_code || ''} ${r.mobile || ''}`.trim() || '-')}`,

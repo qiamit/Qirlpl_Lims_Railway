@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { SampleRow } from '../types'
-import { Plus, Trash2, FileText } from 'lucide-react'
+import { Plus, Trash2, FileText, FolderOpen } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 
 export type AllocationSection = {
@@ -45,6 +45,7 @@ export function SampleAllocationForm({
   onChange,
   onSave,
   onClose,
+  saveLoading = false,
   samples,
   departments,
   designations,
@@ -57,6 +58,7 @@ export function SampleAllocationForm({
   onChange: (next: SampleAllocationFormState) => void
   onSave: () => void
   onClose: () => void
+  saveLoading?: boolean
   samples: SampleRow[]
   departments: string[]
   designations: string[]
@@ -140,6 +142,63 @@ export function SampleAllocationForm({
   }
 
   const fmt = (v: string | null | undefined) => (v != null && String(v).trim() !== '' ? String(v).trim() : '—')
+
+  const isCodeId = currentSample?.test_report_is_code_id ?? null
+  const IS_CODE_FILES_BUCKET = 'is-code-files'
+
+  const getSignedUrlForIsCodeFile = async (storagePath: string): Promise<string | undefined> => {
+    try {
+      const { data, error } = await supabase.storage.from(IS_CODE_FILES_BUCKET).createSignedUrl(storagePath, 60 * 10)
+      if (error) throw error
+      return data?.signedUrl
+    } catch {
+      return undefined
+    }
+  }
+
+  const openViewIsCodeFiles = async () => {
+    if (!isCodeId || !form.isCodeLabel) return
+    const win = window.open('', '_blank', 'width=700,height=500')
+    if (!win) return
+    const esc = (s: string) =>
+      String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>IS Code Files</title><style>body{font-family:ui-sans-serif,system-ui,sans-serif;margin:16px;}h1{font-size:18px;} .muted{color:#64748b;font-size:12px;margin-bottom:12px;} .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;} .name{flex:1;} .btn{padding:6px 12px;border-radius:8px;background:#0f172a;color:white;text-decoration:none;font-size:12px;} .btn:hover{background:#1e293b;} .empty{color:#64748b;padding:18px;border:1px dashed #cbd5e1;border-radius:8px;}</style></head><body><h1>IS Code Files</h1><div class="muted">${esc(form.isCodeLabel)}</div><div class="muted">Loading…</div></body></html>`)
+    win.document.close()
+
+    const { data: fileList, error } = await supabase
+      .from('is_code_files')
+      .select('id, file_name, storage_path')
+      .eq('is_code_id', isCodeId)
+      .order('created_at', { ascending: false })
+    if (error) {
+      win.document.open()
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>IS Code Files</title></head><body><h1>IS Code Files</h1><p>Failed to load files.</p></body></html>`)
+      win.document.close()
+      return
+    }
+    const list = Array.isArray(fileList) ? fileList : []
+    const withUrls: { file_name: string; url?: string }[] = []
+    for (const f of list) {
+      const url = await getSignedUrlForIsCodeFile((f as { storage_path: string }).storage_path)
+      withUrls.push({ file_name: (f as { file_name: string }).file_name, url })
+    }
+    const items =
+      withUrls.length === 0
+        ? '<div class="empty">No files in IS Code directory for this code.</div>'
+        : withUrls
+            .map(
+              (f) =>
+                `<div class="row"><span class="name">${esc(f.file_name)}</span>${f.url ? `<a class="btn" href="${esc(f.url)}" target="_blank" rel="noreferrer">View</a>` : '<span class="muted">—</span>'}</div>`,
+            )
+            .join('')
+    win.document.open()
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>IS Code Files</title><style>body{font-family:ui-sans-serif,system-ui,sans-serif;margin:16px;}h1{font-size:18px;} .muted{color:#64748b;font-size:12px;margin-bottom:12px;} .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;} .name{flex:1;} .btn{padding:6px 12px;border-radius:8px;background:#0f172a;color:white;text-decoration:none;font-size:12px;} .btn:hover{background:#1e293b;} .empty{color:#64748b;padding:18px;border:1px dashed #cbd5e1;border-radius:8px;}</style></head><body><h1>IS Code Files</h1><div class="muted">${esc(form.isCodeLabel)}</div>${items}</body></html>`)
+    win.document.close()
+  }
 
   const updateSection = (index: number, patch: Partial<AllocationSection>) => {
     const next = form.sections.map((s, i) => {
@@ -274,6 +333,21 @@ export function SampleAllocationForm({
               type="button"
               variant="outline"
               size="sm"
+              onClick={() => void openViewIsCodeFiles()}
+              disabled={!form.sampleId || !isCodeId}
+              title={
+                isCodeId
+                  ? `View IS Code files for ${form.isCodeLabel || 'selected standard'}`
+                  : 'Select an SRF with a linked IS Code to view files'
+              }
+            >
+              <FolderOpen className="mr-1 h-4 w-4" />
+              View IS Code File
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={openSampleDetails}
               disabled={!form.sampleId}
             >
@@ -305,7 +379,7 @@ export function SampleAllocationForm({
           <div className="space-y-3">
             {form.sections.map((sec, index) => (
               <div
-                key={sec.sectionCode + index}
+                key={sec.id ?? `section-row-${index}`}
                 className="grid grid-cols-[1fr_1fr_1fr_1fr_2.25rem] items-end gap-2 rounded-md border p-3"
               >
                 <div className="space-y-1 min-w-0">
@@ -315,6 +389,7 @@ export function SampleAllocationForm({
                     onChange={(e) => updateSection(index, { sectionCode: e.target.value })}
                     placeholder="Code"
                     className="h-9"
+                    aria-label={`Section code row ${index + 1}`}
                   />
                 </div>
                 <div className="space-y-1 min-w-0">
@@ -394,11 +469,11 @@ export function SampleAllocationForm({
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" onClick={onClose} disabled={saveLoading}>
           Cancel
         </Button>
-        <Button type="button" onClick={onSave} disabled={!canSave}>
-          Save allocation
+        <Button type="button" onClick={onSave} disabled={!canSave || saveLoading}>
+          {saveLoading ? 'Saving…' : 'Save allocation'}
         </Button>
       </div>
 

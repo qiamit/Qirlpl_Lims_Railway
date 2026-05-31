@@ -1,4 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
+import {
+  confirmDestructiveDelete,
+  deleteSamplesByIds,
+} from '@/features/sample-handling/shared/deleteSampleRecords'
 import { supabase } from '@/lib/supabaseClient'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AddClientDialog } from './AddClientDialog'
@@ -7,13 +13,24 @@ import { SampleReceivingHeaderBar } from './SampleReceivingHeaderBar'
 import { SampleReceivingForm } from './SampleReceivingForm'
 import { SampleReceivingTable } from './SampleReceivingTable'
 import { SampleReceivingTableFooterBar } from './SampleReceivingFooterBar'
+import { buildSampleReceivingAssistantContext } from './buildSampleReceivingAssistantContext'
 import {
+  isSampleReceivingEditLocked,
+  SAMPLE_RECEIVING_EDIT_LOCKED_TITLE,
+} from './sampleReceivingEditLock'
+import {
+  RECEIVING_REPORT_TYPES,
   addDays,
   emptySampleReceivingForm,
   normalizeText,
   type SampleRow,
   type SampleReceivingForm as FormType,
 } from '../types'
+import { generateNextSrfNumber } from './generateNextSrfNumber'
+import { buildSrfPrintHtml } from './buildSrfPrintHtml'
+import { outputSrfDocument } from './outputSrfDocument'
+import { fetchSrfPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
+import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/report-preparation/reportScopeConfig'
 
 const STAGE = 'receiving' as const
 const BUCKET = 'sample-client-references'
@@ -33,33 +50,9 @@ function toCsv(headers: string[], rows: Array<Record<string, string>>) {
   return [headers.map(esc).join(','), ...rows.map((r) => headers.map((h) => esc(r[h] ?? '')).join(','))].join('\n')
 }
 
-/** Generate next SRF: prefix from lab_prefixes (name='SRF') + yymmdd + 2-digit serial, reset per date. Pass dateStr (YYYY-MM-DD) to use that date. */
-async function generateNextSrfNumber(dateStr?: string): Promise<string> {
-  let yymmdd: string
-  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    const [y, m, d] = dateStr.split('-')
-    yymmdd = y.slice(-2) + m + d
-  } else {
-    const today = new Date()
-    yymmdd = today.getFullYear().toString().slice(-2) +
-      String(today.getMonth() + 1).padStart(2, '0') +
-      String(today.getDate()).padStart(2, '0')
-  }
-  let prefix = 'QI/SRF'
-  const { data: prefixRows } = await supabase.from('lab_prefixes').select('name, prefix').eq('name', 'SRF').limit(1)
-  if (prefixRows?.[0]?.prefix) prefix = String(prefixRows[0].prefix).trim() || prefix
-  const pattern = `${prefix}/${yymmdd}-%`
-  const { data: existing } = await supabase.from('samples').select('srf_number').not('srf_number', 'is', null).like('srf_number', pattern)
-  const numbers = (existing ?? []).map((r: { srf_number?: string }) => r.srf_number).filter((n): n is string => typeof n === 'string')
-  const serials = numbers.map((n) => {
-    const part = n.split('-')[1]
-    return part ? parseInt(part, 10) : 0
-  }).filter((s) => !Number.isNaN(s))
-  const nextSerial = serials.length > 0 ? Math.max(...serials) + 1 : 1
-  return `${prefix}/${yymmdd}-${String(nextSerial).padStart(2, '0')}`
-}
-
 export default function SampleReceivingMasterPage() {
+  const { designation } = useAuth()
+  const showDelete = canDeleteSampleHandlingRecords(designation)
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -90,8 +83,13 @@ export default function SampleReceivingMasterPage() {
   const [clientReferencesFile, setClientReferencesFile] = useState<File | null>(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
   const [addIsCodeOpen, setAddIsCodeOpen] = useState(false)
+  const [sampleIdsInAllocation, setSampleIdsInAllocation] = useState<Set<string>>(() => new Set())
 
-  const canSave = !saveLoading && (normalizeText(form.sampleCode).length > 0 || form.customerId.trim().length > 0)
+  const isNewReport = form.receivingReportType === RECEIVING_REPORT_TYPES[0]
+  const canSave =
+    !saveLoading &&
+    (normalizeText(form.sampleCode).length > 0 || form.customerId.trim().length > 0) &&
+    (isNewReport || !!editingId || normalizeText(form.referencedSrfNumber).length > 0)
 
   const loadClients = async () => {
     try {
@@ -159,19 +157,35 @@ export default function SampleReceivingMasterPage() {
     setListError(null)
     setListLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('samples')
-        .select('*, clients(company_name)')
-        .order('date_of_sample_receiving', { ascending: false, nullsFirst: false })
-        .order('srf_number', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(5000)
+      const [samplesResult, allocationResult] = await Promise.all([
+        supabase
+          .from('samples')
+          .select('*, clients(company_name)')
+          .order('date_of_sample_receiving', { ascending: false, nullsFirst: false })
+          .order('srf_number', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(5000),
+        supabase.from('sample_allocations').select('sample_id'),
+      ])
+
+      const { data, error } = samplesResult
       if (error) throw error
+
+      const allocRows = Array.isArray(allocationResult.data) ? allocationResult.data : []
+      setSampleIdsInAllocation(
+        new Set(
+          allocRows
+            .map((r) => String((r as { sample_id?: unknown }).sample_id ?? '').trim())
+            .filter((id) => id.length > 0),
+        ),
+      )
+
       const list = (Array.isArray(data) ? data : []).map((r: Record<string, unknown>) => {
         const clients = r.clients as { company_name?: string } | null
         return {
           id: r.id as string,
           srf_number: (r.srf_number as string) ?? null,
+          referenced_srf_number: (r.referenced_srf_number as string) ?? null,
           date_of_sample_receiving: (r.date_of_sample_receiving as string) ?? null,
           sample_code: (r.sample_code as string) ?? null,
           sample_qr_code: (r.sample_qr_code as string) ?? null,
@@ -209,6 +223,7 @@ export default function SampleReceivingMasterPage() {
           tentative_date_required: (r.tentative_date_required as string) ?? null,
           tentative_date_by_lab: (r.tentative_date_by_lab as string) ?? null,
           sample_receiving_status: (r.sample_receiving_status as string) ?? null,
+          receiving_report_type: (r.receiving_report_type as string) ?? null,
           client_references_path: (r.client_references_path as string) ?? null,
           collection_date: (r.collection_date as string) ?? null,
           collection_location: (r.collection_location as string) ?? null,
@@ -263,6 +278,8 @@ export default function SampleReceivingMasterPage() {
 
   const rowToForm = (row: SampleRow): FormType => ({
     srfNumber: row.srf_number ?? '',
+    referencedSrfNumber:
+      row.referenced_srf_number ?? stripReceivingReportSuffix(row.srf_number ?? ''),
     dateOfSampleReceiving: row.date_of_sample_receiving?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     customerId: row.client_id ?? '',
     testReportAsPerIsId: row.test_report_is_code_id ?? '',
@@ -294,10 +311,15 @@ export default function SampleReceivingMasterPage() {
     tentativeDateRequired: row.tentative_date_required?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     tentativeDateByLab: row.tentative_date_by_lab?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     sampleReceivingStatus: row.sample_receiving_status ?? '',
+    receivingReportType: row.receiving_report_type ?? 'New Report',
     clientReferencesPath: row.client_references_path ?? '',
   })
 
   const handleEdit = (row: SampleRow) => {
+    if (isSampleReceivingEditLocked(row, sampleIdsInAllocation)) {
+      setSaveMessage(SAMPLE_RECEIVING_EDIT_LOCKED_TITLE)
+      return
+    }
     setSaveMessage(null)
     setEditingId(row.id)
     setForm(rowToForm(row))
@@ -306,11 +328,52 @@ export default function SampleReceivingMasterPage() {
     setShowForm(true)
   }
 
+  const handleReportTypeChange = (reportType: string) => {
+    void (async () => {
+      if (reportType === RECEIVING_REPORT_TYPES[0]) {
+        const srf = await generateNextSrfNumber(form.dateOfSampleReceiving)
+        setForm((prev) => ({
+          ...prev,
+          receivingReportType: reportType,
+          referencedSrfNumber: '',
+          srfNumber: srf,
+        }))
+      } else {
+        setForm((prev) => {
+          const base =
+            stripReceivingReportSuffix(prev.referencedSrfNumber) ||
+            stripReceivingReportSuffix(prev.srfNumber)
+          return {
+            ...prev,
+            receivingReportType: reportType,
+            referencedSrfNumber: base,
+            srfNumber: base ? buildReceivingSrfFromReference(base, reportType) : '',
+          }
+        })
+      }
+    })()
+  }
+
+  const handleSelectReferencedSrf = (sampleId: string) => {
+    const row = rows.find((r) => r.id === sampleId)
+    if (!row) return
+    const base = stripReceivingReportSuffix(row.srf_number ?? '')
+    const filled = rowToForm(row)
+    filled.receivingReportType = form.receivingReportType
+    filled.referencedSrfNumber = base
+    filled.sampleCode = ''
+    filled.clientReferencesPath = ''
+    filled.srfNumber = buildReceivingSrfFromReference(base, form.receivingReportType)
+    setForm(filled)
+    setClientReferencesFile(null)
+  }
+
   const handleCopy = (row: SampleRow) => {
     setSaveMessage(null)
     setEditingId(null)
     const base = rowToForm(row)
     base.srfNumber = ''
+    base.referencedSrfNumber = ''
     base.sampleCode = ''
     base.clientReferencesPath = ''
     setForm(base)
@@ -325,8 +388,24 @@ export default function SampleReceivingMasterPage() {
       setSaveLoading(true)
       try {
         const isNew = !editingId
+        const reportIsNew = form.receivingReportType === RECEIVING_REPORT_TYPES[0]
+        let referencedSrf: string | null = null
         let srfNumber = form.srfNumber.trim()
-        if (isNew && !srfNumber) srfNumber = await generateNextSrfNumber()
+
+        if (isNew) {
+          if (reportIsNew) {
+            if (!srfNumber) srfNumber = await generateNextSrfNumber(form.dateOfSampleReceiving)
+          } else {
+            const base = stripReceivingReportSuffix(normalizeText(form.referencedSrfNumber))
+            if (!base) {
+              setSaveMessage('Select a previous SRF number from the search list.')
+              setSaveLoading(false)
+              return
+            }
+            referencedSrf = base
+            srfNumber = buildReceivingSrfFromReference(base, form.receivingReportType)
+          }
+        }
         let clientRefPath: string | null = form.clientReferencesPath || null
         if (clientReferencesFile) {
           const ext = clientReferencesFile.name.split('.').pop() || 'bin'
@@ -369,6 +448,8 @@ export default function SampleReceivingMasterPage() {
           tentative_date_required: form.tentativeDateRequired.trim() ? form.tentativeDateRequired : null,
           tentative_date_by_lab: form.tentativeDateByLab.trim() ? form.tentativeDateByLab : null,
           sample_receiving_status: normalizeText(form.sampleReceivingStatus) || null,
+          receiving_report_type: normalizeText(form.receivingReportType) || null,
+          referenced_srf_number: referencedSrf,
           client_references_path: clientRefPath,
           stage: STAGE,
           status: form.sampleReceivingStatus.trim() || 'registered',
@@ -403,6 +484,17 @@ export default function SampleReceivingMasterPage() {
     })
   }, [rows, search])
 
+  const assistantContext = useMemo(
+    () =>
+      buildSampleReceivingAssistantContext({
+        rows: filteredRows,
+        search,
+        clients: clientOptions,
+        isCodes: isCodeOptions,
+      }),
+    [filteredRows, search, clientOptions, isCodeOptions],
+  )
+
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
   useEffect(() => { setPage(1); setJumpTo('') }, [search, pageSize])
   const pagedRows = useMemo(() => filteredRows.slice((page - 1) * pageSize, page * pageSize), [filteredRows, page, pageSize])
@@ -424,30 +516,74 @@ export default function SampleReceivingMasterPage() {
   }
   const selectedRows = useMemo(() => rows.filter((r) => selectedIds.has(r.id)), [rows, selectedIds])
 
-  const buildPrintHtml = (list: SampleRow[]) => {
-    const esc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-    const rowsHtml = list.map((r) => `<tr><td>${esc(r.srf_number ?? '')}</td><td>${esc(r.date_of_sample_receiving ?? '')}</td><td>${esc(r.client_name ?? '')}</td><td>${esc(r.sample_code ?? '')}</td><td>${esc(r.sample_qr_code ?? '')}</td><td>${esc(r.sample_description ?? '')}</td><td>${esc(r.tentative_date_required ?? '')}</td><td>${esc(r.tentative_date_by_lab ?? '')}</td><td>${esc(r.sample_receiving_status ?? '')}</td></tr>`).join('')
-    return `<!doctype html><html><head><meta charset="utf-8"/><title>Sample Receiving</title><style>body{font-family:ui-sans-serif,sans-serif;padding:18px;}table{border-collapse:collapse;width:100%;font-size:12px;}th,td{border:1px solid #cbd5e1;padding:8px;}th{background:#f1f5f9;}</style></head><body><h1>Sample Receiving</h1><table><thead><tr><th>SRF Number</th><th>Date</th><th>Customer</th><th>Sample Code</th><th>QR Code</th><th>Description</th><th>By Customer</th><th>By Lab</th><th>Status</th></tr></thead><tbody>${rowsHtml}</tbody></table></body></html>`
-  }
+  const labName = useMemo(() => {
+    if (typeof window === 'undefined') return 'Quality International Research & Laboratories Pvt. Ltd.'
+    return window.localStorage.getItem('labSettings.labName') || 'Quality International Research & Laboratories Pvt. Ltd.'
+  }, [])
 
   const handlePrintSelected = () => {
     const exportRows = selectedRows.length > 0 ? selectedRows : filteredRows
     if (exportRows.length === 0) return
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
-    document.body.appendChild(iframe)
-    const doc = iframe.contentDocument
-    const win = iframe.contentWindow
-    if (!doc || !win) { document.body.removeChild(iframe); return }
-    doc.open()
-    doc.write(buildPrintHtml(exportRows))
-    doc.close()
-    iframe.onload = () => { win.print(); setTimeout(() => { try { document.body.removeChild(iframe) } catch {} }, 500) }
+
+    void (async () => {
+      setSaveLoading(true)
+      setSaveMessage(null)
+      try {
+        const printSettings = await fetchSrfPrintSettings()
+        const { headerUrl, footerUrl } = await resolveNamedLetterheadTemplates(
+          printSettings.headerTemplateName,
+          printSettings.footerTemplateName,
+        )
+        const html = buildSrfPrintHtml({
+          rows: exportRows,
+          labName,
+          printSettings,
+          headerUrl,
+          footerUrl,
+          filterNote: search.trim() || undefined,
+        })
+        const filenameBase = exportRows.length === 1 && exportRows[0]?.srf_number
+          ? `SRF-${exportRows[0].srf_number}`
+          : 'sample-receiving-list'
+        await outputSrfDocument(html, filenameBase)
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to print SRF list')
+      } finally {
+        setSaveLoading(false)
+      }
+    })()
+  }
+
+  const handleDeleteSelected = () => {
+    const ids = selectedRows.map((r) => r.id)
+    if (!confirmDestructiveDelete(ids.length, 'SRF')) return
+    void (async () => {
+      setSaveLoading(true)
+      setSaveMessage(null)
+      try {
+        const count = await deleteSamplesByIds(ids)
+        setSelectedIds(new Set())
+        setSaveMessage(`Deleted ${count} SRF(s).`)
+        await loadRows()
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to delete')
+      } finally {
+        setSaveLoading(false)
+      }
+    })()
   }
 
   return (
     <div className="p-6 space-y-5">
-      <SampleReceivingHeaderBar search={search} onSearchChange={setSearch} pageSize={pageSize} onPageSizeChange={(s) => { setPageSize(s); setPage(1) }} onNew={handleNew} />
+      <SampleReceivingHeaderBar
+        search={search}
+        onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
+        onNew={handleNew}
+        assistantContext={assistantContext}
+        onAssistantDataChanged={() => void loadRows()}
+      />
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="w-[62.5vw] max-w-[62.5vw] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
@@ -480,24 +616,65 @@ export default function SampleReceivingMasterPage() {
             onAddIsCode={() => setAddIsCodeOpen(true)}
             onFileSelect={setClientReferencesFile}
             clientReferencesFileName={clientReferencesFile?.name}
+            editingSampleId={editingId}
+            srfSearchRows={rows}
+            onReportTypeChange={handleReportTypeChange}
+            onSelectReferencedSrf={handleSelectReferencedSrf}
             onDateOfSampleReceivingChange={async (newDate) => {
-              const srf = await generateNextSrfNumber(newDate)
               const tent = addDays(newDate, 10)
-              setForm((prev) => ({
-                ...prev,
-                dateOfSampleReceiving: newDate,
-                srfNumber: srf,
-                tentativeDateRequired: tent,
-                tentativeDateByLab: tent,
-              }))
+              if (form.receivingReportType === RECEIVING_REPORT_TYPES[0]) {
+                const srf = await generateNextSrfNumber(newDate)
+                setForm((prev) => ({
+                  ...prev,
+                  dateOfSampleReceiving: newDate,
+                  srfNumber: srf,
+                  tentativeDateRequired: tent,
+                  tentativeDateByLab: tent,
+                }))
+              } else {
+                setForm((prev) => ({
+                  ...prev,
+                  dateOfSampleReceiving: newDate,
+                  tentativeDateRequired: tent,
+                  tentativeDateByLab: tent,
+                }))
+              }
             }}
             onAddReceivingOption={onAddReceivingOption}
             onDeleteReceivingOption={onDeleteReceivingOption}
           />
         </DialogContent>
       </Dialog>
-      <SampleReceivingTable rows={pagedRows} loading={listLoading} error={listError} selectedIds={selectedIds} onToggle={toggleRow} onToggleAll={toggleAllOnPage} onEdit={handleEdit} onCopy={handleCopy} />
-      <SampleReceivingTableFooterBar message={saveMessage} loading={saveLoading} selectedCount={selectedIds.size} onPrintSelected={handlePrintSelected} page={page} pageCount={pageCount} onPrevPage={() => setPage((p) => Math.max(1, p - 1))} onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))} jumpTo={jumpTo} onJumpToChange={setJumpTo} onJumpToGo={() => { const n = Number(jumpTo); if (Number.isFinite(n) && n > 0) setPage(Math.min(pageCount, Math.max(1, Math.floor(n)))); setJumpTo('') }} />
+      <SampleReceivingTable
+        rows={pagedRows}
+        loading={listLoading}
+        error={listError}
+        selectedIds={selectedIds}
+        onToggle={toggleRow}
+        onToggleAll={toggleAllOnPage}
+        onEdit={handleEdit}
+        onCopy={handleCopy}
+        sampleIdsInAllocation={sampleIdsInAllocation}
+      />
+      <SampleReceivingTableFooterBar
+        message={saveMessage}
+        loading={saveLoading}
+        selectedCount={selectedIds.size}
+        onPrintSelected={handlePrintSelected}
+        showDelete={showDelete}
+        onDeleteSelected={handleDeleteSelected}
+        page={page}
+        pageCount={pageCount}
+        onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
+        onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
+        jumpTo={jumpTo}
+        onJumpToChange={setJumpTo}
+        onJumpToGo={() => {
+          const n = Number(jumpTo)
+          if (Number.isFinite(n) && n > 0) setPage(Math.min(pageCount, Math.max(1, Math.floor(n))))
+          setJumpTo('')
+        }}
+      />
       <AddClientDialog
         open={addClientOpen}
         onOpenChange={setAddClientOpen}

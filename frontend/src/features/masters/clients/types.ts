@@ -182,3 +182,53 @@ export const emptyClientForm = (): ClientForm => ({
   paymentTerm: '100 % Advance',
   remark: '',
 })
+
+export function toContinuousText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+export function formatClientAddress(
+  row: Pick<ClientRow, 'address' | 'district' | 'pin_code' | 'state' | 'country'>,
+): string {
+  const parts = [row.address, row.district, row.pin_code, row.state, row.country]
+    .filter((part): part is string => Boolean(part?.trim()))
+    .map((part) => toContinuousText(part))
+  return parts.length > 0 ? parts.join(', ') : '-'
+}
+
+/** Firm name + full postal address (address, city/district, PIN, state, country) as continuous text. */
+export function formatClientCustomerDetails(
+  row:
+    | Partial<Pick<ClientRow, 'company_name' | 'address' | 'district' | 'pin_code' | 'state' | 'country'>>
+    | null
+    | undefined,
+  options?: { fallbackFirmName?: string | null },
+): string | null {
+  const firmName = (row?.company_name?.trim() || options?.fallbackFirmName?.trim() || '').trim()
+  const segments: string[] = []
+  if (firmName) segments.push(toContinuousText(firmName))
+  for (const field of [row?.address, row?.district, row?.pin_code, row?.state, row?.country]) {
+    const trimmed = field?.trim()
+    if (trimmed) segments.push(toContinuousText(trimmed))
+  }
+  return segments.length > 0 ? segments.join(', ') : null
+}
+
+export function formatClientContact(
+  row: Pick<ClientRow, 'contact_person_name' | 'email' | 'country_code' | 'mobile'>,
+): string {
+  const { name, email, mobile } = formatClientContactLines(row)
+  const parts = [name, email, mobile].filter((part) => part !== '-')
+  return parts.length > 0 ? parts.join(', ') : '-'
+}
+
+export function formatClientContactLines(
+  row: Pick<ClientRow, 'contact_person_name' | 'email' | 'country_code' | 'mobile'>,
+): { name: string; email: string; mobile: string } {
+  const phone = toContinuousText(`${row.country_code || ''} ${row.mobile || ''}`)
+  return {
+    name: row.contact_person_name?.trim() ? toContinuousText(row.contact_person_name) : '-',
+    email: row.email?.trim() ? toContinuousText(row.email) : '-',
+    mobile: phone || '-',
+  }
+}

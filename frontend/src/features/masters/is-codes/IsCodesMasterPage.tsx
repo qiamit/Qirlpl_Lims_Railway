@@ -5,6 +5,7 @@ import { IsCodesHeaderBar } from './IsCodesHeaderBar'
 import { IsCodesForm } from './IsCodesForm'
 import { IsCodesTable } from './IsCodesTable'
 import { IsCodesTableFooterBar } from './IsCodesFooterBar'
+import { buildIsCodesListAssistantContext } from './buildIsCodeAssistantContext'
 import { emptyIsCodeForm, normalizeText, type IsCodeFileRow, type IsCodeForm, type IsCodeRow } from './types'
 
 const BUCKET = 'is-code-files'
@@ -94,7 +95,8 @@ export default function IsCodesMasterPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const filesPopupRef = useRef<Window | null>(null)
-
+  const filesPopupIsCodeIdRef = useRef<string | null>(null)
+  const filesPopupTitleRef = useRef<string>('IS Code')
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const [showForm, setShowForm] = useState(false)
@@ -167,21 +169,66 @@ export default function IsCodesMasterPage() {
     void loadAspects()
   }, [])
 
+  const deletePopupFile = async (file: { id: string; file_name: string; storage_path: string }) => {
+    if (!file.storage_path) return
+    const { error: stErr } = await supabase.storage.from(BUCKET).remove([file.storage_path])
+    if (stErr) throw stErr
+    if (file.id && !file.id.startsWith('storage:')) {
+      const { error: dbErr } = await supabase.from('is_code_files').delete().eq('id', file.id)
+      if (dbErr) throw dbErr
+    } else {
+      const { error: dbErr } = await supabase.from('is_code_files').delete().eq('storage_path', file.storage_path)
+      if (dbErr) throw dbErr
+    }
+  }
+
+  const uploadFilesFromPopupPayload = async (
+    isCodeId: string,
+    payloads: Array<{ name: string; mimeType: string; buffer: ArrayBuffer }>,
+  ) => {
+    const files = payloads.map(
+      (p) => new File([p.buffer], p.name, { type: p.mimeType || 'application/octet-stream' }),
+    )
+    await uploadFiles(isCodeId, files)
+  }
+
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as any
+      const data = event.data as {
+        type?: string
+        file?: IsCodeFileRow
+        isCodeId?: string
+        files?: Array<{ name: string; mimeType: string; buffer: ArrayBuffer }>
+      } | null
       if (!data || typeof data !== 'object') return
+      if (data.type === 'is-code-files:upload') {
+        const isCodeId = data.isCodeId ?? filesPopupIsCodeIdRef.current
+        const payloads = data.files
+        if (!isCodeId || !payloads?.length) return
+        void (async () => {
+          setSaveMessage(null)
+          setSaveLoading(true)
+          try {
+            await uploadFilesFromPopupPayload(isCodeId, payloads)
+            await refreshFilesPopup(isCodeId)
+            setSaveMessage('File(s) uploaded.')
+          } catch (err) {
+            setSaveMessage(formatSupabaseError(err))
+          } finally {
+            setSaveLoading(false)
+          }
+        })()
+        return
+      }
       if (data.type === 'is-code-files:delete') {
-        const file = data.file as IsCodeFileRow | undefined
-        if (!file?.id || !file.storage_path) return
+        const file = data.file
+        if (!file?.storage_path) return
+        const isCodeId = filesPopupIsCodeIdRef.current ?? editingId
         void (async () => {
           try {
-            const { error: stErr } = await supabase.storage.from(BUCKET).remove([file.storage_path])
-            if (stErr) throw stErr
-            const { error: dbErr } = await supabase.from('is_code_files').delete().eq('id', file.id)
-            if (dbErr) throw dbErr
-            if (editingId) await loadFiles(editingId)
-            if (editingId) await refreshFilesPopup(editingId)
+            await deletePopupFile(file)
+            if (isCodeId) await loadFiles(isCodeId)
+            if (isCodeId) await refreshFilesPopup(isCodeId)
           } catch (err) {
             setSaveMessage(formatSupabaseError(err))
           }
@@ -222,6 +269,11 @@ export default function IsCodesMasterPage() {
     const start = (page - 1) * pageSize
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, page, pageSize])
+
+  const assistantContext = useMemo(
+    () => buildIsCodesListAssistantContext(filteredRows, search),
+    [filteredRows, search],
+  )
 
   const toggleRow = (id: string) => {
     setSelectedIds((prev) => {
@@ -430,7 +482,13 @@ export default function IsCodesMasterPage() {
 </body>
 </html>`
 
+  const formatIsCodeDisplay = (row: Pick<IsCodeRow, 'is_number' | 'revision_year'>) => {
+    const rev = normalizeText(row.revision_year ?? '')
+    return rev ? `${row.is_number}: ${rev}` : row.is_number
+  }
+
   const buildFilesPopupHtml = (
+    isCodeId: string,
     isCodeNumber: string,
     files: PopupFile[],
   ) => {
@@ -474,31 +532,90 @@ export default function IsCodesMasterPage() {
     .btn:hover{background:#f8fafc;}
     .danger{border-color:#fecaca; color:#991b1b;}
     .danger:hover{background:#fef2f2;}
+    .primary{background:#0f172a; color:#fff; border-color:#0f172a;}
+    .primary:hover{background:#1e293b;}
+    .toolbar{display:flex; gap:8px; margin-bottom:12px;}
     .empty{padding:18px; border:1px dashed #cbd5e1; border-radius:8px; color:#64748b;}
   </style>
 </head>
 <body>
   <h1>IS Code Files</h1>
   <div class="muted">${esc(isCodeNumber)}</div>
-  ${files.length ? items : '<div class="empty">No files.</div>'}
+  <div class="toolbar">
+    <button type="button" class="btn primary" id="add-files-btn">Add Files</button>
+    <input type="file" id="popup-file-input" multiple style="display:none" />
+  </div>
+  <div class="muted" id="upload-status" style="display:none;"></div>
+  ${files.length ? items : '<div class="empty">No files yet. Use Add Files to upload.</div>'}
 
   <script>
-    window.addEventListener('click', function(e){
-      var el = e.target;
-      if (!el || !el.getAttribute) return;
-      if (el.getAttribute('data-delete') !== '1') return;
-      var name = el.getAttribute('data-name') || '';
-      var ok = window.confirm('Delete file ' + name + '?');
-      if (!ok) return;
-      var file = {
-        id: el.getAttribute('data-id'),
-        file_name: name,
-        storage_path: el.getAttribute('data-path')
-      };
-      if (window.opener && window.opener.postMessage) {
-        window.opener.postMessage({ type: 'is-code-files:delete', file: file }, '*');
+    (function(){
+      var isCodeId = ${JSON.stringify(isCodeId)};
+      var addBtn = document.getElementById('add-files-btn');
+      var fileInput = document.getElementById('popup-file-input');
+      var statusEl = document.getElementById('upload-status');
+      function setStatus(msg) {
+        if (!statusEl) return;
+        statusEl.textContent = msg;
+        statusEl.style.display = msg ? 'block' : 'none';
       }
-    });
+      if (!window.opener) {
+        setStatus('Cannot upload: opener window not available. Close and open View Files again from the app.');
+        if (addBtn) addBtn.disabled = true;
+      }
+      if (addBtn && fileInput) {
+        addBtn.addEventListener('click', function(){
+          fileInput.click();
+        });
+        fileInput.addEventListener('change', function(){
+          var list = fileInput.files;
+          if (!list || !list.length) return;
+          if (!window.opener || !window.opener.postMessage) {
+            setStatus('Cannot upload: main app window not found.');
+            fileInput.value = '';
+            return;
+          }
+          setStatus('Uploading ' + list.length + ' file(s)…');
+          var payloads = [];
+          var pending = list.length;
+          var failed = false;
+          for (var i = 0; i < list.length; i++) {
+            (function(file){
+              file.arrayBuffer().then(function(buf){
+                payloads.push({ name: file.name, mimeType: file.type || 'application/octet-stream', buffer: buf });
+                pending--;
+                if (pending === 0 && !failed) {
+                  var transfer = payloads.map(function(p){ return p.buffer; });
+                  window.opener.postMessage({ type: 'is-code-files:upload', isCodeId: isCodeId, files: payloads }, '*', transfer);
+                  fileInput.value = '';
+                  setStatus('Sent to app for upload. List will refresh shortly.');
+                }
+              }).catch(function(){
+                failed = true;
+                setStatus('Failed to read selected file(s).');
+                fileInput.value = '';
+              });
+            })(list[i]);
+          }
+        });
+      }
+      window.addEventListener('click', function(e){
+        var el = e.target;
+        if (!el || !el.getAttribute) return;
+        if (el.getAttribute('data-delete') !== '1') return;
+        var name = el.getAttribute('data-name') || '';
+        var ok = window.confirm('Delete file ' + name + '?');
+        if (!ok) return;
+        var file = {
+          id: el.getAttribute('data-id'),
+          file_name: name,
+          storage_path: el.getAttribute('data-path')
+        };
+        if (window.opener && window.opener.postMessage) {
+          window.opener.postMessage({ type: 'is-code-files:delete', file: file }, '*');
+        }
+      });
+    })();
   </script>
 </body>
 </html>`
@@ -507,36 +624,31 @@ export default function IsCodesMasterPage() {
   const refreshFilesPopup = async (isCodeId: string) => {
     const win = filesPopupRef.current
     if (!win || win.closed) return
-    const { data, error } = await supabase
-      .from('is_code_files')
-      .select('*')
-      .eq('is_code_id', isCodeId)
-      .order('created_at', { ascending: false })
-    if (error) return
-    const list = (Array.isArray(data) ? (data as IsCodeFileRow[]) : [])
-    const withUrls: PopupFile[] = []
-    for (const f of list) {
-      try {
-        const url = await getSignedUrl(f.storage_path)
-        withUrls.push({ id: f.id, file_name: f.file_name, storage_path: f.storage_path, url })
-      } catch (err) {
-        withUrls.push({
-          id: f.id,
-          file_name: f.file_name,
-          storage_path: f.storage_path,
-          error: formatSupabaseError(err),
-        })
-      }
+    const row =
+      rows.find((r) => r.id === isCodeId) ??
+      ({
+        id: isCodeId,
+        is_number: filesPopupTitleRef.current,
+        revision_year: null,
+        title: '',
+        aspect: 'Specification' as IsCodeRow['aspect'],
+      } satisfies IsCodeRow)
+    try {
+      const files = await buildPopupFilesForIsCode(row)
+      const title = filesPopupTitleRef.current || formatIsCodeDisplay(row)
+      win.document.open()
+      win.document.write(buildFilesPopupHtml(isCodeId, title, files))
+      win.document.close()
+    } catch {
+      // keep popup as-is on refresh failure
     }
-    const title = normalizeText(form.isNumber) || 'IS Code'
-    win.document.open()
-    win.document.write(buildFilesPopupHtml(title, withUrls))
-    win.document.close()
   }
 
   const openFilesPopup = async (row: IsCodeRow) => {
     setSaveMessage(null)
     setEditingId(row.id)
+    filesPopupIsCodeIdRef.current = row.id
+    filesPopupTitleRef.current = formatIsCodeDisplay(row)
 
     const win = window.open('', '_blank', 'width=900,height=600')
     if (!win) {
@@ -552,14 +664,17 @@ export default function IsCodesMasterPage() {
     void (async () => {
       try {
         const files = await buildPopupFilesForIsCode(row)
+        const title = formatIsCodeDisplay(row)
+        filesPopupTitleRef.current = title
         win.document.open()
-        win.document.write(buildFilesPopupHtml(row.is_number, files))
+        win.document.write(buildFilesPopupHtml(row.id, title, files))
         win.document.close()
       } catch (err) {
         const msg = formatSupabaseError(err)
+        const title = formatIsCodeDisplay(row)
         win.document.open()
         win.document.write(
-          buildFilesPopupHtml(row.is_number, [
+          buildFilesPopupHtml(row.id, title, [
             { id: 'err', file_name: 'Unable to load files', storage_path: '', error: msg },
           ]),
         )
@@ -588,7 +703,7 @@ export default function IsCodesMasterPage() {
 
         const { data, error } = await supabase
           .from('is_codes')
-          .upsert(payload, { onConflict: editingId ? 'id' : 'is_number' })
+          .upsert(payload, { onConflict: editingId ? 'id' : 'is_number,revision_year' })
           .select('id')
           .single()
         if (error) throw error
@@ -738,7 +853,7 @@ export default function IsCodesMasterPage() {
           return
         }
 
-        const { error } = await supabase.from('is_codes').upsert(cleanPayloads, { onConflict: 'is_number' })
+        const { error } = await supabase.from('is_codes').upsert(cleanPayloads, { onConflict: 'is_number,revision_year' })
         if (error) throw error
 
         setSaveMessage(`Imported ${cleanPayloads.length} record(s).`)
@@ -810,7 +925,6 @@ export default function IsCodesMasterPage() {
           if (e.target) e.target.value = ''
         }}
       />
-
       <IsCodesHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -821,6 +935,8 @@ export default function IsCodesMasterPage() {
         }}
         onNew={handleNew}
         onOpenBIS={() => window.open('https://standards.bis.gov.in', '_blank', 'noreferrer')}
+        assistantContext={assistantContext}
+        onAssistantDataChanged={() => void loadIsCodes()}
       />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -867,10 +983,10 @@ export default function IsCodesMasterPage() {
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
-        onCopy={handleCopy}
         onViewFiles={(row) => {
           void openFilesPopup(row)
         }}
+        onAssistantDataChanged={() => void loadIsCodes()}
       />
 
       <IsCodesTableFooterBar

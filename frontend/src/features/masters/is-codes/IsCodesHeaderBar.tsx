@@ -2,6 +2,7 @@ import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 
 export function IsCodesHeaderBar({
   search,
@@ -10,6 +11,8 @@ export function IsCodesHeaderBar({
   onPageSizeChange,
   onNew,
   onOpenBIS,
+  assistantContext,
+  onAssistantDataChanged,
 }: {
   search: string
   onSearchChange: (value: string) => void
@@ -17,6 +20,8 @@ export function IsCodesHeaderBar({
   onPageSizeChange: (size: number) => void
   onNew: () => void
   onOpenBIS: () => void
+  assistantContext: string
+  onAssistantDataChanged?: () => void
 }) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-xl border border-border bg-card px-5 py-4 shadow-sm">
@@ -31,16 +36,29 @@ export function IsCodesHeaderBar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="5">5 / page</SelectItem>
-              <SelectItem value="10">10 / page</SelectItem>
-              <SelectItem value="20">20 / page</SelectItem>
-              <SelectItem value="50">50 / page</SelectItem>
+              <SelectItem value="5">5 / Page</SelectItem>
+              <SelectItem value="10">10 / Page</SelectItem>
+              <SelectItem value="20">20 / Page</SelectItem>
+              <SelectItem value="50">50 / Page</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <div className="flex items-center justify-end">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <QiAssistant
+            page="is-codes"
+            pageTitle="IS Code Master"
+            contextSummary={assistantContext}
+            suggestedQuestions={[
+              'Add a new IS code IS 1234:2010 titled Sample Standard',
+              'Summarize the IS codes in the current list',
+              'Update testing charges for the first IS in the list',
+              'How do I upload PDFs for an IS code?',
+            ]}
+            onDataChanged={onAssistantDataChanged}
+            enablePdfImport
+          />
           <Button type="button" variant="outline" onClick={onOpenBIS}>
             BIS Website
           </Button>

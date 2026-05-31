@@ -9,11 +9,9 @@ type UserManagementTableProps = {
   designations: string[]
   departments: string[]
   userUpdateLoadingId: string | null
-  passwordResetLoadingId: string | null
   updateUser: (userId: string, patch: { status?: 'Active' | 'Inactive'; designation?: string; departmentName?: string }) => Promise<void>
   onEdit: (user: UserAccount) => void
   onDelete: (user: UserAccount) => void
-  onResetPassword: (user: UserAccount) => void
 }
 
 export function UserManagementTable(props: UserManagementTableProps) {
@@ -106,19 +104,6 @@ export function UserManagementTable(props: UserManagementTableProps) {
                   </Select>
                 </TableCell>
                 <TableCell className="text-center">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => props.onResetPassword(user)}
-                    disabled={
-                      props.userUpdateLoadingId === user.id ||
-                      props.passwordResetLoadingId === user.id
-                    }
-                    className="mr-1"
-                  >
-                    {props.passwordResetLoadingId === user.id ? 'Sending…' : 'Reset'}
-                  </Button>
                   <Button
                     type="button"
                     variant="ghost"

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { Plus, Sparkles, Trash2, Upload, Eye } from 'lucide-react'
+import { Plus, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import {
@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import type { AccreditationBodyRow, ConformityValue, TestParameterForm, UnitRow } from './types'
+import type { AccreditationBodyRow, TestParameterForm, UnitRow } from './types'
 
 const SCIENTIFIC_SYMBOLS = [
   '±', 'µ', 'Ω', 'Δ', '∑', '√', '≤', '≥', '≈', '≠', '≡', '∝', '∫', '∂', '∇',
@@ -50,15 +50,15 @@ export function TestParameterForm({
   saveLoading,
   onSave,
   onClear,
-  isCodes,
-  accreditationBodies,
+  isCodes = [],
+  accreditationBodies = [],
   accreditationDialogOpen,
   setAccreditationDialogOpen,
   newAccreditationBody,
   setNewAccreditationBody,
   onAddAccreditationBody,
   onDeleteAccreditationBody,
-  units,
+  units = [],
   unitDialogOpen,
   setUnitDialogOpen,
   newUnitName,
@@ -66,12 +66,9 @@ export function TestParameterForm({
   onAddUnit,
   onDeleteUnit,
   onOpenAddIsCodeForm,
-  onOpenAddEquipmentForm,
-  departments,
-  designations,
-  equipments,
-  onUploadTestMethodNote,
-  testMethodNoteDownloadUrl,
+  departments = [],
+  designations = [],
+  designationsByDepartment = {},
 }: {
   form: TestParameterForm
   onChange: (next: TestParameterForm) => void
@@ -79,15 +76,15 @@ export function TestParameterForm({
   saveLoading: boolean
   onSave: () => void
   onClear: () => void
-  isCodes: Array<{ id: string; displayCode: string; searchLabel: string; defaultTestMethod: string }>
-  accreditationBodies: AccreditationBodyRow[]
+  isCodes?: Array<{ id: string; displayCode: string; searchLabel: string; defaultTestMethod: string }>
+  accreditationBodies?: AccreditationBodyRow[]
   accreditationDialogOpen: boolean
   setAccreditationDialogOpen: (open: boolean) => void
   newAccreditationBody: string
   setNewAccreditationBody: (value: string) => void
   onAddAccreditationBody: () => void
   onDeleteAccreditationBody: (id: string) => void
-  units: UnitRow[]
+  units?: UnitRow[]
   unitDialogOpen: boolean
   setUnitDialogOpen: (open: boolean) => void
   newUnitName: string
@@ -95,27 +92,44 @@ export function TestParameterForm({
   onAddUnit: () => void
   onDeleteUnit: (id: string) => void
   onOpenAddIsCodeForm: (typedCode: string) => void
-  onOpenAddEquipmentForm: (typedName: string) => void
-  departments: string[]
-  designations: string[]
-  equipments: Array<{ id: string; label: string }>
-  onUploadTestMethodNote?: (file: File) => Promise<string | null>
-  testMethodNoteDownloadUrl?: string | null
+  departments?: string[]
+  designations?: string[]
+  designationsByDepartment?: Record<string, string[]>
 }) {
+  const isCodeOptions = isCodes ?? []
+  const accreditationBodyOptions = accreditationBodies ?? []
+  const unitOptions = units ?? []
+  const departmentOptions = departments ?? []
+  const allDesignations = designations ?? []
+  const deptDesignationMap = designationsByDepartment ?? {}
+  const underAccreditationIds = form.underAccreditationIds ?? []
+
+  const normLabel = (value: string | null | undefined) => (value ?? '').trim().toLowerCase()
+
+  const getDesignationOptionsForDepartment = (department: string) => {
+    const dept = department.trim()
+    if (!dept) return allDesignations
+    const deptNorm = normLabel(dept)
+    const fromMap = Object.entries(deptDesignationMap).find(([k]) => normLabel(k) === deptNorm)?.[1]
+    if (fromMap?.length) return fromMap
+    return allDesignations
+  }
+
+  const designationOptions = useMemo(
+    () => getDesignationOptionsForDepartment(form.department),
+    [form.department, allDesignations, deptDesignationMap],
+  )
+
   const pickerId = useId()
   const [isCodeOpen, setIsCodeOpen] = useState(false)
   const [testMethodOpen, setTestMethodOpen] = useState(false)
   const [isCodeHighlight, setIsCodeHighlight] = useState(0)
   const [testMethodHighlight, setTestMethodHighlight] = useState(0)
-  const [equipmentOpen, setEquipmentOpen] = useState(false)
-  const [equipmentQuery, setEquipmentQuery] = useState('')
-  const [equipmentHighlight, setEquipmentHighlight] = useState(0)
   const [unitOpen, setUnitOpen] = useState(false)
   const [unitHighlight, setUnitHighlight] = useState(0)
-  const equipmentInputRef = useRef<HTMLInputElement | null>(null)
   const unitInputRef = useRef<HTMLInputElement | null>(null)
   const specificRequirementRef = useRef<HTMLTextAreaElement | null>(null)
-  const selectedIs = isCodes.find((x) => x.id === form.isCodeId)
+  const selectedIs = isCodeOptions.find((x) => x.id === form.isCodeId)
   const [symbolDialogOpen, setSymbolDialogOpen] = useState(false)
   const [symbolSearch, setSymbolSearch] = useState('')
   const [symbolRecents, setSymbolRecents] = useState<string[]>(() => {
@@ -132,58 +146,40 @@ export function TestParameterForm({
 
   const filteredIsCodesByCode = useMemo(() => {
     const query = form.isCodeLabel.trim().toLowerCase()
-    if (!query) return isCodes.slice(0, 10)
-    return isCodes.filter((code) => code.searchLabel.toLowerCase().includes(query)).slice(0, 10)
-  }, [isCodes, form.isCodeLabel])
+    if (!query) return isCodeOptions.slice(0, 10)
+    return isCodeOptions.filter((code) => code.searchLabel.toLowerCase().includes(query)).slice(0, 10)
+  }, [isCodeOptions, form.isCodeLabel])
 
   const filteredIsCodesByMethod = useMemo(() => {
     const query = form.testMethod.trim().toLowerCase()
-    if (!query) return isCodes.slice(0, 10)
-    return isCodes.filter((code) => code.defaultTestMethod.toLowerCase().includes(query) || code.searchLabel.toLowerCase().includes(query)).slice(0, 10)
-  }, [isCodes, form.testMethod])
-
-  const filteredEquipments = useMemo(() => {
-    const q = equipmentQuery.trim().toLowerCase()
-    if (!q) return equipments.slice(0, 10)
-    return equipments.filter((e) => e.label.toLowerCase().includes(q)).slice(0, 10)
-  }, [equipments, equipmentQuery])
-
-  const showAddEquipmentAction = useMemo(() => {
-    const typed = equipmentQuery.trim()
-    if (!typed) return false
-    return !equipments.some((e) => e.label.toLowerCase() === typed.toLowerCase())
-  }, [equipmentQuery, equipments])
-
-  const selectedEquipments = form.equipmentIds
-    .map((id) => equipments.find((x) => x.id === id))
-    .filter((eq): eq is { id: string; label: string } => Boolean(eq))
-
-  const totalEquipmentOptions = filteredEquipments.length + (showAddEquipmentAction ? 1 : 0)
+    if (!query) return isCodeOptions.slice(0, 10)
+    return isCodeOptions.filter((code) => code.defaultTestMethod.toLowerCase().includes(query) || code.searchLabel.toLowerCase().includes(query)).slice(0, 10)
+  }, [isCodeOptions, form.testMethod])
 
   const showAddIsCodeAction = useMemo(() => {
     const typed = form.isCodeLabel.trim()
     if (!typed) return false
-    return !isCodes.some((code) => code.displayCode.toLowerCase() === typed.toLowerCase())
-  }, [form.isCodeLabel, isCodes])
+    return !isCodeOptions.some((code) => code.displayCode.toLowerCase() === typed.toLowerCase())
+  }, [form.isCodeLabel, isCodeOptions])
 
   const filteredUnits = useMemo(() => {
     const q = form.unitValue.trim().toLowerCase()
-    if (!q) return units
-    return units.filter((u) => u.name.toLowerCase().includes(q))
-  }, [units, form.unitValue])
+    if (!q) return unitOptions
+    return unitOptions.filter((u) => u.name.toLowerCase().includes(q))
+  }, [unitOptions, form.unitValue])
 
   const showAddUnitAction = useMemo(() => {
     const typed = form.unitValue.trim()
     if (!typed) return false
-    return !units.some((u) => u.name.toLowerCase() === typed.toLowerCase())
-  }, [form.unitValue, units])
+    return !unitOptions.some((u) => u.name.toLowerCase() === typed.toLowerCase())
+  }, [form.unitValue, unitOptions])
 
   const totalIsCodeOptions = filteredIsCodesByCode.length + (showAddIsCodeAction ? 1 : 0)
   const showAddTestMethodAction = useMemo(() => {
     const typed = form.testMethod.trim()
     if (!typed) return false
-    return !isCodes.some((c) => c.defaultTestMethod.toLowerCase() === typed.toLowerCase())
-  }, [form.testMethod, isCodes])
+    return !isCodeOptions.some((c) => c.defaultTestMethod.toLowerCase() === typed.toLowerCase())
+  }, [form.testMethod, isCodeOptions])
   const totalTestMethodOptions = filteredIsCodesByMethod.length + (showAddTestMethodAction ? 1 : 0)
   const totalUnitOptions = filteredUnits.length + (showAddUnitAction ? 1 : 0)
 
@@ -194,10 +190,6 @@ export function TestParameterForm({
   useEffect(() => {
     setTestMethodHighlight((prev) => (totalTestMethodOptions === 0 ? 0 : Math.min(prev, totalTestMethodOptions - 1)))
   }, [totalTestMethodOptions])
-
-  useEffect(() => {
-    setEquipmentHighlight((prev) => (totalEquipmentOptions === 0 ? 0 : Math.min(prev, totalEquipmentOptions - 1)))
-  }, [totalEquipmentOptions])
 
   useEffect(() => {
     setUnitHighlight((prev) => (totalUnitOptions === 0 ? 0 : Math.min(prev, totalUnitOptions - 1)))
@@ -238,43 +230,6 @@ export function TestParameterForm({
   const handleTestMethodPick = (match: { defaultTestMethod: string }) => {
     onChange({ ...form, testMethod: match.defaultTestMethod })
     setTestMethodOpen(false)
-  }
-
-  const handleEquipmentKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Tab' || event.key === 'Shift+Tab') {
-      setEquipmentOpen(false)
-      return
-    }
-    if (!equipmentOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      setEquipmentOpen(true)
-    }
-
-    if (event.key === 'ArrowDown' && totalEquipmentOptions > 0) {
-      event.preventDefault()
-      setEquipmentHighlight((prev) => (prev + 1) % totalEquipmentOptions)
-    }
-
-    if (event.key === 'ArrowUp' && totalEquipmentOptions > 0) {
-      event.preventDefault()
-      setEquipmentHighlight((prev) => (prev - 1 + totalEquipmentOptions) % totalEquipmentOptions)
-    }
-
-    if (event.key === 'Enter' && totalEquipmentOptions > 0) {
-      event.preventDefault()
-      if (equipmentHighlight < filteredEquipments.length) {
-        handleEquipmentSelect(filteredEquipments[equipmentHighlight].id)
-      } else if (showAddEquipmentAction) {
-        onOpenAddEquipmentForm(equipmentQuery.trim())
-        setEquipmentOpen(false)
-      }
-    }
-  }
-
-  const handleEquipmentSelect = (id: string) => {
-    toggleEquipment(id)
-    setEquipmentQuery('')
-    setEquipmentHighlight(0)
-    requestAnimationFrame(() => equipmentInputRef.current?.focus())
   }
 
   const handleUnitTyping = (value: string) => {
@@ -424,13 +379,6 @@ export function TestParameterForm({
     onOpenAddIsCodeForm(form.isCodeLabel.trim())
   }
 
-  const toggleEquipment = (id: string) => {
-    const next = new Set(form.equipmentIds)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    onChange({ ...form, equipmentIds: Array.from(next) })
-  }
-
   return (
     <Card className="shadow-sm">
       <CardContent className="space-y-6 pt-5">
@@ -526,8 +474,8 @@ export function TestParameterForm({
                     <div>
                       <p className="text-xs font-medium text-muted-foreground mb-2">Existing Units</p>
                       <div className="space-y-1 max-h-40 overflow-auto">
-                        {units.length > 0 ? (
-                          units.map((unit) => (
+                        {unitOptions.length > 0 ? (
+                          unitOptions.map((unit) => (
                             <div key={unit.id} className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm">
                               <span>{unit.name}</span>
                               <button
@@ -573,7 +521,7 @@ export function TestParameterForm({
                 onFocus={() => setUnitOpen(true)}
                 onBlur={() => setTimeout(() => setUnitOpen(false), 150)}
                 onKeyDown={handleUnitKeyDown}
-                placeholder={units.length > 0 ? 'Select unit' : 'Add units to use them here'}
+                placeholder={unitOptions.length > 0 ? 'Select unit' : 'Add units to use them here'}
                 autoComplete="off"
               />
               {(filteredUnits.length > 0 || showAddUnitAction) && unitOpen && (
@@ -803,8 +751,8 @@ export function TestParameterForm({
                     <div>
                       <p className="text-xs font-medium text-muted-foreground mb-2">Existing Bodies</p>
                       <div className="space-y-1 max-h-40 overflow-auto">
-                        {accreditationBodies.length > 0 ? (
-                          accreditationBodies.map((b) => (
+                        {accreditationBodyOptions.length > 0 ? (
+                          accreditationBodyOptions.map((b) => (
                             <div key={b.id} className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm">
                               <span>{b.name}</span>
                               <button
@@ -842,9 +790,9 @@ export function TestParameterForm({
               </Dialog>
             </div>
 
-            {accreditationBodies.length > 0 ? (
+            {accreditationBodyOptions.length > 0 ? (
               <Select
-                value={form.underAccreditationIds[0] ?? ''}
+                value={underAccreditationIds[0] ?? ''}
                 onValueChange={(v) =>
                   onChange({
                     ...form,
@@ -856,7 +804,7 @@ export function TestParameterForm({
                   <SelectValue placeholder="Select accreditation" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accreditationBodies.map((body) => (
+                  {accreditationBodyOptions.map((body) => (
                     <SelectItem key={body.id} value={body.id}>
                       {body.name}
                     </SelectItem>
@@ -893,198 +841,27 @@ export function TestParameterForm({
           </div>
 
           <div className="col-span-12 md:col-span-3 space-y-2">
-            <Label htmlFor="testing-charges">Testing Charges</Label>
-            <Input
-              id="testing-charges"
-              inputMode="decimal"
-              placeholder="0.00"
-              value={form.testingCharges}
-              onChange={(e) => onChange({ ...form, testingCharges: e.target.value.replace(/[^0-9.]/g, '') })}
-            />
-          </div>
-
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <Label htmlFor="conformity">Conformity</Label>
-            <Select value={form.conformity} onValueChange={(v) => onChange({ ...form, conformity: v as ConformityValue })}>
-              <SelectTrigger id="conformity">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Yes">Yes</SelectItem>
-                <SelectItem value="No">No</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex min-h-6 items-center">
-              <Label htmlFor="temperature-of-test">Temperature of Test</Label>
-            </div>
-            <div className="relative">
-              <button
-                type="button"
-                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-sm text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  const v = form.temperatureOfTest.trim()
-                  onChange({ ...form, temperatureOfTest: v.startsWith('±') ? v : `± ${v}` })
-                }}
-                title="Add ±"
-              >
-                ±
-              </button>
-              <Input
-                id="temperature-of-test"
-                inputMode="decimal"
-                placeholder="25 ± 2"
-                value={form.temperatureOfTest}
-                onChange={(e) => onChange({ ...form, temperatureOfTest: e.target.value })}
-                className="pl-8 pr-8"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">°C</span>
-            </div>
-          </div>
-
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex min-h-6 items-center">
-              <Label htmlFor="humidity-of-test">Humidity of Test</Label>
-            </div>
-            <div className="relative">
-              <button
-                type="button"
-                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-sm text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  const v = form.humidityOfTest.trim()
-                  onChange({ ...form, humidityOfTest: v.startsWith('±') ? v : `± ${v}` })
-                }}
-                title="Add ±"
-              >
-                ±
-              </button>
-              <Input
-                id="humidity-of-test"
-                inputMode="decimal"
-                placeholder="65 ± 5"
-                value={form.humidityOfTest}
-                onChange={(e) => onChange({ ...form, humidityOfTest: e.target.value })}
-                className="pl-8 pr-8"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-            </div>
-          </div>
-
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex min-h-6 items-center">
-              <Label htmlFor="testing-time-hr">Testing Time</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                id="testing-time-hr"
-                type="number"
-                min={0}
-                max={999}
-                placeholder="Hr"
-                value={form.testingTimeHr}
-                onChange={(e) => onChange({ ...form, testingTimeHr: e.target.value.replace(/[^0-9]/g, '') })}
-              />
-              <span className="text-sm text-muted-foreground">Hr</span>
-              <Input
-                id="testing-time-min"
-                type="number"
-                min={0}
-                max={59}
-                placeholder="Min"
-                value={form.testingTimeMin}
-                onChange={(e) => onChange({ ...form, testingTimeMin: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })}
-              />
-              <span className="text-sm text-muted-foreground">Min</span>
-            </div>
-          </div>
-
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex min-h-6 items-center">
-              <Label htmlFor="test-method-note">Test Method Note</Label>
-            </div>
-            <div className="flex items-center gap-1 w-full">
-              <input
-                id="test-method-note"
-                type="file"
-                className="hidden"
-                accept=".pdf,.doc,.docx,image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  e.target.value = ''
-                  if (!file || !onUploadTestMethodNote) return
-                  onUploadTestMethodNote(file).then((path) => {
-                    if (path) onChange({ ...form, testMethodNotePath: path })
+            <Label htmlFor="department">Department</Label>
+            {departmentOptions.length > 0 ? (
+              <Select
+                value={form.department}
+                onValueChange={(v) => {
+                  const allowed = getDesignationOptionsForDepartment(v)
+                  const keepDesignation =
+                    form.designation &&
+                    allowed.some((d) => normLabel(d) === normLabel(form.designation))
+                  onChange({
+                    ...form,
+                    department: v,
+                    designation: keepDesignation ? form.designation : '',
                   })
                 }}
-              />
-              <TooltipProvider delayDuration={100}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 shrink-0 border-slate-500"
-                      onClick={() => document.getElementById('test-method-note')?.click()}
-                      aria-label="Upload file"
-                    >
-                      <Upload size={18} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Upload</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 shrink-0 border-slate-500"
-                      disabled={!form.testMethodNotePath || !testMethodNoteDownloadUrl}
-                      onClick={() => testMethodNoteDownloadUrl && window.open(testMethodNoteDownloadUrl, '_blank', 'noopener,noreferrer')}
-                      aria-label="View file"
-                    >
-                      <Eye size={18} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">View</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 shrink-0 border-slate-500"
-                      disabled={!form.testMethodNotePath}
-                      onClick={() => onChange({ ...form, testMethodNotePath: '' })}
-                      aria-label="Delete file"
-                    >
-                      <Trash2 size={18} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Delete</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              {form.testMethodNotePath && (
-                <span className="text-xs text-muted-foreground truncate min-w-0" title={form.testMethodNotePath}>
-                  File attached
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <Label htmlFor="department">Department</Label>
-            {departments.length > 0 ? (
-              <Select value={form.department} onValueChange={(v) => onChange({ ...form, department: v })}>
+              >
                 <SelectTrigger id="department">
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.from(new Set([form.department, ...departments].filter((d) => d && d.trim().length > 0))).map((label) => (
+                  {Array.from(new Set([form.department, ...departmentOptions].filter((d) => d && d.trim().length > 0))).map((label) => (
                     <SelectItem key={label} value={label}>
                       {label}
                     </SelectItem>
@@ -1104,13 +881,17 @@ export function TestParameterForm({
             <div className="flex min-h-6 items-center">
               <Label htmlFor="designation">Designation</Label>
             </div>
-            {designations.length > 0 ? (
-              <Select value={form.designation} onValueChange={(v) => onChange({ ...form, designation: v })}>
+            {designationOptions.length > 0 ? (
+              <Select
+                value={form.designation}
+                onValueChange={(v) => onChange({ ...form, designation: v })}
+                disabled={!form.department.trim()}
+              >
                 <SelectTrigger id="designation">
-                  <SelectValue placeholder="Select designation" />
+                  <SelectValue placeholder={form.department.trim() ? 'Select designation' : 'Select department first'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.from(new Set([form.designation, ...designations].filter((d) => d && d.trim().length > 0))).map((label) => (
+                  {Array.from(new Set([form.designation, ...designationOptions].filter((d) => d && d.trim().length > 0))).map((label) => (
                     <SelectItem key={label} value={label}>
                       {label}
                     </SelectItem>
@@ -1121,102 +902,13 @@ export function TestParameterForm({
               <Input
                 id="designation"
                 value={form.designation}
-                onChange={(e) => onChange({ ...form, designation: e.target.value })}
+                readOnly
+                placeholder="Add designations in User Management"
               />
             )}
-          </div>
-
-          <div className="col-span-12 md:col-span-6 space-y-2">
-            <div className="flex min-h-6 items-center">
-              <Label>Name the Equipments Used</Label>
-            </div>
-            <div className="relative">
-              <div
-                className={`min-h-10 w-full rounded-md border border-slate-500 px-2 py-1 flex flex-wrap items-center gap-1 ${
-                  equipmentOpen ? 'ring-1 ring-slate-500/60' : ''
-                }`}
-                onClick={() => equipmentInputRef.current?.focus()}
-              >
-                {selectedEquipments.length > 0 ? (
-                  selectedEquipments.map((eq) => (
-                    <span
-                      key={eq.id}
-                      className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
-                    >
-                      {eq.label}
-                      <button
-                        type="button"
-                        className="text-slate-500 hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleEquipment(eq.id)
-                        }}
-                        aria-label={`Remove ${eq.label}`}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))
-                ) : (
-                  !equipmentQuery && <span className="text-xs text-muted-foreground">Search equipment</span>
-                )}
-                <input
-                  ref={equipmentInputRef}
-                  value={equipmentQuery}
-                  onChange={(e) => {
-                    setEquipmentQuery(e.target.value)
-                    setEquipmentOpen(true)
-                    setEquipmentHighlight(0)
-                  }}
-                  onFocus={() => setEquipmentOpen(true)}
-                  onBlur={() => setTimeout(() => setEquipmentOpen(false), 150)}
-                  onKeyDown={handleEquipmentKeyDown}
-                  className="flex-1 border-0 bg-transparent px-1 py-1 text-sm focus-visible:outline-none"
-                  placeholder={selectedEquipments.length > 0 ? '' : 'Search equipment'}
-                  autoComplete="off"
-                />
-              </div>
-
-              {equipmentOpen && (filteredEquipments.length > 0 || showAddEquipmentAction) && (
-                <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg" tabIndex={-1}>
-                  <ul className="max-h-56 overflow-auto text-sm">
-                    {filteredEquipments.map((eq, index) => (
-                      <li key={eq.id}>
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          className={`w-full px-3 py-2 text-left ${index === equipmentHighlight ? 'bg-muted font-semibold' : 'hover:bg-muted'}`}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onMouseEnter={() => setEquipmentHighlight(index)}
-                          onClick={() => handleEquipmentSelect(eq.id)}
-                        >
-                          <span className="font-medium">{eq.label}</span>
-                        </button>
-                      </li>
-                    ))}
-                    {showAddEquipmentAction && (
-                      <li>
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          className={`w-full px-3 py-2 text-left text-primary ${
-                            equipmentHighlight === filteredEquipments.length ? 'bg-muted font-semibold' : 'hover:bg-muted'
-                          }`}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onMouseEnter={() => setEquipmentHighlight(filteredEquipments.length)}
-                          onClick={() => {
-                            onOpenAddEquipmentForm(equipmentQuery.trim())
-                            setEquipmentOpen(false)
-                          }}
-                        >
-                          Add "{equipmentQuery.trim()}" to Equipment master
-                        </button>
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              )}
-            </div>
+            {form.department.trim() && designationOptions.length === 0 && (
+              <p className="text-xs text-muted-foreground">No designations in User Management for this department.</p>
+            )}
           </div>
         </div>
       </CardContent>

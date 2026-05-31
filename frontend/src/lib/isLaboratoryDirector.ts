@@ -6,3 +6,8 @@ export function isLaboratoryDirector(designation: string | null | undefined): bo
   const d = designation?.trim().toLowerCase() ?? ''
   return d === 'laboratory director'
 }
+
+/** Laboratory Director may delete SRF / section records from sample-handling footers. */
+export function canDeleteSampleHandlingRecords(designation: string | null | undefined): boolean {
+  return isLaboratoryDirector(designation)
+}

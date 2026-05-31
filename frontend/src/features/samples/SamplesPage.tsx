@@ -9,7 +9,7 @@ const steps = [
   { to: '/samples/under-testing', title: 'Sample Under Testing', desc: 'Technical records & results entry' },
   { to: '/samples/results-review', title: 'Results Under Review', desc: 'Independent review before reporting' },
   { to: '/samples/report-preparation', title: 'Test Report Preparation', desc: 'Clause 7.8 — Draft & issue test report' },
-  { to: '/samples/completed', title: 'Completed Results', desc: 'Issued reports & closed SRFs' },
+  { to: '/samples/completed', title: 'Issued Test Report', desc: 'Issued reports & closed SRFs' },
 ] as const
 
 export default function SamplesPage() {

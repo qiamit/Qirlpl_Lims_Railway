@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { DEFAULT_COUNTRY, DEFAULT_STATE, emptyClientForm, type ClientForm } from '@/features/masters/clients/types'
+import { DEFAULT_COUNTRY, DEFAULT_STATE, emptyClientForm, toContinuousText, type ClientForm } from '@/features/masters/clients/types'
 import { ClientsForm } from '@/features/masters/clients/ClientsForm'
 
 function useClientDialogState(open: boolean) {
@@ -242,7 +242,7 @@ export function AddClientDialog({
         country_code: form.countryCode || null,
         mobile: form.mobile.trim() || null,
         email: form.email.trim() || null,
-        address: form.address.trim() || null,
+        address: toContinuousText(form.address) || null,
         pin_code: form.pinCode.trim() || null,
         district: form.district.trim() || null,
         state: form.state || null,

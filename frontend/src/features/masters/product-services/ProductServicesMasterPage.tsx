@@ -6,12 +6,16 @@ import { ProductServicesHeaderBar } from './ProductServicesHeaderBar'
 import { ProductServicesTable } from './ProductServicesTable'
 import { ProductServicesTableFooterBar } from './ProductServicesFooterBar'
 import {
-  emptyProductServiceForm,
+  emptyNablScopeForm,
+  isValidIntegerOrEmpty,
+  isValidNumberOrEmpty,
   normalizeText,
-  type ItemCategory,
-  type ProductServiceForm,
-  type ProductServiceRow,
+  parseOptionalNumber,
+  type NablScopeForm,
+  type NablScopeRow,
 } from './types'
+import { buildNablScopeAssistantContext } from './buildNablScopeAssistantContext'
+import { buildNablScopePrintHtml } from './buildNablScopePrintHtml'
 
 const formatSupabaseError = (err: unknown) => {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -82,9 +86,7 @@ function parseCsv(text: string) {
       continue
     }
 
-    if (ch === '\r') {
-      continue
-    }
+    if (ch === '\r') continue
 
     cell += ch
   }
@@ -94,232 +96,99 @@ function parseCsv(text: string) {
   return rows
 }
 
+function nextSNo(list: NablScopeRow[]) {
+  const max = list.map((r) => r.s_no).reduce((a, b) => Math.max(a, b), 0)
+  return max + 1
+}
+
 export default function ProductServicesMasterPage() {
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
-
   const [editingId, setEditingId] = useState<string | null>(null)
-
   const importInputRef = useRef<HTMLInputElement | null>(null)
-
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
-
-  const [rows, setRows] = useState<ProductServiceRow[]>([])
+  const [rows, setRows] = useState<NablScopeRow[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
-
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
-
-  const [gstRates, setGstRates] = useState<Array<{ id: string; label: string }>>(() => [])
-  const [units, setUnits] = useState<Array<{ id: string; label: string }>>(() => [])
-
-  const [gstRateDialogOpen, setGstRateDialogOpen] = useState(false)
-  const [newGstRate, setNewGstRate] = useState('')
-
-  const [unitDialogOpen, setUnitDialogOpen] = useState(false)
-  const [newUnit, setNewUnit] = useState('')
-
-  const [form, setForm] = useState<ProductServiceForm>(() => {
-    const base = emptyProductServiceForm()
-    return { ...base, itemCode: generateItemCodeFromRows(base.category, []) }
-  })
-
-  function generateItemCodeFromRows(category: ItemCategory, list: ProductServiceRow[]) {
-    const prefix = category === 'Product' ? 'P-' : 'S-'
-    const max = list
-      .map((r) => r.item_code)
-      .filter((code) => typeof code === 'string' && code.startsWith(prefix))
-      .map((code) => Number(code.slice(prefix.length)))
-      .filter((n) => Number.isFinite(n))
-      .reduce((a, b) => Math.max(a, b), 0)
-
-    const next = Math.max(1, max + 1)
-    return `${prefix}${String(next).padStart(5, '0')}`
-  }
-
-  const generateItemCode = (category: ItemCategory) => generateItemCodeFromRows(category, rows)
+  const [form, setForm] = useState<NablScopeForm>(() => emptyNablScopeForm())
 
   const canSave =
     !saveLoading &&
-    form.itemName.trim().length > 0 &&
-    form.itemCode.trim().length > 0
+    form.sNo.trim().length > 0 &&
+    form.disciplineGroup.trim().length > 0 &&
+    form.materialsProducts.trim().length > 0 &&
+    form.componentParameter.trim().length > 0 &&
+    form.testMethodSpecification.trim().length > 0 &&
+    isValidIntegerOrEmpty(form.sNo) &&
+    isValidNumberOrEmpty(form.rangeMinimum) &&
+    isValidNumberOrEmpty(form.rangeMaximum) &&
+    (() => {
+      const min = parseOptionalNumber(form.rangeMinimum)
+      const max = parseOptionalNumber(form.rangeMaximum)
+      return min == null || max == null || min <= max
+    })()
 
   const loadItems = async () => {
     setListError(null)
     setListLoading(true)
     try {
-      const { data, error } = await supabase.from('product_services').select('*').order('created_at', { ascending: false })
+      const { data, error } = await supabase.from('nabl_scope').select('*').order('s_no', { ascending: true })
       if (error) throw error
-      const list = (Array.isArray(data) ? (data as ProductServiceRow[]) : [])
-      setRows(
-        list.map((r) => ({
-          ...r,
-          category: (r.category ?? 'Service') as ProductServiceRow['category'],
-          item_code: r.item_code ?? '',
-          item_name: r.item_name ?? '',
-        })),
-      )
+      setRows(Array.isArray(data) ? (data as NablScopeRow[]) : [])
     } catch (err) {
-      setListError(err instanceof Error ? err.message : 'Unable to load items')
+      setListError(err instanceof Error ? err.message : 'Unable to load NABL scope')
     } finally {
       setListLoading(false)
     }
   }
 
-  const loadMasterOptions = async () => {
-    try {
-      const { data, error } = await supabase.from('product_service_master_options').select('*').order('label', { ascending: true })
-      if (error) throw error
-      const list = Array.isArray(data)
-        ? (data as Array<{ id: string; category: string; label: string; value: string | null }>)
-        : []
-
-      const by = (cat: string) => list.filter((r) => r.category === cat).map((r) => ({ id: r.id, label: r.label }))
-
-      setGstRates(by('gst_rate'))
-      setUnits(by('unit'))
-    } catch (err) {
-      setSaveMessage((prev) => prev ?? formatSupabaseError(err))
-    }
-  }
-
   useEffect(() => {
     void loadItems()
-    void loadMasterOptions()
   }, [])
-
-  useEffect(() => {
-    setForm((prev) => ({ ...prev, itemCode: prev.itemCode || generateItemCodeFromRows(prev.category, rows) }))
-  }, [rows])
-
-  const addSimpleOption = async (category: string, label: string, onAdded: (id: string) => void) => {
-    const name = normalizeText(label)
-    if (!name) return
-
-    try {
-      const { data, error } = await supabase
-        .from('product_service_master_options')
-        .insert({ category, label: name, value: name })
-        .select('id')
-        .single()
-      if (error) throw error
-      const id = (data as { id: string } | null)?.id ?? `tmp-${name}`
-      onAdded(id)
-    } catch (err) {
-      setSaveMessage(formatSupabaseError(err))
-    }
-  }
-
-  const deleteMasterOption = (id: string, category: string) => {
-    void (async () => {
-      try {
-        if (!id || id.startsWith('default-') || id.startsWith('db-')) return
-        const { error } = await supabase.from('product_service_master_options').delete().eq('id', id)
-        if (error) throw error
-
-        if (category === 'gst_rate') setGstRates((prev) => prev.filter((x) => x.id !== id))
-        if (category === 'unit') setUnits((prev) => prev.filter((x) => x.id !== id))
-      } catch (err) {
-        setSaveMessage(formatSupabaseError(err))
-      }
-    })()
-  }
-
-  const handleAddGstRate = () => {
-    const raw = normalizeText(newGstRate)
-    if (!raw) return
-    void (async () => {
-      await addSimpleOption('gst_rate', raw, (id) => {
-        setGstRates((prev) => {
-          const merged = [...prev, { id, label: raw }]
-          const uniq = new Map(merged.map((x) => [x.label.toLowerCase(), x]))
-          return Array.from(uniq.values()).sort((a, b) => a.label.localeCompare(b.label))
-        })
-        setForm((prev) => ({ ...prev, gstRate: raw }))
-        setNewGstRate('')
-        setGstRateDialogOpen(false)
-      })
-    })()
-  }
-
-  const handleAddUnit = () => {
-    const raw = normalizeText(newUnit)
-    if (!raw) return
-    void (async () => {
-      await addSimpleOption('unit', raw, (id) => {
-        setUnits((prev) => {
-          const merged = [...prev, { id, label: raw }]
-          const uniq = new Map(merged.map((x) => [x.label.toLowerCase(), x]))
-          return Array.from(uniq.values()).sort((a, b) => a.label.localeCompare(b.label))
-        })
-        setForm((prev) => ({ ...prev, unitOfItem: raw }))
-        setNewUnit('')
-        setUnitDialogOpen(false)
-      })
-    })()
-  }
 
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
-    const base = emptyProductServiceForm()
-    setForm({ ...base, itemCode: generateItemCodeFromRows(base.category, rows) })
+    setForm({ ...emptyNablScopeForm(), sNo: String(nextSNo(rows)) })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleClear = () => {
-    const base = emptyProductServiceForm()
-    setForm({ ...base, itemCode: generateItemCodeFromRows(base.category, rows) })
+    setForm({ ...emptyNablScopeForm(), sNo: String(nextSNo(rows)) })
     setSaveMessage(null)
   }
 
-  const handleEdit = (row: ProductServiceRow) => {
+  const rowToForm = (row: NablScopeRow): NablScopeForm => ({
+    sNo: String(row.s_no),
+    disciplineGroup: row.discipline_group,
+    materialsProducts: row.materials_products,
+    componentParameter: row.component_parameter,
+    testMethodSpecification: row.test_method_specification,
+    permanentTesting: row.permanent_testing || 'Permanent Testing',
+    typeOfTest: row.type_of_test?.trim() ?? '',
+    rangeMinimum: row.range_minimum != null ? String(row.range_minimum) : '',
+    rangeMaximum: row.range_maximum != null ? String(row.range_maximum) : '',
+    uncertainty: row.uncertainty?.trim() ?? '',
+  })
+
+  const handleEdit = (row: NablScopeRow) => {
     setSaveMessage(null)
     setEditingId(row.id)
-    setForm({
-      category: row.category,
-      itemCode: row.item_code ?? '',
-      make: row.make ?? '',
-      serialModelNo: row.serial_model_no ?? '',
-      itemName: row.item_name ?? '',
-      itemDescription: row.item_description ?? '',
-      hsnCode: row.hsn_code ?? '',
-      gstRate: row.gst_rate == null ? '' : String(row.gst_rate),
-      unitOfItem: row.unit_of_item ?? '',
-      lowStockValue: row.low_stock_value == null ? '' : String(row.low_stock_value),
-      purchasePrice: row.purchase_price == null ? '' : String(row.purchase_price),
-      salePrice: row.sale_price == null ? '' : String(row.sale_price),
-      maximumRetailPrice: row.maximum_retail_price == null ? '' : String(row.maximum_retail_price),
-      openingStock: row.opening_stock == null ? '' : String(row.opening_stock),
-    })
+    setForm(rowToForm(row))
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleCopy = (row: ProductServiceRow) => {
+  const handleCopy = (row: NablScopeRow) => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({
-      category: row.category,
-      itemCode: generateItemCodeFromRows(row.category, rows),
-      make: row.make ?? '',
-      serialModelNo: row.serial_model_no ?? '',
-      itemName: row.item_name ?? '',
-      itemDescription: row.item_description ?? '',
-      hsnCode: row.hsn_code ?? '',
-      gstRate: row.gst_rate == null ? '' : String(row.gst_rate),
-      unitOfItem: row.unit_of_item ?? '',
-      lowStockValue: row.low_stock_value == null ? '' : String(row.low_stock_value),
-      purchasePrice: row.purchase_price == null ? '' : String(row.purchase_price),
-      salePrice: row.sale_price == null ? '' : String(row.sale_price),
-      maximumRetailPrice: row.maximum_retail_price == null ? '' : String(row.maximum_retail_price),
-      openingStock: row.opening_stock == null ? '' : String(row.opening_stock),
-    })
+    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows)) })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -329,38 +198,44 @@ export default function ProductServicesMasterPage() {
       setSaveMessage(null)
       setSaveLoading(true)
       try {
+        const typeOfTest = normalizeText(form.typeOfTest)
         const payload = {
-          category: form.category,
-          item_code: normalizeText(form.itemCode),
-          make: normalizeText(form.make) || null,
-          serial_model_no: normalizeText(form.serialModelNo) || null,
-          item_name: normalizeText(form.itemName),
-          item_description: normalizeText(form.itemDescription) || null,
-          hsn_code: normalizeText(form.hsnCode) || null,
-          gst_rate: form.gstRate.trim() ? Number(form.gstRate) : null,
-          unit_of_item: normalizeText(form.unitOfItem) || null,
-          low_stock_value: form.lowStockValue.trim() ? Number(form.lowStockValue) : null,
-          purchase_price: form.purchasePrice.trim() ? Number(form.purchasePrice) : null,
-          sale_price: form.salePrice.trim() ? Number(form.salePrice) : null,
-          maximum_retail_price: form.maximumRetailPrice.trim() ? Number(form.maximumRetailPrice) : null,
-          opening_stock: form.openingStock.trim() ? Number(form.openingStock) : null,
+          s_no: Number(form.sNo),
+          discipline_group: normalizeText(form.disciplineGroup),
+          materials_products: normalizeText(form.materialsProducts),
+          component_parameter: normalizeText(form.componentParameter),
+          test_method_specification: normalizeText(form.testMethodSpecification),
+          permanent_testing: normalizeText(form.permanentTesting) || 'Permanent Testing',
+          type_of_test: typeOfTest || null,
+          range_minimum: parseOptionalNumber(form.rangeMinimum),
+          range_maximum: parseOptionalNumber(form.rangeMaximum),
+          uncertainty: normalizeText(form.uncertainty) || null,
         }
 
-        if (!payload.item_name) {
-          setSaveMessage('Item Name is required.')
+        if (!Number.isInteger(payload.s_no) || payload.s_no <= 0) {
+          setSaveMessage('S.No must be a positive whole number.')
           return
         }
 
-        if (!payload.item_code) {
-          setSaveMessage('Item Code is required.')
+        if (
+          payload.range_minimum != null &&
+          payload.range_maximum != null &&
+          payload.range_minimum > payload.range_maximum
+        ) {
+          setSaveMessage('Range minimum cannot be greater than range maximum.')
+          return
+        }
+
+        if (typeOfTest && typeOfTest !== 'Quantitative' && typeOfTest !== 'Qualitative') {
+          setSaveMessage('Type of test must be Quantitative or Qualitative.')
           return
         }
 
         if (editingId) {
-          const { error } = await supabase.from('product_services').update(payload).eq('id', editingId)
+          const { error } = await supabase.from('nabl_scope').update(payload).eq('id', editingId)
           if (error) throw error
         } else {
-          const { error } = await supabase.from('product_services').insert(payload)
+          const { error } = await supabase.from('nabl_scope').insert(payload)
           if (error) throw error
         }
 
@@ -381,26 +256,27 @@ export default function ProductServicesMasterPage() {
     if (!q) return rows
     return rows.filter((r) => {
       const blob = [
-        r.category,
-        r.item_code,
-        r.item_name,
-        r.item_description ?? '',
-        r.make ?? '',
-        r.serial_model_no ?? '',
-        r.hsn_code ?? '',
-        String(r.gst_rate ?? ''),
-        r.unit_of_item ?? '',
-        String(r.opening_stock ?? ''),
-        String(r.low_stock_value ?? ''),
-        String(r.purchase_price ?? ''),
-        String(r.sale_price ?? ''),
-        String(r.maximum_retail_price ?? ''),
+        String(r.s_no),
+        r.discipline_group,
+        r.materials_products,
+        r.component_parameter,
+        r.test_method_specification,
+        r.permanent_testing,
+        r.type_of_test ?? '',
+        r.range_minimum != null ? String(r.range_minimum) : '',
+        r.range_maximum != null ? String(r.range_maximum) : '',
+        r.uncertainty ?? '',
       ]
         .join(' ')
         .toLowerCase()
       return blob.includes(q)
     })
   }, [rows, search])
+
+  const assistantContext = useMemo(
+    () => buildNablScopeAssistantContext(filteredRows, search),
+    [filteredRows, search],
+  )
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
 
@@ -439,13 +315,13 @@ export default function ProductServicesMasterPage() {
   const handleDeleteSelected = () => {
     void (async () => {
       if (selectedRows.length === 0) return
-      const ok = window.confirm(`Delete ${selectedRows.length} selected item(s)?`)
+      const ok = window.confirm(`Delete ${selectedRows.length} selected scope entry(ies)?`)
       if (!ok) return
       setSaveMessage(null)
       setSaveLoading(true)
       try {
         const ids = selectedRows.map((r) => r.id)
-        const { error } = await supabase.from('product_services').delete().in('id', ids)
+        const { error } = await supabase.from('nabl_scope').delete().in('id', ids)
         if (error) throw error
         setSaveMessage('Deleted successfully.')
         setSelectedIds(new Set())
@@ -458,69 +334,16 @@ export default function ProductServicesMasterPage() {
     })()
   }
 
-  const buildPrintHtml = (list: ProductServiceRow[]) => {
-    const esc = (s: string) =>
-      String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-
-    const rowsHtml = list
-      .map((r) => {
-        return `<tr>
-<td>${esc(r.item_name)}</td>
-<td>${esc(r.category)}</td>
-<td>${esc(r.item_code)}</td>
-<td>${esc(r.make ?? '')}</td>
-<td>${esc(r.hsn_code ?? '')}</td>
-<td style="text-align:right">${esc(String(r.gst_rate ?? ''))}</td>
-<td>${esc(r.unit_of_item ?? '')}</td>
-<td style="text-align:right">${esc(String(r.opening_stock ?? ''))}</td>
-<td style="text-align:right">${esc(String(r.sale_price ?? ''))}</td>
-<td style="text-align:right">${esc(String(r.purchase_price ?? ''))}</td>
-</tr>`
-      })
-      .join('')
-
-    return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>Product & Services</title>
-<style>
-  body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:18px;}
-  h1{font-size:18px; margin:0 0 12px 0;}
-  table{border-collapse:collapse; width:100%; font-size:12px;}
-  th,td{border:1px solid #cbd5e1; padding:8px; vertical-align:top;}
-  th{background:#f1f5f9; text-align:left;}
-</style>
-</head>
-<body>
-<h1>Product & Services</h1>
-<table>
-<thead>
-<tr>
-<th>Item Name</th>
-<th>Category</th>
-<th>Item Code</th>
-<th>Make</th>
-<th>HSN</th>
-<th>GST %</th>
-<th>Unit</th>
-<th>Opening</th>
-<th>Sale</th>
-<th>Purchase</th>
-</tr>
-</thead>
-<tbody>
-${rowsHtml}
-</tbody>
-</table>
-</body>
-</html>`
-  }
+  const buildPrintHtml = (list: NablScopeRow[]) =>
+    buildNablScopePrintHtml({
+      rows: [...list].sort((a, b) => a.s_no - b.s_no),
+      filterNote:
+        selectedRows.length > 0
+          ? `${selectedRows.length} selected row(s)`
+          : search.trim()
+            ? `Search: "${search.trim()}"`
+            : undefined,
+    })
 
   const handlePrintSelected = () => {
     const exportRows = selectedRows.length > 0 ? selectedRows : filteredRows
@@ -572,39 +395,31 @@ ${rowsHtml}
 
     const headers = [
       'id',
-      'category',
-      'item_code',
-      'make',
-      'serial_model_no',
-      'item_name',
-      'item_description',
-      'hsn_code',
-      'gst_rate',
-      'unit_of_item',
-      'low_stock_value',
-      'purchase_price',
-      'sale_price',
-      'maximum_retail_price',
-      'opening_stock',
+      's_no',
+      'discipline_group',
+      'materials_products',
+      'component_parameter',
+      'test_method_specification',
+      'permanent_testing',
+      'type_of_test',
+      'range_minimum',
+      'range_maximum',
+      'uncertainty',
       'created_at',
     ]
 
     const lines = exportRows.map((r) => ({
       id: r.id,
-      category: r.category,
-      item_code: r.item_code,
-      make: r.make ?? '',
-      serial_model_no: r.serial_model_no ?? '',
-      item_name: r.item_name,
-      item_description: r.item_description ?? '',
-      hsn_code: r.hsn_code ?? '',
-      gst_rate: String(r.gst_rate ?? ''),
-      unit_of_item: r.unit_of_item ?? '',
-      low_stock_value: String(r.low_stock_value ?? ''),
-      purchase_price: String(r.purchase_price ?? ''),
-      sale_price: String(r.sale_price ?? ''),
-      maximum_retail_price: String(r.maximum_retail_price ?? ''),
-      opening_stock: String(r.opening_stock ?? ''),
+      s_no: String(r.s_no),
+      discipline_group: r.discipline_group,
+      materials_products: r.materials_products,
+      component_parameter: r.component_parameter,
+      test_method_specification: r.test_method_specification,
+      permanent_testing: r.permanent_testing,
+      type_of_test: r.type_of_test ?? '',
+      range_minimum: r.range_minimum != null ? String(r.range_minimum) : '',
+      range_maximum: r.range_maximum != null ? String(r.range_maximum) : '',
+      uncertainty: r.uncertainty ?? '',
       created_at: r.created_at ?? '',
     }))
 
@@ -614,7 +429,7 @@ ${rowsHtml}
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'product_services.csv'
+    a.download = 'nabl_scope.csv'
     a.click()
     URL.revokeObjectURL(url)
     setSaveMessage('Exported.')
@@ -648,33 +463,35 @@ ${rowsHtml}
             return i >= 0 ? (r[i] ?? '') : ''
           }
 
-          const category = (get('category') || 'Service') as ItemCategory
-
           return {
-            category,
-            item_code: get('item_code') || generateItemCodeFromRows(category, rows),
-            make: get('make') || null,
-            serial_model_no: get('serial_model_no') || null,
-            item_name: get('item_name') || '',
-            item_description: get('item_description') || null,
-            hsn_code: get('hsn_code') || null,
-            gst_rate: get('gst_rate') ? Number(get('gst_rate')) : null,
-            unit_of_item: get('unit_of_item') || null,
-            low_stock_value: get('low_stock_value') ? Number(get('low_stock_value')) : null,
-            purchase_price: get('purchase_price') ? Number(get('purchase_price')) : null,
-            sale_price: get('sale_price') ? Number(get('sale_price')) : null,
-            maximum_retail_price: get('maximum_retail_price') ? Number(get('maximum_retail_price')) : null,
-            opening_stock: get('opening_stock') ? Number(get('opening_stock')) : null,
+            s_no: Number(get('s_no')) || nextSNo(rows),
+            discipline_group: get('discipline_group') || '',
+            materials_products: get('materials_products') || '',
+            component_parameter: get('component_parameter') || '',
+            test_method_specification: get('test_method_specification') || '',
+            permanent_testing: get('permanent_testing') || 'Permanent Testing',
+            type_of_test: get('type_of_test') || null,
+            range_minimum: parseOptionalNumber(get('range_minimum')),
+            range_maximum: parseOptionalNumber(get('range_maximum')),
+            uncertainty: get('uncertainty') || null,
           }
         })
 
-        const cleaned = payloads.filter((p) => normalizeText(p.item_name).length > 0)
+        const cleaned = payloads.filter(
+          (p) =>
+            Number.isInteger(p.s_no) &&
+            p.s_no > 0 &&
+            normalizeText(p.discipline_group).length > 0 &&
+            normalizeText(p.materials_products).length > 0 &&
+            normalizeText(p.component_parameter).length > 0 &&
+            normalizeText(p.test_method_specification).length > 0,
+        )
         if (cleaned.length === 0) {
           setSaveMessage('No valid rows found in CSV.')
           return
         }
 
-        const { error } = await supabase.from('product_services').insert(cleaned)
+        const { error } = await supabase.from('nabl_scope').insert(cleaned)
         if (error) throw error
 
         setSaveMessage('Imported successfully.')
@@ -698,13 +515,15 @@ ${rowsHtml}
           setPage(1)
         }}
         onNew={handleNew}
+        assistantContext={assistantContext}
+        onAssistantDataChanged={() => void loadItems()}
       />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add New Item</DialogTitle>
-            <DialogDescription>Product & Services master entry.</DialogDescription>
+            <DialogTitle>{editingId ? 'Edit Scope Entry' : 'Add Scope Entry'}</DialogTitle>
+            <DialogDescription>NABL accreditation scope entry (ISO/IEC 17025:2017 annexure).</DialogDescription>
           </DialogHeader>
           {saveMessage && <div className="text-sm text-destructive">{saveMessage}</div>}
           <ProductServicesForm
@@ -714,21 +533,6 @@ ${rowsHtml}
             saveLoading={saveLoading}
             onSave={handleSave}
             onClear={handleClear}
-            gstRates={gstRates}
-            units={units}
-            gstRateDialogOpen={gstRateDialogOpen}
-            setGstRateDialogOpen={setGstRateDialogOpen}
-            newGstRate={newGstRate}
-            setNewGstRate={setNewGstRate}
-            onAddGstRate={handleAddGstRate}
-            onDeleteGstRate={(id: string) => deleteMasterOption(id, 'gst_rate')}
-            unitDialogOpen={unitDialogOpen}
-            setUnitDialogOpen={setUnitDialogOpen}
-            newUnit={newUnit}
-            setNewUnit={setNewUnit}
-            onAddUnit={handleAddUnit}
-            onDeleteUnit={(id: string) => deleteMasterOption(id, 'unit')}
-            generateItemCode={generateItemCode}
           />
         </DialogContent>
       </Dialog>

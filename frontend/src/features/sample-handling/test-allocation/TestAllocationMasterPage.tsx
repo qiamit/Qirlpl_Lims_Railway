@@ -9,11 +9,23 @@ import { TestAllocationTable } from './TestAllocationTable'
 import { TestAllocationFooterBar } from './TestAllocationFooterBar'
 import { TestAllocationForm } from './TestAllocationForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  deleteTestAllocationsForSampleAllocations,
+  referbackSectionToSampleReceiving,
+} from '../referbackFlow'
+import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
+import {
+  confirmDestructiveDelete,
+  deleteTestAllocationsForSections,
+} from '@/features/sample-handling/shared/deleteSampleRecords'
 
 type UserFromApi = { id: string; name: string; designation: string; departmentName: string }
 
+const normUserField = (value: string | null | undefined) => (value ?? '').trim().toLowerCase()
+
 export default function TestAllocationMasterPage() {
-  const { session } = useAuth()
+  const { session, departmentName, designation } = useAuth()
+  const showDelete = canDeleteSampleHandlingRecords(designation)
   const [rows, setRows] = useState<TestAllocationRow[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -23,6 +35,7 @@ export default function TestAllocationMasterPage() {
   const [jumpTo, setJumpTo] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [saveLoading, setSaveLoading] = useState(false)
   const [employeeFilterId, setEmployeeFilterId] = useState<string>('')
 
   const [formOpen, setFormOpen] = useState(false)
@@ -35,38 +48,25 @@ export default function TestAllocationMasterPage() {
   const [users, setUsers] = useState<UserFromApi[]>([])
 
   const loadUsers = async () => {
-    const { data: { session: latestSession } } = await supabase.auth.getSession()
-    const accessToken = latestSession?.access_token ?? session?.access_token
-    if (!accessToken) return
-    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-        'x-user-jwt': accessToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    })
-    const payload = (await response.json().catch(() => null)) as unknown
-    if (!response.ok) return
-    const list = typeof payload === 'object' && payload && 'users' in payload
-      ? ((payload as { users?: unknown }).users as unknown)
-      : []
-    const arr = Array.isArray(list) ? (list as Array<Record<string, unknown>>) : []
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, designation, department_name, status')
+      .order('full_name', { ascending: true })
+    if (error) return
+    const rows = Array.isArray(data) ? data : []
     setUsers(
-      arr.map((u) => ({
-        id: String(u.id ?? ''),
-        name: String(u.full_name ?? u.email ?? ''),
-        designation: String((u as { designation?: unknown }).designation ?? '').trim(),
-        departmentName: String((u as { department_name?: unknown }).department_name ?? '').trim(),
-      })),
+      rows
+        .filter((u) => normUserField((u as { status?: string }).status) !== 'inactive')
+        .map((u) => ({
+          id: String((u as { id: string }).id),
+          name:
+            String((u as { full_name?: string }).full_name ?? '').trim() ||
+            String((u as { id: string }).id),
+          designation: String((u as { designation?: string }).designation ?? '').trim(),
+          departmentName: String((u as { department_name?: string }).department_name ?? '').trim(),
+        })),
     )
   }
-
-  const [designationsByDepartmentFromTestParams, setDesignationsByDepartmentFromTestParams] = useState<Record<string, string[]>>({})
 
   const loadTestParams = async () => {
     const [{ data, error }, { data: abData }] = await Promise.all([
@@ -104,20 +104,6 @@ export default function TestAllocationMasterPage() {
         department: r.department ?? null,
       })),
     )
-    const byDept: Record<string, Set<string>> = {}
-    for (const r of rows) {
-      const dept = r.department?.trim()
-      const des = r.designation?.trim()
-      if (dept && des) {
-        if (!byDept[dept]) byDept[dept] = new Set()
-        byDept[dept].add(des)
-      }
-    }
-    const result: Record<string, string[]> = {}
-    for (const [dept, set] of Object.entries(byDept)) {
-      result[dept] = Array.from(set).sort((a, b) => a.localeCompare(b))
-    }
-    setDesignationsByDepartmentFromTestParams(result)
   }
 
   const loadRows = async () => {
@@ -126,13 +112,31 @@ export default function TestAllocationMasterPage() {
     try {
       const { data: testAllocData, error: taErr } = await supabase
         .from('test_allocations')
-        .select('id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_start_date, results, test_end_date')
+        .select(
+          'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_start_date, results, test_end_date, sent_for_testing',
+        )
         .order('created_at', { ascending: false })
       if (taErr) throw taErr
       const testAllocs = Array.isArray(testAllocData) ? testAllocData : []
       if (testAllocs.length === 0) {
         setRows([])
         return
+      }
+      const testAllocationIds = testAllocs.map((t: { id: string }) => t.id)
+      const paramIdsByAllocation = new Map<string, string[]>()
+      if (testAllocationIds.length > 0) {
+        const { data: paramData } = await supabase
+          .from('test_allocation_parameters')
+          .select('test_allocation_id, test_parameter_id')
+          .in('test_allocation_id', testAllocationIds)
+        for (const p of Array.isArray(paramData) ? paramData : []) {
+          const taId = (p as { test_allocation_id: string }).test_allocation_id
+          const tpId = (p as { test_parameter_id: string | null }).test_parameter_id
+          if (!taId || !tpId) continue
+          const list = paramIdsByAllocation.get(taId) ?? []
+          list.push(tpId)
+          paramIdsByAllocation.set(taId, list)
+        }
       }
       const allocIds = testAllocs.map((t: { sample_allocation_id: string }) => t.sample_allocation_id)
       const { data: allocData, error: allocErr } = await supabase
@@ -189,6 +193,7 @@ export default function TestAllocationMasterPage() {
         test_start_date?: string | null
         results?: string | null
         test_end_date?: string | null
+        sent_for_testing?: boolean | null
       }) => {
         const a = allocMap.get(t.sample_allocation_id) as {
           id: string
@@ -212,15 +217,19 @@ export default function TestAllocationMasterPage() {
           department: a.department ?? null,
           designation: a.designation ?? null,
           testParameterSummary: t.test_parameter_summary ?? null,
-          testParameterIds: Array.isArray(t.test_parameter_ids) ? t.test_parameter_ids : [],
+          testParameterIds: paramIdsByAllocation.get(t.id) ?? (Array.isArray(t.test_parameter_ids) ? t.test_parameter_ids : []),
           assignedEmployeeId: t.assigned_employee_id ?? null,
           assignedEmployeeName: t.assigned_employee_name ?? null,
           referbackFromAllocation: sample?.referbackFromAllocation ?? false,
+          sentForTesting: !!t.sent_for_testing,
           testStartDate: (t as { test_start_date?: string | null }).test_start_date ?? null,
           results: (t as { results?: string | null }).results ?? null,
           testEndDate: (t as { test_end_date?: string | null }).test_end_date ?? null,
         }
-      }).filter((r): r is TestAllocationRow => r != null)
+      })
+        .filter((r): r is TestAllocationRow => r != null)
+        // Sections sent to Sample Under Testing are hidden; refer-back sets sent_for_testing false.
+        .filter((r) => !r.sentForTesting)
       setRows(list)
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Unable to load test allocations')
@@ -232,6 +241,11 @@ export default function TestAllocationMasterPage() {
   useEffect(() => {
     void loadUsers()
   }, [session])
+
+  useEffect(() => {
+    if (!formOpen) return
+    void loadUsers()
+  }, [formOpen])
 
   const loadAvailableSections = async () => {
     setAvailableSectionsLoading(true)
@@ -324,8 +338,15 @@ export default function TestAllocationMasterPage() {
     void loadRows()
   }, [])
 
+  const departmentScopedRows = useMemo(() => {
+    const dept = departmentName.trim()
+    if (!dept || isLaboratoryDirector(designation)) return rows
+    const deptNorm = normUserField(dept)
+    return rows.filter((r) => normUserField(r.department) === deptNorm)
+  }, [rows, departmentName, designation])
+
   const filteredRows = useMemo(() => {
-    let list = rows
+    let list = departmentScopedRows
     if (employeeFilterId) {
       list = list.filter((r) => r.assignedEmployeeId === employeeFilterId)
     }
@@ -341,7 +362,7 @@ export default function TestAllocationMasterPage() {
       )
     }
     return list
-  }, [rows, search, employeeFilterId])
+  }, [departmentScopedRows, search, employeeFilterId])
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
   const pagedRows = useMemo(
@@ -350,59 +371,53 @@ export default function TestAllocationMasterPage() {
   )
 
   const designationOptionsForForm = useMemo(() => {
-    if (!formRow?.department) return []
-    return designationsByDepartmentFromTestParams[formRow.department] ?? []
-  }, [formRow?.department, designationsByDepartmentFromTestParams])
+    const dept = (formRow?.department ?? '').trim()
+    if (!dept) return []
+    const deptNorm = normUserField(dept)
+    try {
+      const raw =
+        typeof window !== 'undefined' ? window.localStorage.getItem('userManagement.designationByDepartment') : null
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, string[]>
+        if (parsed && typeof parsed === 'object') {
+          const key = Object.keys(parsed).find((k) => normUserField(k) === deptNorm)
+          if (key && Array.isArray(parsed[key])) {
+            return [...parsed[key]].sort((a, b) => a.localeCompare(b))
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    const set = new Set(
+      users
+        .filter((u) => normUserField(u.departmentName) === deptNorm)
+        .map((u) => u.designation)
+        .filter(Boolean),
+    )
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [formRow?.department, users])
 
   const employeesFilteredForRow = useMemo(() => {
-    const dept = (formRow?.department ?? '').trim()
-    const des = (form?.designation ?? formRow?.designation ?? '').trim()
-    const list = users.filter((u) => {
-      const uDept = u.departmentName.trim()
-      const uDes = u.designation.trim()
-      const deptMatch = !dept || uDept.toLowerCase() === dept.toLowerCase()
-      const desLower = des.toLowerCase()
-      const uDesLower = uDes.toLowerCase()
-      const desMatch =
-        !des ||
-        uDesLower === desLower ||
-        uDesLower.includes(desLower) ||
-        desLower.includes(uDesLower)
-      return deptMatch && desMatch
-    })
-    return list.map((u) => ({
-      id: u.id,
-      name: u.name,
-      department: u.departmentName,
-      designation: u.designation,
-    }))
-  }, [users, formRow?.department, formRow?.designation, form?.designation])
+    const dept = normUserField(formRow?.department ?? '')
+    const des = normUserField(form?.designation ?? '')
+    if (!dept || !des) return []
+    return users
+      .filter((u) => normUserField(u.departmentName) === dept && normUserField(u.designation) === des)
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        department: u.departmentName,
+        designation: u.designation,
+      }))
+  }, [users, formRow?.department, form?.designation])
 
-  const handleToggleReferback = async (row: TestAllocationRow) => {
-    try {
-      const next = !row.referbackFromAllocation
-      const sid = typeof row.sampleId === 'string' ? row.sampleId.trim() : ''
-      if (!sid) {
-        setSaveMessage('Missing sample id for this row.')
-        return
-      }
-      const { error } = await supabase.from('samples').update({ referback_from_allocation: next }).eq('id', sid)
-      if (error) {
-        setSaveMessage(
-          `${formatSupabaseError(error)} Apply migrations in web/supabase/migrations (referback column + stage enum: 20260328120000, 20260329130000).`,
-        )
-        return
-      }
-      setSaveMessage(
-        next
-          ? 'Referred back. Sample Allocation edit is now unlocked for this SRF.'
-          : 'Referback cleared. Sample Allocation edit is locked again for this SRF.',
-      )
-      await loadRows()
-    } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : 'Referback update failed')
-    }
-  }
+  const departmentFilteredAvailableSections = useMemo(() => {
+    const dept = departmentName.trim()
+    if (!dept || isLaboratoryDirector(designation)) return availableSections
+    const deptNorm = normUserField(dept)
+    return availableSections.filter((r) => normUserField(r.department) === deptNorm)
+  }, [availableSections, departmentName, designation])
 
   const toggleRow = (id: string) =>
     setSelectedIds((prev) => {
@@ -421,11 +436,20 @@ export default function TestAllocationMasterPage() {
   const handleAddTestParameter = (row: TestAllocationRow) => {
     setFormRow(row)
     void loadUsers()
+    const deptNorm = normUserField(row.department ?? '')
+    const rowDes = (row.designation ?? '').trim()
+    const matchedDes =
+      rowDes &&
+      users.find(
+        (u) =>
+          normUserField(u.departmentName) === deptNorm &&
+          normUserField(u.designation) === normUserField(rowDes),
+      )?.designation
     setForm({
       sampleAllocationId: row.sampleAllocationId,
       sectionCode: row.sectionCode,
       department: row.department,
-      designation: row.designation,
+      designation: matchedDes ?? rowDes ?? null,
       testParameterIds: row.testParameterIds ?? [],
       testParameterSummary: row.testParameterSummary ?? '',
       assignedEmployeeId: row.assignedEmployeeId ?? '',
@@ -446,43 +470,83 @@ export default function TestAllocationMasterPage() {
   }
 
   const handleSaveForm = () => {
-    if (!form) return
+    if (!form || !formRow) return
     void (async () => {
+      setSaveLoading(true)
       setSaveMessage(null)
       try {
+        if (!form.sampleAllocationId) {
+          setSaveMessage('Select a section before saving.')
+          return
+        }
+        if (!formRow.sampleId) {
+          setSaveMessage('Sample is missing for this section.')
+          return
+        }
+
         const payload = {
           sample_allocation_id: form.sampleAllocationId,
+          sample_id: formRow.sampleId,
+          section_code: formRow.sectionCode ?? form.sectionCode,
+          is_code_id: formRow.isCodeId ?? null,
+          is_code_label: formRow.isCodeLabel ?? null,
+          srf_number: formRow.srfNumber ?? null,
+          allocation_date: formRow.allocationDate ?? null,
+          department: form.department ?? formRow.department ?? null,
+          designation: form.designation ?? formRow.designation ?? null,
           assigned_employee_id: form.assignedEmployeeId || null,
           assigned_employee_name: form.assignedEmployeeName?.trim() || null,
           test_parameter_summary: form.testParameterSummary?.trim() || null,
-          updated_at: new Date().toISOString(),
+          test_parameter_ids: form.testParameterIds ?? [],
         }
-        const { data, error } = await supabase
-          .from('test_allocations')
-          .upsert(payload, {
-            onConflict: 'sample_allocation_id',
-          })
-          .select('id')
-        if (error) throw error
-        const allocRow = Array.isArray(data) && data.length > 0 ? (data[0] as { id: string }) : null
-        const allocationId = allocRow?.id
+
+        let allocationId = formRow.testAllocationId ?? null
+
         if (allocationId) {
-          await supabase.from('test_allocation_parameters').delete().eq('test_allocation_id', allocationId)
-          const ids = form.testParameterIds ?? []
-          if (ids.length > 0) {
-            const labelById = new Map(testParamOptions.map((o) => [o.id, o.label ?? o.id]))
-            const rowsToInsert = ids.map((id) => ({
-              test_allocation_id: allocationId,
-              test_parameter_id: id,
-              test_label: labelById.get(id) ?? id,
-              test_start_date: null,
-              test_end_date: null,
-              results: null,
-            }))
-            const { error: paramErr } = await supabase.from('test_allocation_parameters').insert(rowsToInsert)
-            if (paramErr) throw paramErr
+          const { error } = await supabase.from('test_allocations').update(payload).eq('id', allocationId)
+          if (error) throw error
+        } else {
+          const { data: existing } = await supabase
+            .from('test_allocations')
+            .select('id')
+            .eq('sample_allocation_id', form.sampleAllocationId)
+            .maybeSingle()
+          if (existing?.id) {
+            allocationId = String(existing.id)
+            const { error } = await supabase.from('test_allocations').update(payload).eq('id', allocationId)
+            if (error) throw error
+          } else {
+            const { data: inserted, error } = await supabase
+              .from('test_allocations')
+              .insert(payload)
+              .select('id')
+              .single()
+            if (error) throw error
+            allocationId = (inserted as { id: string } | null)?.id ?? null
           }
         }
+
+        if (!allocationId) {
+          setSaveMessage('Could not save test allocation.')
+          return
+        }
+
+        await supabase.from('test_allocation_parameters').delete().eq('test_allocation_id', allocationId)
+        const ids = form.testParameterIds ?? []
+        if (ids.length > 0) {
+          const labelById = new Map(testParamOptions.map((o) => [o.id, o.label ?? o.id]))
+          const rowsToInsert = ids.map((id) => ({
+            test_allocation_id: allocationId,
+            test_parameter_id: id,
+            test_label: labelById.get(id) ?? id,
+            test_start_date: null,
+            test_end_date: null,
+            results: null,
+          }))
+          const { error: paramErr } = await supabase.from('test_allocation_parameters').insert(rowsToInsert)
+          if (paramErr) throw paramErr
+        }
+
         const { data: sampleAllocForStage } = await supabase
           .from('sample_allocations')
           .select('sample_id')
@@ -493,16 +557,170 @@ export default function TestAllocationMasterPage() {
           const { data: stRow } = await supabase.from('samples').select('stage').eq('id', sampleIdForStage).maybeSingle()
           const st = (stRow as { stage?: string | null } | null)?.stage
           if (!st || st === 'receiving' || st === 'allocation' || st === 'test_allocation') {
-            await supabase.from('samples').update({ stage: 'test_allocation' }).eq('id', sampleIdForStage)
+            const { error: stageErr } = await supabase
+              .from('samples')
+              .update({ stage: 'test_allocation' })
+              .eq('id', sampleIdForStage)
+            if (stageErr) throw stageErr
           }
         }
+
         setSaveMessage('Test allocation saved.')
         setFormOpen(false)
         setFormRow(null)
         setForm(null)
         await loadRows()
       } catch (err) {
-        setSaveMessage(err instanceof Error ? err.message : 'Save failed')
+        setSaveMessage(
+          err && typeof err === 'object' && 'message' in err
+            ? formatSupabaseError(err as { message?: string; details?: string; hint?: string; code?: string })
+            : err instanceof Error
+              ? err.message
+              : 'Save failed',
+        )
+      } finally {
+        setSaveLoading(false)
+      }
+    })()
+  }
+
+  const handleSendForTesting = async (row: TestAllocationRow) => {
+    try {
+      const testAllocationId = row.testAllocationId?.trim()
+      if (!testAllocationId) {
+        setSaveMessage('Save test parameters for this section before sending for testing.')
+        return
+      }
+      const summary = (row.testParameterSummary ?? '').trim()
+      if (!summary) {
+        setSaveMessage('Assign at least one test parameter before Send for Testing.')
+        return
+      }
+      if (!row.assignedEmployeeId?.trim() && !row.assignedEmployeeName?.trim()) {
+        setSaveMessage('Select an employee before Send for Testing.')
+        return
+      }
+
+      const { error } = await supabase
+        .from('test_allocations')
+        .update({ sent_for_testing: true })
+        .eq('id', testAllocationId)
+      if (error) {
+        setSaveMessage(formatSupabaseError(error))
+        return
+      }
+
+      const sampleId = row.sampleId?.trim()
+      if (sampleId) {
+        await supabase.from('samples').update({ stage: 'under_testing' }).eq('id', sampleId)
+      }
+
+      setSaveMessage(`Section ${row.sectionCode} sent for testing.`)
+      await loadRows()
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : 'Send for testing failed')
+    }
+  }
+
+  const handleReferbackToReceiving = async (row: TestAllocationRow) => {
+    const sampleId = row.sampleId?.trim()
+    const section = row.sectionCode?.trim() || 'this section'
+    if (!sampleId || !row.sampleAllocationId?.trim()) {
+      setSaveMessage('Missing section data for refer back.')
+      return
+    }
+    if (
+      !window.confirm(
+        `Refer back section ${section} to Sample Receiving?\n\nTest parameters and this section code will be removed from allocation. If this is the last section on the SRF, the record will unlock in Sample Receiving for editing.`,
+      )
+    ) {
+      return
+    }
+    try {
+      const result = await referbackSectionToSampleReceiving(row.sampleAllocationId, sampleId)
+      if (result === 'receiving') {
+        setSaveMessage(
+          `Section ${section} removed. SRF referred back to Sample Receiving — edit unlocked there.`,
+        )
+      } else {
+        setSaveMessage(
+          `Section ${section} removed from allocation. Other sections for this SRF remain in Sample Allocation.`,
+        )
+      }
+      await loadRows()
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : 'Refer back to Sample Receiving failed')
+    }
+  }
+
+  const handleReferback = async (row: TestAllocationRow) => {
+    try {
+      const sampleId = row.sampleId?.trim()
+      if (!sampleId) {
+        setSaveMessage('Missing sample id.')
+        return
+      }
+      const section = row.sectionCode?.trim() || 'this section'
+      if (
+        !window.confirm(
+          `Refer back section ${section} to Sample Allocation?\n\nTest parameters for this section will be removed; the section code stays in Sample Allocation for re-assignment.`,
+        )
+      ) {
+        return
+      }
+      await deleteTestAllocationsForSampleAllocations([row.sampleAllocationId])
+
+      const { data: sampleAllocRows } = await supabase
+        .from('sample_allocations')
+        .select('id')
+        .eq('sample_id', sampleId)
+      const allocIds = (Array.isArray(sampleAllocRows) ? sampleAllocRows : [])
+        .map((r) => String((r as { id?: unknown }).id ?? '').trim())
+        .filter(Boolean)
+
+      let remainingCount = 0
+      if (allocIds.length > 0) {
+        const { data: remainingTa } = await supabase
+          .from('test_allocations')
+          .select('id')
+          .in('sample_allocation_id', allocIds)
+        remainingCount = Array.isArray(remainingTa) ? remainingTa.length : 0
+      }
+
+      if (remainingCount === 0) {
+        const { error } = await supabase
+          .from('samples')
+          .update({ referback_from_allocation: true })
+          .eq('id', sampleId)
+        if (error) {
+          setSaveMessage(formatSupabaseError(error))
+          return
+        }
+        setSaveMessage('Referred back to Sample Allocation. Edit unlocked there for this SRF.')
+      } else {
+        setSaveMessage('Section referred back. Other sections for this SRF remain in Test Allocation.')
+      }
+      await loadRows()
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : 'Referback failed')
+    }
+  }
+
+  const handleDeleteSelected = () => {
+    const allocIds = Array.from(selectedIds)
+    if (!confirmDestructiveDelete(allocIds.length, 'test allocation section')) return
+    void (async () => {
+      setListLoading(true)
+      setSaveMessage(null)
+      try {
+        const count = await deleteTestAllocationsForSections(allocIds)
+        setSelectedIds(new Set())
+        setSaveMessage(`Deleted ${count} test allocation section(s).`)
+        await loadRows()
+      } catch (err) {
+        setSaveMessage(formatSupabaseError(err))
+      } finally {
+        setListLoading(false)
       }
     })()
   }
@@ -531,7 +749,13 @@ export default function TestAllocationMasterPage() {
         onToggle={toggleRow}
         onToggleAll={toggleAll}
         onAddTestParameter={handleAddTestParameter}
-        onToggleReferback={handleToggleReferback}
+        onReferback={handleReferback}
+        onReferbackToReceiving={handleReferbackToReceiving}
+        onSendForTesting={handleSendForTesting}
+        onAssistantDataChanged={() => {
+          void loadRows()
+          void loadTestParams()
+        }}
       />
 
       <TestAllocationFooterBar
@@ -549,20 +773,38 @@ export default function TestAllocationMasterPage() {
         selectedCount={selectedIds.size}
         saveMessage={saveMessage}
         loading={listLoading}
+        showDelete={showDelete}
+        onDeleteSelected={handleDeleteSelected}
       />
 
-      <Dialog open={formOpen} onOpenChange={(open) => { if (!open) { setFormRow(null); setForm(null); } setFormOpen(open) }}>
+      <Dialog open={formOpen} onOpenChange={(open) => {
+        if (!open) {
+          setFormRow(null)
+          setForm(null)
+          setSaveMessage(null)
+        }
+        setFormOpen(open)
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{formRow ? 'Edit Test Parameter' : 'Add Test Parameter'}</DialogTitle>
           </DialogHeader>
+          {saveMessage && (
+            <p className={`text-sm ${saveMessage === 'Test allocation saved.' ? 'text-green-600' : 'text-destructive'}`}>
+              {saveMessage}
+            </p>
+          )}
           {!formRow ? (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">Select a section to add test parameters and assign an employee.</p>
               {availableSectionsLoading ? (
                 <p className="text-sm">Loading sections…</p>
-              ) : availableSections.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No section available. All sections from Sample Allocation already have test allocation, or there are no sections yet.</p>
+              ) : departmentFilteredAvailableSections.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {availableSections.length > 0 && departmentName.trim()
+                    ? `No sections for your department (${departmentName.trim()}). Only section codes allocated to your department in Sample Allocation are shown here.`
+                    : 'No section available. All sections from Sample Allocation already have test allocation, or there are no sections yet.'}
+                </p>
               ) : (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Section</label>
@@ -571,13 +813,13 @@ export default function TestAllocationMasterPage() {
                     onChange={(e) => {
                       const id = e.target.value
                       if (!id) return
-                      const row = availableSections.find((r) => r.sampleAllocationId === id)
+                      const row = departmentFilteredAvailableSections.find((r) => r.sampleAllocationId === id)
                       if (row) handleSelectSectionForAdd(row)
                     }}
                     value=""
                   >
                     <option value="">Choose section…</option>
-                    {availableSections.map((r) => (
+                    {departmentFilteredAvailableSections.map((r) => (
                       <option key={r.sampleAllocationId} value={r.sampleAllocationId}>
                         {r.sectionCode} — {r.srfNumber ?? '-'}
                       </option>
@@ -592,6 +834,7 @@ export default function TestAllocationMasterPage() {
               form={form}
               onChange={setForm}
               onSave={handleSaveForm}
+              saveLoading={saveLoading}
               onClose={() => {
                 setFormOpen(false)
                 setFormRow(null)

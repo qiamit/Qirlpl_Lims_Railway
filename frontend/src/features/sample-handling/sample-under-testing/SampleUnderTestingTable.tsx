@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import type { TestAllocationRow } from '../types'
-import { Undo2, Eye } from 'lucide-react'
+import { Undo2, Eye, FileCheck } from 'lucide-react'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
 
@@ -10,25 +10,29 @@ type ExpandedUnderTestRow = {
   row: TestAllocationRow
   paramRowId: string | null
   testLabel: string
+  specificRequirement: string | null
   testStartDate: string | null
   testEndDate: string | null
   results: string | null
+  showSectionActions: boolean
 }
 
 function expandRowsByTest(rows: TestAllocationRow[]): ExpandedUnderTestRow[] {
   const out: ExpandedUnderTestRow[] = []
   for (const row of rows) {
     if (row.parameters && row.parameters.length > 0) {
-      for (const p of row.parameters) {
+      row.parameters.forEach((p, paramIdx) => {
         out.push({
           row,
           paramRowId: p.id,
           testLabel: p.testLabel,
+          specificRequirement: p.specificRequirement ?? null,
           testStartDate: p.testStartDate ?? null,
           testEndDate: p.testEndDate ?? null,
           results: p.results ?? null,
+          showSectionActions: paramIdx === 0,
         })
-      }
+      })
       continue
     }
     const summary = row.testParameterSummary?.trim() ?? ''
@@ -38,21 +42,25 @@ function expandRowsByTest(rows: TestAllocationRow[]): ExpandedUnderTestRow[] {
         row,
         paramRowId: null,
         testLabel: '-',
+        specificRequirement: null,
         testStartDate: row.testStartDate ?? null,
         testEndDate: row.testEndDate ?? null,
         results: row.results ?? null,
+        showSectionActions: true,
       })
     } else {
-      for (const label of labels) {
+      labels.forEach((label, paramIdx) => {
         out.push({
           row,
           paramRowId: null,
           testLabel: label,
+          specificRequirement: null,
           testStartDate: row.testStartDate ?? null,
           testEndDate: row.testEndDate ?? null,
           results: row.results ?? null,
+          showSectionActions: paramIdx === 0,
         })
-      }
+      })
     }
   }
   return out
@@ -68,7 +76,8 @@ export function SampleUnderTestingTable({
   onUpdateStartDate,
   onUpdateResults,
   onUpdateEndDate,
-  onToggleReferback,
+  onReferback,
+  onSendForReview,
   onViewTestParameter,
   emptyStateMessage,
 }: {
@@ -81,7 +90,8 @@ export function SampleUnderTestingTable({
   onUpdateStartDate: (row: TestAllocationRow, paramRowId: string | null, testLabel: string, value: string) => void
   onUpdateResults: (row: TestAllocationRow, paramRowId: string | null, testLabel: string, value: string) => void
   onUpdateEndDate: (row: TestAllocationRow, paramRowId: string | null, testLabel: string, value: string) => void
-  onToggleReferback: (row: TestAllocationRow) => void
+  onReferback: (row: TestAllocationRow) => void
+  onSendForReview: (row: TestAllocationRow) => void
   onViewTestParameter: (row: TestAllocationRow, testLabel: string) => void
   /** When rows are empty, overrides the default technician-oriented hint */
   emptyStateMessage?: string
@@ -99,10 +109,10 @@ export function SampleUnderTestingTable({
       ) : rows.length === 0 ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">
           {emptyStateMessage ??
-            'No test allocations assigned to you in Test Allocation (Select Employee). Unassigned rows are not listed here.'}
+            'No section codes or test parameters assigned to you in Test Allocation (Select Employee).'}
         </p>
       ) : (
-        <Table className="min-w-[900px]">
+        <Table className="min-w-[1100px]">
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead className="text-xs w-[44px] text-center">
@@ -118,14 +128,28 @@ export function SampleUnderTestingTable({
               </TableHead>
               <TableHead className="text-xs text-center">Section Code</TableHead>
               <TableHead className="text-xs">Test Parameter</TableHead>
+              <TableHead className="text-xs">Specified Requirement</TableHead>
               <TableHead className="text-xs text-center">Test Start Date</TableHead>
               <TableHead className="text-xs text-center">Test End Date</TableHead>
               <TableHead className="text-xs text-center">Results</TableHead>
-              <TableHead className="text-xs text-center">Referback</TableHead>
+              <TableHead className="text-xs text-center">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {expanded.map(({ row: r, paramRowId, testLabel, testStartDate, testEndDate, results }, idx) => (
+            {expanded.map(
+              (
+                {
+                  row: r,
+                  paramRowId,
+                  testLabel,
+                  specificRequirement,
+                  testStartDate,
+                  testEndDate,
+                  results,
+                  showSectionActions,
+                },
+                idx,
+              ) => (
               <TableRow key={`${r.sampleAllocationId}-${idx}-${testLabel}`}>
                 <TableCell className="text-center">
                   <input
@@ -151,6 +175,11 @@ export function SampleUnderTestingTable({
                       <Eye size={14} />
                     </Button>
                   </div>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-[180px]">
+                  <span className="line-clamp-2" title={specificRequirement ?? undefined}>
+                    {fmt(specificRequirement)}
+                  </span>
                 </TableCell>
                 <TableCell className="p-2">
                   <Input
@@ -182,22 +211,36 @@ export function SampleUnderTestingTable({
                   />
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center justify-center">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant={r.referbackFromAllocation ? 'secondary' : 'ghost'}
-                      className="h-8 w-8 shrink-0"
-                      aria-label={r.referbackFromAllocation ? 'Clear referback' : 'Referback'}
-                      title={r.referbackFromAllocation ? 'Clear referback' : 'Referback'}
-                      onClick={() => onToggleReferback(r)}
-                    >
-                      <Undo2 size={14} />
-                    </Button>
-                  </div>
+                  {showSectionActions ? (
+                    <div className="flex items-center justify-center gap-1">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0"
+                        aria-label="Referback section to Test Allocation"
+                        title="Referback — removes this section from Sample Under Testing"
+                        onClick={() => onReferback(r)}
+                      >
+                        <Undo2 size={14} />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0"
+                        aria-label="Send result for review"
+                        title="Send result for review"
+                        onClick={() => onSendForReview(r)}
+                      >
+                        <FileCheck size={14} />
+                      </Button>
+                    </div>
+                  ) : null}
                 </TableCell>
               </TableRow>
-            ))}
+            ),
+            )}
           </TableBody>
         </Table>
       )}

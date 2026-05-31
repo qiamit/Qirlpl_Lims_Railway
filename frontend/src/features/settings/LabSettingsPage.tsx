@@ -1,4 +1,4 @@
-  import { useEffect, useState } from 'react'
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { Save, Plus, Trash2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FileUpload } from '@/components/ui/file-upload'
 import { supabase } from '@/lib/supabaseClient'
+import { EMAIL_INPUT_PATTERN } from '@/lib/validation'
 import { LegalDocumentsTab } from './lab-settings/LegalDocumentsTab'
 import { RegistrationDocumentsTab } from './lab-settings/RegistrationDocumentsTab'
 import { PrefixesTab } from './lab-settings/PrefixesTab'
@@ -22,13 +23,40 @@ import {
   DialogTrigger,
   DialogDescription,
 } from '@/components/ui/dialog'
+import {
+  deleteLabMasterOption,
+  fetchLabMasterOptionsGrouped,
+  insertLabMasterOption,
+  slugifyLabOptionValue,
+  type LabMasterOptionCategory,
+} from './lab-settings/labMasterOptions'
+import type { OptionItem } from './lab-settings/types'
+import {
+  LAB_SETTINGS_SINGLETON_ID,
+  parseLabSettingsRow,
+  labDetailsPayload,
+  labBankPayload,
+  labSystemPayload,
+  registrationDocsToRows,
+  registrationDocFromRow,
+  accreditationsToRows,
+  accreditationFromRow,
+  letterheadFromRow,
+} from './lab-settings/labSettingsDb'
 
-const LAB_SETTINGS_SINGLETON_ID = '00000000-0000-0000-0000-000000000001'
+function mergeOption(
+  prev: OptionItem[],
+  item: OptionItem,
+): OptionItem[] {
+  const next = prev.some((o) => o.value === item.value) ? prev : [...prev, item]
+  return next.sort((a, b) => a.label.localeCompare(b.label))
+}
 
 export default function LabSettingsPage() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'laboratory-details'
-    return window.localStorage.getItem('labSettings.activeTab') ?? 'laboratory-details'
+    const stored = window.localStorage.getItem('labSettings.activeTab') ?? 'laboratory-details'
+    return stored === 'print' ? 'laboratory-details' : stored
   })
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -149,23 +177,13 @@ export default function LabSettingsPage() {
         const { error: deleteError } = await supabase
           .from('lab_documents')
           .delete()
-          .eq('doc_type', 'registration')
+          .eq('category', 'registration')
 
         if (deleteError) throw deleteError
 
-        if (registrationDocs.length > 0) {
-          const payload = registrationDocs
-            .filter((doc) => doc.name.trim())
-            .map((doc) => ({
-              doc_type: 'registration',
-              title: doc.name.trim(),
-              notes: doc.number ?? '',
-              file_path: doc.fileUrl ?? null,
-            }))
-
-          const { error: insertError } = await supabase
-            .from('lab_documents')
-            .insert(payload)
+        const payload = registrationDocsToRows(registrationDocs)
+        if (payload.length > 0) {
+          const { error: insertError } = await supabase.from('lab_documents').insert(payload)
           if (insertError) throw insertError
         }
 
@@ -186,27 +204,13 @@ export default function LabSettingsPage() {
         const { error: deleteError } = await supabase
           .from('lab_accreditations')
           .delete()
-          .neq('title', '')
+          .gte('created_at', '1970-01-01')
 
         if (deleteError) throw deleteError
 
-        if (accreditationCards.length > 0) {
-          const payload = accreditationCards
-            .filter((card) => card.inputLabel.trim())
-            .map((card) => ({
-              title: card.inputLabel.trim(),
-              certificate_no: card.certificateNo ?? '',
-              certificate_file_path: card.certificateFilePath ?? null,
-              scope_file_path: card.scopeFilePath ?? null,
-              logo_file_path: card.logoFilePath ?? null,
-              valid_from: card.validityStart ?? null,
-              valid_to: card.validityEnd ?? null,
-            }))
-
-          const { error: insertError } = await supabase
-            .from('lab_accreditations')
-            .insert(payload)
-
+        const payload = accreditationsToRows(accreditationCards)
+        if (payload.length > 0) {
+          const { error: insertError } = await supabase.from('lab_accreditations').insert(payload)
           if (insertError) throw insertError
         }
 
@@ -234,7 +238,6 @@ export default function LabSettingsPage() {
         const payload = prefixes
           .map((p) => ({
             name: p.name?.trim() ?? '',
-            label: p.name?.trim() ?? '',
             prefix: p.prefix?.trim() ?? '',
           }))
           .filter((p) => p.name.length > 0 && p.prefix.length > 0)
@@ -263,11 +266,12 @@ export default function LabSettingsPage() {
         const { error: deleteError } = await supabase
           .from('lab_letterheads')
           .delete()
-          .neq('template_type', '')
+          .gte('created_at', '1970-01-01')
 
         if (deleteError) throw deleteError
 
         const payload: Array<{
+          name: string
           template_type: string
           title: string
           file_path?: string | null
@@ -277,9 +281,11 @@ export default function LabSettingsPage() {
 
         for (const h of headerTemplates) {
           if (!h.name.trim()) continue
+          const label = h.name.trim()
           payload.push({
+            name: label,
             template_type: 'header',
-            title: h.name.trim(),
+            title: label,
             file_path: h.fileUrl ?? '',
             content_text: null,
             is_default: false,
@@ -287,9 +293,11 @@ export default function LabSettingsPage() {
         }
         for (const f of footerTemplates) {
           if (!f.name.trim()) continue
+          const label = f.name.trim()
           payload.push({
+            name: label,
             template_type: 'footer',
-            title: f.name.trim(),
+            title: label,
             file_path: f.fileUrl ?? '',
             content_text: null,
             is_default: false,
@@ -297,9 +305,11 @@ export default function LabSettingsPage() {
         }
         for (const t of termsTemplates) {
           if (!t.name.trim()) continue
+          const label = t.name.trim()
           payload.push({
+            name: label,
             template_type: 'terms',
-            title: t.name.trim(),
+            title: label,
             file_path: '',
             content_text: t.text ?? '',
             is_default: false,
@@ -308,18 +318,21 @@ export default function LabSettingsPage() {
 
         for (const wm of watermarkTemplates) {
           if (!wm.name.trim()) continue
+          const label = wm.name.trim()
           if (wm.type === 'image') {
             payload.push({
+              name: label,
               template_type: 'watermark_image',
-              title: wm.name.trim(),
+              title: label,
               file_path: wm.imagePath ?? '',
               content_text: null,
               is_default: false,
             })
           } else {
             payload.push({
+              name: label,
               template_type: 'watermark_text',
-              title: wm.name.trim(),
+              title: label,
               file_path: '',
               content_text: wm.text?.trim() ?? '',
               is_default: false,
@@ -342,65 +355,60 @@ export default function LabSettingsPage() {
       }
     })()
   }
+
   const handleAddCurrency = () => {
     if (!newCurrency.trim()) return
-    const normalized = newCurrency.trim()
-    const value = normalized.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `curr-${Date.now()}`
-    setCurrencies((prev) => [...prev, { value, label: normalized }])
-    setSelectedCurrency(value)
-    setNewCurrency('')
-    setCurrencyDialogOpen(false)
+    const label = newCurrency.trim()
+    const value = slugifyLabOptionValue(label, 'currency')
+    persistNewMasterOption(
+      'currency',
+      label,
+      value,
+      setCurrencies,
+      setSelectedCurrency,
+      () => setNewCurrency(''),
+      () => setCurrencyDialogOpen(false),
+    )
   }
   const handleDeleteCurrency = (value: string) => {
-    setCurrencies((prev) => {
-      const updated = prev.filter((currency) => currency.value !== value)
-      if (updated.length === 0) {
-        setSelectedCurrency('')
-      } else if (selectedCurrency === value) {
-        setSelectedCurrency(updated[0].value)
-      }
-      return updated
-    })
+    if (currencies.length <= 1) return
+    persistDeleteMasterOption('currency', value, currencies, setCurrencies, selectedCurrency, setSelectedCurrency)
   }
   const handleAddDateFormat = () => {
     if (!newDateFormat.trim()) return
-    const normalized = newDateFormat.trim().toUpperCase()
-    const value = normalized.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `date-${Date.now()}`
-    setDateFormats((prev) => [...prev, { value, label: normalized }])
-    setSelectedDateFormat(value)
-    setNewDateFormat('')
-    setDateDialogOpen(false)
+    const label = newDateFormat.trim().toUpperCase()
+    const value = slugifyLabOptionValue(label, 'date')
+    persistNewMasterOption(
+      'date_format',
+      label,
+      value,
+      setDateFormats,
+      setSelectedDateFormat,
+      () => setNewDateFormat(''),
+      () => setDateDialogOpen(false),
+    )
   }
   const handleDeleteDateFormat = (value: string) => {
-    setDateFormats((prev) => {
-      const updated = prev.filter((format) => format.value !== value)
-      if (updated.length === 0) {
-        setSelectedDateFormat('')
-      } else if (selectedDateFormat === value) {
-        setSelectedDateFormat(updated[0].value)
-      }
-      return updated
-    })
+    if (dateFormats.length <= 1) return
+    persistDeleteMasterOption('date_format', value, dateFormats, setDateFormats, selectedDateFormat, setSelectedDateFormat)
   }
   const handleAddTimeFormat = () => {
     if (!newTimeFormat.trim()) return
-    const normalized = newTimeFormat.trim()
-    const value = normalized.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `time-${Date.now()}`
-    setTimeFormats((prev) => [...prev, { value, label: normalized }])
-    setSelectedTimeFormat(value)
-    setNewTimeFormat('')
-    setTimeDialogOpen(false)
+    const label = newTimeFormat.trim()
+    const value = slugifyLabOptionValue(label, 'time')
+    persistNewMasterOption(
+      'time_format',
+      label,
+      value,
+      setTimeFormats,
+      setSelectedTimeFormat,
+      () => setNewTimeFormat(''),
+      () => setTimeDialogOpen(false),
+    )
   }
   const handleDeleteTimeFormat = (value: string) => {
-    setTimeFormats((prev) => {
-      const updated = prev.filter((format) => format.value !== value)
-      if (updated.length === 0) {
-        setSelectedTimeFormat('')
-      } else if (selectedTimeFormat === value) {
-        setSelectedTimeFormat(updated[0].value)
-      }
-      return updated
-    })
+    if (timeFormats.length <= 1) return
+    persistDeleteMasterOption('time_format', value, timeFormats, setTimeFormats, selectedTimeFormat, setSelectedTimeFormat)
   }
   type FileTemplate = { id: string; name: string; fileUrl?: string | null }
   type TermsTemplate = { id: string; name: string; text: string }
@@ -448,13 +456,64 @@ export default function LabSettingsPage() {
   const [newWatermarkName, setNewWatermarkName] = useState('')
   const [watermarkDeleteTarget, setWatermarkDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
+  const persistNewMasterOption = (
+    category: LabMasterOptionCategory,
+    label: string,
+    value: string,
+    setOptions: Dispatch<SetStateAction<OptionItem[]>>,
+    setSelected: (value: string) => void,
+    clearInput: () => void,
+    closeDialog: () => void,
+  ) => {
+    void (async () => {
+      try {
+        await insertLabMasterOption(category, label, value)
+        const item = { value, label }
+        setOptions((prev) => mergeOption(prev, item))
+        setSelected(value)
+        clearInput()
+        closeDialog()
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to save option')
+      }
+    })()
+  }
+
+  const persistDeleteMasterOption = (
+    category: LabMasterOptionCategory,
+    value: string,
+    options: OptionItem[],
+    setOptions: Dispatch<SetStateAction<OptionItem[]>>,
+    selected: string,
+    setSelected: (value: string) => void,
+  ) => {
+    void (async () => {
+      try {
+        await deleteLabMasterOption(category, value)
+        const updated = options.filter((o) => o.value !== value)
+        setOptions(updated)
+        if (selected === value) {
+          setSelected(updated[0]?.value ?? '')
+        }
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to delete option')
+      }
+    })()
+  }
+
   const handleAddLabType = () => {
     if (!newLabType.trim()) return
-    const value = newLabType.toLowerCase().replace(/\s+/g, '-')
-    setLabTypes((prev) => [...prev, { value, label: newLabType.trim() }])
-    setSelectedLabType(value)
-    setNewLabType('')
-    setLabTypeDialogOpen(false)
+    const label = newLabType.trim()
+    const value = slugifyLabOptionValue(label, 'type')
+    persistNewMasterOption(
+      'laboratory_type',
+      label,
+      value,
+      setLabTypes,
+      setSelectedLabType,
+      () => setNewLabType(''),
+      () => setLabTypeDialogOpen(false),
+    )
   }
 
   const handleAddAccreditationCard = () => {
@@ -570,57 +629,77 @@ export default function LabSettingsPage() {
     setWatermarkDeleteTarget(null)
   }
   const handleDeleteLabType = (value: string) => {
-    setLabTypes((prev) => prev.filter((type) => type.value !== value))
-    if (selectedLabType === value && labTypes.length > 1) {
-      const next = labTypes.find((type) => type.value !== value)
-      if (next) setSelectedLabType(next.value)
-    }
+    if (labTypes.length <= 1) return
+    persistDeleteMasterOption('laboratory_type', value, labTypes, setLabTypes, selectedLabType, setSelectedLabType)
   }
   const handleAddLabScale = () => {
     if (!newLabScale.trim()) return
-    const value = newLabScale.toLowerCase().replace(/\s+/g, '-')
-    setLabScales((prev) => [...prev, { value, label: newLabScale.trim() }])
-    setSelectedLabScale(value)
-    setNewLabScale('')
-    setLabScaleDialogOpen(false)
+    const label = newLabScale.trim()
+    const value = slugifyLabOptionValue(label, 'scale')
+    persistNewMasterOption(
+      'laboratory_scale',
+      label,
+      value,
+      setLabScales,
+      setSelectedLabScale,
+      () => setNewLabScale(''),
+      () => setLabScaleDialogOpen(false),
+    )
   }
   const handleDeleteLabScale = (value: string) => {
-    setLabScales((prev) => prev.filter((scale) => scale.value !== value))
-    if (selectedLabScale === value && labScales.length > 1) {
-      const next = labScales.find((scale) => scale.value !== value)
-      if (next) setSelectedLabScale(next.value)
-    }
+    if (labScales.length <= 1) return
+    persistDeleteMasterOption('laboratory_scale', value, labScales, setLabScales, selectedLabScale, setSelectedLabScale)
   }
   const handleAddDesignation = () => {
     if (!newDesignation.trim()) return
-    const value = newDesignation.toLowerCase().replace(/\s+/g, '-')
-    setDesignations((prev) => [...prev, { value, label: newDesignation.trim() }])
-    setSelectedDesignation(value)
-    setNewDesignation('')
-    setDesignationDialogOpen(false)
+    const label = newDesignation.trim()
+    const value = slugifyLabOptionValue(label, 'designation')
+    persistNewMasterOption(
+      'designation',
+      label,
+      value,
+      setDesignations,
+      setSelectedDesignation,
+      () => setNewDesignation(''),
+      () => setDesignationDialogOpen(false),
+    )
   }
   const handleDeleteDesignation = (value: string) => {
-    setDesignations((prev) => prev.filter((designation) => designation.value !== value))
-    if (selectedDesignation === value && designations.length > 1) {
-      const next = designations.find((designation) => designation.value !== value)
-      if (next) setSelectedDesignation(next.value)
-    }
+    if (designations.length <= 1) return
+    persistDeleteMasterOption(
+      'designation',
+      value,
+      designations,
+      setDesignations,
+      selectedDesignation,
+      setSelectedDesignation,
+    )
   }
   const handleAddCountryCode = () => {
     if (!newCountryCode.trim()) return
-    const formatted = newCountryCode.startsWith('+') ? newCountryCode : `+${newCountryCode}`
+    const formatted = newCountryCode.startsWith('+') ? newCountryCode.trim() : `+${newCountryCode.trim()}`
+    const label = formatted
     const value = formatted
-    setCountryCodes((prev) => [...prev, { value, label: `${formatted}` }])
-    setSelectedCountryCode(value)
-    setNewCountryCode('')
-    setCountryCodeDialogOpen(false)
+    persistNewMasterOption(
+      'country_code',
+      label,
+      value,
+      setCountryCodes,
+      setSelectedCountryCode,
+      () => setNewCountryCode(''),
+      () => setCountryCodeDialogOpen(false),
+    )
   }
   const handleDeleteCountryCode = (value: string) => {
-    setCountryCodes((prev) => prev.filter((code) => code.value !== value))
-    if (selectedCountryCode === value && countryCodes.length > 1) {
-      const next = countryCodes.find((code) => code.value !== value)
-      if (next) setSelectedCountryCode(next.value)
-    }
+    if (countryCodes.length <= 1) return
+    persistDeleteMasterOption(
+      'country_code',
+      value,
+      countryCodes,
+      setCountryCodes,
+      selectedCountryCode,
+      setSelectedCountryCode,
+    )
   }
 
   const handleAddRegistrationDocument = () => {
@@ -646,49 +725,70 @@ export default function LabSettingsPage() {
   }
   const handleAddState = () => {
     if (!newState.trim()) return
-    const value = newState.toLowerCase().replace(/\s+/g, '-')
-    setStates((prev) => [...prev, { value, label: newState.trim() }])
-    setSelectedState(value)
-    setNewState('')
-    setStateDialogOpen(false)
+    const label = newState.trim()
+    const value = slugifyLabOptionValue(label, 'state')
+    persistNewMasterOption(
+      'state',
+      label,
+      value,
+      setStates,
+      setSelectedState,
+      () => setNewState(''),
+      () => setStateDialogOpen(false),
+    )
   }
   const handleDeleteState = (value: string) => {
-    setStates((prev) => prev.filter((state) => state.value !== value))
-    if (selectedState === value && states.length > 1) {
-      const next = states.find((state) => state.value !== value)
-      if (next) setSelectedState(next.value)
-    }
+    if (states.length <= 1) return
+    persistDeleteMasterOption('state', value, states, setStates, selectedState, setSelectedState)
   }
   const handleAddCountry = () => {
     if (!newCountry.trim()) return
-    const value = newCountry.toLowerCase().replace(/\s+/g, '-')
-    setCountries((prev) => [...prev, { value, label: newCountry.trim() }])
-    setSelectedCountry(value)
-    setNewCountry('')
-    setCountryDialogOpen(false)
+    const label = newCountry.trim()
+    const value = slugifyLabOptionValue(label, 'country')
+    persistNewMasterOption(
+      'country',
+      label,
+      value,
+      setCountries,
+      setSelectedCountry,
+      () => setNewCountry(''),
+      () => setCountryDialogOpen(false),
+    )
   }
   const handleDeleteCountry = (value: string) => {
-    setCountries((prev) => prev.filter((country) => country.value !== value))
-    if (selectedCountry === value && countries.length > 1) {
-      const next = countries.find((country) => country.value !== value)
-      if (next) setSelectedCountry(next.value)
-    }
+    if (countries.length <= 1) return
+    persistDeleteMasterOption('country', value, countries, setCountries, selectedCountry, setSelectedCountry)
   }
 
-  const parseOptions = (input: unknown) => {
-    if (!Array.isArray(input)) return null
-    const cleaned = input
-      .map((item) => {
-        if (!item || typeof item !== 'object') return null
-        const record = item as Record<string, unknown>
-        const value = typeof record.value === 'string' ? record.value : ''
-        const label = typeof record.label === 'string' ? record.label : ''
-        if (!value.trim() || !label.trim()) return null
-        return { value: value.trim(), label: label.trim() }
-      })
-      .filter(Boolean) as Array<{ value: string; label: string }>
-    return cleaned.length > 0 ? cleaned : null
-  }
+  useEffect(() => {
+    let canceled = false
+
+    const loadMasterOptions = async () => {
+      try {
+        const grouped = await fetchLabMasterOptionsGrouped()
+        if (canceled) return
+        setLabTypes(grouped.laboratory_type)
+        setLabScales(grouped.laboratory_scale)
+        setDesignations(grouped.designation)
+        setStates(grouped.state)
+        setCountries(grouped.country)
+        setCountryCodes(grouped.country_code)
+        setCurrencies(grouped.currency)
+        setDateFormats(grouped.date_format)
+        setTimeFormats(grouped.time_format)
+      } catch (err) {
+        if (!canceled) {
+          console.error('Failed to load lab master options:', err)
+        }
+      }
+    }
+
+    void loadMasterOptions()
+
+    return () => {
+      canceled = true
+    }
+  }, [])
 
   useEffect(() => {
     let canceled = false
@@ -728,63 +828,33 @@ export default function LabSettingsPage() {
 
       if (canceled || !data) return
 
-      const row = data as Record<string, unknown>
-      setLabName(String(row.lab_name ?? ''))
-      setContactPersonName(String(row.contact_person_name ?? ''))
-      setMobile(String(row.lab_phone ?? ''))
-      setEmail(String(row.lab_email ?? ''))
-      setAddress(String(row.lab_address ?? ''))
-      setPinCode(String(row.pin_code ?? ''))
-      setDistrict(String(row.district ?? 'Raipur'))
-
-      setCompanyLogoPath(typeof row.company_logo_path === 'string' ? row.company_logo_path : null)
-      setSealSignPath(typeof row.seal_sign_path === 'string' ? row.seal_sign_path : null)
-
-      setBankName(String(row.bank_name ?? ''))
-      setBranchName(String(row.branch_name ?? ''))
-      setAccountNumber(String(row.account_number ?? ''))
-      setIfsc(String(row.ifsc ?? ''))
-      setUpi(String(row.upi ?? ''))
-
-      setChequeCopyPath(typeof row.cheque_copy_path === 'string' ? row.cheque_copy_path : null)
-      setQrCodePath(typeof row.qr_code_path === 'string' ? row.qr_code_path : null)
-
-      const savedCurrencies = parseOptions(row.currency_options)
-      if (savedCurrencies) setCurrencies(savedCurrencies)
-
-      const savedDateFormats = parseOptions(row.date_format_options)
-      if (savedDateFormats) setDateFormats(savedDateFormats)
-
-      const savedTimeFormats = parseOptions(row.time_format_options)
-      if (savedTimeFormats) setTimeFormats(savedTimeFormats)
-
-      const dbLabType = String(row.laboratory_type ?? '')
-      if (dbLabType) setSelectedLabType(dbLabType)
-
-      const dbLabScale = String(row.laboratory_scale ?? '')
-      if (dbLabScale) setSelectedLabScale(dbLabScale)
-
-      const dbDesignation = String(row.contact_designation ?? '')
-      if (dbDesignation) setSelectedDesignation(dbDesignation)
-
-      const dbState = String(row.state ?? '')
-      if (dbState) setSelectedState(dbState)
-
-      const dbCountry = String(row.country ?? '')
-      if (dbCountry) setSelectedCountry(dbCountry)
-
-      const dbCurrency = String(row.currency ?? '')
-      if (dbCurrency) setSelectedCurrency(dbCurrency)
-
-      const dbDateFormat = String(row.date_format ?? '')
-      if (dbDateFormat) setSelectedDateFormat(dbDateFormat)
-
-      const dbTimeFormat = String(row.time_format ?? '')
-      if (dbTimeFormat) setSelectedTimeFormat(dbTimeFormat)
-
-      const dbTheme = String(row.theme ?? '').trim()
-      if (dbTheme === 'light' || dbTheme === 'dark' || dbTheme === 'system') {
-        setSelectedTheme(dbTheme)
+      const parsed = parseLabSettingsRow(data as Record<string, unknown>)
+      setLabName(parsed.labName)
+      setContactPersonName(parsed.contactPersonName)
+      setMobile(parsed.mobile)
+      setEmail(parsed.email)
+      setAddress(parsed.address)
+      setPinCode(parsed.pinCode)
+      setDistrict(parsed.district)
+      setCompanyLogoPath(parsed.companyLogoPath)
+      setSealSignPath(parsed.sealSignPath)
+      setBankName(parsed.bankName)
+      setBranchName(parsed.branchName)
+      setAccountNumber(parsed.accountNumber)
+      setIfsc(parsed.ifsc)
+      setUpi(parsed.upi)
+      setChequeCopyPath(parsed.chequeCopyPath)
+      setQrCodePath(parsed.qrCodePath)
+      if (parsed.labType) setSelectedLabType(parsed.labType)
+      if (parsed.labScale) setSelectedLabScale(parsed.labScale)
+      if (parsed.designation) setSelectedDesignation(parsed.designation)
+      if (parsed.state) setSelectedState(parsed.state)
+      if (parsed.country) setSelectedCountry(parsed.country)
+      if (parsed.currency) setSelectedCurrency(parsed.currency)
+      if (parsed.dateFormat) setSelectedDateFormat(parsed.dateFormat)
+      if (parsed.timeFormat) setSelectedTimeFormat(parsed.timeFormat)
+      if (parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system') {
+        setSelectedTheme(parsed.theme)
       }
     }
 
@@ -807,30 +877,39 @@ export default function LabSettingsPage() {
       const [documentsResult, prefixesResult, letterheadsResult, accreditationsResult] = await Promise.all([
         supabase
           .from('lab_documents')
-          .select('doc_type, title, notes, file_path')
-          .eq('doc_type', 'registration'),
-        supabase
-          .from('lab_prefixes')
-          .select('name, prefix'),
+          .select('category, name, remarks, file_path')
+          .eq('category', 'registration'),
+        supabase.from('lab_prefixes').select('name, prefix'),
         supabase
           .from('lab_letterheads')
-          .select('template_type, title, file_path, content_text'),
+          .select('template_type, title, name, file_path, content_text, header_html, footer_html'),
         supabase
           .from('lab_accreditations')
-          .select('title, certificate_no, certificate_file_path, scope_file_path, logo_file_path, valid_from, valid_to'),
+          .select(
+            'accreditation_body, accreditation_number, certificate_file_path, scope_document_path, logo_file_path, valid_from, valid_until',
+          ),
       ])
 
       if (canceled) return
 
       if (!documentsResult.error) {
-        const docs = (documentsResult.data ?? []) as Array<{ title?: unknown; notes?: unknown; file_path?: unknown }>
+        const docs = (documentsResult.data ?? []) as Array<{
+          name?: unknown
+          title?: unknown
+          remarks?: unknown
+          notes?: unknown
+          file_path?: unknown
+        }>
         setRegistrationDocs(
-          docs.map((row) => ({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            name: String(row.title ?? ''),
-            number: String(row.notes ?? ''),
-            fileUrl: typeof row.file_path === 'string' ? row.file_path : null,
-          })),
+          docs.map((row) => {
+            const parsed = registrationDocFromRow(row)
+            return {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              name: parsed.name,
+              number: parsed.number,
+              fileUrl: parsed.fileUrl,
+            }
+          }),
         )
       }
 
@@ -846,12 +925,7 @@ export default function LabSettingsPage() {
       }
 
       if (!letterheadsResult.error) {
-        const rows = (letterheadsResult.data ?? []) as Array<{
-          template_type?: unknown
-          title?: unknown
-          file_path?: unknown
-          content_text?: unknown
-        }>
+        const rows = (letterheadsResult.data ?? []) as Array<Record<string, unknown>>
 
         const headers: FileTemplate[] = []
         const footers: FileTemplate[] = []
@@ -859,10 +933,7 @@ export default function LabSettingsPage() {
         const watermarks: WatermarkTemplate[] = []
 
         for (const row of rows) {
-          const type = String(row.template_type ?? '')
-          const title = String(row.title ?? '')
-          const fileUrl = typeof row.file_path === 'string' ? row.file_path : null
-          const text = String(row.content_text ?? '')
+          const { type, title, fileUrl, text } = letterheadFromRow(row)
 
           const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
           if (type === 'header') {
@@ -885,21 +956,14 @@ export default function LabSettingsPage() {
       }
 
       if (!accreditationsResult.error) {
-        const rows = (accreditationsResult.data ?? []) as Array<{
-          title?: unknown
-          certificate_no?: unknown
-          certificate_file_path?: unknown
-          scope_file_path?: unknown
-          logo_file_path?: unknown
-          valid_from?: unknown
-          valid_to?: unknown
-        }>
+        const rows = (accreditationsResult.data ?? []) as Array<Record<string, unknown>>
 
         setAccreditationCards(
           rows
-            .filter((r) => String(r.title ?? '').trim())
-            .map((r) => {
-              const baseName = String(r.title ?? '').trim()
+            .map((r) => accreditationFromRow(r))
+            .filter((r) => r.inputLabel.trim())
+            .map((parsed) => {
+              const baseName = parsed.inputLabel
               const slug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
               const id = `${slug || 'accr'}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 
@@ -910,12 +974,12 @@ export default function LabSettingsPage() {
                 certificateLabel: `${baseName} Certificate`,
                 scopeLabel: `${baseName} Scope`,
                 logoLabel: `${baseName} Logo`,
-                certificateNo: String(r.certificate_no ?? ''),
-                certificateFilePath: typeof r.certificate_file_path === 'string' ? r.certificate_file_path : null,
-                scopeFilePath: typeof r.scope_file_path === 'string' ? r.scope_file_path : null,
-                logoFilePath: typeof r.logo_file_path === 'string' ? r.logo_file_path : null,
-                validityStart: typeof r.valid_from === 'string' ? r.valid_from : null,
-                validityEnd: typeof r.valid_to === 'string' ? r.valid_to : null,
+                certificateNo: parsed.certificateNo,
+                certificateFilePath: parsed.certificateFilePath,
+                scopeFilePath: parsed.scopeFilePath,
+                logoFilePath: parsed.logoFilePath,
+                validityStart: parsed.validityStart,
+                validityEnd: parsed.validityEnd,
               }
             }),
         )
@@ -949,22 +1013,24 @@ export default function LabSettingsPage() {
       setSaveMessage(null)
       setSaveLoading(true)
       try {
-        await upsertLabSettings({
-          lab_name: labName,
-          lab_address: address,
-          lab_phone: mobile,
-          lab_email: email,
-          laboratory_type: selectedLabType,
-          laboratory_scale: selectedLabScale,
-          contact_person_name: contactPersonName,
-          contact_designation: selectedDesignation,
-          pin_code: pinCode,
-          district,
-          state: selectedState,
-          country: selectedCountry,
-          company_logo_path: companyLogoPath,
-          seal_sign_path: sealSignPath,
-        })
+        await upsertLabSettings(
+          labDetailsPayload({
+            labName,
+            address,
+            mobile,
+            email,
+            labType: selectedLabType,
+            labScale: selectedLabScale,
+            contactPersonName,
+            designation: selectedDesignation,
+            pinCode,
+            district,
+            state: selectedState,
+            country: selectedCountry,
+            companyLogoPath,
+            sealSignPath,
+          }),
+        )
         if (typeof window !== 'undefined') {
           window.localStorage.setItem('labSettings.labName', labName)
         }
@@ -982,15 +1048,17 @@ export default function LabSettingsPage() {
       setSaveMessage(null)
       setSaveLoading(true)
       try {
-        await upsertLabSettings({
-          bank_name: bankName,
-          branch_name: branchName,
-          account_number: accountNumber,
-          ifsc,
-          upi,
-          cheque_copy_path: chequeCopyPath,
-          qr_code_path: qrCodePath,
-        })
+        await upsertLabSettings(
+          labBankPayload({
+            bankName,
+            branchName,
+            accountNumber,
+            ifsc,
+            upi,
+            chequeCopyPath,
+            qrCodePath,
+          }),
+        )
         setSaveMessage('Saved successfully.')
       } catch (err) {
         setSaveMessage(err instanceof Error ? err.message : 'Unable to save bank details')
@@ -1005,15 +1073,14 @@ export default function LabSettingsPage() {
       setSaveMessage(null)
       setSaveLoading(true)
       try {
-        await upsertLabSettings({
-          currency: selectedCurrency,
-          date_format: selectedDateFormat,
-          time_format: selectedTimeFormat,
-          theme: selectedTheme,
-          currency_options: currencies,
-          date_format_options: dateFormats,
-          time_format_options: timeFormats,
-        })
+        await upsertLabSettings(
+          labSystemPayload({
+            currency: selectedCurrency,
+            dateFormat: selectedDateFormat,
+            timeFormat: selectedTimeFormat,
+            theme: selectedTheme,
+          }),
+        )
         setSaveMessage('Saved successfully.')
       } catch (err) {
         setSaveMessage(err instanceof Error ? err.message : 'Unable to save settings')
@@ -1074,23 +1141,26 @@ export default function LabSettingsPage() {
                   {saveLoading ? 'Saving…' : 'Save'}
                 </Button>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-4">
-                <div className="space-y-2 lg:col-span-2">
-                  <Label htmlFor="lab-name">Name of the Laboratory</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end mt-4">
+                <div className="min-w-0 space-y-2 xl:col-span-2">
+                  <div className="flex items-center min-h-[20px]">
+                    <Label htmlFor="lab-name">Name of the Laboratory</Label>
+                  </div>
                   <Input
                     id="lab-name"
+                    className="w-full"
                     placeholder="Enter Laboratory Name"
                     value={labName}
                     onChange={(e) => setLabName(e.target.value)}
                   />
                 </div>
 
-                <div className="space-y-2 lg:col-span-1">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="lab-type">Laboratory Type</Label>
+                <div className="min-w-0 space-y-2 xl:col-span-1">
+                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                    <Label htmlFor="lab-type" className="shrink-0">Laboratory Type</Label>
                     <Dialog open={labTypeDialogOpen} onOpenChange={setLabTypeDialogOpen}>
                       <DialogTrigger asChild>
-                        <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                           <Plus size={12} />
                           Add New Type
                         </button>
@@ -1151,7 +1221,7 @@ export default function LabSettingsPage() {
                     </Dialog>
                   </div>
                   <Select value={selectedLabType} onValueChange={setSelectedLabType}>
-                    <SelectTrigger id="lab-type">
+                    <SelectTrigger id="lab-type" className="w-full">
                       <SelectValue placeholder="Select laboratory type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1164,12 +1234,12 @@ export default function LabSettingsPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2 lg:col-span-1">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="lab-scale">Laboratory Scale</Label>
+                <div className="min-w-0 space-y-2 xl:col-span-1">
+                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                    <Label htmlFor="lab-scale" className="shrink-0">Laboratory Scale</Label>
                     <Dialog open={labScaleDialogOpen} onOpenChange={setLabScaleDialogOpen}>
                       <DialogTrigger asChild>
-                        <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                           <Plus size={12} />
                           Add New Scale
                         </button>
@@ -1230,7 +1300,7 @@ export default function LabSettingsPage() {
                     </Dialog>
                   </div>
                   <Select value={selectedLabScale} onValueChange={setSelectedLabScale}>
-                    <SelectTrigger id="lab-scale">
+                    <SelectTrigger id="lab-scale" className="w-full">
                       <SelectValue placeholder="Select laboratory scale" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1245,23 +1315,26 @@ export default function LabSettingsPage() {
 
               </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:col-span-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="contact-person">Contact Person Name</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end lg:col-span-4">
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex items-center min-h-[20px]">
+                      <Label htmlFor="contact-person">Contact Person Name</Label>
+                    </div>
                     <Input
                       id="contact-person"
+                      className="w-full"
                       placeholder="Enter Contact Person Name"
                       value={contactPersonName}
                       onChange={(e) => setContactPersonName(e.target.value)}
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="contact-designation">Designation of Person</Label>
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                      <Label htmlFor="contact-designation" className="shrink-0">Designation</Label>
                       <Dialog open={designationDialogOpen} onOpenChange={setDesignationDialogOpen}>
                         <DialogTrigger asChild>
-                          <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                          <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                             <Plus size={12} />
                             Add New Designation
                           </button>
@@ -1322,7 +1395,7 @@ export default function LabSettingsPage() {
                       </Dialog>
                     </div>
                     <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
-                      <SelectTrigger id="contact-designation">
+                      <SelectTrigger id="contact-designation" className="w-full">
                         <SelectValue placeholder="Select designation" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1335,12 +1408,12 @@ export default function LabSettingsPage() {
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="mobile">Mobile Number</Label>
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                      <Label htmlFor="mobile" className="shrink-0">Mobile Number</Label>
                       <Dialog open={countryCodeDialogOpen} onOpenChange={setCountryCodeDialogOpen}>
                         <DialogTrigger asChild>
-                          <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                          <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                             <Plus size={12} />
                             Manage Codes
                           </button>
@@ -1400,10 +1473,10 @@ export default function LabSettingsPage() {
                         </DialogContent>
                       </Dialog>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid w-full grid-cols-3 gap-2">
                       <div>
                         <Select value={selectedCountryCode} onValueChange={setSelectedCountryCode}>
-                          <SelectTrigger id="country-code">
+                          <SelectTrigger id="country-code" className="w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1431,13 +1504,16 @@ export default function LabSettingsPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email ID</Label>
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex items-center min-h-[20px]">
+                      <Label htmlFor="email">Email ID</Label>
+                    </div>
                     <Input
                       id="email"
+                      className="w-full"
                       type="email"
                       placeholder="Enter Email Address"
-                      pattern="^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+                      pattern={EMAIL_INPUT_PATTERN}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       title="Enter a valid email address"
@@ -1456,11 +1532,14 @@ export default function LabSettingsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="pincode">PIN Code</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center min-h-[20px]">
+                    <Label htmlFor="pincode">PIN Code</Label>
+                  </div>
                   <Input
                     id="pincode"
+                    className="w-full"
                     type="text"
                     maxLength={6}
                     placeholder="Enter 6-digit PIN code"
@@ -1469,22 +1548,25 @@ export default function LabSettingsPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="district">District</Label>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center min-h-[20px]">
+                    <Label htmlFor="district">District</Label>
+                  </div>
                   <Input
                     id="district"
+                    className="w-full"
                     placeholder="Enter district"
                     value={district}
                     onChange={(e) => setDistrict(e.target.value)}
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="state">State</Label>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                    <Label htmlFor="state" className="shrink-0">State</Label>
                     <Dialog open={stateDialogOpen} onOpenChange={setStateDialogOpen}>
                       <DialogTrigger asChild>
-                        <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                           <Plus size={12} />
                           Add New State
                         </button>
@@ -1545,7 +1627,7 @@ export default function LabSettingsPage() {
                     </Dialog>
                   </div>
                   <Select value={selectedState} onValueChange={setSelectedState}>
-                    <SelectTrigger id="state">
+                    <SelectTrigger id="state" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1558,12 +1640,12 @@ export default function LabSettingsPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="country">Country</Label>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                    <Label htmlFor="country" className="shrink-0">Country</Label>
                     <Dialog open={countryDialogOpen} onOpenChange={setCountryDialogOpen}>
                       <DialogTrigger asChild>
-                        <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                           <Plus size={12} />
                           Add New Country
                         </button>
@@ -1624,7 +1706,7 @@ export default function LabSettingsPage() {
                     </Dialog>
                   </div>
                   <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                    <SelectTrigger id="country">
+                    <SelectTrigger id="country" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1887,13 +1969,13 @@ export default function LabSettingsPage() {
                   {saveLoading ? 'Saving…' : 'Save'}
                 </Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="currency">Currency Setting</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                    <Label htmlFor="currency" className="shrink-0">Currency Setting</Label>
                     <Dialog open={currencyDialogOpen} onOpenChange={setCurrencyDialogOpen}>
                       <DialogTrigger asChild>
-                        <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                           <Plus size={12} />
                           Add New Currency
                         </button>
@@ -1956,7 +2038,7 @@ export default function LabSettingsPage() {
                     </Dialog>
                   </div>
                   <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-                    <SelectTrigger id="currency">
+                    <SelectTrigger id="currency" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1969,12 +2051,12 @@ export default function LabSettingsPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="date-format">Date Setting</Label>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                    <Label htmlFor="date-format" className="shrink-0">Date Setting</Label>
                     <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
                       <DialogTrigger asChild>
-                        <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                           <Plus size={12} />
                           Add New Format
                         </button>
@@ -2037,7 +2119,7 @@ export default function LabSettingsPage() {
                     </Dialog>
                   </div>
                   <Select value={selectedDateFormat} onValueChange={setSelectedDateFormat}>
-                    <SelectTrigger id="date-format">
+                    <SelectTrigger id="date-format" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -2050,12 +2132,12 @@ export default function LabSettingsPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="time-format">Time Setting</Label>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
+                    <Label htmlFor="time-format" className="shrink-0">Time Setting</Label>
                     <Dialog open={timeDialogOpen} onOpenChange={setTimeDialogOpen}>
                       <DialogTrigger asChild>
-                        <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
                           <Plus size={12} />
                           Add New Format
                         </button>
@@ -2118,7 +2200,7 @@ export default function LabSettingsPage() {
                     </Dialog>
                   </div>
                   <Select value={selectedTimeFormat} onValueChange={setSelectedTimeFormat}>
-                    <SelectTrigger id="time-format">
+                    <SelectTrigger id="time-format" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -2131,10 +2213,12 @@ export default function LabSettingsPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="theme">Theme</Label>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center min-h-[20px]">
+                    <Label htmlFor="theme">Theme</Label>
+                  </div>
                   <Select value={selectedTheme} onValueChange={(value) => setSelectedTheme(value as 'light' | 'dark' | 'system')}>
-                    <SelectTrigger id="theme">
+                    <SelectTrigger id="theme" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

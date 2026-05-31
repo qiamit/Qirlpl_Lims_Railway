@@ -1,63 +1,71 @@
-export type ItemCategory = 'Product' | 'Service'
+export const NABL_TYPE_OF_TEST_OPTIONS = ['Quantitative', 'Qualitative'] as const
+export type NablTypeOfTest = (typeof NABL_TYPE_OF_TEST_OPTIONS)[number]
 
-export type ProductServiceRow = {
+export type NablScopeRow = {
   id: string
-  category: ItemCategory
-  item_code: string
-  make: string | null
-  serial_model_no: string | null
-  item_name: string
-  item_description: string | null
-  hsn_code: string | null
-  gst_rate: number | null
-  unit_of_item: string | null
-  low_stock_value: number | null
-  purchase_price: number | null
-  sale_price: number | null
-  maximum_retail_price: number | null
-  opening_stock: number | null
+  s_no: number
+  discipline_group: string
+  materials_products: string
+  component_parameter: string
+  test_method_specification: string
+  permanent_testing: string
+  type_of_test: string | null
+  range_minimum: number | null
+  range_maximum: number | null
+  uncertainty: string | null
   created_at?: string
 }
 
-export type ProductServiceForm = {
-  category: ItemCategory
-  itemCode: string
-  make: string
-  serialModelNo: string
-  itemName: string
-  itemDescription: string
-  hsnCode: string
-  gstRate: string
-  unitOfItem: string
-  lowStockValue: string
-  purchasePrice: string
-  salePrice: string
-  maximumRetailPrice: string
-  openingStock: string
+export type NablScopeForm = {
+  sNo: string
+  disciplineGroup: string
+  materialsProducts: string
+  componentParameter: string
+  testMethodSpecification: string
+  permanentTesting: string
+  typeOfTest: string
+  rangeMinimum: string
+  rangeMaximum: string
+  uncertainty: string
 }
 
-export const emptyProductServiceForm = (): ProductServiceForm => ({
-  category: 'Service',
-  itemCode: '',
-  make: '',
-  serialModelNo: '',
-  itemName: '',
-  itemDescription: '',
-  hsnCode: '',
-  gstRate: '',
-  unitOfItem: '',
-  lowStockValue: '',
-  purchasePrice: '',
-  salePrice: '',
-  maximumRetailPrice: '',
-  openingStock: '',
+export const emptyNablScopeForm = (): NablScopeForm => ({
+  sNo: '',
+  disciplineGroup: '',
+  materialsProducts: '',
+  componentParameter: '',
+  testMethodSpecification: '',
+  permanentTesting: 'Permanent Testing',
+  typeOfTest: '',
+  rangeMinimum: '',
+  rangeMaximum: '',
+  uncertainty: '',
 })
 
 export const normalizeText = (value: string) => value.trim()
+
+export const isValidIntegerOrEmpty = (value: string) => {
+  const v = value.trim()
+  if (!v) return true
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0
+}
 
 export const isValidNumberOrEmpty = (value: string) => {
   const v = value.trim()
   if (!v) return true
   const n = Number(v)
   return Number.isFinite(n)
+}
+
+export function parseOptionalNumber(value: string): number | null {
+  const v = value.trim()
+  if (!v) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+export function formatScopeNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return String(value)
 }

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { ensureLabMasterOptionByLabel } from '@/features/settings/lab-settings/labMasterOptions'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,6 +27,7 @@ type UserManagementFormProps = {
   departments: string[]
   setDepartments: React.Dispatch<React.SetStateAction<string[]>>
   onSave: (formData: UserForm, countryCode?: string) => Promise<void>
+  onOptionsChanged?: () => Promise<void>
   loading?: boolean
 }
 
@@ -59,17 +61,59 @@ export function UserManagementForm(props: UserManagementFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (props.mode === 'edit' && props.initialData) {
+      const rawMobile = props.initialData.mobile ?? ''
+      const codeMatch = rawMobile.match(/^(\+\d{1,4})\s*(.*)$/)
+      if (codeMatch) {
+        setSelectedCountryCode(codeMatch[1])
+        setFormData({
+          name: props.initialData.name,
+          email: props.initialData.email,
+          mobile: codeMatch[2].trim() || rawMobile,
+          password: '',
+          designation: props.initialData.designation,
+          department: props.initialData.departmentName,
+          status: props.initialData.status,
+        })
+      } else {
+        setFormData({
+          name: props.initialData.name,
+          email: props.initialData.email,
+          mobile: rawMobile,
+          password: '',
+          designation: props.initialData.designation,
+          department: props.initialData.departmentName,
+          status: props.initialData.status,
+        })
+      }
+    } else if (props.mode === 'create') {
+      setFormData(emptyUserForm)
+      setSelectedCountryCode('+91')
+    }
+  }, [props.initialData, props.mode])
+
   const handleAddDesignation = () => {
-    if (!newDesignationName.trim()) return
     const formatted = newDesignationName.trim()
+    if (!formatted) return
     if (props.designations.some((item) => item.toLowerCase() === formatted.toLowerCase())) {
       setNewDesignationName('')
+      setDesignationDialogOpen(false)
       return
     }
-    props.setDesignations((prev) => [...prev, formatted])
-    setFormData((prev) => ({ ...prev, designation: formatted }))
-    setNewDesignationName('')
-    setDesignationDialogOpen(false)
+    void (async () => {
+      try {
+        await ensureLabMasterOptionByLabel('designation', formatted)
+        props.setDesignations((prev) => [...prev, formatted].sort((a, b) => a.localeCompare(b)))
+        setFormData((prev) => ({ ...prev, designation: formatted }))
+        await props.onOptionsChanged?.()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to save designation')
+      } finally {
+        setNewDesignationName('')
+        setDesignationDialogOpen(false)
+      }
+    })()
   }
 
   const handleDeleteDesignation = (label: string) => {
@@ -83,22 +127,32 @@ export function UserManagementForm(props: UserManagementFormProps) {
   }
 
   const handleAddDepartment = () => {
-    if (!newDepartmentName.trim()) return
     const formatted = newDepartmentName.trim()
+    if (!formatted) return
     if (props.departments.some((item) => item.toLowerCase() === formatted.toLowerCase())) {
       setNewDepartmentName('')
+      setDepartmentDialogOpen(false)
       return
     }
-    props.setDepartments((prev) => {
-      const next = [...prev, formatted]
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
+    void (async () => {
+      try {
+        await ensureLabMasterOptionByLabel('department', formatted)
+        props.setDepartments((prev) => {
+          const next = [...prev, formatted].sort((a, b) => a.localeCompare(b))
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
+          }
+          return next
+        })
+        setFormData((prev) => ({ ...prev, department: formatted }))
+        await props.onOptionsChanged?.()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to save department')
+      } finally {
+        setNewDepartmentName('')
+        setDepartmentDialogOpen(false)
       }
-      return next
-    })
-    setFormData((prev) => ({ ...prev, department: formatted }))
-    setNewDepartmentName('')
-    setDepartmentDialogOpen(false)
+    })()
   }
 
   const handleDeleteDepartment = (label: string) => {
@@ -212,11 +266,30 @@ export function UserManagementForm(props: UserManagementFormProps) {
             {props.mode === 'edit' && (
               <div className="space-y-2">
                 <Label htmlFor="edit-mobile">Mobile Number</Label>
-                <Input
-                  id="edit-mobile"
-                  value={formData.mobile}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, mobile: e.target.value }))}
-                />
+                <div className="grid grid-cols-3 gap-2">
+                  <Select
+                    value={selectedCountryCode}
+                    onValueChange={setSelectedCountryCode}
+                  >
+                    <SelectTrigger id="edit-country-code">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {countryCodes.map((code) => (
+                        <SelectItem key={code.value} value={code.value}>
+                          {code.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    id="edit-mobile"
+                    className="col-span-2"
+                    placeholder="98765 43210"
+                    value={formData.mobile}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, mobile: e.target.value }))}
+                  />
+                </div>
               </div>
             )}
           </div>
