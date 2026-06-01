@@ -3,6 +3,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
+import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import type { SampleRow } from '../types'
 import type { AllocationRow } from '../types'
 import { SampleAllocationHeaderBar } from './SampleAllocationHeaderBar'
@@ -181,6 +182,30 @@ export default function SampleAllocationMasterPage() {
 
   const [sampleAllocationIdsWithTestAllocation, setSampleAllocationIdsWithTestAllocation] = useState<Set<string>>(() => new Set())
 
+  const loadLabMasterOptions = async () => {
+    try {
+      const { designations: des, departments: dept } = await fetchDesignationAndDepartmentLabels()
+      if (des.length > 0) {
+        setDesignations(des)
+        try {
+          window.localStorage.setItem('userManagement.designations', JSON.stringify(des))
+        } catch {
+          /* ignore */
+        }
+      }
+      if (dept.length > 0) {
+        setDepartments(dept)
+        try {
+          window.localStorage.setItem('userManagement.departments', JSON.stringify(dept))
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* keep existing cached options */
+    }
+  }
+
   const loadAllocations = async (samplesList: SampleRow[]) => {
     setListError(null)
     setListLoading(true)
@@ -308,6 +333,7 @@ export default function SampleAllocationMasterPage() {
   }
 
   useEffect(() => {
+    void loadLabMasterOptions()
     void loadUserManagementOptions()
   }, [session, designation])
 

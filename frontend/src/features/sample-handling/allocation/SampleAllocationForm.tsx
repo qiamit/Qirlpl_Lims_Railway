@@ -394,32 +394,23 @@ export function SampleAllocationForm({
                 </div>
                 <div className="space-y-1 min-w-0">
                   <Label className="text-xs">Department</Label>
-                  {departments.length > 0 ? (
-                    <Select
-                      value={sec.department || ''}
-                      onValueChange={(v) => updateSection(index, { department: v })}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from(
-                          new Set([sec.department, ...departments].filter((d) => d?.trim())),
-                        ).map((label) => (
-                          <SelectItem key={label} value={label}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      value={sec.department}
-                      onChange={(e) => updateSection(index, { department: e.target.value })}
-                      placeholder="Department"
-                      className="h-9"
-                    />
-                  )}
+                  <Select
+                    value={sec.department || ''}
+                    onValueChange={(v) => updateSection(index, { department: v })}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from(
+                        new Set([sec.department, ...departments].filter((d) => d?.trim())),
+                      ).map((label) => (
+                        <SelectItem key={label} value={label}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1 min-w-0">
                   <Label className="text-xs">Designation</Label>
