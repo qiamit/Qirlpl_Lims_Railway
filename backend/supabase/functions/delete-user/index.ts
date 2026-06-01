@@ -1,5 +1,4 @@
-import '../types/edge-runtime.ts'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,8 +54,13 @@ Deno.serve(async (req) => {
     .eq('id', callerData.user.id)
     .maybeSingle()
 
-  const callerDesignation = String((callerProfile as { designation?: unknown } | null)?.designation ?? '')
-  if (callerDesignation !== 'Laboratory Director') {
+  const profileDesignation = String((callerProfile as { designation?: unknown } | null)?.designation ?? '').trim()
+  const metadataDesignation = String(
+    ((callerData.user.user_metadata ?? {}) as { designation?: unknown }).designation ?? '',
+  ).trim()
+  const callerDesignation = profileDesignation || metadataDesignation
+  const normalizedDesignation = callerDesignation.toLowerCase()
+  if (normalizedDesignation !== 'laboratory director') {
     return new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

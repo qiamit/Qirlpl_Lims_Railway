@@ -225,8 +225,13 @@ export default function SampleAllocationMasterPage() {
   }
 
   const loadUserManagementOptions = async () => {
+    const normalizedDesignation = String(designation ?? '').trim().toLowerCase()
+    if (normalizedDesignation !== 'laboratory director') {
+      return
+    }
+
     const { data: { session: latestSession } } = await supabase.auth.getSession()
-    const accessToken = latestSession?.access_token ?? session?.access_token
+    const accessToken = latestSession?.access_token
     if (!accessToken) return
     const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -241,7 +246,10 @@ export default function SampleAllocationMasterPage() {
       body: JSON.stringify({}),
     })
     const payload = (await response.json().catch(() => null)) as unknown
-    if (!response.ok) return
+    if (!response.ok) {
+      // Avoid noisy console/network loops when session is stale or caller lacks permission.
+      return
+    }
     const rows = typeof payload === 'object' && payload && 'users' in payload
       ? ((payload as { users?: unknown }).users as unknown)
       : []
@@ -301,7 +309,7 @@ export default function SampleAllocationMasterPage() {
 
   useEffect(() => {
     void loadUserManagementOptions()
-  }, [session])
+  }, [session, designation])
 
   useEffect(() => {
     void (async () => {
