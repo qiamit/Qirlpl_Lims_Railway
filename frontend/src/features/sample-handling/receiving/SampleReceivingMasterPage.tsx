@@ -29,6 +29,7 @@ import {
 import { generateNextSrfNumber } from './generateNextSrfNumber'
 import { buildSrfPrintHtml } from './buildSrfPrintHtml'
 import { outputSrfDocument } from './outputSrfDocument'
+import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { fetchSrfPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
 import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/report-preparation/reportScopeConfig'
 
