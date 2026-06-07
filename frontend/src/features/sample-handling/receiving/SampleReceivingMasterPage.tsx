@@ -416,7 +416,7 @@ export default function SampleReceivingMasterPage() {
           clientRefPath = path
         }
         const payload = {
-          ...(isNew ? { srf_number: srfNumber || null } : {}),
+          ...(isNew || reportIsNew ? { srf_number: srfNumber || null } : {}),
           date_of_sample_receiving: form.dateOfSampleReceiving.trim() ? form.dateOfSampleReceiving : null,
           client_id: form.customerId.trim() || null,
           test_report_is_code_id: form.testReportAsPerIsId.trim() || null,

@@ -1,26 +1,20 @@
 import { supabase } from '@/lib/supabaseClient'
+import {
+  fetchSrfPrefix,
+  formatSrfNumber,
+  formatSrfYymmdd,
+  maxPrimarySerialForDate,
+  srfNumberLikePattern,
+} from './srfNumberFormat'
 
-/** Generate next SRF: prefix from lab_prefixes (name='SRF') + yymmdd + 2-digit serial, reset per date. */
+/**
+ * Generate next SRF:
+ * Format: {prefix}/{YYMMDD}/{primary}-{secondary3} e.g. QI/SRF/260607/1-001
+ */
 export async function generateNextSrfNumber(dateStr?: string): Promise<string> {
-  let yymmdd: string
-  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    const [y, m, d] = dateStr.split('-')
-    yymmdd = y.slice(-2) + m + d
-  } else {
-    const today = new Date()
-    yymmdd =
-      today.getFullYear().toString().slice(-2) +
-      String(today.getMonth() + 1).padStart(2, '0') +
-      String(today.getDate()).padStart(2, '0')
-  }
-  let prefix = 'QI/SRF'
-  const { data: prefixRows } = await supabase
-    .from('lab_prefixes')
-    .select('name, prefix')
-    .eq('name', 'SRF')
-    .limit(1)
-  if (prefixRows?.[0]?.prefix) prefix = String(prefixRows[0].prefix).trim() || prefix
-  const pattern = `${prefix}/${yymmdd}-%`
+  const yymmdd = formatSrfYymmdd(dateStr)
+  const prefix = await fetchSrfPrefix()
+  const pattern = srfNumberLikePattern(prefix, yymmdd)
   const { data: existing } = await supabase
     .from('samples')
     .select('srf_number')
@@ -29,12 +23,7 @@ export async function generateNextSrfNumber(dateStr?: string): Promise<string> {
   const numbers = (existing ?? [])
     .map((r) => (r as { srf_number?: string }).srf_number)
     .filter((n): n is string => typeof n === 'string')
-  const serials = numbers
-    .map((n) => {
-      const part = n.split('-')[1]
-      return part ? parseInt(part, 10) : 0
-    })
-    .filter((s) => !Number.isNaN(s))
-  const nextSerial = serials.length > 0 ? Math.max(...serials) + 1 : 1
-  return `${prefix}/${yymmdd}-${String(nextSerial).padStart(2, '0')}`
+
+  const nextPrimary = maxPrimarySerialForDate(numbers, prefix, yymmdd) + 1
+  return formatSrfNumber(prefix, yymmdd, nextPrimary, 1)
 }

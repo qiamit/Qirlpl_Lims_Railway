@@ -129,6 +129,97 @@ async function resolveClientId(client: SupabaseClient, companyName: string): Pro
   return null
 }
 
+function stripSrfReportSuffix(srf: string): string {
+  const t = srf.trim()
+  if (t.endsWith('A') || t.endsWith('S')) return t.slice(0, -1)
+  return t
+}
+
+function parseSrfNumberBase(value: string): {
+  prefix: string
+  yymmdd: string
+  primarySerial: number
+  secondarySerial: number
+} | null {
+  const base = stripSrfReportSuffix(value.trim())
+  if (!base) return null
+
+  const newMatch = base.match(/^(.+)\/(\d{6})\/(\d+)-(\d{3})$/)
+  if (newMatch) {
+    const primary = parseInt(newMatch[3], 10)
+    const secondary = parseInt(newMatch[4], 10)
+    if (Number.isNaN(primary) || Number.isNaN(secondary) || primary < 1 || secondary < 1) return null
+    return {
+      prefix: newMatch[1],
+      yymmdd: newMatch[2],
+      primarySerial: primary,
+      secondarySerial: secondary,
+    }
+  }
+
+  const legacyHyphenNewMatch = base.match(/^(.+)-(\d{6})-(\d+)-(\d{3})$/)
+  if (legacyHyphenNewMatch) {
+    const primary = parseInt(legacyHyphenNewMatch[3], 10)
+    const secondary = parseInt(legacyHyphenNewMatch[4], 10)
+    if (Number.isNaN(primary) || Number.isNaN(secondary) || primary < 1 || secondary < 1) return null
+    return {
+      prefix: legacyHyphenNewMatch[1],
+      yymmdd: legacyHyphenNewMatch[2],
+      primarySerial: primary,
+      secondarySerial: secondary,
+    }
+  }
+
+  const legacySlashNewMatch = base.match(/^(.+)\/(\d{6})-(\d+)-(\d{3})$/)
+  if (legacySlashNewMatch) {
+    const primary = parseInt(legacySlashNewMatch[3], 10)
+    const secondary = parseInt(legacySlashNewMatch[4], 10)
+    if (Number.isNaN(primary) || Number.isNaN(secondary) || primary < 1 || secondary < 1) return null
+    return {
+      prefix: legacySlashNewMatch[1],
+      yymmdd: legacySlashNewMatch[2],
+      primarySerial: primary,
+      secondarySerial: secondary,
+    }
+  }
+
+  const legacyMatch = base.match(/^(.+)\/(\d{6})-(\d{2})$/)
+  if (legacyMatch) {
+    const serial = parseInt(legacyMatch[3], 10)
+    if (Number.isNaN(serial) || serial < 1) return null
+    return {
+      prefix: legacyMatch[1],
+      yymmdd: legacyMatch[2],
+      primarySerial: serial,
+      secondarySerial: 1,
+    }
+  }
+
+  const legacyHyphenMatch = base.match(/^(.+)-(\d{6})-(\d{2})$/)
+  if (legacyHyphenMatch) {
+    const serial = parseInt(legacyHyphenMatch[3], 10)
+    if (Number.isNaN(serial) || serial < 1) return null
+    return {
+      prefix: legacyHyphenMatch[1],
+      yymmdd: legacyHyphenMatch[2],
+      primarySerial: serial,
+      secondarySerial: 1,
+    }
+  }
+
+  return null
+}
+
+function maxPrimarySerialForDate(numbers: string[], prefix: string, yymmdd: string): number {
+  let maxPrimary = 0
+  for (const raw of numbers) {
+    const parts = parseSrfNumberBase(raw)
+    if (!parts || parts.prefix !== prefix || parts.yymmdd !== yymmdd) continue
+    maxPrimary = Math.max(maxPrimary, parts.primarySerial)
+  }
+  return maxPrimary
+}
+
 async function generateNextSrfNumber(client: SupabaseClient, dateStr?: string): Promise<string> {
   let yymmdd: string
   if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -144,7 +235,7 @@ async function generateNextSrfNumber(client: SupabaseClient, dateStr?: string): 
   let prefix = 'QI/SRF'
   const { data: prefixRows } = await client.from('lab_prefixes').select('name, prefix').eq('name', 'SRF').limit(1)
   if (prefixRows?.[0]?.prefix) prefix = String((prefixRows[0] as { prefix?: string }).prefix).trim() || prefix
-  const pattern = `${prefix}/${yymmdd}-%`
+  const pattern = `${prefix}%${yymmdd}%`
   const { data: existing } = await client
     .from('samples')
     .select('srf_number')
@@ -153,14 +244,8 @@ async function generateNextSrfNumber(client: SupabaseClient, dateStr?: string): 
   const numbers = (Array.isArray(existing) ? existing : [])
     .map((r) => (r as { srf_number?: string }).srf_number)
     .filter((n): n is string => typeof n === 'string')
-  const serials = numbers
-    .map((n) => {
-      const part = n.split('-')[1]
-      return part ? parseInt(part, 10) : 0
-    })
-    .filter((s) => !Number.isNaN(s))
-  const nextSerial = serials.length > 0 ? Math.max(...serials) + 1 : 1
-  return `${prefix}/${yymmdd}-${String(nextSerial).padStart(2, '0')}`
+  const nextPrimary = maxPrimarySerialForDate(numbers, prefix, yymmdd) + 1
+  return `${prefix}/${yymmdd}/${nextPrimary}-${String(1).padStart(3, '0')}`
 }
 
 function addDaysIso(isoDate: string, days: number): string {

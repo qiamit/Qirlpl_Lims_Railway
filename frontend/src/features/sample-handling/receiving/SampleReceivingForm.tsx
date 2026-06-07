@@ -229,7 +229,13 @@ export function SampleReceivingForm({
                     ) : null}
                   </>
                 ) : (
-                  <Input value={form.srfNumber} readOnly className="bg-muted w-full" aria-label="SRF number" />
+                  <Input
+                    value={form.srfNumber}
+                    onChange={(e) => onChange({ ...form, srfNumber: e.target.value })}
+                    className="w-full"
+                    aria-label="SRF number"
+                    placeholder="Auto-generated or enter manually"
+                  />
                 )}
               </div>
               <div className="space-y-2 min-w-0">
