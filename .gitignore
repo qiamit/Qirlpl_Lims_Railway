@@ -17,18 +17,31 @@ dist-ssr/
 *.tsbuildinfo
 coverage/
 
+# ── Tooling caches ────────────────────────────────────────────────────
+.vite/
+frontend/.vite/
+.eslintcache
+.turbo/
+.cache/
+*.tgz
+
 # ── Environment & secrets (never commit) ──────────────────────────────
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
+!.env.*.example
 frontend/.env
-frontend/.env.local
-frontend/.env.*.local
+frontend/.env.*
+!frontend/.env.example
 backend/supabase-secrets.env
 backend/supabase/.env
-backend/supabase/.env.local
-backend/supabase/.env.*.local
+backend/supabase/.env.*
+backend/supabase/.env.keys
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
 
 # ── Supabase local / CLI ──────────────────────────────────────────────
 backend/supabase/.temp/
@@ -41,7 +54,9 @@ frontend/.vercel/
 # ── OS ────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+ehthumbs.db
 Desktop.ini
+$RECYCLE.BIN/
 
 # ── Editors (keep shared workspace config only) ───────────────────────
 .idea/
