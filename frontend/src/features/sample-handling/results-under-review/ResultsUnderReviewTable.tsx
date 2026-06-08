@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
+import { formatTestResultForTable } from '@/features/sample-handling/sample-under-testing/testResultValues'
 import type { TestAllocationRow } from '../types'
 import { Eye, CheckCircle2, Undo2 } from 'lucide-react'
 
@@ -173,8 +174,13 @@ export function ResultsUnderReviewTable({
                 </TableCell>
                 <TableCell className="text-center text-xs">{fmtDate(testStartDate)}</TableCell>
                 <TableCell className="text-center text-xs">{fmtDate(testEndDate)}</TableCell>
-                <TableCell className="text-center text-xs truncate" title={results ?? ''}>
-                  {fmt(results)}
+                <TableCell className="text-xs align-top min-w-[180px] max-w-[300px] p-2.5">
+                  <span
+                    className="block text-center whitespace-pre-wrap break-words leading-relaxed"
+                    title={formatTestResultForTable(results) || undefined}
+                  >
+                    {fmt(formatTestResultForTable(results))}
+                  </span>
                 </TableCell>
                 <TableCell>
                   {showSectionActions ? (

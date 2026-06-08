@@ -1,11 +1,15 @@
 import { supabase } from '@/lib/supabaseClient'
+import { getReportedTestResult } from '@/features/sample-handling/sample-under-testing/testResultValues'
+import { compareClauseNumbers } from './clauseNumberSort'
 import { evaluateResultConformity } from './evaluateResultConformity'
 import { resolveReportScopeFromAccreditationIds, scopeKindFromLabel } from './reportScope'
 import type { ReportScopeKind } from './reportScope'
 
 export type ReportResultRow = {
+  rowKey: string
   srNo: number
   sectionCode: string
+  clauseNo: string | null
   testName: string
   testMethodClause: string | null
   unit: string
@@ -13,6 +17,17 @@ export type ReportResultRow = {
   observedValue: string
   remark: string
   scope: string
+}
+
+function buildResultRowKey(p: {
+  test_allocation_id: string
+  test_parameter_id: string | null
+  test_label: string
+}): string {
+  const allocId = p.test_allocation_id.trim()
+  const paramId = p.test_parameter_id?.trim()
+  const label = p.test_label.trim()
+  return `${allocId}:${paramId || label}`
 }
 
 export type ReportResultSectionGroup = {
@@ -30,6 +45,42 @@ type TestParameterSnapshot = {
 }
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
+
+export function compareReportResultRows(a: ReportResultRow, b: ReportResultRow): number {
+  const sectionCmp = a.sectionCode.localeCompare(b.sectionCode, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+  if (sectionCmp !== 0) return sectionCmp
+
+  const clauseCmp = compareClauseNumbers(a.clauseNo, b.clauseNo)
+  if (clauseCmp !== 0) return clauseCmp
+
+  return a.testName.localeCompare(b.testName, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
+export function sortReportResultRows(rows: ReportResultRow[]): ReportResultRow[] {
+  return [...rows].sort(compareReportResultRows).map((row, index) => ({
+    ...row,
+    srNo: index + 1,
+  }))
+}
+
+function sortRowsWithinSection(rows: ReportResultRow[]): ReportResultRow[] {
+  return [...rows]
+    .sort((a, b) => {
+      const clauseCmp = compareClauseNumbers(a.clauseNo, b.clauseNo)
+      if (clauseCmp !== 0) return clauseCmp
+      return a.testName.localeCompare(b.testName, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    })
+    .map((row, index) => ({ ...row, srNo: index + 1 }))
+}
 
 function buildTestNameParts(
   tp: TestParameterSnapshot | undefined,
@@ -119,27 +170,32 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     accreditationById.set(r.id, String(r.name ?? '').trim())
   }
 
-  return paramRows.map((p, index) => {
+  const rows = paramRows.map((p) => {
     const tp = p.test_parameter_id ? tpMap.get(p.test_parameter_id) : undefined
     const { testName, testMethodClause } = buildTestNameParts(tp, p.test_label ?? '—')
     return {
-      srNo: index + 1,
+      rowKey: buildResultRowKey(p),
+      srNo: 0,
       sectionCode: sectionCodeByTaId.get(p.test_allocation_id) ?? '—',
+      clauseNo: tp?.clause_no?.trim() || null,
       testName,
       testMethodClause,
       unit: fmt(tp?.unit_value),
       specifiedRequirement: fmt(tp?.specific_requirement),
-      observedValue: fmt(p.results),
-      remark: evaluateResultConformity(String(p.results ?? ''), String(tp?.specific_requirement ?? '')),
+      observedValue: fmt(getReportedTestResult(p.results)),
+      remark: evaluateResultConformity(
+        getReportedTestResult(p.results),
+        String(tp?.specific_requirement ?? ''),
+      ),
       scope: resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),
     }
   })
+
+  return sortReportResultRows(rows)
 }
 
 export function filterReportRowsByScope(rows: ReportResultRow[], scope: ReportScopeKind): ReportResultRow[] {
-  return rows
-    .filter((r) => scopeKindFromLabel(r.scope) === scope)
-    .map((r, index) => ({ ...r, srNo: index + 1 }))
+  return sortReportResultRows(rows.filter((r) => scopeKindFromLabel(r.scope) === scope))
 }
 
 export function getApplicableReportScopes(rows: ReportResultRow[]): ReportScopeKind[] {
@@ -166,6 +222,6 @@ export function groupReportRowsBySectionCode(rows: ReportResultRow[]): ReportRes
 
   return order.map((sectionCode) => ({
     sectionCode,
-    rows: byCode.get(sectionCode)!.map((r, index) => ({ ...r, srNo: index + 1 })),
+    rows: sortRowsWithinSection(byCode.get(sectionCode)!),
   }))
 }

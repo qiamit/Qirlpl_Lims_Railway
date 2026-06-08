@@ -1,7 +1,11 @@
+import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { TestResultsEntryCell } from './TestResultsEntryCell'
+import { buildSectionCompareSources, paramKeyFromRow } from './sectionCompareSources'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import type { TestAllocationRow } from '../types'
+import { sortParametersByClause } from './sectionParameterRows'
 import { Undo2, Eye, FileCheck } from 'lucide-react'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
@@ -21,7 +25,7 @@ function expandRowsByTest(rows: TestAllocationRow[]): ExpandedUnderTestRow[] {
   const out: ExpandedUnderTestRow[] = []
   for (const row of rows) {
     if (row.parameters && row.parameters.length > 0) {
-      row.parameters.forEach((p, paramIdx) => {
+      sortParametersByClause(row.parameters).forEach((p, paramIdx) => {
         out.push({
           row,
           paramRowId: p.id,
@@ -97,6 +101,23 @@ export function SampleUnderTestingTable({
   emptyStateMessage?: string
 }) {
   const expanded = expandRowsByTest(rows)
+  const sectionItemsByCode = useMemo(() => {
+    const map = new Map<
+      string,
+      Array<{ paramKey: string; testLabel: string; results: string | null }>
+    >()
+    for (const item of expanded) {
+      const code = item.row.sectionCode.trim() || '—'
+      const paramKey = paramKeyFromRow(item.paramRowId, item.testLabel)
+      if (!map.has(code)) map.set(code, [])
+      map.get(code)!.push({
+        paramKey,
+        testLabel: item.testLabel,
+        results: item.results,
+      })
+    }
+    return map
+  }, [expanded])
   const uniqueAllocationIds = [...new Set(rows.map((r) => r.sampleAllocationId))]
   const allChecked = uniqueAllocationIds.length > 0 && uniqueAllocationIds.every((id) => selectedIds.has(id))
   const someChecked = uniqueAllocationIds.some((id) => selectedIds.has(id))
@@ -202,12 +223,14 @@ export function SampleUnderTestingTable({
                   />
                 </TableCell>
                 <TableCell className="p-2">
-                  <Input
-                    type="text"
-                    className="h-8 text-xs w-full text-center"
-                    placeholder="Results"
-                    value={results ?? ''}
-                    onChange={(e) => onUpdateResults(r, paramRowId, testLabel, e.target.value)}
+                  <TestResultsEntryCell
+                    value={results}
+                    testLabel={testLabel}
+                    sectionCompareSources={buildSectionCompareSources(
+                      sectionItemsByCode.get(r.sectionCode.trim() || '—') ?? [],
+                      paramKeyFromRow(paramRowId, testLabel),
+                    )}
+                    onChange={(next) => onUpdateResults(r, paramRowId, testLabel, next)}
                   />
                 </TableCell>
                 <TableCell>

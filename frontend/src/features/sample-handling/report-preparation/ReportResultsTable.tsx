@@ -1,10 +1,20 @@
 import { Fragment, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { RESULT_REMARK_OPTIONS } from './evaluateResultConformity'
 import {
   groupReportRowsBySectionCode,
+  sortReportResultRows,
   type ReportResultRow,
 } from './reportResultRows'
+import { normalizeResultRemark, resultRemarkCellClass } from './resultRemarkUi'
 
 /** Full grid: vertical + horizontal lines; header/section rows emphasized */
 const GRID_TABLE =
@@ -19,10 +29,18 @@ const GRID_SECTION_CELL = 'text-xs text-foreground font-semibold whitespace-pre-
 function ResultDataRow({
   row,
   showScope,
+  editable,
+  onRemarkChange,
+  disabled,
 }: {
   row: ReportResultRow
   showScope: boolean
+  editable?: boolean
+  onRemarkChange?: (rowKey: string, remark: string) => void
+  disabled?: boolean
 }) {
+  const remark = normalizeResultRemark(row.remark)
+
   return (
     <TableRow className="hover:bg-muted/20">
       <TableCell className={cn(GRID_CELL, 'text-center font-medium w-12')}>{row.srNo}</TableCell>
@@ -42,15 +60,35 @@ function ResultDataRow({
       <TableCell
         className={cn(
           GRID_CELL,
-          'text-center whitespace-pre-wrap font-medium min-w-[100px]',
-          row.remark === 'Confirm'
-            ? 'text-emerald-700 dark:text-emerald-400'
-            : row.remark === 'Not Confirm'
-              ? 'text-destructive'
-              : '',
+          'text-center whitespace-pre-wrap font-medium min-w-[120px]',
+          !editable && resultRemarkCellClass(remark),
         )}
       >
-        {row.remark}
+        {editable && onRemarkChange ? (
+          <Select
+            value={remark}
+            onValueChange={(value) => onRemarkChange(row.rowKey, value)}
+            disabled={disabled}
+          >
+            <SelectTrigger
+              className={cn(
+                'h-8 text-xs font-medium border-input/80',
+                resultRemarkCellClass(remark),
+              )}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RESULT_REMARK_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option} className="text-xs">
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          remark
+        )}
       </TableCell>
       {showScope && <TableCell className={cn(GRID_CELL, 'text-center')}>{row.scope}</TableCell>}
     </TableRow>
@@ -97,20 +135,27 @@ export function ReportResultsTable({
   showScope = true,
   embedded = false,
   groupBySectionCode = false,
+  editable = false,
+  onRemarkChange,
+  disabled,
 }: {
   rows: ReportResultRow[]
   showScope?: boolean
   embedded?: boolean
   groupBySectionCode?: boolean
+  editable?: boolean
+  onRemarkChange?: (rowKey: string, remark: string) => void
+  disabled?: boolean
 }) {
   const colSpan = showScope ? 7 : 6
+  const displayRows = groupBySectionCode ? rows : sortReportResultRows(rows)
 
   if (rows.length === 0 && !embedded) {
     return <p className="text-sm text-muted-foreground py-4 px-3">No completed test parameter results.</p>
   }
 
   if (groupBySectionCode && embedded) {
-    const sections = groupReportRowsBySectionCode(rows)
+    const sections = groupReportRowsBySectionCode(displayRows)
 
     if (sections.length === 0) {
       return (
@@ -142,7 +187,14 @@ export function ReportResultsTable({
                 </TableCell>
               </TableRow>
               {section.rows.map((row) => (
-                <ResultDataRow key={`${section.sectionCode}-${row.srNo}`} row={row} showScope={showScope} />
+                <ResultDataRow
+                  key={row.rowKey}
+                  row={row}
+                  showScope={showScope}
+                  editable={editable}
+                  onRemarkChange={onRemarkChange}
+                  disabled={disabled}
+                />
               ))}
             </Fragment>
           ))}
@@ -155,14 +207,23 @@ export function ReportResultsTable({
     <ResultsTableShell showScope={showScope} embedded={embedded}>
       <ResultsTableHeader showScope={showScope} />
       <TableBody>
-        {rows.length === 0 ? (
+        {displayRows.length === 0 ? (
           <TableRow>
             <TableCell colSpan={colSpan} className="text-sm text-muted-foreground py-4 text-center">
               No completed test parameter results.
             </TableCell>
           </TableRow>
         ) : (
-          rows.map((row) => <ResultDataRow key={row.srNo} row={row} showScope={showScope} />)
+          displayRows.map((row) => (
+            <ResultDataRow
+              key={row.rowKey}
+              row={row}
+              showScope={showScope}
+              editable={editable}
+              onRemarkChange={onRemarkChange}
+              disabled={disabled}
+            />
+          ))
         )}
       </TableBody>
     </ResultsTableShell>

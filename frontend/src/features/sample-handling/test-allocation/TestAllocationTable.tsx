@@ -78,9 +78,14 @@ export function TestAllocationTable({
                   />
                 </TableCell>
                 <TableCell className="text-center truncate font-medium">{fmt(r.sectionCode)}</TableCell>
-                <TableCell className="text-center text-xs truncate">
+                <TableCell className="text-center text-xs align-top">
                   {r.testParameterSummary ? (
-                    <span title={r.testParameterSummary}>{fmt(r.testParameterSummary)}</span>
+                    <span
+                      className="line-clamp-4 mx-auto block max-w-[320px] whitespace-normal break-words"
+                      title={r.testParameterSummary}
+                    >
+                      {fmt(r.testParameterSummary)}
+                    </span>
                   ) : (
                     '-'
                   )}

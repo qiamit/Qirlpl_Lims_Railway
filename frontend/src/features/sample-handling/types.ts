@@ -101,6 +101,7 @@ export type TestAllocationParameterRow = {
   testAllocationId: string
   testParameterId: string | null
   testLabel: string
+  clauseNo?: string | null
   specificRequirement?: string | null
   testStartDate: string | null
   testEndDate: string | null

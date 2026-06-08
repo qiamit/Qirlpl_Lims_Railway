@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabaseClient'
+import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { TestParameterHeaderBar } from './TestParameterHeaderBar'
 import { buildTestParametersListAssistantContext } from './buildTestParameterAssistantContext'
@@ -135,6 +136,7 @@ export default function TestParameterMasterPage() {
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const [showForm, setShowForm] = useState(false)
+  const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
 
   const [rows, setRows] = useState<TestParameterRow[]>([])
@@ -968,8 +970,8 @@ export default function TestParameterMasterPage() {
         isCodeOptions={isCodeOptions}
       />
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
+      <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
+        <DialogContent persistOnFocusLoss className="max-w-6xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Add New Test Parameter</DialogTitle>
           </DialogHeader>

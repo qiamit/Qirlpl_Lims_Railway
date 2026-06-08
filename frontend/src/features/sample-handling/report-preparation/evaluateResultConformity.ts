@@ -1,6 +1,12 @@
-export type ConformityRemark = 'Confirm' | 'Not Confirm' | '—'
+export type ConformityRemark = 'Confirm' | 'Not Confirm' | 'Not Applicable'
 
-const PLACEHOLDER = '—'
+export const RESULT_REMARK_OPTIONS: ConformityRemark[] = [
+  'Confirm',
+  'Not Confirm',
+  'Not Applicable',
+]
+
+const PLACEHOLDER = 'Not Applicable'
 
 const CONFIRM_TERMS = [
   'pass',

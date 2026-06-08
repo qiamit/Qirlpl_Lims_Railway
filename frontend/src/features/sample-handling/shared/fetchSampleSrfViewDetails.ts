@@ -57,6 +57,8 @@ async function signedClientReferenceUrl(path: string | null | undefined): Promis
 
 export type SampleSrfViewDetails = {
   srfNumber: string | null
+  referencedSrfNumber: string | null
+  receivingReportType: string | null
   dateOfSampleReceiving: string | null
   sampleReceivingStatus: string | null
   stage: string | null
@@ -72,6 +74,7 @@ export type SampleSrfViewDetails = {
   batchNumber: string | null
   dateOfManufacturing: string | null
   sampleQuantity: string | null
+  shelfLife: string | null
   testRequired: string | null
   natureOfSample: string | null
   modeOfDisposal: string | null
@@ -80,6 +83,18 @@ export type SampleSrfViewDetails = {
   anyOtherInformation: string | null
   tentativeDateRequired: string | null
   tentativeDateByLab: string | null
+  bisSeal: boolean | null
+  ioSignature: boolean | null
+  statementConformityRequired: boolean | null
+  witnessTestRequired: boolean | null
+  competentPersonAvailable: boolean | null
+  equipmentAvailable: boolean | null
+  canCompleteWithinTime: boolean | null
+  deviationFromMethods: boolean | null
+  supportingDocsRequired: boolean | null
+  decisionRuleApplied: boolean | null
+  testingMethodAvailable: boolean | null
+  samplingProcedureRef: boolean | null
   isCodeFiles: IsCodeFileLink[]
   clientReferenceUrl?: string
 }
@@ -93,6 +108,8 @@ export async function fetchSampleSrfViewDetails(
     .select(
       `
       srf_number,
+      referenced_srf_number,
+      receiving_report_type,
       date_of_sample_receiving,
       sample_receiving_status,
       stage,
@@ -104,6 +121,7 @@ export async function fetchSampleSrfViewDetails(
       batch_number,
       date_of_manufacturing,
       sample_quantity,
+      shelf_life,
       test_required,
       nature_of_sample,
       mode_of_disposal,
@@ -112,6 +130,18 @@ export async function fetchSampleSrfViewDetails(
       any_other_information,
       tentative_date_required,
       tentative_date_by_lab,
+      bis_seal,
+      io_signature,
+      statement_conformity_required,
+      witness_test_required,
+      competent_person_available,
+      equipment_available,
+      can_complete_within_time,
+      deviation_from_methods,
+      supporting_docs_required,
+      decision_rule_applied,
+      testing_method_available,
+      sampling_procedure_ref,
       client_references_path,
       clients(company_name, contact_person_name, email, mobile, address)
     `,
@@ -154,6 +184,8 @@ export async function fetchSampleSrfViewDetails(
 
   return {
     srfNumber: (row.srf_number as string) ?? fallbacks?.srfNumber ?? null,
+    referencedSrfNumber: (row.referenced_srf_number as string) ?? null,
+    receivingReportType: (row.receiving_report_type as string) ?? null,
     dateOfSampleReceiving: (row.date_of_sample_receiving as string) ?? null,
     sampleReceivingStatus: (row.sample_receiving_status as string) ?? null,
     stage: (row.stage as string) ?? null,
@@ -169,6 +201,7 @@ export async function fetchSampleSrfViewDetails(
     batchNumber: (row.batch_number as string) ?? null,
     dateOfManufacturing: (row.date_of_manufacturing as string) ?? null,
     sampleQuantity: (row.sample_quantity as string) ?? null,
+    shelfLife: (row.shelf_life as string) ?? null,
     testRequired: (row.test_required as string) ?? null,
     natureOfSample: (row.nature_of_sample as string) ?? null,
     modeOfDisposal: (row.mode_of_disposal as string) ?? null,
@@ -177,6 +210,18 @@ export async function fetchSampleSrfViewDetails(
     anyOtherInformation: (row.any_other_information as string) ?? null,
     tentativeDateRequired: (row.tentative_date_required as string) ?? null,
     tentativeDateByLab: (row.tentative_date_by_lab as string) ?? null,
+    bisSeal: (row.bis_seal as boolean) ?? null,
+    ioSignature: (row.io_signature as boolean) ?? null,
+    statementConformityRequired: (row.statement_conformity_required as boolean) ?? null,
+    witnessTestRequired: (row.witness_test_required as boolean) ?? null,
+    competentPersonAvailable: (row.competent_person_available as boolean) ?? null,
+    equipmentAvailable: (row.equipment_available as boolean) ?? null,
+    canCompleteWithinTime: (row.can_complete_within_time as boolean) ?? null,
+    deviationFromMethods: (row.deviation_from_methods as boolean) ?? null,
+    supportingDocsRequired: (row.supporting_docs_required as boolean) ?? null,
+    decisionRuleApplied: (row.decision_rule_applied as boolean) ?? null,
+    testingMethodAvailable: (row.testing_method_available as boolean) ?? null,
+    samplingProcedureRef: (row.sampling_procedure_ref as boolean) ?? null,
     isCodeFiles,
     clientReferenceUrl,
   }

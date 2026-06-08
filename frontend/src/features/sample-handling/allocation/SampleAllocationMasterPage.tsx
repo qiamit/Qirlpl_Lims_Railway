@@ -20,6 +20,7 @@ import {
 } from '../referbackFlow'
 import { buildSampleAllocationListAssistantContext } from './buildSampleAllocationAssistantContext'
 import { isSampleAllocationEditLocked, sampleAllocationEditLockedTitle, getSectionCodesInTestAllocation } from './sampleAllocationEditLock'
+import { generateSectionCode } from './sectionCode'
 
 type AllocationRecord = {
   id: string
@@ -606,12 +607,12 @@ export default function SampleAllocationMasterPage() {
     setFormOpen(true)
   }
 
-  const emptySection = (): AllocationSection => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    let code = ''
-    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
-    return { sectionCode: code, department: '', designation: '', sampleQuantity: '' }
-  }
+  const emptySection = (): AllocationSection => ({
+    sectionCode: generateSectionCode(),
+    department: '',
+    designation: '',
+    sampleQuantity: '',
+  })
 
   const buildSectionsForTestAllocation = (row: AllocationRow): AllocationSectionForTestAllocation[] => {
     const recs = allocationRecords.filter((r) => r.sample.id === row.sampleId)

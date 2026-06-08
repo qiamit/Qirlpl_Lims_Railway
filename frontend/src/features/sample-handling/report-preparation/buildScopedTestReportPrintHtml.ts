@@ -36,6 +36,7 @@ function testNameCell(row: ReportResultRow): string {
 function remarkClass(remark: string): string {
   if (remark === 'Confirm') return 'remark-confirm'
   if (remark === 'Not Confirm') return 'remark-fail'
+  if (remark === 'Not Applicable' || remark === '—' || remark === '-') return 'remark-na'
   return ''
 }
 

@@ -144,14 +144,27 @@ function parseSrfNumberBase(value: string): {
   const base = stripSrfReportSuffix(value.trim())
   if (!base) return null
 
-  const newMatch = base.match(/^(.+)\/(\d{6})\/(\d+)-(\d{3})$/)
-  if (newMatch) {
-    const primary = parseInt(newMatch[3], 10)
-    const secondary = parseInt(newMatch[4], 10)
+  const compactMatch = base.match(/^([A-Z]+)(\d{6})\/(\d+)-(\d{3})$/)
+  if (compactMatch) {
+    const primary = parseInt(compactMatch[3], 10)
+    const secondary = parseInt(compactMatch[4], 10)
     if (Number.isNaN(primary) || Number.isNaN(secondary) || primary < 1 || secondary < 1) return null
     return {
-      prefix: newMatch[1],
-      yymmdd: newMatch[2],
+      prefix: compactMatch[1],
+      yymmdd: compactMatch[2],
+      primarySerial: primary,
+      secondarySerial: secondary,
+    }
+  }
+
+  const slashMatch = base.match(/^(.+)\/(\d{6})\/(\d+)-(\d{3})$/)
+  if (slashMatch) {
+    const primary = parseInt(slashMatch[3], 10)
+    const secondary = parseInt(slashMatch[4], 10)
+    if (Number.isNaN(primary) || Number.isNaN(secondary) || primary < 1 || secondary < 1) return null
+    return {
+      prefix: slashMatch[1],
+      yymmdd: slashMatch[2],
       primarySerial: primary,
       secondarySerial: secondary,
     }
@@ -220,6 +233,57 @@ function maxPrimarySerialForDate(numbers: string[], prefix: string, yymmdd: stri
   return maxPrimary
 }
 
+function maxSecondarySerialForDate(
+  numbers: string[],
+  prefix: string,
+  yymmdd: string,
+  primarySerial: number,
+): number {
+  let maxSecondary = 0
+  for (const raw of numbers) {
+    const parts = parseSrfNumberBase(raw)
+    if (
+      !parts ||
+      parts.prefix !== prefix ||
+      parts.yymmdd !== yymmdd ||
+      parts.primarySerial !== primarySerial
+    ) {
+      continue
+    }
+    maxSecondary = Math.max(maxSecondary, parts.secondarySerial)
+  }
+  return maxSecondary
+}
+
+function maxPrimarySerialGlobal(numbers: string[], prefix: string): number {
+  let maxPrimary = 0
+  for (const raw of numbers) {
+    const parts = parseSrfNumberBase(raw)
+    if (!parts || parts.prefix !== prefix) continue
+    maxPrimary = Math.max(maxPrimary, parts.primarySerial)
+  }
+  return maxPrimary
+}
+
+function formatSrfNumber(
+  prefix: string,
+  yymmdd: string,
+  primarySerial: number,
+  secondarySerial: number,
+): string {
+  const primary = Math.max(1, Math.floor(primarySerial))
+  const secondary = Math.max(1, Math.floor(secondarySerial))
+  if (prefix.includes('/')) {
+    return `${prefix}/${yymmdd}/${primary}-${String(secondary).padStart(3, '0')}`
+  }
+  return `${prefix}${yymmdd}/${primary}-${String(secondary).padStart(3, '0')}`
+}
+
+function srfNumberLikePattern(prefix: string, yymmdd: string): string {
+  if (prefix.includes('/')) return `${prefix}%${yymmdd}%`
+  return `${prefix}${yymmdd}%`
+}
+
 async function generateNextSrfNumber(client: SupabaseClient, dateStr?: string): Promise<string> {
   let yymmdd: string
   if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -232,20 +296,38 @@ async function generateNextSrfNumber(client: SupabaseClient, dateStr?: string): 
       String(today.getMonth() + 1).padStart(2, '0') +
       String(today.getDate()).padStart(2, '0')
   }
-  let prefix = 'QI/SRF'
+  let prefix = 'SR'
   const { data: prefixRows } = await client.from('lab_prefixes').select('name, prefix').eq('name', 'SRF').limit(1)
   if (prefixRows?.[0]?.prefix) prefix = String((prefixRows[0] as { prefix?: string }).prefix).trim() || prefix
-  const pattern = `${prefix}%${yymmdd}%`
-  const { data: existing } = await client
+
+  const datePattern = srfNumberLikePattern(prefix, yymmdd)
+  const { data: existingForDate } = await client
     .from('samples')
     .select('srf_number')
     .not('srf_number', 'is', null)
-    .like('srf_number', pattern)
-  const numbers = (Array.isArray(existing) ? existing : [])
+    .like('srf_number', datePattern)
+  const dateNumbers = (Array.isArray(existingForDate) ? existingForDate : [])
     .map((r) => (r as { srf_number?: string }).srf_number)
     .filter((n): n is string => typeof n === 'string')
-  const nextPrimary = maxPrimarySerialForDate(numbers, prefix, yymmdd) + 1
-  return `${prefix}/${yymmdd}/${nextPrimary}-${String(1).padStart(3, '0')}`
+
+  const primaryForDate = maxPrimarySerialForDate(dateNumbers, prefix, yymmdd)
+  if (primaryForDate > 0) {
+    const nextSecondary = maxSecondarySerialForDate(dateNumbers, prefix, yymmdd, primaryForDate) + 1
+    return formatSrfNumber(prefix, yymmdd, primaryForDate, nextSecondary)
+  }
+
+  const prefixPattern = `${prefix}%`
+  const { data: allForPrefix } = await client
+    .from('samples')
+    .select('srf_number')
+    .not('srf_number', 'is', null)
+    .like('srf_number', prefixPattern)
+  const allNumbers = (Array.isArray(allForPrefix) ? allForPrefix : [])
+    .map((r) => (r as { srf_number?: string }).srf_number)
+    .filter((n): n is string => typeof n === 'string')
+
+  const nextPrimary = maxPrimarySerialGlobal(allNumbers, prefix) + 1
+  return formatSrfNumber(prefix, yymmdd, nextPrimary, 1)
 }
 
 function addDaysIso(isoDate: string, days: number): string {

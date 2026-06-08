@@ -28,7 +28,7 @@ export function formatSrfYymmdd(dateStr?: string): string {
 }
 
 export async function fetchSrfPrefix(): Promise<string> {
-  let prefix = 'QI/SRF'
+  let prefix = 'SR'
   const { data: prefixRows } = await supabase
     .from('lab_prefixes')
     .select('name, prefix')
@@ -39,22 +39,35 @@ export async function fetchSrfPrefix(): Promise<string> {
 }
 
 /**
- * Parse base SRF (no A/S suffix):
- * - Current: {prefix}/{YYMMDD}/{primary}-{secondary3}
- * - Legacy: hyphen-separated or older slash-before-serial variants
+ * Parse base SRF (no A/S suffix).
+ * Current compact: SR260608/1-001
+ * Legacy slash: QI/SRF/260608/1-001 and older hyphen variants
  */
 export function parseSrfNumberBase(value: string): SrfNumberParts | null {
   const base = stripSrfReportSuffix(value.trim())
   if (!base) return null
 
-  const newMatch = base.match(/^(.+)\/(\d{6})\/(\d+)-(\d{3})$/)
-  if (newMatch) {
-    const primary = parseInt(newMatch[3], 10)
-    const secondary = parseInt(newMatch[4], 10)
+  const compactMatch = base.match(/^([A-Z]+)(\d{6})\/(\d+)-(\d{3})$/)
+  if (compactMatch) {
+    const primary = parseInt(compactMatch[3], 10)
+    const secondary = parseInt(compactMatch[4], 10)
     if (Number.isNaN(primary) || Number.isNaN(secondary) || primary < 1 || secondary < 1) return null
     return {
-      prefix: newMatch[1],
-      yymmdd: newMatch[2],
+      prefix: compactMatch[1],
+      yymmdd: compactMatch[2],
+      primarySerial: primary,
+      secondarySerial: secondary,
+    }
+  }
+
+  const slashMatch = base.match(/^(.+)\/(\d{6})\/(\d+)-(\d{3})$/)
+  if (slashMatch) {
+    const primary = parseInt(slashMatch[3], 10)
+    const secondary = parseInt(slashMatch[4], 10)
+    if (Number.isNaN(primary) || Number.isNaN(secondary) || primary < 1 || secondary < 1) return null
+    return {
+      prefix: slashMatch[1],
+      yymmdd: slashMatch[2],
       primarySerial: primary,
       secondarySerial: secondary,
     }
@@ -113,7 +126,7 @@ export function parseSrfNumberBase(value: string): SrfNumberParts | null {
   return null
 }
 
-/** Build SRF: {prefix}/{YYMMDD}/{primary}-{secondary3} e.g. QI/SRF/260607/1-001 */
+/** Build SRF: SR260608/1-001 (prefix + yymmdd / primary-secondary) */
 export function formatSrfNumber(
   prefix: string,
   yymmdd: string,
@@ -122,16 +135,23 @@ export function formatSrfNumber(
 ): string {
   const primary = Math.max(1, Math.floor(primarySerial))
   const secondary = Math.max(1, Math.floor(secondarySerial))
-  return `${prefix}/${yymmdd}/${primary}-${String(secondary).padStart(3, '0')}`
+  if (prefix.includes('/')) {
+    return `${prefix}/${yymmdd}/${primary}-${String(secondary).padStart(3, '0')}`
+  }
+  return `${prefix}${yymmdd}/${primary}-${String(secondary).padStart(3, '0')}`
 }
 
 export function srfNumberLikePattern(prefix: string, yymmdd: string): string {
-  return `${prefix}%${yymmdd}%`
+  if (prefix.includes('/')) return `${prefix}%${yymmdd}%`
+  return `${prefix}${yymmdd}%`
 }
 
 export function buildSrfValidationRegex(prefix: string): RegExp {
   const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`^${escaped}\\/\\d{6}\\/\\d+-\\d{3}([AS])?$`)
+  if (prefix.includes('/')) {
+    return new RegExp(`^${escaped}\\/\\d{6}\\/\\d+-\\d{3}([AS])?$`)
+  }
+  return new RegExp(`^${escaped}\\d{6}\\/\\d+-\\d{3}([AS])?$`)
 }
 
 export function isValidSrfNumber(value: string, prefix: string): boolean {
@@ -139,17 +159,19 @@ export function isValidSrfNumber(value: string, prefix: string): boolean {
   if (!trimmed) return false
   const body = stripSrfReportSuffix(trimmed)
   const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const newFmt = new RegExp(`^${escaped}\\/\\d{6}\\/\\d+-\\d{3}$`)
+  const compactFmt = new RegExp(`^${escaped}\\d{6}\\/\\d+-\\d{3}$`)
+  const slashFmt = new RegExp(`^${escaped}\\/\\d{6}\\/\\d+-\\d{3}$`)
   const legacyHyphenNewFmt = new RegExp(`^${escaped}-\\d{6}-\\d+-\\d{3}$`)
   const legacySlashNewFmt = new RegExp(`^${escaped}\\/\\d{6}-\\d+-\\d{3}$`)
-  const legacySlashFmt = new RegExp(`^${escaped}\\/\\d{6}-\\d{2}$`)
-  const legacyHyphenFmt = new RegExp(`^${escaped}-\\d{6}-\\d{2}$`)
+  const legacySlashOldFmt = new RegExp(`^${escaped}\\/\\d{6}-\\d{2}$`)
+  const legacyHyphenOldFmt = new RegExp(`^${escaped}-\\d{6}-\\d{2}$`)
   return (
-    newFmt.test(body) ||
+    compactFmt.test(body) ||
+    slashFmt.test(body) ||
     legacyHyphenNewFmt.test(body) ||
     legacySlashNewFmt.test(body) ||
-    legacySlashFmt.test(body) ||
-    legacyHyphenFmt.test(body)
+    legacySlashOldFmt.test(body) ||
+    legacyHyphenOldFmt.test(body)
   )
 }
 
@@ -187,4 +209,14 @@ export function maxSecondarySerialForDate(
     maxSecondary = Math.max(maxSecondary, parts.secondarySerial)
   }
   return maxSecondary
+}
+
+export function maxPrimarySerialGlobal(numbers: string[], prefix: string): number {
+  let maxPrimary = 0
+  for (const raw of numbers) {
+    const parts = parseSrfNumberBase(raw)
+    if (!parts || parts.prefix !== prefix) continue
+    maxPrimary = Math.max(maxPrimary, parts.primarySerial)
+  }
+  return maxPrimary
 }

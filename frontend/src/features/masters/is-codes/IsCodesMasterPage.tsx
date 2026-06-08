@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IsCodesHeaderBar } from './IsCodesHeaderBar'
 import { IsCodesForm } from './IsCodesForm'
@@ -100,6 +101,7 @@ export default function IsCodesMasterPage() {
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const [showForm, setShowForm] = useState(false)
+  const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
 
   const [rows, setRows] = useState<IsCodeRow[]>([])
@@ -939,8 +941,8 @@ export default function IsCodesMasterPage() {
         onAssistantDataChanged={() => void loadIsCodes()}
       />
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
+        <DialogContent persistOnFocusLoss className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New IS Code</DialogTitle>
             <DialogDescription>Enter IS code details and save.</DialogDescription>

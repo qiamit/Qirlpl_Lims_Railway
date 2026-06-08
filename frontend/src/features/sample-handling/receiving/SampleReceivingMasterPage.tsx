@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
@@ -58,6 +59,7 @@ export default function SampleReceivingMasterPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [activeTab, setActiveTab] = useState('details')
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<SampleRow[]>([])
@@ -585,8 +587,8 @@ export default function SampleReceivingMasterPage() {
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadRows()}
       />
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="w-[62.5vw] max-w-[62.5vw] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
+      <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
+        <DialogContent persistOnFocusLoss className="w-[62.5vw] max-w-[62.5vw] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Receive New Sample</DialogTitle>
           </DialogHeader>

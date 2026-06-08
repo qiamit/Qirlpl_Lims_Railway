@@ -2,6 +2,7 @@ import * as React from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { preventFormDialogFocusOutside } from '@/lib/formDialogOpenChange'
 
 const Dialog = DialogPrimitive.Root
 
@@ -32,13 +33,20 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, 'aria-describedby': ariaDescribedBy, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /** Keep form dialogs open when focus leaves due to tab switch */
+    persistOnFocusLoss?: boolean
+  }
+>(({ className, children, persistOnFocusLoss, onFocusOutside, 'aria-describedby': ariaDescribedBy, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       aria-describedby={ariaDescribedBy ?? undefined}
+      onFocusOutside={(e) => {
+        if (persistOnFocusLoss) preventFormDialogFocusOutside(e)
+        onFocusOutside?.(e)
+      }}
       className={cn(
         'fixed z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:rounded-lg',
         className,

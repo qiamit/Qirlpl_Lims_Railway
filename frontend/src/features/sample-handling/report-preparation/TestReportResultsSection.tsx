@@ -251,6 +251,7 @@ export function TestReportResultsSection({
   letterheadOptions,
   letterheadsByScope,
   onLetterheadChange,
+  onRemarkChange,
   disabled,
 }: {
   resultsLoading: boolean
@@ -273,6 +274,7 @@ export function TestReportResultsSection({
     field: 'headerName' | 'footerName' | 'watermarkName',
     value: string,
   ) => void
+  onRemarkChange?: (rowKey: string, remark: string) => void
   disabled?: boolean
 }) {
   return (
@@ -338,6 +340,9 @@ export function TestReportResultsSection({
                       showScope={false}
                       embedded
                       groupBySectionCode
+                      editable
+                      onRemarkChange={onRemarkChange}
+                      disabled={disabled}
                     />
                     {scopedRows.length > 0 && <TestReportEndNotesBlock />}
                   </div>

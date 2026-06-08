@@ -285,6 +285,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   .sub { color: #64748b; font-size: ${Math.max(8, baseFontSizePt - 1)}pt; margin-top: 2px; line-height: 1.3; }
   .remark-confirm { color: #047857; font-weight: 600; }
   .remark-fail { color: #b91c1c; font-weight: 600; }
+  .remark-na { color: #64748b; font-weight: 600; }
 
   .part-d-shell { font-size: ${baseFontSizePt}pt; }
   .part-d-heading-bar {

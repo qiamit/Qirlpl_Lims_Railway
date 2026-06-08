@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ProductServicesForm } from './ProductServicesForm'
 import { ProductServicesHeaderBar } from './ProductServicesHeaderBar'
@@ -107,6 +108,7 @@ export default function ProductServicesMasterPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<NablScopeRow[]>([])
   const [listLoading, setListLoading] = useState(false)
@@ -519,8 +521,8 @@ export default function ProductServicesMasterPage() {
         onAssistantDataChanged={() => void loadItems()}
       />
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
+        <DialogContent persistOnFocusLoss className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Scope Entry' : 'Add Scope Entry'}</DialogTitle>
             <DialogDescription>NABL accreditation scope entry (ISO/IEC 17025:2017 annexure).</DialogDescription>

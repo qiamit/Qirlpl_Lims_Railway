@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
 import {
   RECEIVING_REPORT_TYPES,
@@ -11,6 +12,7 @@ import {
   type SampleRow,
 } from '../types'
 import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
+import { FilterCombobox } from './FilterCombobox'
 import { OptionCombobox } from './OptionCombobox'
 
 export type SrfSearchOption = Pick<SampleRow, 'id' | 'srf_number' | 'client_name'>
@@ -79,6 +81,7 @@ export function SampleReceivingForm({
   const [isCodeDropdownOpen, setIsCodeDropdownOpen] = useState(false)
   const [srfSearchInput, setSrfSearchInput] = useState('')
   const [srfDropdownOpen, setSrfDropdownOpen] = useState(false)
+  const reviewFirstFieldRef = useRef<HTMLInputElement>(null)
 
   const isNewReport = form.receivingReportType === RECEIVING_REPORT_TYPES[0]
   const useReferencedSrfSearch = !editingSampleId && !isNewReport
@@ -130,6 +133,11 @@ export function SampleReceivingForm({
     .filter((r) => r.srf_number?.trim())
     .slice(0, 25)
 
+  const goToReviewTab = () => {
+    onGoToReview()
+    requestAnimationFrame(() => reviewFirstFieldRef.current?.focus())
+  }
+
   const handleDateChange = (newDate: string) => {
     if (onDateOfSampleReceivingChange) {
       onDateOfSampleReceivingChange(newDate)
@@ -142,12 +150,44 @@ export function SampleReceivingForm({
     <Card>
       <CardContent className="pt-6">
         <Tabs value={activeTab} onValueChange={onTabChange}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="details">Customer & Sample Details</TabsTrigger>
-            <TabsTrigger value="review">Review</TabsTrigger>
-          </TabsList>
+          <div
+            className="grid h-10 w-full grid-cols-2 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground"
+            role="tablist"
+            aria-label="Sample receiving sections"
+          >
+            <button
+              type="button"
+              role="tab"
+              tabIndex={-1}
+              aria-selected={activeTab === 'details'}
+              className={cn(
+                'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                activeTab === 'details'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground',
+              )}
+              onClick={() => onTabChange('details')}
+            >
+              Customer & Sample Details
+            </button>
+            <button
+              type="button"
+              role="tab"
+              tabIndex={-1}
+              aria-selected={activeTab === 'review'}
+              className={cn(
+                'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                activeTab === 'review'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground',
+              )}
+              onClick={() => onTabChange('review')}
+            >
+              Review
+            </button>
+          </div>
 
-          <TabsContent value="details" className="space-y-5 mt-4">
+          <TabsContent value="details" tabIndex={-1} className="space-y-5 mt-4 outline-none">
             <h3 className="text-sm font-semibold">Customer & Sample Details</h3>
             {/* Row 1: Report Type 20%, SRF 20%, Date 20%, Customer 40% */}
             <div className="grid gap-4 grid-cols-1 md:grid-cols-[1fr_1fr_1fr_2fr] md:items-end">
@@ -244,120 +284,72 @@ export function SampleReceivingForm({
               </div>
               <div className="space-y-2 min-w-0">
                 <Label>Name of the Customer</Label>
-                <div className="relative">
-                  <Input
-                    value={customerInput}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setCustomerInput(val)
-                      const match = clientOptions.find((opt) => opt.label === val)
-                      if (match) {
-                        onChange({ ...form, customerId: match.id })
-                      }
-                    }}
-                    onFocus={() => setClientDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setClientDropdownOpen(false), 120)}
-                    placeholder="Select client"
-                    autoComplete="off"
-                  />
-                  {clientDropdownOpen && (filteredClients.length > 0 || onAddClient) && (
-                    <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
-                      <ul className="max-h-48 overflow-auto text-sm">
-                        {filteredClients.map((opt) => (
-                          <li key={opt.id}>
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-left hover:bg-muted"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setCustomerInput(opt.label)
-                                onChange({ ...form, customerId: opt.id })
-                                setClientDropdownOpen(false)
-                              }}
-                            >
-                              {opt.label}
-                            </button>
-                          </li>
-                        ))}
-                        {onAddClient && (
-                          <li>
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-left text-primary hover:bg-muted"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setClientDropdownOpen(false)
-                                onAddClient()
-                              }}
-                            >
-                              Add new Client
-                            </button>
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+                <FilterCombobox
+                  value={customerInput}
+                  onValueChange={(val) => {
+                    setCustomerInput(val)
+                    const match = clientOptions.find((opt) => opt.label === val)
+                    if (match) {
+                      onChange({ ...form, customerId: match.id })
+                    }
+                  }}
+                  options={filteredClients}
+                  onSelectOption={(opt) => {
+                    setCustomerInput(opt.label)
+                    onChange({ ...form, customerId: opt.id })
+                  }}
+                  open={clientDropdownOpen}
+                  onOpenChange={setClientDropdownOpen}
+                  placeholder="Select client"
+                  listId="receiving-client-combobox"
+                  extraActions={
+                    onAddClient
+                      ? [
+                          {
+                            key: 'add-client',
+                            label: 'Add new Client',
+                            onSelect: onAddClient,
+                          },
+                        ]
+                      : []
+                  }
+                />
               </div>
             </div>
             {/* Row 2: Test Report 25%, Client Ref 25%, Sample Qty 50% - all in one line */}
             <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
               <div className="space-y-2 md:col-span-1">
                 <Label>Test Report as per IS</Label>
-                <div className="relative">
-                  <Input
-                    value={isCodeInput}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setIsCodeInput(val)
-                      const match = isCodeOptions.find((opt) => opt.label === val)
-                      if (match) {
-                        onChange({ ...form, testReportAsPerIsId: match.id })
-                      }
-                    }}
-                    onFocus={() => setIsCodeDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setIsCodeDropdownOpen(false), 120)}
-                    placeholder="Select IS Code"
-                    autoComplete="off"
-                  />
-                  {isCodeDropdownOpen && (filteredIsCodes.length > 0 || onAddIsCode) && (
-                    <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
-                      <ul className="max-h-48 overflow-auto text-sm">
-                        {filteredIsCodes.map((opt) => (
-                          <li key={opt.id}>
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-left hover:bg-muted"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setIsCodeInput(opt.label)
-                                onChange({ ...form, testReportAsPerIsId: opt.id })
-                                setIsCodeDropdownOpen(false)
-                              }}
-                            >
-                              {opt.label}
-                            </button>
-                          </li>
-                        ))}
-                        {onAddIsCode && (
-                          <li>
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-left text-primary hover:bg-muted"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setIsCodeDropdownOpen(false)
-                                onAddIsCode()
-                              }}
-                            >
-                              Add new IS Code
-                            </button>
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+                <FilterCombobox
+                  value={isCodeInput}
+                  onValueChange={(val) => {
+                    setIsCodeInput(val)
+                    const match = isCodeOptions.find((opt) => opt.label === val)
+                    if (match) {
+                      onChange({ ...form, testReportAsPerIsId: match.id })
+                    }
+                  }}
+                  options={filteredIsCodes}
+                  onSelectOption={(opt) => {
+                    setIsCodeInput(opt.label)
+                    onChange({ ...form, testReportAsPerIsId: opt.id })
+                  }}
+                  open={isCodeDropdownOpen}
+                  onOpenChange={setIsCodeDropdownOpen}
+                  placeholder="Select IS Code"
+                  listId="receiving-is-code-combobox"
+                  extraActions={
+                    onAddIsCode
+                      ? [
+                          {
+                            key: 'add-is-code',
+                            label: 'Add new IS Code',
+                            onSelect: onAddIsCode,
+                          },
+                        ]
+                      : []
+                  }
+                />
               </div>
               <div className="space-y-2 md:col-span-1">
                 <Label>Client Reference</Label>
@@ -507,16 +499,21 @@ export function SampleReceivingForm({
             </div>
             <div className="flex gap-2 justify-end">
               <button type="button" className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-10 px-4 py-2 hover:bg-accent" onClick={onClear}>Clear</button>
-              <button type="button" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-4 py-2 hover:bg-primary/90" onClick={onGoToReview}>Go to Review</button>
+              <button type="button" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-4 py-2 hover:bg-primary/90" onClick={goToReviewTab}>Go to Review</button>
             </div>
           </TabsContent>
 
-          <TabsContent value="review" className="space-y-5 mt-4">
+          <TabsContent value="review" tabIndex={-1} className="space-y-5 mt-4 outline-none">
             {/* 4 fields in a single row at top */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Tentative Date Required</Label>
-                <Input type="date" value={form.tentativeDateRequired} onChange={(e) => onChange({ ...form, tentativeDateRequired: e.target.value })} />
+                <Input
+                  ref={reviewFirstFieldRef}
+                  type="date"
+                  value={form.tentativeDateRequired}
+                  onChange={(e) => onChange({ ...form, tentativeDateRequired: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Tentative Date by Lab</Label>

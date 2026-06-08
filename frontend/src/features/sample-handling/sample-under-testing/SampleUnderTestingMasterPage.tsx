@@ -24,6 +24,11 @@ import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/Sa
 import { isDepartmentTestingEngineer, type UserAccessContext } from '@/lib/moduleAccess'
 import { SampleUnderTestingAssistant } from './SampleUnderTestingAssistant'
 import {
+  isFirstSectionParameterRow,
+  listSectionParameterTargets,
+  sortParametersByClause,
+} from './sectionParameterRows'
+import {
   buildLegacyResultsReviewSampleIds,
   fetchSentForReviewTestAllocationIds,
   shouldHideFromSampleUnderTesting,
@@ -273,17 +278,26 @@ export default function SampleUnderTestingMasterPage() {
           if (typeof id === 'string' && id.trim()) tpIdsForLookup.add(id.trim())
         }
       }
-      const testParamMetaById = new Map<string, { name: string; specificRequirement: string | null }>()
+      const testParamMetaById = new Map<
+        string,
+        { name: string; specificRequirement: string | null; clauseNo: string | null }
+      >()
       if (tpIdsForLookup.size > 0) {
         const { data: tpMetaRows } = await supabase
           .from('test_parameters')
-          .select('id, item_name, specific_requirement')
+          .select('id, item_name, specific_requirement, clause_no')
           .in('id', [...tpIdsForLookup])
         for (const row of Array.isArray(tpMetaRows) ? tpMetaRows : []) {
-          const r = row as { id: string; item_name?: string | null; specific_requirement?: string | null }
+          const r = row as {
+            id: string
+            item_name?: string | null
+            specific_requirement?: string | null
+            clause_no?: string | null
+          }
           testParamMetaById.set(r.id, {
             name: (r.item_name ?? '').trim() || r.id,
             specificRequirement: (r.specific_requirement ?? '').trim() || null,
+            clauseNo: (r.clause_no ?? '').trim() || null,
           })
         }
       }
@@ -335,6 +349,9 @@ export default function SampleUnderTestingMasterPage() {
               testAllocationId: p.test_allocation_id,
               testParameterId: p.test_parameter_id,
               testLabel: p.test_label,
+              clauseNo: p.test_parameter_id
+                ? (testParamMetaById.get(p.test_parameter_id)?.clauseNo ?? null)
+                : null,
               specificRequirement: p.test_parameter_id
                 ? (testParamMetaById.get(p.test_parameter_id)?.specificRequirement ?? null)
                 : null,
@@ -366,6 +383,7 @@ export default function SampleUnderTestingMasterPage() {
                     testAllocationId: allocationId,
                     testParameterId: tpId,
                     testLabel: label,
+                    clauseNo: tpId ? (testParamMetaById.get(tpId)?.clauseNo ?? null) : null,
                     specificRequirement: tpId
                       ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
                       : null,
@@ -376,6 +394,8 @@ export default function SampleUnderTestingMasterPage() {
                 })
               }
             }
+
+            parameterRows = sortParametersByClause(parameterRows)
             return {
               testAllocationId,
               sampleAllocationId: a.id,
@@ -560,6 +580,86 @@ export default function SampleUnderTestingMasterPage() {
     }
   }
 
+  const persistParameterFieldToDb = async (
+    allocationId: string,
+    paramRowId: string | null,
+    labelForCreate: string | undefined,
+    field: 'test_start_date' | 'results' | 'test_end_date',
+    value: string | null,
+    rowCtx: TestAllocationRow | undefined,
+  ) => {
+    const testParameterIdForInsert =
+      rowCtx?.parameters?.find((p) => p.testLabel === labelForCreate)?.testParameterId ?? null
+
+    if (paramRowId) {
+      const payload = { [field]: value || null, updated_at: new Date().toISOString() }
+      const { error } = await supabase
+        .from('test_allocation_parameters')
+        .update(payload)
+        .eq('id', paramRowId)
+      if (error) throw error
+      return
+    }
+
+    const label = (labelForCreate ?? '').trim()
+    const { data: existingRow } = await supabase
+      .from('test_allocation_parameters')
+      .select('id')
+      .eq('test_allocation_id', allocationId)
+      .eq('test_label', label)
+      .maybeSingle()
+    const existingId = (existingRow as { id?: string } | null)?.id
+    const patch = { [field]: value || null, updated_at: new Date().toISOString() }
+    if (existingId) {
+      const { error } = await supabase.from('test_allocation_parameters').update(patch).eq('id', existingId)
+      if (error) throw error
+    } else {
+      const payload: Record<string, unknown> = {
+        test_allocation_id: allocationId,
+        test_parameter_id: testParameterIdForInsert,
+        test_label: label,
+        [field]: value || null,
+      }
+      const { error } = await supabase.from('test_allocation_parameters').insert(payload)
+      if (error) throw error
+    }
+  }
+
+  const advanceSampleStageIfNeeded = async (sid: string): Promise<string | null> => {
+    const { data: stRow, error: stageReadErr } = await supabase
+      .from('samples')
+      .select('stage')
+      .eq('id', sid)
+      .maybeSingle()
+    if (stageReadErr || !stRow) {
+      if (stageReadErr && import.meta.env.DEV) {
+        console.warn('[SampleUnderTesting] samples stage read skipped:', stageReadErr.message)
+      }
+      return null
+    }
+    const curSt = (stRow as { stage?: string | null }).stage
+    if (curSt === 'receiving' || curSt === 'allocation' || curSt === 'test_allocation') {
+      const { error: stageUpdErr } = await supabase.from('samples').update({ stage: 'under_testing' }).eq('id', sid)
+      if (stageUpdErr) {
+        const hint = formatSupabaseError(stageUpdErr)
+        if (import.meta.env.DEV) console.warn('[SampleUnderTesting] samples stage update:', hint)
+        return hint
+      }
+    }
+    return null
+  }
+
+  const applyFieldToParameter = (
+    p: NonNullable<TestAllocationRow['parameters']>[number],
+    field: 'test_start_date' | 'results' | 'test_end_date',
+    value: string | null,
+  ) => ({
+    ...p,
+    testStartDate: field === 'test_start_date' ? value : p.testStartDate,
+    testEndDate: field === 'test_end_date' ? value : p.testEndDate,
+    results: field === 'results' ? value : p.results,
+  })
+
   const updateParameterField = async (
     sampleId: string,
     paramRowId: string | null,
@@ -572,8 +672,58 @@ export default function SampleUnderTestingMasterPage() {
     if (!allocationId) return
     const sid = typeof sampleId === 'string' ? sampleId.trim() : ''
     if (!sid) return
-    const testParameterIdForInsert =
-      rowCtx?.parameters?.find((p) => p.testLabel === labelForCreate)?.testParameterId ?? null
+
+    const bulkFromFirstRow =
+      rowCtx &&
+      (field === 'test_start_date' || field === 'test_end_date') &&
+      isFirstSectionParameterRow(rowCtx, paramRowId, labelForCreate ?? '')
+
+    if (bulkFromFirstRow && rowCtx) {
+      const targets = listSectionParameterTargets(rowCtx)
+      setRows((prev) =>
+        prev.map((row) => {
+          if (row.testAllocationId !== allocationId) return row
+          const existing = row.parameters ?? []
+          if (existing.length > 0) {
+            return { ...row, parameters: existing.map((p) => applyFieldToParameter(p, field, value)) }
+          }
+          return {
+            ...row,
+            parameters: targets.map((t) => ({
+              id: `local-${t.testLabel}`,
+              testAllocationId: allocationId,
+              testParameterId:
+                row.parameters?.find((p) => p.testLabel === t.testLabel)?.testParameterId ?? null,
+              testLabel: t.testLabel,
+              testStartDate: field === 'test_start_date' ? value : null,
+              testEndDate: field === 'test_end_date' ? value : null,
+              results: null,
+            })),
+          }
+        }),
+      )
+      try {
+        for (const t of targets) {
+          await persistParameterFieldToDb(
+            allocationId,
+            t.paramRowId,
+            t.testLabel,
+            field,
+            value,
+            rowCtx,
+          )
+        }
+        const stageSaveHint = await advanceSampleStageIfNeeded(sid)
+        setSaveMessage(
+          stageSaveHint
+            ? `Updated all tests in section. Sample stage not advanced: ${stageSaveHint}`
+            : 'Updated all tests in section.',
+        )
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Update failed')
+      }
+      return
+    }
 
     // Optimistically update local state so inputs stay editable while typing.
     setRows((prev) =>
@@ -635,55 +785,15 @@ export default function SampleUnderTestingMasterPage() {
     )
 
     try {
-      if (paramRowId) {
-        const payload = { [field]: value || null, updated_at: new Date().toISOString() }
-        const { error } = await supabase
-          .from('test_allocation_parameters')
-          .update(payload)
-          .eq('id', paramRowId)
-        if (error) throw error
-      } else {
-        const label = (labelForCreate ?? '').trim()
-        const { data: existingRow } = await supabase
-          .from('test_allocation_parameters')
-          .select('id')
-          .eq('test_allocation_id', allocationId)
-          .eq('test_label', label)
-          .maybeSingle()
-        const existingId = (existingRow as { id?: string } | null)?.id
-        const patch = { [field]: value || null, updated_at: new Date().toISOString() }
-        if (existingId) {
-          const { error } = await supabase.from('test_allocation_parameters').update(patch).eq('id', existingId)
-          if (error) throw error
-        } else {
-          const payload: Record<string, unknown> = {
-            test_allocation_id: allocationId,
-            test_parameter_id: testParameterIdForInsert,
-            test_label: label,
-            [field]: value || null,
-          }
-          const { error } = await supabase.from('test_allocation_parameters').insert(payload)
-          if (error) throw error
-        }
-      }
-      const { data: stRow, error: stageReadErr } = await supabase
-        .from('samples')
-        .select('stage')
-        .eq('id', sid)
-        .maybeSingle()
-      let stageSaveHint: string | null = null
-      if (!stageReadErr && stRow) {
-        const curSt = (stRow as { stage?: string | null }).stage
-        if (curSt === 'receiving' || curSt === 'allocation' || curSt === 'test_allocation') {
-          const { error: stageUpdErr } = await supabase.from('samples').update({ stage: 'under_testing' }).eq('id', sid)
-          if (stageUpdErr) {
-            stageSaveHint = formatSupabaseError(stageUpdErr)
-            if (import.meta.env.DEV) console.warn('[SampleUnderTesting] samples stage update:', stageSaveHint)
-          }
-        }
-      } else if (stageReadErr && import.meta.env.DEV) {
-        console.warn('[SampleUnderTesting] samples stage read skipped:', stageReadErr.message)
-      }
+      await persistParameterFieldToDb(
+        allocationId,
+        paramRowId,
+        labelForCreate,
+        field,
+        value,
+        rowCtx,
+      )
+      const stageSaveHint = await advanceSampleStageIfNeeded(sid)
       setSaveMessage(
         stageSaveHint
           ? `Updated. Sample stage not advanced: ${stageSaveHint} (run migration 20260329130000 if enum is missing values).`

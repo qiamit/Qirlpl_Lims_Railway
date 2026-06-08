@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ClientsTableFooterBar } from './ClientsFooterBar'
 import { ClientsForm } from './ClientsForm'
@@ -38,6 +39,7 @@ export default function ClientsMasterPage() {
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const [showForm, setShowForm] = useState(false)
+  const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
 
   const [rows, setRows] = useState<ClientRow[]>([])
@@ -787,8 +789,8 @@ export default function ClientsMasterPage() {
         onAssistantDataChanged={() => void loadClients()}
       />
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
+        <DialogContent persistOnFocusLoss className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Client</DialogTitle>
           </DialogHeader>

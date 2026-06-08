@@ -1,28 +1,25 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Construction } from 'lucide-react'
-import GlobalLayout from '@/components/layout/GlobalLayout'
-import DashboardPage from '@/features/dashboard/DashboardPage'
-import { SamplesPage } from '@/features/samples'
-import SampleReceivingMasterPage from '@/features/sample-handling/receiving/SampleReceivingMasterPage'
-import SampleAllocationMasterPage from '@/features/sample-handling/allocation/SampleAllocationMasterPage'
-import TestAllocationMasterPage from '@/features/sample-handling/test-allocation/TestAllocationMasterPage'
-import SampleUnderTestingMasterPage from '@/features/sample-handling/sample-under-testing/SampleUnderTestingMasterPage'
-import ResultsUnderReviewMasterPage from '@/features/sample-handling/results-under-review/ResultsUnderReviewMasterPage'
-import TestReportPreparationMasterPage from '@/features/sample-handling/report-preparation/TestReportPreparationMasterPage'
-import CompletedResultsMasterPage from '@/features/sample-handling/completed-results/CompletedResultsMasterPage'
-import LabSettingsPage from '@/features/settings/LabSettingsPage'
-import UserManagementPage from '@/features/settings/UserManagementPage'
-import AiSettingsPage from '@/features/settings/AiSettingsPage'
 import AuthPage from '@/features/auth/AuthPage'
-import ClientsPage from '@/features/masters/ClientsPage'
-import IsCodesPage from '@/features/masters/IsCodesPage'
-import ProductServicesPage from '@/features/masters/ProductServicesPage'
-import TestParameterPage from '@/features/masters/TestParameterPage'
-import { RequireAuth } from '@/components/auth/RequireAuth'
-import { RequireLaboratoryDirector } from '@/components/auth/RequireLaboratoryDirector'
-import { RequireSampleReceivingAccess } from '@/components/auth/RequireSampleReceivingAccess'
-import { RequireSampleAllocationAccess } from '@/components/auth/RequireSampleAllocationAccess'
-import { RequireTestAllocationAccess } from '@/components/auth/RequireTestAllocationAccess'
+import {
+  AiSettingsRoute,
+  AuthenticatedShell,
+  ClientsPage,
+  CompletedResultsMasterPage,
+  DashboardPage,
+  IsCodesPage,
+  LabSettingsRoute,
+  ProductServicesPage,
+  ResultsUnderReviewMasterPage,
+  SampleAllocationRoute,
+  SampleReceivingRoute,
+  SamplesPage,
+  SampleUnderTestingMasterPage,
+  TestAllocationRoute,
+  TestParameterPage,
+  TestReportPreparationMasterPage,
+  UserManagementRoute,
+} from '@/routes/routeElements'
 
 function PlaceholderPage({ title, clause }: { title: string; clause: string }) {
   return (
@@ -45,26 +42,28 @@ function PlaceholderPage({ title, clause }: { title: string; clause: string }) {
   )
 }
 
+function HelpRoute() {
+  return <PlaceholderPage title="Help" clause="Help" />
+}
+
+function ContactUsRoute() {
+  return <PlaceholderPage title="Contact Us" clause="Support" />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="auth" element={<AuthPage />} />
 
-        <Route
-          element={
-            <RequireAuth>
-              <GlobalLayout />
-            </RequireAuth>
-          }
-        >
+        <Route element={<AuthenticatedShell />}>
           <Route index element={<DashboardPage />} />
 
           {/* Clause 7 – Process Requirements */}
           <Route path="samples" element={<SamplesPage />} />
-          <Route path="samples/receiving" element={<RequireSampleReceivingAccess><SampleReceivingMasterPage /></RequireSampleReceivingAccess>} />
-          <Route path="samples/allocation" element={<RequireSampleAllocationAccess><SampleAllocationMasterPage /></RequireSampleAllocationAccess>} />
-          <Route path="samples/test-allocation" element={<RequireTestAllocationAccess><TestAllocationMasterPage /></RequireTestAllocationAccess>} />
+          <Route path="samples/receiving" element={<SampleReceivingRoute />} />
+          <Route path="samples/allocation" element={<SampleAllocationRoute />} />
+          <Route path="samples/test-allocation" element={<TestAllocationRoute />} />
           <Route path="samples/under-testing" element={<SampleUnderTestingMasterPage />} />
           <Route path="samples/results-review" element={<ResultsUnderReviewMasterPage />} />
           <Route path="samples/report-preparation" element={<TestReportPreparationMasterPage />} />
@@ -78,32 +77,11 @@ export default function App() {
           <Route path="masters/test-parameter" element={<TestParameterPage />} />
 
           {/* Top Bar Pages */}
-          <Route
-            path="lab-settings"
-            element={
-              <RequireLaboratoryDirector>
-                <LabSettingsPage />
-              </RequireLaboratoryDirector>
-            }
-          />
-          <Route
-            path="lab-settings/user-management"
-            element={
-              <RequireLaboratoryDirector>
-                <UserManagementPage />
-              </RequireLaboratoryDirector>
-            }
-          />
-          <Route
-            path="lab-settings/ai-settings"
-            element={
-              <RequireLaboratoryDirector>
-                <AiSettingsPage />
-              </RequireLaboratoryDirector>
-            }
-          />
-          <Route path="help" element={<PlaceholderPage title="Help" clause="Help" />} />
-          <Route path="contact-us" element={<PlaceholderPage title="Contact Us" clause="Support" />} />
+          <Route path="lab-settings" element={<LabSettingsRoute />} />
+          <Route path="lab-settings/user-management" element={<UserManagementRoute />} />
+          <Route path="lab-settings/ai-settings" element={<AiSettingsRoute />} />
+          <Route path="help" element={<HelpRoute />} />
+          <Route path="contact-us" element={<ContactUsRoute />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

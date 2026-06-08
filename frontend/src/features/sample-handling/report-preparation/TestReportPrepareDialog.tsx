@@ -50,6 +50,7 @@ export function TestReportPrepareDialog({
   onSaveDraft,
   onIssueReports,
   onPrintScope,
+  onRemarkChange,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -83,6 +84,7 @@ export function TestReportPrepareDialog({
   onSaveDraft: () => void
   onIssueReports: () => void
   onPrintScope: (scope: ReportScopeKind) => void
+  onRemarkChange?: (rowKey: string, remark: string) => void
 }) {
   const applicableScopes = getApplicableReportScopes(resultRows)
   const [activeReportScope, setActiveReportScope] = useState<ReportScopeKind>('nabl')
@@ -180,6 +182,7 @@ export function TestReportPrepareDialog({
               letterheadOptions={letterheadOptions}
               letterheadsByScope={letterheadsByScope}
               onLetterheadChange={onLetterheadChange}
+              onRemarkChange={onRemarkChange}
               disabled={saveLoading || issueLoading}
             />
 

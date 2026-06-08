@@ -762,6 +762,11 @@ export default function TestReportPreparationMasterPage() {
         onSaveDraft={() => void handleSaveDraft()}
         onIssueReports={() => void handleIssueReport()}
         onPrintScope={(scope) => void handlePrintScope(scope)}
+        onRemarkChange={(rowKey, remark) => {
+          setPrepareResultRows((rows) =>
+            rows.map((r) => (r.rowKey === rowKey ? { ...r, remark } : r)),
+          )
+        }}
       />
 
       <Dialog

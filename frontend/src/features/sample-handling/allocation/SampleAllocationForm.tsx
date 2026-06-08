@@ -3,10 +3,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
 import type { SampleRow } from '../types'
 import { Plus, Trash2, FileText, FolderOpen } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  generateSectionCode,
+  sanitizeSectionCodeInput,
+  SECTION_CODE_LENGTH,
+} from './sectionCode'
 
 export type AllocationSection = {
   id?: string
@@ -26,15 +31,8 @@ export type SampleAllocationFormState = {
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-const randomSectionCode = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  let out = ''
-  for (let i = 0; i < 6; i += 1) out += chars[Math.floor(Math.random() * chars.length)]
-  return out
-}
-
 const emptySection = (): AllocationSection => ({
-  sectionCode: randomSectionCode(),
+  sectionCode: generateSectionCode(),
   department: '',
   designation: '',
   sampleQuantity: '',
@@ -71,17 +69,6 @@ export function SampleAllocationForm({
   const [srfDropdownOpen, setSrfDropdownOpen] = useState(false)
 
   const [sampleDetailsOpen, setSampleDetailsOpen] = useState(false)
-  const [sampleDetailsLoading, setSampleDetailsLoading] = useState(false)
-  const [sampleDetailsError, setSampleDetailsError] = useState<string | null>(null)
-  const [sampleDetails, setSampleDetails] = useState<{
-    sample_code: string | null
-    sample_qr_code: string | null
-    batch_number: string | null
-    date_of_manufacturing: string | null
-    sample_description: string | null
-    sample_declaration: string | null
-    any_other_information: string | null
-  } | null>(null)
 
   const currentSample = samples.find((s) => s.id === form.sampleId) ?? null
   const sampleOptions = samples
@@ -119,29 +106,6 @@ export function SampleAllocationForm({
   const addSection = () => {
     onChange({ ...form, sections: [...form.sections, emptySection()] })
   }
-
-  const openSampleDetails = async () => {
-    if (!form.sampleId) return
-    setSampleDetailsOpen(true)
-    setSampleDetailsError(null)
-    setSampleDetails(null)
-    setSampleDetailsLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('samples')
-        .select('sample_code, sample_qr_code, batch_number, date_of_manufacturing, sample_description, sample_declaration, any_other_information')
-        .eq('id', form.sampleId)
-        .single()
-      if (error) throw error
-      setSampleDetails(data as { sample_code: string | null; sample_qr_code: string | null; batch_number: string | null; date_of_manufacturing: string | null; sample_description: string | null; sample_declaration: string | null; any_other_information: string | null })
-    } catch (err) {
-      setSampleDetailsError(err instanceof Error ? err.message : 'Failed to load sample details')
-    } finally {
-      setSampleDetailsLoading(false)
-    }
-  }
-
-  const fmt = (v: string | null | undefined) => (v != null && String(v).trim() !== '' ? String(v).trim() : '—')
 
   const isCodeId = currentSample?.test_report_is_code_id ?? null
   const IS_CODE_FILES_BUCKET = 'is-code-files'
@@ -348,7 +312,7 @@ export function SampleAllocationForm({
               type="button"
               variant="outline"
               size="sm"
-              onClick={openSampleDetails}
+              onClick={() => setSampleDetailsOpen(true)}
               disabled={!form.sampleId}
             >
               <FileText className="mr-1 h-4 w-4" />
@@ -386,9 +350,12 @@ export function SampleAllocationForm({
                   <Label className="text-xs">Section</Label>
                   <Input
                     value={sec.sectionCode}
-                    onChange={(e) => updateSection(index, { sectionCode: e.target.value })}
-                    placeholder="Code"
-                    className="h-9"
+                    onChange={(e) =>
+                      updateSection(index, { sectionCode: sanitizeSectionCodeInput(e.target.value) })
+                    }
+                    placeholder="10-digit code"
+                    maxLength={SECTION_CODE_LENGTH}
+                    className="h-9 font-mono tracking-wide"
                     aria-label={`Section code row ${index + 1}`}
                   />
                 </div>
@@ -468,53 +435,14 @@ export function SampleAllocationForm({
         </Button>
       </div>
 
-      <Dialog open={sampleDetailsOpen} onOpenChange={setSampleDetailsOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Sample Details (from Sample Receiving)</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {sampleDetailsLoading && (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            )}
-            {sampleDetailsError && (
-              <p className="text-sm text-destructive">{sampleDetailsError}</p>
-            )}
-            {!sampleDetailsLoading && !sampleDetailsError && sampleDetails && (
-              <div className="grid gap-3 text-sm">
-                <div className="grid grid-cols-[140px_1fr] gap-2 items-baseline">
-                  <span className="text-muted-foreground font-medium">Sample Code</span>
-                  <span>{fmt(sampleDetails.sample_code)}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2 items-baseline">
-                  <span className="text-muted-foreground font-medium">Sample QR Code</span>
-                  <span>{fmt(sampleDetails.sample_qr_code)}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2 items-baseline">
-                  <span className="text-muted-foreground font-medium">Batch Number</span>
-                  <span>{fmt(sampleDetails.batch_number)}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2 items-baseline">
-                  <span className="text-muted-foreground font-medium">Date of Manufacturing</span>
-                  <span>{sampleDetails.date_of_manufacturing ? new Date(sampleDetails.date_of_manufacturing).toISOString().slice(0, 10) : '—'}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2 items-start">
-                  <span className="text-muted-foreground font-medium pt-0.5">Sample Description</span>
-                  <span className="whitespace-pre-wrap">{fmt(sampleDetails.sample_description)}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2 items-start">
-                  <span className="text-muted-foreground font-medium pt-0.5">Sample Declaration</span>
-                  <span className="whitespace-pre-wrap">{fmt(sampleDetails.sample_declaration)}</span>
-                </div>
-                <div className="grid grid-cols-[140px_1fr] gap-2 items-start">
-                  <span className="text-muted-foreground font-medium pt-0.5">Any Other Information</span>
-                  <span className="whitespace-pre-wrap">{fmt(sampleDetails.any_other_information)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SampleSrfViewDialog
+        open={sampleDetailsOpen}
+        onOpenChange={setSampleDetailsOpen}
+        sampleId={form.sampleId || null}
+        fallbackSrf={form.srfNumber}
+        fallbackIsLabel={form.isCodeLabel}
+        hideClient
+      />
     </div>
   )
 }

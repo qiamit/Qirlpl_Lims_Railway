@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import type { TestAllocationRow } from '../types'
+import { formatTestResultDisplay } from './testResultValues'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 
@@ -178,7 +179,7 @@ export async function buildSectionReviewAssistantContext(row: TestAllocationRow)
         `Uncertainty (MU): ${fmt(tp?.uncertainty_mu as string)}`,
         `Test start date: ${fmt(p.testStartDate)}`,
         `Test end date: ${fmt(p.testEndDate)}`,
-        `Reported results: ${fmt(p.results)}`,
+        `Reported results: ${fmt(formatTestResultDisplay(p.results))}`,
         '',
       )
     }
