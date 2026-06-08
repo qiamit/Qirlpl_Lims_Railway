@@ -79,3 +79,4 @@ $RECYCLE.BIN/
 .mcp-*
 .tmp-*
 .run-mcp-deploy.cjs
+.vercel
