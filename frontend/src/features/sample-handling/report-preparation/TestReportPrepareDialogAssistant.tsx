@@ -102,6 +102,8 @@ export function TestReportPrepareDialogAssistant({
             page="samples/report-preparation"
             contextSummary={contextSummary}
             staticIsCodeId={isCodeId}
+            staticActiveRecordId={row?.id}
+            staticActiveRecordTable="samples"
             resetKey={session}
             welcomeMessage={`I review the **draft test report** on screen for **${srfLabel}**.\n\nI can:\n1. Cross-check **IS codes & test methods** against uploaded standard PDFs\n2. Review **customer & sample information** (Part A)\n3. Review the **complete report** (Parts B–D and results)\n4. Give a **Final Verdict: OK or NOT OK**\n\nTry **“Full pre-issue review”** or ask about a specific part.`}
             suggestedQuestions={[

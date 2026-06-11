@@ -19,6 +19,7 @@ import {
   LogOut,
   ChevronsRight,
   Bot,
+  Wrench,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -88,6 +89,8 @@ const NAV_SECTIONS: NavSection[] = [
       { label: 'IS Code Master', to: '/masters/is-codes', icon: BookOpen },
       { label: 'NABL Scope', to: '/masters/nabl-scope', icon: ShieldCheck },
       { label: 'Test Parameter', to: '/masters/test-parameter', icon: TestTube },
+      { label: 'Equipment Master', to: '/masters/equipment', icon: Wrench },
+      { label: 'Masters for IQC', to: '/masters/iqc', icon: Wrench },
     ],
   },
 ]
@@ -106,6 +109,8 @@ const ROUTE_LABELS: Record<string, string> = {
   '/masters/is-codes': 'IS Code Master',
   '/masters/nabl-scope': 'NABL Scope',
   '/masters/test-parameter': 'Test Parameter',
+  '/masters/equipment': 'Equipment Master',
+  '/masters/iqc': 'Masters for IQC',
   '/lab-settings': 'Lab Settings',
   '/lab-settings/user-management': 'User Management',
   '/lab-settings/ai-settings': 'AI Settings',

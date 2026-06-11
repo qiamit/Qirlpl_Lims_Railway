@@ -16,6 +16,9 @@ function newId() {
 export type QiAssistantSendContext = {
   context: string
   isCodeId?: string
+  /** Disables IS notebook-only mode when reviewing samples/test reports */
+  activeRecordId?: string
+  activeRecordTable?: string
   /** Shown in chat instead of raw user text when set */
   displayMessage?: string
   error?: string
@@ -28,6 +31,8 @@ export function QiAssistantChatPanel({
   suggestedQuestions = [],
   placeholder = 'Ask QI Assistant…',
   staticIsCodeId,
+  staticActiveRecordId,
+  staticActiveRecordTable,
   resetKey = 0,
   resolveContextOnSend,
 }: {
@@ -37,6 +42,8 @@ export function QiAssistantChatPanel({
   suggestedQuestions?: string[]
   placeholder?: string
   staticIsCodeId?: string
+  staticActiveRecordId?: string
+  staticActiveRecordTable?: string
   /** Change to reset conversation when dialog reopens */
   resetKey?: number
   resolveContextOnSend?: (message: string) => Promise<QiAssistantSendContext>
@@ -81,6 +88,8 @@ export function QiAssistantChatPanel({
 
       let effectiveContext = contextSummary
       let isCodeId = staticIsCodeId
+      let activeRecordId = staticActiveRecordId
+      let activeRecordTable = staticActiveRecordTable
       let userDisplay = trimmed
 
       if (resolveContextOnSend) {
@@ -92,6 +101,8 @@ export function QiAssistantChatPanel({
           }
           effectiveContext = resolved.context
           if (resolved.isCodeId) isCodeId = resolved.isCodeId
+          if (resolved.activeRecordId) activeRecordId = resolved.activeRecordId
+          if (resolved.activeRecordTable) activeRecordTable = resolved.activeRecordTable
           if (resolved.displayMessage) userDisplay = resolved.displayMessage
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not prepare section context')
@@ -114,6 +125,8 @@ export function QiAssistantChatPanel({
           message: trimmed,
           context: effectiveContext,
           isCodeId,
+          activeRecordId,
+          activeRecordTable,
           history,
         })
 
@@ -129,7 +142,16 @@ export function QiAssistantChatPanel({
         setLoading(false)
       }
     },
-    [contextSummary, loading, messages, page, resolveContextOnSend, staticIsCodeId],
+    [
+      contextSummary,
+      loading,
+      messages,
+      page,
+      resolveContextOnSend,
+      staticActiveRecordId,
+      staticActiveRecordTable,
+      staticIsCodeId,
+    ],
   )
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

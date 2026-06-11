@@ -38,7 +38,16 @@ async function fileToBase64(file: File): Promise<string> {
 async function postQiAssistant(body: Record<string, unknown>): Promise<QiAssistantResponse> {
   const {
     data: { session },
+    error: sessionError,
   } = await supabase.auth.getSession()
+
+  if (sessionError) {
+    const msg = String(sessionError.message ?? '')
+    if (msg.toLowerCase().includes('refresh token')) {
+      await supabase.auth.signOut()
+    }
+    throw new Error('Session expired. Please log in again.')
+  }
 
   const accessToken = session?.access_token
   if (!accessToken) {

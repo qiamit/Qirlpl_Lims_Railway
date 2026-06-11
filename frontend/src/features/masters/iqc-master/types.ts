@@ -2,7 +2,15 @@ export type EquipmentStatus = 'Active' | 'In Repair' | 'Idle'
 
 export type Frequency = 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Half Yearly' | 'Yearly' | ''
 
-export type EquipmentRow = {
+export type CalibrationPoint = {
+  id: string
+  nominalValue: string
+  actualValue: string
+  correction: string
+  uncertainty: string
+}
+
+export type IqcRow = {
   id: string
   asset_code: string
   equipment_name: string
@@ -34,11 +42,12 @@ export type EquipmentRow = {
   upload_certificate_path: string | null
   upload_manual_sop_path: string | null
   custodian_employee_id: string | null
+  calibration_points: CalibrationPoint[] | null
   created_at?: string
   updated_at?: string
 }
 
-export type EquipmentForm = {
+export type IqcForm = {
   assetCode: string
   equipmentName: string
   manufacturer: string
@@ -71,9 +80,10 @@ export type EquipmentForm = {
   custodianEmployeeId: string
   certificateFile: File | null
   manualSopFile: File | null
+  calibrationPoints: CalibrationPoint[]
 }
 
-export const emptyEquipmentForm = (): EquipmentForm => ({
+export const emptyIqcForm = (): IqcForm => ({
   assetCode: '',
   equipmentName: '',
   manufacturer: '',
@@ -106,6 +116,7 @@ export const emptyEquipmentForm = (): EquipmentForm => ({
   custodianEmployeeId: '',
   certificateFile: null,
   manualSopFile: null,
+  calibrationPoints: [],
 })
 
 export const normalizeText = (value: string) => value.trim()
@@ -115,7 +126,6 @@ export function calculateNextDueDate(lastDateStr: string, frequency: Frequency):
   const date = new Date(lastDateStr)
   if (Number.isNaN(date.getTime())) return ''
   
-  // Defensive check for accidental 6-digit years entered by user
   if (date.getFullYear() > 9999) {
     date.setFullYear(date.getFullYear() % 10000)
   }

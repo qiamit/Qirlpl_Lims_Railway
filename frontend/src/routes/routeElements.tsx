@@ -15,6 +15,8 @@ import ClientsPage from '@/features/masters/ClientsPage'
 import IsCodesPage from '@/features/masters/IsCodesPage'
 import ProductServicesPage from '@/features/masters/ProductServicesPage'
 import TestParameterPage from '@/features/masters/TestParameterPage'
+import EquipmentPage from '@/features/masters/EquipmentPage'
+import IqcPage from '@/features/masters/IqcPage'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { RequireLaboratoryDirector } from '@/components/auth/RequireLaboratoryDirector'
 import { RequireSampleReceivingAccess } from '@/components/auth/RequireSampleReceivingAccess'
@@ -89,4 +91,7 @@ export {
   IsCodesPage,
   ProductServicesPage,
   TestParameterPage,
+  EquipmentPage,
+  IqcPage,
 }
+

@@ -5,6 +5,8 @@ import {
   AiSettingsRoute,
   AuthenticatedShell,
   ClientsPage,
+  EquipmentPage,
+  IqcPage,
   CompletedResultsMasterPage,
   DashboardPage,
   IsCodesPage,
@@ -75,6 +77,8 @@ export default function App() {
           <Route path="masters/nabl-scope" element={<ProductServicesPage />} />
           <Route path="masters/product-services" element={<Navigate to="/masters/nabl-scope" replace />} />
           <Route path="masters/test-parameter" element={<TestParameterPage />} />
+          <Route path="masters/equipment" element={<EquipmentPage />} />
+          <Route path="masters/iqc" element={<IqcPage />} />
 
           {/* Top Bar Pages */}
           <Route path="lab-settings" element={<LabSettingsRoute />} />

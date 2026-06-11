@@ -1,11 +1,14 @@
 import { supabase } from '@/lib/supabaseClient'
+import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { getReportedTestResult } from '@/features/sample-handling/sample-under-testing/testResultValues'
 import { compareClauseNumbers } from './clauseNumberSort'
-import { evaluateResultConformity } from './evaluateResultConformity'
+import { evaluateResultConformity, type ConformityRemark } from './evaluateResultConformity'
+import { normalizeResultRemark } from './resultRemarkUi'
 import { resolveReportScopeFromAccreditationIds, scopeKindFromLabel } from './reportScope'
 import type { ReportScopeKind } from './reportScope'
 
 export type ReportResultRow = {
+  parameterId: string
   rowKey: string
   srNo: number
   sectionCode: string
@@ -122,20 +125,36 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     sectionCodeByTaId.set(row.id, String(row.section_code ?? '').trim() || '—')
   }
 
-  const { data: pr, error: pErr } = await supabase
-    .from('test_allocation_parameters')
-    .select('test_allocation_id, test_parameter_id, test_label, results')
-    .in('test_allocation_id', taIds)
-  if (pErr) throw pErr
-
-  const paramRows = (Array.isArray(pr) ? pr : []).filter(
-    (p) => String((p as { results?: string | null }).results ?? '').trim() !== '',
-  ) as Array<{
+  let paramRows: Array<{
+    id: string
     test_allocation_id: string
     test_parameter_id: string | null
     test_label: string
     results: string | null
-  }>
+    report_remark?: string | null
+  }> = []
+
+  const withRemark = await supabase
+    .from('test_allocation_parameters')
+    .select('id, test_allocation_id, test_parameter_id, test_label, results, report_remark')
+    .in('test_allocation_id', taIds)
+
+  if (!withRemark.error) {
+    paramRows = (Array.isArray(withRemark.data) ? withRemark.data : []) as typeof paramRows
+  } else if (isSupabaseMissingColumnError(withRemark.error, 'report_remark')) {
+    const fallback = await supabase
+      .from('test_allocation_parameters')
+      .select('id, test_allocation_id, test_parameter_id, test_label, results')
+      .in('test_allocation_id', taIds)
+    if (fallback.error) throw fallback.error
+    paramRows = (Array.isArray(fallback.data) ? fallback.data : []) as typeof paramRows
+  } else if (withRemark.error) {
+    throw withRemark.error
+  }
+
+  paramRows = paramRows.filter(
+    (p) => String(p.results ?? '').trim() !== '',
+  )
   if (paramRows.length === 0) return []
 
   const tpIds = [
@@ -173,7 +192,18 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
   const rows = paramRows.map((p) => {
     const tp = p.test_parameter_id ? tpMap.get(p.test_parameter_id) : undefined
     const { testName, testMethodClause } = buildTestNameParts(tp, p.test_label ?? '—')
+    const observed = getReportedTestResult(p.results)
+    const requirement = String(tp?.specific_requirement ?? '')
+    const storedRemark = p.report_remark?.trim()
+    const remark: ConformityRemark =
+      storedRemark &&
+      (['Confirm', 'Not Confirm', 'Not Applicable'] as const).includes(
+        storedRemark as ConformityRemark,
+      )
+        ? (storedRemark as ConformityRemark)
+        : evaluateResultConformity(observed, requirement)
     return {
+      parameterId: p.id,
       rowKey: buildResultRowKey(p),
       srNo: 0,
       sectionCode: sectionCodeByTaId.get(p.test_allocation_id) ?? '—',
@@ -182,16 +212,39 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
       testMethodClause,
       unit: fmt(tp?.unit_value),
       specifiedRequirement: fmt(tp?.specific_requirement),
-      observedValue: fmt(getReportedTestResult(p.results)),
-      remark: evaluateResultConformity(
-        getReportedTestResult(p.results),
-        String(tp?.specific_requirement ?? ''),
-      ),
+      observedValue: fmt(observed),
+      remark,
       scope: resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),
     }
   })
 
   return sortReportResultRows(rows)
+}
+
+/** Save Part C remarks edited in Test Report Preparation. */
+export async function saveReportResultRemarks(rows: ReportResultRow[]): Promise<void> {
+  const updates = rows
+    .filter((r) => r.parameterId?.trim())
+    .map((r) => ({
+      id: r.parameterId,
+      report_remark: normalizeResultRemark(r.remark),
+    }))
+  if (updates.length === 0) return
+
+  const results = await Promise.all(
+    updates.map((u) =>
+      supabase.from('test_allocation_parameters').update({ report_remark: u.report_remark }).eq('id', u.id),
+    ),
+  )
+  const firstErr = results.find((r) => r.error)?.error
+  if (firstErr) {
+    if (isSupabaseMissingColumnError(firstErr, 'report_remark')) {
+      throw new Error(
+        'Database is missing report_remark on test_allocation_parameters. Run the latest Supabase migration.',
+      )
+    }
+    throw firstErr
+  }
 }
 
 export function filterReportRowsByScope(rows: ReportResultRow[], scope: ReportScopeKind): ReportResultRow[] {

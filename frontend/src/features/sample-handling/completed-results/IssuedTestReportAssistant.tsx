@@ -64,6 +64,8 @@ export function IssuedTestReportAssistant({
       return {
         context,
         isCodeId,
+        activeRecordId: row.id,
+        activeRecordTable: 'samples',
         displayMessage: `SRF **${row.srfNumber ?? srf}** — issued report review.`,
       }
     },

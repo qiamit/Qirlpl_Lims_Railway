@@ -559,8 +559,19 @@ Deno.serve(async (req) => {
     pageData = pageData ? `${notebookContext}\n\n---\n\n${pageData}` : notebookContext
   }
 
+  const isDraftReportReview =
+    body.page?.trim() === 'samples/report-preparation' &&
+    (pageData.includes('DRAFT TEST REPORT') || pageData.includes('Test Report Review Assistant'))
+
+  const isIssuedReportReview =
+    body.page?.trim() === 'samples/issued-test-report' &&
+    (pageData.includes('Issued Test Report Assistant') ||
+      pageData.includes('ISSUED TEST REPORT CONTENT'))
+
   const isCodeNotebookPrimary =
     Boolean(body.isCodeId?.trim()) &&
+    !isDraftReportReview &&
+    !isIssuedReportReview &&
     (!body.activeRecordTable?.trim() || body.activeRecordTable.trim() === 'is_codes')
 
   const isTestParamImportMode =
@@ -572,7 +583,20 @@ Deno.serve(async (req) => {
     body.page?.trim() === 'samples/receiving' &&
     Boolean(attachedPdfBytes && attachedPdfBytes.length > 0)
 
-  const isCodeNotebookRules = isTestParamImportMode
+  const isCodeNotebookRules = isDraftReportReview
+    ? [
+        'TEST REPORT REVIEW (draft, pre-issue): IS standard PDF excerpts below are reference for Part C cross-check only.',
+        'Follow the **Test Report Review Assistant** instructions in Page data — they take priority over notebook-style IS-only answers.',
+        'When the user asks for full review, complete review, pre-issue review, or Final Verdict, you MUST cover all four steps: (1) IS codes & test methods, (2) Part A customer/sample, (3) complete report Parts B–D and results, (4) ## Final Verdict with **Status:** OK | NOT OK.',
+        'Use Part A, B, C, and D from Page data. Do not limit your answer to IS PDF content only.',
+      ].join(' ')
+    : isIssuedReportReview
+      ? [
+          'ISSUED TEST REPORT REVIEW: IS PDF excerpts are reference material for cross-checking results and methods.',
+          'Follow the **Issued Test Report Assistant** instructions in Page data.',
+          'For full or complete review, cover customer/sample info, results vs requirements, and end with ## Review Outcome (**Status:** OK | NEEDS ATTENTION).',
+        ].join(' ')
+      : isTestParamImportMode
     ? [
         'TEST PARAMETER IMPORT (Test Parameter Master + selected IS Code): Read the IS standard PDF excerpts below.',
         `When the user asks to import, extract, or add test parameters, use lims_crud with operation create on table test_parameters for each distinct test/clause found in the PDF.`,
@@ -658,13 +682,19 @@ Deno.serve(async (req) => {
   const actionsExecuted: CrudActionResult[] = []
   let reply = ''
   const maxToolRounds = isTestParamImportMode ? 24 : isSampleReceivingImportMode ? 10 : 6
+  const chatMaxTokens =
+    isDraftReportReview || isIssuedReportReview
+      ? Math.min(Number.isFinite(maxTokens) ? maxTokens : 8192, 8192)
+      : Number.isFinite(maxTokens)
+        ? Math.min(maxTokens, 8192)
+        : 4096
 
   for (let round = 0; round < maxToolRounds; round++) {
     const bodyPayload: Record<string, unknown> = {
       model: modelId,
       messages: chatMessages,
       temperature: Number.isFinite(temperature) ? temperature : 0.7,
-      max_tokens: Number.isFinite(maxTokens) ? Math.min(maxTokens, 8192) : 4096,
+      max_tokens: chatMaxTokens,
     }
     if (agentCrudEnabled && userClient) {
       bodyPayload.tools = [LIMS_CRUD_TOOL]

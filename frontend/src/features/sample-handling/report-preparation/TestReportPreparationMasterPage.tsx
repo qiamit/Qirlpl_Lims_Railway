@@ -39,6 +39,7 @@ import {
   fetchReportResultRowsForSample,
   filterReportRowsByScope,
   getApplicableReportScopes,
+  saveReportResultRemarks,
   type ReportResultRow,
 } from './reportResultRows'
 import {
@@ -235,37 +236,49 @@ export default function TestReportPreparationMasterPage() {
     void loadList()
   }, [loadList])
 
+  const applicableScopesKey = useMemo(
+    () => getApplicableReportScopes(prepareResultRows).sort().join('|'),
+    [prepareResultRows],
+  )
+
   useEffect(() => {
-    if (!dialogOpen || !active) {
-      return
-    }
-    const scopes = getApplicableReportScopes(prepareResultRows)
+    if (!dialogOpen || !active) return
     setCoverLoading(true)
-    void Promise.all([
-      fetchTestReportCoverDetails(active.id, {
-        applicableScopes: scopes,
-        nablUlrNumber,
-        fallbacks: {
-          clientName: active.clientName,
-          isCodeLabel: active.isCodeLabel,
-        },
-      }),
-      fetchReportPrepLetterheads(active.id, scopes).catch(() => null),
-    ])
-      .then(([coverData, letterheadData]) => {
+    void fetchTestReportCoverDetails(active.id, {
+      applicableScopes: getApplicableReportScopes(prepareResultRows),
+      fallbacks: {
+        clientName: active.clientName,
+        isCodeLabel: active.isCodeLabel,
+      },
+    })
+      .then((coverData) => {
         setCoverDetails(coverData)
-        setPartBDetails(coverData.partB)
-        if (letterheadData) {
-          setLetterheadOptions(letterheadData.options)
-          setLetterheadsByScope(letterheadData.letterheads)
-        }
+        setPartBDetails((prev) => prev ?? coverData.partB)
       })
       .catch(() => {
         setCoverDetails(null)
         setPartBDetails(null)
       })
       .finally(() => setCoverLoading(false))
-  }, [dialogOpen, active, prepareResultRows, fullReportNumber, nablUlrNumber])
+  }, [dialogOpen, active?.id, active?.clientName, active?.isCodeLabel])
+
+  useEffect(() => {
+    if (!dialogOpen || !active || !applicableScopesKey) return
+    const scopes = getApplicableReportScopes(prepareResultRows)
+    void fetchReportPrepLetterheads(active.id, scopes)
+      .then((letterheadData) => {
+        setLetterheadOptions(letterheadData.options)
+        setLetterheadsByScope((prev) => {
+          const hasUserSelection =
+            prev.nabl.headerName.trim() ||
+            prev.nabl.footerName.trim() ||
+            prev.non_nabl.headerName.trim() ||
+            prev.non_nabl.footerName.trim()
+          return hasUserSelection ? prev : letterheadData.letterheads
+        })
+      })
+      .catch(() => {})
+  }, [dialogOpen, active?.id, applicableScopesKey])
 
   const openViewSrf = (r: ListRow) => {
     setSrfViewRow(r)
@@ -545,6 +558,7 @@ export default function TestReportPreparationMasterPage() {
           .eq('id', active.id))
       }
       if (uErr) throw uErr
+      await saveReportResultRemarks(prepareResultRows)
       setSaveMessage('Draft saved.')
       await loadList()
     } catch (e) {
@@ -603,6 +617,7 @@ export default function TestReportPreparationMasterPage() {
         ;({ error: uErr } = await supabase.from('samples').update(retry).eq('id', active.id))
       }
       if (uErr) throw uErr
+      await saveReportResultRemarks(prepareResultRows)
       setDialogOpen(false)
       setActive(null)
       await loadList()
