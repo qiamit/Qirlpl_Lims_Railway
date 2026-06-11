@@ -31,6 +31,7 @@ import {
 } from './reportPrepLetterhead'
 import { TEST_REPORT_PREFIX_SETTING_NAMES } from './testReportNumberPrefix'
 import { ReportResultsTable } from './ReportResultsTable'
+import { REPORT_PART_INNER_CLASS, REPORT_PART_OUTER_CLASS } from './reportPartUiClasses'
 import { formatTestReportEndNotesText, TEST_REPORT_END_MARKER } from './testReportEndNotes'
 
 const NONE = '__none__'
@@ -274,11 +275,11 @@ export function TestReportResultsSection({
   disabled?: boolean
 }) {
   return (
-    <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 shadow-sm ring-1 ring-primary/15">
+    <div className={REPORT_PART_OUTER_CLASS}>
       <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
         Part C — Test Results
       </h3>
-      <div className="rounded-md border border-primary/20 bg-background/80 p-3 shadow-inner">
+      <div className={`${REPORT_PART_INNER_CLASS} p-3`}>
         {resultsLoading ? (
           <p className="text-sm text-muted-foreground py-2">Loading test results…</p>
         ) : applicableScopes.length === 0 ? (
@@ -330,7 +331,7 @@ export function TestReportResultsSection({
                     onWatermarkChange={(v) => onLetterheadChange(scope, 'watermarkName', v)}
                     disabled={disabled}
                   />
-                  <div className="overflow-hidden rounded-md border-2 border-primary/25">
+                  <div className="overflow-hidden rounded-md border-2 border-primary/40 shadow-sm">
                     <ReportResultsTable
                       rows={scopedRows}
                       showScope={false}

@@ -58,6 +58,10 @@ import {
 import { fetchNextTestReportNumber, toCanonicalReportNumber } from './formattedTestReportNumber'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
+import {
+  fetchSampleReceivingEditUnlocked,
+  setSampleReceivingEditUnlocked,
+} from '@/features/sample-handling/receiving/sampleReceivingEditUnlock'
 
 type ListRow = ReportPreparationListRow
 
@@ -107,6 +111,8 @@ export default function TestReportPreparationMasterPage() {
     non_nabl: { headerName: '', footerName: '', watermarkName: '' },
   })
   const [coverLoading, setCoverLoading] = useState(false)
+  const [sampleReceivingEditUnlocked, setSampleReceivingEditUnlockedState] = useState(false)
+  const [sampleReceivingEditUnlockLoading, setSampleReceivingEditUnlockLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
   const [issueLoading, setIssueLoading] = useState(false)
   const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
@@ -259,6 +265,17 @@ export default function TestReportPreparationMasterPage() {
   }, [dialogOpen, active?.id, active?.clientName, active?.isCodeLabel])
 
   useEffect(() => {
+    if (!dialogOpen || !active) return
+    const refreshUnlock = () => {
+      void fetchSampleReceivingEditUnlocked(active.id)
+        .then(setSampleReceivingEditUnlockedState)
+        .catch(() => {})
+    }
+    window.addEventListener('focus', refreshUnlock)
+    return () => window.removeEventListener('focus', refreshUnlock)
+  }, [dialogOpen, active?.id])
+
+  useEffect(() => {
     if (!dialogOpen || !active || !applicableScopesKey) return
     const scopes = getApplicableReportScopes(prepareResultRows)
     void fetchReportPrepLetterheads(active.id, scopes)
@@ -303,6 +320,7 @@ export default function TestReportPreparationMasterPage() {
     setPrepareResultRows([])
     setCoverDetails(null)
     setPartBDetails(null)
+    setSampleReceivingEditUnlockedState(false)
     setLetterheadOptions({ headers: [], footers: [], watermarks: [] })
     setLetterheadsByScope({
       nabl: { headerName: '', footerName: '', watermarkName: '' },
@@ -316,6 +334,10 @@ export default function TestReportPreparationMasterPage() {
       .finally(() => setPrepareResultsLoading(false))
     setUlrPrefixLoading(true)
     setReportNumberLoading(true)
+    void fetchSampleReceivingEditUnlocked(r.id)
+      .then(setSampleReceivingEditUnlockedState)
+      .catch(() => setSampleReceivingEditUnlockedState(false))
+
     void (async () => {
       try {
         const [trPrefix, ulrPref] = await Promise.all([fetchTestReportPrefix(), fetchUlrPrefix()])
@@ -522,6 +544,27 @@ export default function TestReportPreparationMasterPage() {
   useEffect(() => {
     setPage(1)
   }, [search, pageSize])
+
+  const handleSampleReceivingEditUnlockedChange = async (unlocked: boolean) => {
+    if (!active) return
+    const previous = sampleReceivingEditUnlocked
+    setSampleReceivingEditUnlockedState(unlocked)
+    setSampleReceivingEditUnlockLoading(true)
+    setSaveMessage(null)
+    try {
+      await setSampleReceivingEditUnlocked(active.id, unlocked)
+      setSaveMessage(
+        unlocked
+          ? 'Sample Receiving edit unlocked. It will lock again automatically after you save there.'
+          : 'Sample Receiving edit blocked.',
+      )
+    } catch (err) {
+      setSampleReceivingEditUnlockedState(previous)
+      setSaveMessage(err instanceof Error ? err.message : 'Unable to update Sample Receiving edit lock.')
+    } finally {
+      setSampleReceivingEditUnlockLoading(false)
+    }
+  }
 
   const handleSaveDraft = async () => {
     if (!active) return
@@ -787,6 +830,11 @@ export default function TestReportPreparationMasterPage() {
             rows.map((r) => (r.rowKey === rowKey ? { ...r, remark } : r)),
           )
         }}
+        sampleReceivingEditUnlocked={sampleReceivingEditUnlocked}
+        onSampleReceivingEditUnlockedChange={(unlocked) => {
+          void handleSampleReceivingEditUnlockedChange(unlocked)
+        }}
+        sampleReceivingEditUnlockLoading={sampleReceivingEditUnlockLoading}
       />
 
       <Dialog

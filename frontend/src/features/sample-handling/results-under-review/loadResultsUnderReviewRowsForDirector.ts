@@ -1,11 +1,14 @@
 import { supabase } from '@/lib/supabaseClient'
 import type { TestAllocationRow } from '../types'
+import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 
 /** All section rows on SRFs in results_review (no reviewer / department filter). */
 export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAllocationRow[]> {
   const { data: sampleRows, error: sampleErr } = await supabase
     .from('samples')
-    .select('id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation')
+    .select(
+      'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration',
+    )
     .eq('stage', 'results_review')
     .order('created_at', { ascending: false })
   if (sampleErr) throw sampleErr
@@ -48,6 +51,8 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
         date_of_sample_receiving?: string
         test_report_is_code_id?: string | null
         referback_from_allocation?: boolean | null
+        sample_description?: string | null
+        sample_declaration?: string | null
       }) => [
         s.id,
         {
@@ -58,6 +63,8 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
             ? (isCodeMap.get(s.test_report_is_code_id) ?? null)
             : null,
           referbackFromAllocation: !!s.referback_from_allocation,
+          sampleDescription: s.sample_description ?? null,
+          declaredValue: s.sample_declaration ?? null,
         },
       ],
     ),
@@ -105,7 +112,7 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
     const { data: paramData, error: paramErr } = await supabase
       .from('test_allocation_parameters')
       .select(
-        'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results',
+        'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement',
       )
       .in('test_allocation_id', allocationIds)
     if (paramErr) throw paramErr
@@ -120,6 +127,7 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
         test_start_date: string | null
         test_end_date: string | null
         results: string | null
+        specific_requirement: string | null
       }[]
     >()
     for (const p of Array.isArray(paramData) ? paramData : []) {
@@ -134,6 +142,7 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
         test_start_date: (p as { test_start_date?: string | null }).test_start_date ?? null,
         test_end_date: (p as { test_end_date?: string | null }).test_end_date ?? null,
         results: (p as { results?: string | null }).results ?? null,
+        specific_requirement: (p as { specific_requirement?: string | null }).specific_requirement ?? null,
       })
     }
     paramsByAllocationId = map
@@ -198,9 +207,13 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
           testAllocationId: p.test_allocation_id,
           testParameterId: p.test_parameter_id,
           testLabel: p.test_label,
-          specificRequirement: p.test_parameter_id
-            ? (testParamMetaById.get(p.test_parameter_id)?.specificRequirement ?? null)
-            : null,
+          sectionSpecOverride: p.specific_requirement ?? null,
+          specificRequirement: resolveSectionSpecificRequirement(
+            p.specific_requirement,
+            p.test_parameter_id
+              ? testParamMetaById.get(p.test_parameter_id)?.specificRequirement
+              : null,
+          ),
           testStartDate: p.test_start_date,
           testEndDate: p.test_end_date,
           results: p.results,
@@ -230,6 +243,7 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
                 testAllocationId: t.id,
                 testParameterId: tpId,
                 testLabel: label,
+                sectionSpecOverride: null,
                 specificRequirement: tpId
                   ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
                   : null,
@@ -248,6 +262,8 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
           sectionCode: a.section_code,
           isCodeId: sample.isCodeId ?? null,
           isCodeLabel: sample.isCodeLabel ?? null,
+          sampleDescription: sample.sampleDescription ?? null,
+          declaredValue: sample.declaredValue ?? null,
           srfNumber: sample.srf_number ?? null,
           allocationDate: a.allocation_date ?? sample.date_of_sample_receiving ?? null,
           department: a.department ?? null,

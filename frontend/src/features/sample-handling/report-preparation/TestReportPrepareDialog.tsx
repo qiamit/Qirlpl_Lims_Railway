@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { LayoutTemplate, Printer, Save, Settings2, CheckCircle } from 'lucide-react'
+import { LayoutTemplate, PenLine, Printer, Save, Settings2, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { type ReportScopeKind, REPORT_SCOPE_SUFFIX } from './reportScope'
@@ -16,6 +16,7 @@ import { TestReportPrepareDialogAssistant } from './TestReportPrepareDialogAssis
 import {
   TestReportPageSettingDialog,
   TestReportPrintSettingDialog,
+  TestReportSignatureSettingDialog,
   useTestReportPrintSettingsForPrepare,
 } from './TestReportPreparePrintDialogs'
 
@@ -51,6 +52,9 @@ export function TestReportPrepareDialog({
   onIssueReports,
   onPrintScope,
   onRemarkChange,
+  sampleReceivingEditUnlocked,
+  onSampleReceivingEditUnlockedChange,
+  sampleReceivingEditUnlockLoading,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -85,11 +89,15 @@ export function TestReportPrepareDialog({
   onIssueReports: () => void
   onPrintScope: (scope: ReportScopeKind) => void
   onRemarkChange?: (rowKey: string, remark: string) => void
+  sampleReceivingEditUnlocked: boolean
+  onSampleReceivingEditUnlockedChange: (unlocked: boolean) => void
+  sampleReceivingEditUnlockLoading?: boolean
 }) {
   const applicableScopes = getApplicableReportScopes(resultRows)
   const [activeReportScope, setActiveReportScope] = useState<ReportScopeKind>('nabl')
   const [printSettingOpen, setPrintSettingOpen] = useState(false)
   const [pageSettingOpen, setPageSettingOpen] = useState(false)
+  const [signatureSettingOpen, setSignatureSettingOpen] = useState(false)
   const printSettingsControls = useTestReportPrintSettingsForPrepare(open)
 
   useEffect(() => {
@@ -151,6 +159,9 @@ export function TestReportPrepareDialog({
                   ulrPrefix={ulrPrefix}
                   ulrPrefixLoading={ulrPrefixLoading}
                   activeScope={activeReportScope}
+                  sampleReceivingEditUnlocked={sampleReceivingEditUnlocked}
+                  onSampleReceivingEditUnlockedChange={onSampleReceivingEditUnlockedChange}
+                  sampleReceivingEditUnlockLoading={sampleReceivingEditUnlockLoading}
                   disabled={coverLoading || saveLoading || issueLoading}
                 />
                 {liveCoverDetails.partB && (
@@ -231,6 +242,16 @@ export function TestReportPrepareDialog({
             <Button
               type="button"
               variant="outline"
+              onClick={() => setSignatureSettingOpen(true)}
+              disabled={coverLoading || saveLoading || issueLoading}
+              className="gap-2"
+            >
+              <PenLine size={16} />
+              Signatures
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
               id={`print-${activeReportScope}`}
               onClick={() => onPrintScope(activeReportScope)}
               disabled={printDraftDisabled}
@@ -262,6 +283,11 @@ export function TestReportPrepareDialog({
         <TestReportPageSettingDialog
           open={pageSettingOpen}
           onOpenChange={setPageSettingOpen}
+          controls={printSettingsControls}
+        />
+        <TestReportSignatureSettingDialog
+          open={signatureSettingOpen}
+          onOpenChange={setSignatureSettingOpen}
           controls={printSettingsControls}
         />
       </DialogContent>

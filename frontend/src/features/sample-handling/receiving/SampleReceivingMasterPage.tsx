@@ -58,6 +58,8 @@ export default function SampleReceivingMasterPage() {
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  /** Part A temporary unlock — save must re-lock without changing stage or referback. */
+  const [editingViaReportPrepUnlock, setEditingViaReportPrepUnlock] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [activeTab, setActiveTab] = useState('details')
@@ -240,6 +242,7 @@ export default function SampleReceivingMasterPage() {
           condition_notes: (r.condition_notes as string) ?? null,
           test_request_ids: Array.isArray(r.test_request_ids) ? (r.test_request_ids as string[]) : [],
           referback_from_allocation: (r.referback_from_allocation as boolean) ?? false,
+          sample_receiving_edit_unlocked: (r.sample_receiving_edit_unlocked as boolean) ?? false,
           created_at: (r.created_at as string) ?? undefined,
           updated_at: (r.updated_at as string) ?? undefined,
         }
@@ -262,6 +265,7 @@ export default function SampleReceivingMasterPage() {
   const handleNew = async () => {
     setSaveMessage(null)
     setEditingId(null)
+    setEditingViaReportPrepUnlock(false)
     setClientReferencesFile(null)
     const next = emptySampleReceivingForm()
     next.srfNumber = await generateNextSrfNumber()
@@ -325,6 +329,7 @@ export default function SampleReceivingMasterPage() {
     }
     setSaveMessage(null)
     setEditingId(row.id)
+    setEditingViaReportPrepUnlock(Boolean(row.sample_receiving_edit_unlocked))
     setForm(rowToForm(row))
     setClientReferencesFile(null)
     setActiveTab('details')
@@ -374,6 +379,7 @@ export default function SampleReceivingMasterPage() {
   const handleCopy = (row: SampleRow) => {
     setSaveMessage(null)
     setEditingId(null)
+    setEditingViaReportPrepUnlock(false)
     const base = rowToForm(row)
     base.srfNumber = ''
     base.referencedSrfNumber = ''
@@ -454,9 +460,23 @@ export default function SampleReceivingMasterPage() {
           receiving_report_type: normalizeText(form.receivingReportType) || null,
           referenced_srf_number: referencedSrf,
           client_references_path: clientRefPath,
-          stage: STAGE,
-          status: form.sampleReceivingStatus.trim() || 'registered',
-          ...(editingId ? { referback_from_allocation: false } : {}),
+        }
+        if (isNew) {
+          Object.assign(payload, {
+            stage: STAGE,
+            status: form.sampleReceivingStatus.trim() || 'registered',
+          })
+        } else if (editingViaReportPrepUnlock) {
+          Object.assign(payload, {
+            sample_receiving_edit_unlocked: false,
+            status: form.sampleReceivingStatus.trim() || 'registered',
+          })
+        } else {
+          Object.assign(payload, {
+            stage: STAGE,
+            status: form.sampleReceivingStatus.trim() || 'registered',
+            referback_from_allocation: false,
+          })
         }
         if (editingId) {
           const { error } = await supabase.from('samples').update(payload).eq('id', editingId)
@@ -465,9 +485,14 @@ export default function SampleReceivingMasterPage() {
           const { error } = await supabase.from('samples').insert({ ...payload, srf_number: srfNumber || null })
           if (error) throw error
         }
-        setSaveMessage('Saved successfully.')
+        setSaveMessage(
+          editingViaReportPrepUnlock
+            ? 'Saved successfully. Sample Receiving edit is locked again.'
+            : 'Saved successfully.',
+        )
         setShowForm(false)
         setEditingId(null)
+        setEditingViaReportPrepUnlock(false)
         setClientReferencesFile(null)
         await loadRows()
       } catch (err) {

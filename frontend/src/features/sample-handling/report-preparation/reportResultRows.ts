@@ -132,11 +132,14 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     test_label: string
     results: string | null
     report_remark?: string | null
+    specific_requirement?: string | null
   }> = []
 
   const withRemark = await supabase
     .from('test_allocation_parameters')
-    .select('id, test_allocation_id, test_parameter_id, test_label, results, report_remark')
+    .select(
+      'id, test_allocation_id, test_parameter_id, test_label, results, report_remark, specific_requirement',
+    )
     .in('test_allocation_id', taIds)
 
   if (!withRemark.error) {
@@ -193,7 +196,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     const tp = p.test_parameter_id ? tpMap.get(p.test_parameter_id) : undefined
     const { testName, testMethodClause } = buildTestNameParts(tp, p.test_label ?? '—')
     const observed = getReportedTestResult(p.results)
-    const requirement = String(tp?.specific_requirement ?? '')
+    const requirement = String(p.specific_requirement?.trim() || tp?.specific_requirement || '')
     const storedRemark = p.report_remark?.trim()
     const remark: ConformityRemark =
       storedRemark &&
@@ -211,7 +214,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
       testName,
       testMethodClause,
       unit: fmt(tp?.unit_value),
-      specifiedRequirement: fmt(tp?.specific_requirement),
+      specifiedRequirement: fmt(p.specific_requirement?.trim() || tp?.specific_requirement),
       observedValue: fmt(observed),
       remark,
       scope: resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),

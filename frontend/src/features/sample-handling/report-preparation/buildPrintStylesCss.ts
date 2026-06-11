@@ -1,4 +1,46 @@
-import type { TestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsTypes'
+import {
+  effectiveTableFontSizePt,
+  type PageNumberPosition,
+  type TestReportPrintSettings,
+} from '@/features/settings/lab-settings/printSettingsTypes'
+
+const PAGE_MARGIN_BOXES = [
+  'top-left-corner',
+  'top-left',
+  'top-center',
+  'top-right',
+  'top-right-corner',
+  'bottom-left-corner',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+  'bottom-right-corner',
+] as const
+
+function pageNumberVerticalAlign(position: PageNumberPosition): 'top' | 'bottom' {
+  return position.startsWith('top-') ? 'bottom' : 'top'
+}
+
+function buildPageMarginBoxesCss(
+  position: PageNumberPosition,
+  showPageNumbers: boolean,
+  pageNumberContent: string,
+  fontFamily: string,
+  baseFontSizePt: number,
+): string {
+  return PAGE_MARGIN_BOXES.map((box) => {
+    if (showPageNumbers && box === position) {
+      return `@${box} {
+      content: ${pageNumberContent};
+      font-family: ${fontFamily};
+      font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
+      color: #475569;
+      vertical-align: ${pageNumberVerticalAlign(position)};
+    }`
+    }
+    return `@${box} { content: ""; }`
+  }).join('\n    ')
+}
 
 export type PrintPageMarginsMm = {
   top: number
@@ -10,9 +52,9 @@ export type PrintPageMarginsMm = {
 export function getTestReportPrintMargins(settings: TestReportPrintSettings): PrintPageMarginsMm {
   return {
     top: settings.bodyPaddingTopMm,
-    right: settings.bodyPaddingHorizontalMm,
+    right: settings.bodyPaddingRightMm,
     bottom: settings.bodyPaddingBottomMm,
-    left: settings.bodyPaddingHorizontalMm,
+    left: settings.bodyPaddingLeftMm,
   }
 }
 
@@ -21,7 +63,8 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     pageSize,
     bodyPaddingTopMm,
     bodyPaddingBottomMm,
-    bodyPaddingHorizontalMm,
+    bodyPaddingLeftMm,
+    bodyPaddingRightMm,
     headerMaxHeightMm,
     footerMaxHeightMm,
     fontFamily,
@@ -37,15 +80,27 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     partBNewPage,
     partCNewPage,
     partDNewPage,
+    partANewPage,
+    showPageNumbers,
+    pageNumberPosition,
   } = settings
 
-  const partFrameBorder = showPartFrames ? '2px solid rgba(37, 99, 235, 0.35)' : '1px solid #cbd5e1'
-  const innerBorder = '1px solid #e2e8f0'
+  const tableFontSizePt = effectiveTableFontSizePt(settings)
+  const pageNumberContent = showPageNumbers
+    ? '"Page " counter(page, decimal-leading-zero) " of " counter(pages, decimal-leading-zero)'
+    : '""'
+
+  const partFrameBorder = showPartFrames ? '2px solid #2563eb' : '1.5px solid #60a5fa'
+  const innerBorder = '1px solid #93c5fd'
+  const partFrameBg = showPartFrames
+    ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 28px)'
+    : '#ffffff'
   const cellPad = `${tableCellPaddingPx}px`
   const headerImgMaxMm = Math.min(headerMaxHeightMm, Math.max(12, bodyPaddingTopMm - 6))
   const footerImgMaxMm = Math.min(footerMaxHeightMm, Math.max(10, bodyPaddingBottomMm - 6))
 
   const partBreakRules = [
+    partANewPage ? '.report-part.part-a' : null,
     partBNewPage ? '.report-part.part-b' : null,
     partCNewPage ? '.report-part.part-c' : null,
     partDNewPage ? '.report-part.part-d' : null,
@@ -54,20 +109,19 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     .map((sel) => `${sel}{break-before:page;page-break-before:always}`)
     .join('\n    ')
 
+  const pageMarginBoxes = buildPageMarginBoxesCss(
+    pageNumberPosition,
+    showPageNumbers,
+    pageNumberContent,
+    fontFamily,
+    baseFontSizePt,
+  )
+
   return `
   @page {
     size: ${pageSize};
-    margin: ${bodyPaddingTopMm}mm ${bodyPaddingHorizontalMm}mm ${bodyPaddingBottomMm}mm ${bodyPaddingHorizontalMm}mm;
-    @top-left-corner { content: ""; }
-    @top-left { content: ""; }
-    @top-center { content: ""; }
-    @top-right { content: ""; }
-    @top-right-corner { content: ""; }
-    @bottom-left-corner { content: ""; }
-    @bottom-left { content: ""; }
-    @bottom-center { content: ""; }
-    @bottom-right { content: ""; }
-    @bottom-right-corner { content: ""; }
+    margin: ${bodyPaddingTopMm}mm ${bodyPaddingRightMm}mm ${bodyPaddingBottomMm}mm ${bodyPaddingLeftMm}mm;
+    ${pageMarginBoxes}
   }
 
   * { box-sizing: border-box; }
@@ -89,7 +143,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     right: 0;
     z-index: 1000;
     background: #fff;
-    padding: 2mm ${bodyPaddingHorizontalMm}mm 2mm;
+    padding: 2mm ${bodyPaddingRightMm}mm 2mm ${bodyPaddingLeftMm}mm;
     max-height: ${bodyPaddingTopMm}mm;
     overflow: hidden;
   }
@@ -117,7 +171,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     right: 0;
     z-index: 1000;
     background: #fff;
-    padding: 2mm ${bodyPaddingHorizontalMm}mm 2mm;
+    padding: 2mm ${bodyPaddingRightMm}mm 2mm ${bodyPaddingLeftMm}mm;
     max-height: ${bodyPaddingBottomMm}mm;
     overflow: hidden;
   }
@@ -135,7 +189,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   .print-body {
     position: relative;
     z-index: 1;
-    padding: ${bodyPaddingTopMm}mm ${bodyPaddingHorizontalMm}mm ${bodyPaddingBottomMm}mm;
+    padding: ${bodyPaddingTopMm}mm ${bodyPaddingRightMm}mm ${bodyPaddingBottomMm}mm ${bodyPaddingLeftMm}mm;
   }
 
   .report-title-block {
@@ -150,7 +204,8 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   }
 
   .report-part {
-    break-inside: avoid-page;
+    break-inside: auto;
+    page-break-inside: auto;
   }
   .report-part.part-a {
     margin-bottom: ${partGapAfterAMm}px;
@@ -167,17 +222,44 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   .part-heading {
     font-size: ${Math.max(9, baseFontSizePt - 1)}pt;
     font-weight: 700;
-    margin: 0 0 6px;
+    margin: 0 0 8px;
+    padding-bottom: 4px;
     text-align: left;
-    color: #2563eb;
+    color: #1d4ed8;
+    border-bottom: 2px solid #3b82f6;
     text-transform: uppercase;
     letter-spacing: 0.06em;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .part-frame {
+    display: block;
+    width: 100%;
     border: ${partFrameBorder};
-    background: #fff;
-    overflow: hidden;
+    background: ${partFrameBg};
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.12);
+    overflow: visible;
+    break-inside: auto;
+    page-break-inside: auto;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .part-c-frame {
+    padding: 0;
+    overflow: visible;
+  }
+  .part-c-heading {
+    margin: 0;
+    padding: 8px 12px;
+    border-bottom: ${innerBorder};
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .part-c-table-area {
+    break-before: avoid;
+    page-break-before: avoid;
   }
 
   .part-a-grid { font-size: ${baseFontSizePt}pt; }
@@ -187,10 +269,13 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   }
   .part-a-row:last-child { border-bottom: none; }
   .part-a-row-full {
+    display: block;
     padding: ${cellPad} 12px;
     line-height: ${lineHeight};
     word-break: break-word;
+    border-bottom: ${innerBorder};
   }
+  .part-a-grid > .part-a-row-full:last-child { border-bottom: none; }
   .part-a-row-cols-2 { grid-template-columns: 1fr 1fr; }
   .part-a-row-cols-3 { grid-template-columns: 1fr 1fr 1fr; }
   .part-a-cell {
@@ -200,7 +285,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     word-break: break-word;
   }
   .part-a-cell:last-child { border-right: none; }
-  .muted { color: #64748b; }
+  .muted { color: #475569; }
   .part-a-cell strong, .part-a-row-full strong { font-weight: 600; color: #0f172a; }
 
   .part-b-grid { font-size: ${baseFontSizePt}pt; }
@@ -239,15 +324,34 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   .part-c-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: ${baseFontSizePt}pt;
+    border-spacing: 0;
+    font-size: ${tableFontSizePt}pt;
     margin: 0;
+    border: none;
   }
-  .part-c-table thead { display: table-header-group; }
+  .part-c-table thead {
+    display: table-header-group;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .part-c-table tbody {
+    display: table-row-group;
+  }
   .part-c-table th,
   .part-c-table td {
-    border: 1px solid #cbd5e1;
+    border: 1px solid #94a3b8;
     padding: ${cellPad};
     vertical-align: top;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .part-c-table th:first-child,
+  .part-c-table td:first-child {
+    border-left: 2px solid rgba(37, 99, 235, 0.35);
+  }
+  .part-c-table th:last-child,
+  .part-c-table td:last-child {
+    border-right: 2px solid rgba(37, 99, 235, 0.35);
   }
   .part-c-table th {
     background: #f1f5f9;
@@ -256,6 +360,10 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     border-bottom: 2px solid rgba(37, 99, 235, 0.4);
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
   }
+  .part-c-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   .part-c-table tr.section-code td {
     border-top: 2px solid rgba(37, 99, 235, 0.35);
     border-bottom: 2px solid rgba(37, 99, 235, 0.25);
@@ -263,12 +371,28 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     font-weight: 600;
     text-align: left;
     padding: ${cellPad} 10px;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .part-c-table td.l {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .part-c-table td.l .name,
+  .part-c-table td.l .sub {
+    display: inline;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .part-c-end-notes {
     border-top: 2px solid #94a3b8;
     padding: 10px 12px;
     background: #f8fafc;
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-before: avoid;
+    page-break-before: avoid;
   }
   .end-marker {
     text-align: center;
@@ -312,6 +436,51 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     min-height: 2.5em;
   }
 
+  .report-signatures {
+    margin-top: ${partGapAfterCMm}px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-signatures-flow {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-signatures-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 24px 16px;
+  }
+  .report-signature-cell {
+    flex: 1 1 140px;
+    max-width: 220px;
+    min-width: 120px;
+    text-align: center;
+  }
+  .report-signature-role {
+    font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #334155;
+    margin-bottom: 4px;
+  }
+  .report-signature-line {
+    border-top: 1px solid #334155;
+    margin: 28px 8px 8px;
+  }
+  .report-signature-name {
+    font-weight: 700;
+    font-size: ${baseFontSizePt}pt;
+    line-height: ${lineHeight};
+  }
+  .report-signature-designation {
+    margin-top: 2px;
+    font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
+    color: #475569;
+    line-height: ${lineHeight};
+  }
+
   .terms {
     margin-top: ${partGapMm}px;
     font-size: ${baseFontSizePt}pt;
@@ -333,9 +502,66 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     .print-footer {
       position: fixed;
     }
-    .part-c-table thead { display: table-header-group; }
-    .part-c-table tr { break-inside: avoid; }
-    .report-part.part-a { break-inside: avoid-page; }
+    .report-part.part-c .part-c-frame {
+      break-inside: auto;
+      page-break-inside: auto;
+      border: none;
+      background: transparent;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
+    .report-part.part-c .part-c-heading {
+      border: ${partFrameBorder};
+      border-bottom: ${innerBorder};
+      background: #fff;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
+    .report-part.part-c .part-c-table-area {
+      break-before: avoid;
+      page-break-before: avoid;
+    }
+    .part-c-table thead {
+      display: table-header-group;
+    }
+    .part-c-table tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .part-c-table th,
+    .part-c-table td {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .part-c-table tr.section-code {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    .part-c-end-notes {
+      border: ${partFrameBorder};
+      border-top: 2px solid #94a3b8;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-before: avoid;
+      page-break-before: avoid;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
+    .report-part,
+    .part-frame:not(.part-c-frame) {
+      break-inside: auto;
+      page-break-inside: auto;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
+    .part-heading:not(.part-c-heading) {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    .report-signatures-flow {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
   }
 `
 }
@@ -347,7 +573,7 @@ export function buildWatermarkStyleCss(
 ): string {
   if (!settings.showWatermark) return ''
 
-  const inset = `${settings.bodyPaddingTopMm}mm ${settings.bodyPaddingHorizontalMm}mm ${settings.bodyPaddingBottomMm}mm`
+  const inset = `${settings.bodyPaddingTopMm}mm ${settings.bodyPaddingRightMm}mm ${settings.bodyPaddingBottomMm}mm ${settings.bodyPaddingLeftMm}mm`
 
   if (template.watermarkUrl) {
     return `.print-body::before{content:'';position:fixed;inset:${inset};background:url('${escapeHtml(template.watermarkUrl)}') center/42% no-repeat;opacity:.07;pointer-events:none;z-index:0}`

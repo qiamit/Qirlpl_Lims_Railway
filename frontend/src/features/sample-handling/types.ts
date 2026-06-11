@@ -75,6 +75,8 @@ export type SampleRow = {
   condition_notes: string | null
   test_request_ids: string[]
   referback_from_allocation?: boolean
+  /** Temporarily allow Sample Receiving edit from Test Report Prepare (Part A) */
+  sample_receiving_edit_unlocked?: boolean
   /** Clause 7.8 — optional; add columns via migration if missing */
   test_report_number?: string | null
   test_report_draft_notes?: string | null
@@ -102,6 +104,9 @@ export type TestAllocationParameterRow = {
   testParameterId: string | null
   testLabel: string
   clauseNo?: string | null
+  /** Raw section override from test_allocation_parameters; null = use Test Parameter master */
+  sectionSpecOverride?: string | null
+  /** Resolved value for display (section override or master fallback) */
   specificRequirement?: string | null
   testStartDate: string | null
   testEndDate: string | null
@@ -138,6 +143,14 @@ export type TestAllocationRow = {
   testEndDate?: string | null
   /** Per-parameter Sample Under Testing values from test_allocation_parameters */
   parameters?: TestAllocationParameterRow[]
+  /** Sample description from samples.sample_description */
+  sampleDescription?: string | null
+  /** Declared value from samples.sample_declaration */
+  declaredValue?: string | null
+  /** True when results were sent for review — view-only until reviewer refers back */
+  resultsLocked?: boolean
+  /** Reviewer name when resultsLocked */
+  resultsReviewerName?: string | null
 }
 
 /** Tab 1: Customer & Sample Details */

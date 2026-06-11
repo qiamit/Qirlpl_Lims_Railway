@@ -37,6 +37,61 @@ export function isFirstSectionParameterRow(
   return labels[0] === testLabel
 }
 
+export type SectionParameterEntry = {
+  paramRowId: string | null
+  testParameterId: string | null
+  testLabel: string
+  specificRequirement: string | null
+  testStartDate: string | null
+  testEndDate: string | null
+  results: string | null
+}
+
+export function getSectionParametersForEntry(row: TestAllocationRow): SectionParameterEntry[] {
+  const params = sortParametersByClause(row.parameters ?? [])
+  if (params.length > 0) {
+    return params.map((p) => ({
+      paramRowId: p.id && !p.id.startsWith('local-') ? p.id : null,
+      testParameterId: p.testParameterId,
+      testLabel: p.testLabel,
+      specificRequirement: p.specificRequirement ?? null,
+      testStartDate: p.testStartDate ?? null,
+      testEndDate: p.testEndDate ?? null,
+      results: p.results ?? null,
+    }))
+  }
+  const labels = parseSummaryLabels(row.testParameterSummary)
+  const ids = row.testParameterIds ?? []
+  if (labels.length === 0) {
+    return [
+      {
+        paramRowId: null,
+        testParameterId: null,
+        testLabel: '-',
+        specificRequirement: null,
+        testStartDate: row.testStartDate ?? null,
+        testEndDate: row.testEndDate ?? null,
+        results: row.results ?? null,
+      },
+    ]
+  }
+  return labels.map((label, i) => ({
+    paramRowId: null,
+    testParameterId: ids[i] ?? null,
+    testLabel: label,
+    specificRequirement: null,
+    testStartDate: row.testStartDate ?? null,
+    testEndDate: row.testEndDate ?? null,
+    results: row.results ?? null,
+  }))
+}
+
+export function countFilledResults(entries: SectionParameterEntry[]): { filled: number; total: number } {
+  const total = entries.length
+  const filled = entries.filter((e) => Boolean(e.results?.trim())).length
+  return { filled, total }
+}
+
 export function listSectionParameterTargets(
   row: TestAllocationRow,
 ): Array<{ paramRowId: string | null; testLabel: string }> {

@@ -73,10 +73,10 @@ export function shouldHideFromSampleUnderTesting(input: {
   /** Active in Sample Under Testing (incl. refer-back from Results Under Review). */
   sentForTesting?: boolean
 }): boolean {
-  const allocId = input.testAllocationId?.trim()
-  if (allocId && input.sentForReviewAllocIds.has(allocId)) return true
-  // Refer-back from review sets sent_for_testing; must remain visible for the testing engineer.
-  if (input.sentForTesting) return false
+  // Sent-for-review sections stay visible (read-only in UI) until reviewer refers back.
+  void input.sentForReviewAllocIds
+  void input.testAllocationId
+  void input.sentForTesting
   if (input.legacyResultsReviewSampleIds.has(input.sampleId)) return true
   return false
 }

@@ -27,6 +27,8 @@ import { fetchLinkedReviewerProfileIds } from '@/features/sample-handling/shared
 import { resolveUserDepartment } from '@/features/sample-handling/shared/resolveUserDepartment'
 import { ensureTestAllocationParameterRows } from '@/features/sample-handling/shared/ensureTestAllocationParameterRows'
 import { ResultsUnderReviewReferbackDialog } from './ResultsUnderReviewReferbackDialog'
+import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
+import { SectionResultsEntryDialog } from '../sample-under-testing/SectionResultsEntryDialog'
 
 export default function ResultsUnderReviewMasterPage() {
   const { user, profileName, designation, departmentName, profileReady } = useAuth()
@@ -43,6 +45,7 @@ export default function ResultsUnderReviewMasterPage() {
   const showDelete = canDeleteSampleHandlingRecords(designation)
 
   const [testParamViewOpen, setTestParamViewOpen] = useState(false)
+  const [testParamViewRow, setTestParamViewRow] = useState<TestAllocationRow | null>(null)
   const [testParamViewData, setTestParamViewData] = useState<Record<string, unknown>[]>([])
   const [testParamViewLabel, setTestParamViewLabel] = useState('')
   const [testParamViewExtras, setTestParamViewExtras] = useState<{
@@ -66,6 +69,9 @@ export default function ResultsUnderReviewMasterPage() {
   const [editSpecValue, setEditSpecValue] = useState('')
   const [editSpecSaving, setEditSpecSaving] = useState(false)
   const [editSpecError, setEditSpecError] = useState<string | null>(null)
+
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
+  const [reviewDialogRow, setReviewDialogRow] = useState<TestAllocationRow | null>(null)
 
   const [referbackDialogOpen, setReferbackDialogOpen] = useState(false)
   const [referbackRow, setReferbackRow] = useState<TestAllocationRow | null>(null)
@@ -176,7 +182,9 @@ export default function ResultsUnderReviewMasterPage() {
       ]
       const { data: sampleRows, error: sampleErr } = await supabase
         .from('samples')
-        .select('id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation')
+        .select(
+          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration',
+        )
         .in('id', sampleIds)
         .eq('stage', 'results_review')
       if (sampleErr) throw sampleErr
@@ -217,6 +225,8 @@ export default function ResultsUnderReviewMasterPage() {
             date_of_sample_receiving?: string
             test_report_is_code_id?: string | null
             referback_from_allocation?: boolean | null
+            sample_description?: string | null
+            sample_declaration?: string | null
           }) => [
             s.id,
             {
@@ -227,6 +237,8 @@ export default function ResultsUnderReviewMasterPage() {
                 ? (isCodeMap.get(s.test_report_is_code_id) ?? null)
                 : null,
               referbackFromAllocation: !!s.referback_from_allocation,
+              sampleDescription: s.sample_description ?? null,
+              declaredValue: s.sample_declaration ?? null,
             },
           ],
         ),
@@ -256,7 +268,9 @@ export default function ResultsUnderReviewMasterPage() {
       if (allocationIds.length > 0) {
         const { data: paramData, error: paramErr } = await supabase
           .from('test_allocation_parameters')
-          .select('id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results')
+          .select(
+            'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement',
+          )
           .in('test_allocation_id', allocationIds)
         if (paramErr) throw paramErr
         const paramRows = Array.isArray(paramData) ? paramData : []
@@ -270,6 +284,7 @@ export default function ResultsUnderReviewMasterPage() {
             test_start_date: string | null
             test_end_date: string | null
             results: string | null
+            specific_requirement: string | null
           }[]
         >()
         for (const p of paramRows as {
@@ -280,6 +295,7 @@ export default function ResultsUnderReviewMasterPage() {
           test_start_date?: string | null
           test_end_date?: string | null
           results?: string | null
+          specific_requirement?: string | null
         }[]) {
           const key = (p.test_allocation_id as string) ?? ''
           if (!key) continue
@@ -292,6 +308,7 @@ export default function ResultsUnderReviewMasterPage() {
             test_start_date: p.test_start_date ?? null,
             test_end_date: p.test_end_date ?? null,
             results: p.results ?? null,
+            specific_requirement: p.specific_requirement ?? null,
           })
         }
         paramsByAllocationId = map
@@ -354,9 +371,13 @@ export default function ResultsUnderReviewMasterPage() {
               testAllocationId: p.test_allocation_id,
               testParameterId: p.test_parameter_id,
               testLabel: p.test_label,
-              specificRequirement: p.test_parameter_id
-                ? (testParamMetaById.get(p.test_parameter_id)?.specificRequirement ?? null)
-                : null,
+              sectionSpecOverride: p.specific_requirement ?? null,
+              specificRequirement: resolveSectionSpecificRequirement(
+                p.specific_requirement,
+                p.test_parameter_id
+                  ? testParamMetaById.get(p.test_parameter_id)?.specificRequirement
+                  : null,
+              ),
               testStartDate: p.test_start_date,
               testEndDate: p.test_end_date,
               results: p.results,
@@ -385,6 +406,7 @@ export default function ResultsUnderReviewMasterPage() {
                     testAllocationId: t.id,
                     testParameterId: tpId,
                     testLabel: label,
+                    sectionSpecOverride: null,
                     specificRequirement: tpId
                       ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
                       : null,
@@ -402,6 +424,8 @@ export default function ResultsUnderReviewMasterPage() {
               sectionCode: a.section_code,
               isCodeId: sample?.isCodeId ?? null,
               isCodeLabel: sample?.isCodeLabel ?? null,
+              sampleDescription: (sample as { sampleDescription?: string | null }).sampleDescription ?? null,
+              declaredValue: (sample as { declaredValue?: string | null }).declaredValue ?? null,
               srfNumber: sample?.srf_number ?? null,
               allocationDate: a.allocation_date ?? sample?.date_of_sample_receiving ?? null,
               department: a.department ?? null,
@@ -446,7 +470,15 @@ export default function ResultsUnderReviewMasterPage() {
     if (!q) return rows
     return rows.filter(
       (r) =>
-        [r.sectionCode, r.srfNumber, r.testParameterSummary, r.results]
+        [
+          r.sectionCode,
+          r.srfNumber,
+          r.isCodeLabel,
+          r.testParameterSummary,
+          r.results,
+          r.sampleDescription,
+          r.declaredValue,
+        ]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -537,6 +569,7 @@ export default function ResultsUnderReviewMasterPage() {
   }
 
   const handleViewTestParameter = async (row: TestAllocationRow, testLabel: string) => {
+    setTestParamViewRow(row)
     setTestParamViewLabel(testLabel)
     setTestParamViewOpen(true)
     setTestParamViewData([])
@@ -627,42 +660,96 @@ export default function ResultsUnderReviewMasterPage() {
 
   const openEditSpecificRequirement = (tp: Record<string, unknown>) => {
     const id = typeof tp.id === 'string' ? tp.id : null
-    if (!id) return
+    if (!id || !testParamViewRow) return
+    const sectionParam = testParamViewRow.parameters?.find((p) => p.testParameterId === id)
+    const current = resolveSectionSpecificRequirement(
+      sectionParam?.sectionSpecOverride,
+      String(tp.specific_requirement ?? ''),
+    )
     setEditSpecParamId(id)
-    setEditSpecValue(String(tp.specific_requirement ?? '').trim())
+    setEditSpecValue(current ?? '')
     setEditSpecError(null)
     setEditSpecOpen(true)
   }
 
   const saveEditSpecificRequirement = async () => {
-    if (!editSpecParamId) return
+    if (!editSpecParamId || !testParamViewRow?.testAllocationId) return
     setEditSpecSaving(true)
     setEditSpecError(null)
     const nextValue = editSpecValue.trim() || null
+    const testAllocationId = testParamViewRow.testAllocationId
+    const label =
+      testParamViewRow.parameters?.find((p) => p.testParameterId === editSpecParamId)?.testLabel ??
+      testParamViewLabel
     try {
-      const { error } = await supabase
-        .from('test_parameters')
-        .update({ specific_requirement: nextValue })
-        .eq('id', editSpecParamId)
-      if (error) throw error
-
-      setTestParamViewData((prev) =>
-        prev.map((tp) =>
-          tp.id === editSpecParamId ? { ...tp, specific_requirement: nextValue } : tp,
-        ),
+      const masterValue = String(
+        testParamViewData.find((tp) => typeof tp.id === 'string' && tp.id === editSpecParamId)
+          ?.specific_requirement ?? '',
       )
+      const resolvedDisplay = resolveSectionSpecificRequirement(nextValue, masterValue)
+      const sectionParam = testParamViewRow.parameters?.find((p) => p.testParameterId === editSpecParamId)
+      const paramRowId = sectionParam?.id && !sectionParam.id.startsWith('local-') ? sectionParam.id : null
+
+      if (paramRowId) {
+        const { error } = await supabase
+          .from('test_allocation_parameters')
+          .update({ specific_requirement: nextValue })
+          .eq('id', paramRowId)
+          .eq('test_allocation_id', testAllocationId)
+        if (error) throw error
+      } else {
+        const { data: existing } = await supabase
+          .from('test_allocation_parameters')
+          .select('id')
+          .eq('test_allocation_id', testAllocationId)
+          .eq('test_parameter_id', editSpecParamId)
+          .maybeSingle()
+        if (existing?.id) {
+          const { error } = await supabase
+            .from('test_allocation_parameters')
+            .update({ specific_requirement: nextValue })
+            .eq('id', existing.id)
+          if (error) throw error
+        } else {
+          const { error } = await supabase.from('test_allocation_parameters').insert({
+            test_allocation_id: testAllocationId,
+            test_parameter_id: editSpecParamId,
+            test_label: label,
+            specific_requirement: nextValue,
+          })
+          if (error) throw error
+        }
+      }
+
       setRows((prev) =>
-        prev.map((row) => ({
-          ...row,
-          parameters: row.parameters?.map((p) =>
-            p.testParameterId === editSpecParamId ? { ...p, specificRequirement: nextValue } : p,
-          ),
-        })),
+        prev.map((row) => {
+          if (row.testAllocationId !== testAllocationId) return row
+          return {
+            ...row,
+            parameters: row.parameters?.map((p) =>
+              p.testParameterId === editSpecParamId
+                ? { ...p, sectionSpecOverride: nextValue, specificRequirement: resolvedDisplay }
+                : p,
+            ),
+          }
+        }),
+      )
+      setTestParamViewRow((prev) =>
+        prev && prev.testAllocationId === testAllocationId
+          ? {
+              ...prev,
+              parameters: prev.parameters?.map((p) =>
+                p.testParameterId === editSpecParamId
+                  ? { ...p, sectionSpecOverride: nextValue, specificRequirement: resolvedDisplay }
+                  : p,
+              ),
+            }
+          : prev,
       )
       setEditSpecOpen(false)
       setEditSpecParamId(null)
       setEditSpecValue('')
-      setSaveMessage('Specific requirement updated in Test Parameter master.')
+      setSaveMessage(`Specified requirement updated for section ${testParamViewRow.sectionCode} only.`)
     } catch (err) {
       setEditSpecError(err instanceof Error ? err.message : 'Update failed')
     } finally {
@@ -861,11 +948,31 @@ export default function ResultsUnderReviewMasterPage() {
         error={listError}
         onReferback={openReferbackDialog}
         onApproved={handleApproved}
-        onViewTestParameter={handleViewTestParameter}
+        onOpenReviewResults={(row) => {
+          setReviewDialogRow(row)
+          setReviewDialogOpen(true)
+        }}
         showSelection={showDelete}
         selectedIds={selectedIds}
         onToggleSelection={toggleRow}
         onToggleAllSelection={toggleAllOnPage}
+      />
+
+      <SectionResultsEntryDialog
+        open={reviewDialogOpen}
+        onOpenChange={(open) => {
+          setReviewDialogOpen(open)
+          if (!open) setReviewDialogRow(null)
+        }}
+        row={reviewDialogRow}
+        readOnly
+        readOnlyTitle="Review Results"
+        onSave={async () => {}}
+        onViewTestParameter={
+          reviewDialogRow
+            ? (testLabel) => void handleViewTestParameter(reviewDialogRow, testLabel)
+            : undefined
+        }
       />
 
       <div className="rounded-md border bg-muted/30 px-4 py-3">
@@ -921,9 +1028,16 @@ export default function ResultsUnderReviewMasterPage() {
               testParamViewData.map((tp, idx) => {
                 const fmt = (v: unknown) =>
                   v !== null && v !== undefined && String(v).trim() !== '' ? String(v) : '—'
-                const tpId = typeof tp.id === 'string' ? tp.id : String(idx)
+                const tpId = typeof tp.id === 'string' ? tp.id.trim() : ''
+                const sectionParam = testParamViewRow?.parameters?.find((p) => p.testParameterId === tpId)
+                const displaySpecificRequirement = fmt(
+                  resolveSectionSpecificRequirement(
+                    sectionParam?.sectionSpecOverride,
+                    String(tp.specific_requirement ?? ''),
+                  ),
+                )
                 return (
-                  <Card key={tpId} className="overflow-hidden border-border shadow-sm">
+                  <Card key={tpId || idx} className="overflow-hidden border-border shadow-sm">
                     <CardHeader className="py-4 px-5 bg-primary/5 border-b border-border">
                       <CardTitle className="text-base font-semibold text-foreground">{fmt(tp.item_name)}</CardTitle>
                       <div className="flex flex-wrap gap-2 mt-2 text-xs text-muted-foreground">
@@ -1002,15 +1116,15 @@ export default function ResultsUnderReviewMasterPage() {
                           <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2">
                             <span className="text-muted-foreground">Specific Requirement</span>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <span className="whitespace-pre-wrap font-medium">{fmt(tp.specific_requirement)}</span>
-                              {typeof tp.id === 'string' ? (
+                              <span className="whitespace-pre-wrap font-medium">{displaySpecificRequirement}</span>
+                              {tpId && testParamViewRow ? (
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
                                   className="h-8 shrink-0 gap-1.5"
-                                  aria-label="Edit specific requirement in Test Parameter master"
-                                  title="Updates Test Parameter directory"
+                                  aria-label="Edit specified requirement for this section"
+                                  title="Section-only override (does not change Test Parameter master)"
                                   onClick={() => openEditSpecificRequirement(tp)}
                                 >
                                   <Pencil size={14} />
@@ -1053,9 +1167,14 @@ export default function ResultsUnderReviewMasterPage() {
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Specific Requirement</DialogTitle>
+            <DialogTitle>
+              Edit Specific Requirement — Section {testParamViewRow?.sectionCode ?? '—'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Applies only to this section code. Test Parameter master and other sections are not changed.
+            </p>
             <div className="space-y-2">
               <Label htmlFor="review-edit-spec">Specific Requirement</Label>
               <Textarea

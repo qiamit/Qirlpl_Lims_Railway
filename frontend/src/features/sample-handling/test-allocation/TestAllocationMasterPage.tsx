@@ -433,6 +433,21 @@ export default function TestAllocationMasterPage() {
       return n
     })
 
+  const loadSectionSpecOverrides = async (testAllocationId: string): Promise<Record<string, string>> => {
+    const { data, error } = await supabase
+      .from('test_allocation_parameters')
+      .select('test_parameter_id, specific_requirement')
+      .eq('test_allocation_id', testAllocationId)
+    if (error) throw error
+    const out: Record<string, string> = {}
+    for (const row of Array.isArray(data) ? data : []) {
+      const tpId = (row as { test_parameter_id?: string | null }).test_parameter_id
+      const spec = String((row as { specific_requirement?: string | null }).specific_requirement ?? '').trim()
+      if (tpId && spec) out[tpId] = spec
+    }
+    return out
+  }
+
   const handleAddTestParameter = (row: TestAllocationRow) => {
     setFormRow(row)
     void loadUsers()
@@ -445,17 +460,23 @@ export default function TestAllocationMasterPage() {
           normUserField(u.departmentName) === deptNorm &&
           normUserField(u.designation) === normUserField(rowDes),
       )?.designation
-    setForm({
-      sampleAllocationId: row.sampleAllocationId,
-      sectionCode: row.sectionCode,
-      department: row.department,
-      designation: matchedDes ?? rowDes ?? null,
-      testParameterIds: row.testParameterIds ?? [],
-      testParameterSummary: row.testParameterSummary ?? '',
-      assignedEmployeeId: row.assignedEmployeeId ?? '',
-      assignedEmployeeName: row.assignedEmployeeName ?? '',
-    })
-    setFormOpen(true)
+    void (async () => {
+      const sectionSpecOverrides = row.testAllocationId
+        ? await loadSectionSpecOverrides(row.testAllocationId)
+        : {}
+      setForm({
+        sampleAllocationId: row.sampleAllocationId,
+        sectionCode: row.sectionCode,
+        department: row.department,
+        designation: matchedDes ?? rowDes ?? null,
+        testParameterIds: row.testParameterIds ?? [],
+        testParameterSummary: row.testParameterSummary ?? '',
+        assignedEmployeeId: row.assignedEmployeeId ?? '',
+        assignedEmployeeName: row.assignedEmployeeName ?? '',
+        sectionSpecOverrides,
+      })
+      setFormOpen(true)
+    })()
   }
 
   const handleOpenAddDialog = () => {
@@ -531,18 +552,42 @@ export default function TestAllocationMasterPage() {
           return
         }
 
+        const { data: existingParamRows } = await supabase
+          .from('test_allocation_parameters')
+          .select(
+            'test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement, results_reviewer_id, results_reviewer_name, report_remark',
+          )
+          .eq('test_allocation_id', allocationId)
+        const existingByTpId = new Map(
+          (Array.isArray(existingParamRows) ? existingParamRows : []).map((r) => [
+            String((r as { test_parameter_id?: string | null }).test_parameter_id ?? ''),
+            r as Record<string, unknown>,
+          ]),
+        )
+
         await supabase.from('test_allocation_parameters').delete().eq('test_allocation_id', allocationId)
         const ids = form.testParameterIds ?? []
         if (ids.length > 0) {
           const labelById = new Map(testParamOptions.map((o) => [o.id, o.label ?? o.id]))
-          const rowsToInsert = ids.map((id) => ({
-            test_allocation_id: allocationId,
-            test_parameter_id: id,
-            test_label: labelById.get(id) ?? id,
-            test_start_date: null,
-            test_end_date: null,
-            results: null,
-          }))
+          const rowsToInsert = ids.map((id) => {
+            const prev = existingByTpId.get(id)
+            const sectionOverride = form.sectionSpecOverrides[id]?.trim()
+            return {
+              test_allocation_id: allocationId,
+              test_parameter_id: id,
+              test_label: labelById.get(id) ?? id,
+              specific_requirement:
+                sectionOverride ||
+                (typeof prev?.specific_requirement === 'string' ? prev.specific_requirement : null) ||
+                null,
+              test_start_date: (prev?.test_start_date as string | null | undefined) ?? null,
+              test_end_date: (prev?.test_end_date as string | null | undefined) ?? null,
+              results: (prev?.results as string | null | undefined) ?? null,
+              results_reviewer_id: (prev?.results_reviewer_id as string | null | undefined) ?? null,
+              results_reviewer_name: (prev?.results_reviewer_name as string | null | undefined) ?? null,
+              report_remark: (prev?.report_remark as string | null | undefined) ?? null,
+            }
+          })
           const { error: paramErr } = await supabase.from('test_allocation_parameters').insert(rowsToInsert)
           if (paramErr) throw paramErr
         }
@@ -843,7 +888,6 @@ export default function TestAllocationMasterPage() {
               testParamOptions={testParamOptions}
               employeesFiltered={employeesFilteredForRow}
               designationOptions={designationOptionsForForm}
-              onTestParameterUpdated={loadTestParams}
             />
           )}
         </DialogContent>

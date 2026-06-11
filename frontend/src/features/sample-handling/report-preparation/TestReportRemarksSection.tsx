@@ -5,6 +5,11 @@ import {
   joinPartDRemarks,
   splitPartDRemarks,
 } from './testReportPartDRemarks'
+import {
+  REPORT_PART_INNER_CLASS,
+  REPORT_PART_OUTER_CLASS,
+  REPORT_PART_ROW_BORDER,
+} from './reportPartUiClasses'
 
 export const PART_D_HEADING = 'PART D. REMARKS'
 
@@ -29,15 +34,15 @@ export function TestReportRemarksSection({
   }
 
   return (
-    <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 shadow-sm ring-1 ring-primary/15">
+    <div className={REPORT_PART_OUTER_CLASS}>
       <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
         Part D — Remarks
       </h3>
-      <div className="rounded-md border border-primary/20 bg-background/80 shadow-inner overflow-hidden text-sm">
-        <div className="border-b border-border/40 bg-muted/30 px-4 py-2.5">
+      <div className={`${REPORT_PART_INNER_CLASS} text-sm`}>
+        <div className={`border-b ${REPORT_PART_ROW_BORDER} bg-primary/10 px-4 py-2.5`}>
           <p className="text-xs font-bold uppercase tracking-wide text-foreground">{PART_D_HEADING}</p>
         </div>
-        <p className="border-b border-border/40 bg-muted/20 px-4 py-2.5 text-sm leading-relaxed text-foreground">
+        <p className={`border-b ${REPORT_PART_ROW_BORDER} bg-sky-50/50 px-4 py-2.5 text-sm leading-relaxed text-foreground`}>
           {line1}
         </p>
         <Textarea

@@ -11,6 +11,12 @@ import {
   type PartBFieldKey,
   type TestReportPartBDetails,
 } from './testReportPartB'
+import {
+  REPORT_PART_INNER_CLASS,
+  REPORT_PART_INNER_DIVIDE,
+  REPORT_PART_OUTER_CLASS,
+  REPORT_PART_ROW_BORDER,
+} from './reportPartUiClasses'
 
 function PartBRow({
   number,
@@ -28,7 +34,7 @@ function PartBRow({
   disabled?: boolean
 }) {
   return (
-    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:grid-cols-[3.25rem_minmax(0,1fr)_minmax(9.5rem,max-content)] divide-x divide-border/40 border-b border-border/40 last:border-b-0">
+    <div className={`grid grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:grid-cols-[3.25rem_minmax(0,1fr)_minmax(9.5rem,max-content)] divide-x ${REPORT_PART_INNER_DIVIDE} border-b ${REPORT_PART_ROW_BORDER} last:border-b-0`}>
       <div className="flex items-center justify-center px-2 py-1.5 text-muted-foreground font-medium tabular-nums text-xs">
         {number}.
       </div>
@@ -70,11 +76,11 @@ export function TestReportSupplementaryGrid({
   }
 
   return (
-    <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 shadow-sm ring-1 ring-primary/15">
+    <div className={REPORT_PART_OUTER_CLASS}>
       <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
         Part B — Supplementary Information
       </h3>
-      <div className="rounded-md border border-primary/20 bg-background/80 p-0 shadow-inner overflow-hidden text-sm">
+      <div className={`${REPORT_PART_INNER_CLASS} text-sm`}>
         {PART_B_ROWS.map((row, index) => (
           <PartBRow
             key={row.key}

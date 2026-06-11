@@ -1,71 +1,11 @@
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
-import { formatTestResultForTable } from '@/features/sample-handling/sample-under-testing/testResultValues'
 import type { TestAllocationRow } from '../types'
-import { Eye, CheckCircle2, Undo2 } from 'lucide-react'
+import { formatSampleDescAndDeclared } from '../shared/formatSampleDescAndDeclared'
+import { countFilledResults, getSectionParametersForEntry } from '../sample-under-testing/sectionParameterRows'
+import { ClipboardList, CheckCircle2, Undo2 } from 'lucide-react'
 
-const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
-const fmtDate = (v: string | null | undefined) => (v ? new Date(v).toISOString().slice(0, 10) : '-')
-
-type ExpandedReviewRow = {
-  row: TestAllocationRow
-  paramRowId: string | null
-  testLabel: string
-  specificRequirement: string | null
-  testStartDate: string | null
-  testEndDate: string | null
-  results: string | null
-  showSectionActions: boolean
-}
-
-function expandRowsByTest(rows: TestAllocationRow[]): ExpandedReviewRow[] {
-  const out: ExpandedReviewRow[] = []
-  for (const row of rows) {
-    if (row.parameters && row.parameters.length > 0) {
-      row.parameters.forEach((p, paramIdx) => {
-        out.push({
-          row,
-          paramRowId: p.id,
-          testLabel: p.testLabel,
-          specificRequirement: p.specificRequirement ?? null,
-          testStartDate: p.testStartDate ?? null,
-          testEndDate: p.testEndDate ?? null,
-          results: p.results ?? null,
-          showSectionActions: paramIdx === 0,
-        })
-      })
-      continue
-    }
-    const summary = row.testParameterSummary?.trim() ?? ''
-    const labels = summary ? summary.split(',').map((s) => s.trim()).filter(Boolean) : []
-    if (labels.length === 0) {
-      out.push({
-        row,
-        paramRowId: null,
-        testLabel: '-',
-        specificRequirement: null,
-        testStartDate: row.testStartDate ?? null,
-        testEndDate: row.testEndDate ?? null,
-        results: row.results ?? null,
-        showSectionActions: true,
-      })
-    } else {
-      labels.forEach((label, paramIdx) => {
-        out.push({
-          row,
-          paramRowId: null,
-          testLabel: label,
-          specificRequirement: null,
-          testStartDate: row.testStartDate ?? null,
-          testEndDate: row.testEndDate ?? null,
-          results: row.results ?? null,
-          showSectionActions: paramIdx === 0,
-        })
-      })
-    }
-  }
-  return out
-}
+const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '—')
 
 export function ResultsUnderReviewTable({
   rows,
@@ -73,7 +13,7 @@ export function ResultsUnderReviewTable({
   error,
   onReferback,
   onApproved,
-  onViewTestParameter,
+  onOpenReviewResults,
   showSelection,
   selectedIds,
   onToggleSelection,
@@ -84,13 +24,12 @@ export function ResultsUnderReviewTable({
   error: string | null
   onReferback: (row: TestAllocationRow) => void
   onApproved: (row: TestAllocationRow) => void
-  onViewTestParameter: (row: TestAllocationRow, testLabel: string) => void
+  onOpenReviewResults: (row: TestAllocationRow) => void
   showSelection?: boolean
   selectedIds?: Set<string>
   onToggleSelection?: (sampleAllocationId: string) => void
   onToggleAllSelection?: (checked: boolean) => void
 }) {
-  const expanded = expandRowsByTest(rows)
   const uniqueAllocIds = [...new Set(rows.map((r) => r.sampleAllocationId))]
   const allChecked =
     showSelection &&
@@ -108,7 +47,7 @@ export function ResultsUnderReviewTable({
           No results assigned to your review queue. Items appear here when testing sends results for review, when you refer back from Test Report Preparation, or when another user selects you as reviewer (same mobile / linked lab login).
         </p>
       ) : (
-        <Table className="min-w-[1050px]">
+        <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="bg-muted/50">
               {showSelection ? (
@@ -123,67 +62,63 @@ export function ResultsUnderReviewTable({
                     onChange={(e) => onToggleAllSelection?.(e.target.checked)}
                   />
                 </TableHead>
-              ) : (
-                <TableHead className="text-xs w-[44px] text-center">#</TableHead>
-              )}
-              <TableHead className="text-xs text-center">Section Code</TableHead>
-              <TableHead className="text-xs">Test Parameter</TableHead>
-              <TableHead className="text-xs text-center">Specified Requirement</TableHead>
-              <TableHead className="text-xs text-center">Test Start Date</TableHead>
-              <TableHead className="text-xs text-center">Test End Date</TableHead>
-              <TableHead className="text-xs text-center">Results</TableHead>
-              <TableHead className="text-xs text-center">Action</TableHead>
+              ) : null}
+              <TableHead className="text-xs text-left w-[120px]">Section Code</TableHead>
+              <TableHead className="text-xs text-center w-[140px]">IS Code</TableHead>
+              <TableHead className="text-xs text-center min-w-[240px]">Sample Description &amp; Declared Value</TableHead>
+              <TableHead className="text-xs text-center w-[180px]">Review the Result</TableHead>
+              <TableHead className="text-xs text-center w-[140px]">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {expanded.map(({ row: r, testLabel, specificRequirement, testStartDate, testEndDate, results, showSectionActions }, idx) => (
-              <TableRow key={`${r.sampleAllocationId}-${idx}-${testLabel}`}>
-                <TableCell className="text-center text-muted-foreground text-xs">
-                  {showSelection && showSectionActions ? (
-                    <input
-                      type="checkbox"
-                      aria-label={`Select section ${r.sectionCode}`}
-                      checked={selectedIds?.has(r.sampleAllocationId) ?? false}
-                      onChange={() => onToggleSelection?.(r.sampleAllocationId)}
-                    />
-                  ) : (
-                    idx + 1
-                  )}
-                </TableCell>
-                <TableCell className="text-center truncate font-medium">{fmt(r.sectionCode)}</TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-start gap-1">
-                    <span className="truncate text-xs" title={testLabel}>{fmt(testLabel)}</span>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 shrink-0"
-                      aria-label="View test parameter data"
-                      title="View data from Test Parameter directory"
-                      onClick={() => onViewTestParameter(r, testLabel)}
+            {rows.map((r) => {
+              const entries = getSectionParametersForEntry(r)
+              const { filled, total } = countFilledResults(entries)
+              const allFilled = total > 0 && filled === total
+
+              return (
+                <TableRow key={r.sampleAllocationId}>
+                  {showSelection ? (
+                    <TableCell className="text-center">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select section ${r.sectionCode}`}
+                        checked={selectedIds?.has(r.sampleAllocationId) ?? false}
+                        onChange={() => onToggleSelection?.(r.sampleAllocationId)}
+                      />
+                    </TableCell>
+                  ) : null}
+                  <TableCell className="text-left truncate font-medium">{fmt(r.sectionCode)}</TableCell>
+                  <TableCell className="text-center text-xs truncate" title={r.isCodeLabel ?? undefined}>
+                    {fmt(r.isCodeLabel)}
+                  </TableCell>
+                  <TableCell className="text-center text-xs text-muted-foreground max-w-[320px] align-top">
+                    <p
+                      className="break-words whitespace-pre-wrap text-center"
+                      title={formatSampleDescAndDeclared(r.sampleDescription, r.declaredValue)}
                     >
-                      <Eye size={14} />
-                    </Button>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center text-xs">
-                  <span className="line-clamp-2 mx-auto max-w-[200px]" title={specificRequirement ?? undefined}>
-                    {fmt(specificRequirement)}
-                  </span>
-                </TableCell>
-                <TableCell className="text-center text-xs">{fmtDate(testStartDate)}</TableCell>
-                <TableCell className="text-center text-xs">{fmtDate(testEndDate)}</TableCell>
-                <TableCell className="text-xs align-top min-w-[180px] max-w-[300px] p-2.5">
-                  <span
-                    className="block text-center whitespace-pre-wrap break-words leading-relaxed"
-                    title={formatTestResultForTable(results) || undefined}
-                  >
-                    {fmt(formatTestResultForTable(results))}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  {showSectionActions ? (
+                      {formatSampleDescAndDeclared(r.sampleDescription, r.declaredValue)}
+                    </p>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={() => onOpenReviewResults(r)}
+                      >
+                        <ClipboardList size={14} />
+                        Review Results
+                      </Button>
+                      <span className="text-[11px] text-muted-foreground">
+                        {filled}/{total} result{total === 1 ? '' : 's'}
+                        {allFilled ? ' · complete' : ''}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-1">
                       <Button
                         type="button"
@@ -208,10 +143,10 @@ export function ResultsUnderReviewTable({
                         <CheckCircle2 size={14} className="text-primary" />
                       </Button>
                     </div>
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       )}

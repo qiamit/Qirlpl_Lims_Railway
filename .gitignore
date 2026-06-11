@@ -79,4 +79,14 @@ $RECYCLE.BIN/
 .mcp-*
 .tmp-*
 .run-mcp-deploy.cjs
-.vercel
+
+# Backend MCP / deploy scratch (local only)
+backend/.call-mcp-args*.json
+backend/.stdout-deploy-args.json
+backend/.invoke-*
+backend/.deploy-*
+backend/.tmp-*
+
+# Windows / editor swap
+*.stackdump
+*~

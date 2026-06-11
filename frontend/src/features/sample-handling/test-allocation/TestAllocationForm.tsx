@@ -19,6 +19,8 @@ export type TestAllocationFormState = {
   testParameterSummary: string
   assignedEmployeeId: string
   assignedEmployeeName: string
+  /** Per-section overrides keyed by test_parameter id (not written to test_parameters master). */
+  sectionSpecOverrides: Record<string, string>
 }
 
 type EmployeeOption = { id: string; name: string; department: string; designation: string }
@@ -34,7 +36,6 @@ export function TestAllocationForm({
   testParamOptions,
   employeesFiltered,
   designationOptions = [],
-  onTestParameterUpdated,
 }: {
   row: TestAllocationRow
   form: TestAllocationFormState
@@ -45,8 +46,6 @@ export function TestAllocationForm({
   testParamOptions: TestParamOption[]
   employeesFiltered: EmployeeOption[]
   designationOptions?: string[]
-  /** Called after a test parameter specific requirement is updated so parent can refresh the list */
-  onTestParameterUpdated?: () => void
 }) {
   const navigate = useNavigate()
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(() => new Set(form.testParameterIds))
@@ -132,9 +131,16 @@ export function TestAllocationForm({
     }
   }
 
+  const displaySpecificRequirement = (opt: TestParamOption): string => {
+    const override = form.sectionSpecOverrides[opt.id]
+    if (override !== undefined) return override.trim() || '-'
+    return opt.specificRequirement?.trim() || '-'
+  }
+
   const openEditSpec = (opt: TestParamOption) => {
     setEditSpecParamId(opt.id)
-    setEditSpecValue(opt.specificRequirement ?? '')
+    const current = form.sectionSpecOverrides[opt.id] ?? opt.specificRequirement ?? ''
+    setEditSpecValue(current)
     setEditSpecError(null)
     setEditSpecOpen(true)
   }
@@ -143,13 +149,42 @@ export function TestAllocationForm({
     if (!editSpecParamId) return
     setEditSpecSaving(true)
     setEditSpecError(null)
+    const nextValue = editSpecValue.trim()
     try {
-      const { error } = await supabase
-        .from('test_parameters')
-        .update({ specific_requirement: editSpecValue.trim() || null })
-        .eq('id', editSpecParamId)
-      if (error) throw error
-      onTestParameterUpdated?.()
+      const testAllocationId = row.testAllocationId?.trim()
+      if (testAllocationId) {
+        const label = testParamOptions.find((o) => o.id === editSpecParamId)?.label ?? editSpecParamId
+        const { data: existing } = await supabase
+          .from('test_allocation_parameters')
+          .select('id')
+          .eq('test_allocation_id', testAllocationId)
+          .eq('test_parameter_id', editSpecParamId)
+          .maybeSingle()
+
+        if (existing?.id) {
+          const { error } = await supabase
+            .from('test_allocation_parameters')
+            .update({ specific_requirement: nextValue || null })
+            .eq('id', existing.id)
+          if (error) throw error
+        } else {
+          const { error } = await supabase.from('test_allocation_parameters').insert({
+            test_allocation_id: testAllocationId,
+            test_parameter_id: editSpecParamId,
+            test_label: label,
+            specific_requirement: nextValue || null,
+          })
+          if (error) throw error
+        }
+      }
+
+      onChange({
+        ...form,
+        sectionSpecOverrides: {
+          ...form.sectionSpecOverrides,
+          [editSpecParamId]: nextValue,
+        },
+      })
       setEditSpecOpen(false)
       setEditSpecParamId(null)
       setEditSpecValue('')
@@ -418,7 +453,7 @@ export function TestAllocationForm({
                     <td className="p-2">{opt.label || '-'}</td>
                     <td className="p-2 text-muted-foreground">
                       <div className="flex items-center justify-center gap-1">
-                        <span>{opt.specificRequirement ?? '-'}</span>
+                        <span>{displaySpecificRequirement(opt)}</span>
                         <Button
                           type="button"
                           size="icon"
@@ -455,9 +490,12 @@ export function TestAllocationForm({
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Specified Requirement</DialogTitle>
+            <DialogTitle>Edit Specified Requirement — Section {form.sectionCode || row.sectionCode}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Applies only to this section code. Test Parameter master and other sections are not changed.
+            </p>
             <div className="space-y-2">
               <Label htmlFor="edit-spec-value">Specified Requirement</Label>
               <Textarea

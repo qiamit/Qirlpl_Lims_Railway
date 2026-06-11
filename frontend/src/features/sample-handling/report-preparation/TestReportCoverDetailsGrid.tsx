@@ -14,12 +14,42 @@ import {
   ULR_PREFIX_SETTING_NAMES,
 } from './nablUlrNumber'
 import type { ReportScopeKind } from './reportScope'
+import {
+  REPORT_PART_INNER_CLASS,
+  REPORT_PART_INNER_DIVIDE,
+  REPORT_PART_OUTER_CLASS,
+  REPORT_PART_ROW_BORDER,
+} from './reportPartUiClasses'
 
 const display = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 
-/** Matches ThreeColumnBlock cell styling */
-const PART_A_TRIPLE_CELL =
-  'min-w-0 px-4 py-2.5 text-sm leading-snug whitespace-pre-wrap break-words sm:py-3'
+/** Label and value on one line; long values wrap after the hyphen */
+const PART_A_INLINE_CELL =
+  'min-w-0 px-4 py-2.5 text-sm leading-snug break-words sm:py-3'
+
+function PartAInlineLine({
+  label,
+  value,
+  valueOnly,
+}: {
+  label: string
+  value: string | null | undefined
+  valueOnly?: boolean
+}) {
+  return (
+    <div className={PART_A_INLINE_CELL}>
+      {valueOnly ? (
+        <span className="font-medium">{display(value)}</span>
+      ) : (
+        <>
+          <span className="text-muted-foreground">{label}</span>
+          <span className="text-muted-foreground"> - </span>
+          <span className="font-medium">{display(value)}</span>
+        </>
+      )}
+    </div>
+  )
+}
 
 const PART_A_INLINE_INPUT =
   'inline h-auto min-h-0 w-auto min-w-[10ch] max-w-full border-0 bg-transparent p-0 shadow-none font-medium font-mono tracking-wide align-baseline focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:ring-offset-0 rounded-sm'
@@ -44,7 +74,7 @@ function PartAInlineEditableCell({
   title?: string
 }) {
   return (
-    <div className={PART_A_TRIPLE_CELL}>
+    <div className={PART_A_INLINE_CELL}>
       <label htmlFor={id} className="inline cursor-text">
         <span className="text-muted-foreground">{label}</span>
         <span className="text-muted-foreground"> - </span>
@@ -96,17 +126,13 @@ function PartAReportIdentifiersRow({
   const ulrPlaceholder = nablUlrPlaceholder(ulrPrefix)
 
   return (
-    <div className="md:col-span-2 border-b border-border/40">
+    <div className={`md:col-span-2 border-b ${REPORT_PART_ROW_BORDER}`}>
       <div
-        className={`grid grid-cols-1 divide-y sm:divide-y-0 sm:divide-x divide-border/40 ${
+        className={`grid grid-cols-1 divide-y sm:divide-y-0 sm:divide-x ${REPORT_PART_INNER_DIVIDE} ${
           showUlr ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
         }`}
       >
-        <div className={PART_A_TRIPLE_CELL}>
-          <span className="text-muted-foreground">Date of Reporting</span>
-          <span className="text-muted-foreground"> - </span>
-          <span className="font-medium">{display(dateOfReporting)}</span>
-        </div>
+        <PartAInlineLine label="Date of Reporting" value={dateOfReporting} />
         <PartAInlineEditableCell
           id="part-a-report-number"
           label="Report Number"
@@ -210,16 +236,10 @@ function ThreeColumnBlock({
       : 'grid grid-cols-1 sm:grid-cols-3'
 
   return (
-    <div className="md:col-span-2 border-b border-border/40">
-      <div
-        className={`${gridCols} divide-y sm:divide-y-0 sm:divide-x divide-border/40`}
-      >
+    <div className={`md:col-span-2 border-b ${REPORT_PART_ROW_BORDER}`}>
+      <div className={`${gridCols} divide-y sm:divide-y-0 sm:divide-x ${REPORT_PART_INNER_DIVIDE}`}>
         {columns.map(({ key, label }) => (
-          <div key={key} className={PART_A_TRIPLE_CELL}>
-            <span className="text-muted-foreground">{label}</span>
-            <span className="text-muted-foreground"> - </span>
-            <span className="font-medium">{display(details[key])}</span>
-          </div>
+          <PartAInlineLine key={key} label={label} value={details[key]} />
         ))}
       </div>
     </div>
@@ -238,26 +258,16 @@ function FieldBlock({
     <div
       className={
         inlineLine
-          ? 'px-4 py-2.5 border-b border-border/40 md:col-span-2 text-sm leading-snug'
-          : `grid grid-cols-[minmax(0,11rem)_1fr] gap-x-2 gap-y-0.5 px-4 py-2 border-b border-border/40 last:border-0 md:[&:nth-last-child(-n+2)]:border-0${fullWidth ? ' md:col-span-2' : ''}`
+          ? `border-b ${REPORT_PART_ROW_BORDER} md:col-span-2 text-sm`
+          : `grid grid-cols-[minmax(0,11rem)_1fr] gap-x-2 gap-y-0.5 px-4 py-2 border-b ${REPORT_PART_ROW_BORDER} last:border-0 md:[&:nth-last-child(-n+2)]:border-0${fullWidth ? ' md:col-span-2' : ''}`
       }
     >
       {inlineLine ? (
-        <p className="whitespace-pre-wrap break-words">
-          {valueOnly ? (
-            <span className="font-medium">{display(details[key])}</span>
-          ) : (
-            <>
-              <span className="text-muted-foreground">{label}</span>
-              <span className="text-muted-foreground"> - </span>
-              <span className="font-medium">{display(details[key])}</span>
-            </>
-          )}
-        </p>
+        <PartAInlineLine label={label} value={details[key]} valueOnly={valueOnly} />
       ) : (
         <>
           <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="font-medium whitespace-pre-wrap break-words">{display(details[key])}</span>
+          <span className="font-medium break-words">{display(details[key])}</span>
         </>
       )}
     </div>
@@ -275,6 +285,9 @@ export function TestReportCoverDetailsGrid({
   ulrPrefix,
   ulrPrefixLoading,
   activeScope,
+  sampleReceivingEditUnlocked,
+  onSampleReceivingEditUnlockedChange,
+  sampleReceivingEditUnlockLoading,
   disabled,
 }: {
   details: TestReportCoverDetails
@@ -287,14 +300,37 @@ export function TestReportCoverDetailsGrid({
   ulrPrefix: string
   ulrPrefixLoading: boolean
   activeScope: ReportScopeKind
+  sampleReceivingEditUnlocked: boolean
+  onSampleReceivingEditUnlockedChange: (unlocked: boolean) => void
+  sampleReceivingEditUnlockLoading?: boolean
   disabled?: boolean
 }) {
+  const receivingEditToggleDisabled = Boolean(disabled || sampleReceivingEditUnlockLoading)
+
   return (
-    <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 shadow-sm ring-1 ring-primary/15">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
-        Part A — Particulars of Sample Submitted
-      </h3>
-      <div className="rounded-md border border-primary/20 bg-background/80 p-0 shadow-inner overflow-hidden grid grid-cols-1 text-sm">
+    <div className={REPORT_PART_OUTER_CLASS}>
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
+          Part A — Particulars of Sample Submitted
+        </h3>
+        <label
+          htmlFor="part-a-receiving-edit-unlock"
+          className={`flex max-w-md items-start gap-2 rounded-md border border-primary/25 bg-background/90 px-3 py-2 text-sm shadow-sm ${
+            receivingEditToggleDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+          }`}
+        >
+          <input
+            id="part-a-receiving-edit-unlock"
+            type="checkbox"
+            className="rounded border-border mt-0.5"
+            checked={sampleReceivingEditUnlocked}
+            disabled={receivingEditToggleDisabled}
+            onChange={(e) => onSampleReceivingEditUnlockedChange(e.target.checked)}
+          />
+          <span className="font-medium">Allow Sample Receiving edit</span>
+        </label>
+      </div>
+      <div className={`${REPORT_PART_INNER_CLASS} grid grid-cols-1 text-sm`}>
         {COVER_ITEMS.map((item) => (
           <div key={item.kind === 'threeColumn' ? item.id : item.key} className="contents">
             {item.kind === 'threeColumn' ? (
