@@ -48,7 +48,10 @@ export function resolveReportScopeFromAccreditationIds(
   return hasNabl ? 'NABL' : 'Non NABL'
 }
 
-/** Remove trailing A/B scope suffix from a full report number. */
+/**
+ * Remove trailing A/B scope suffix for re-scoping (print / display).
+ * Do not use on canonical values loaded from DB — stored numbers already end with A.
+ */
 export function stripReportScopeSuffix(value: string): string {
   const v = value.trim()
   if (/[AB]$/.test(v)) return v.slice(0, -1)

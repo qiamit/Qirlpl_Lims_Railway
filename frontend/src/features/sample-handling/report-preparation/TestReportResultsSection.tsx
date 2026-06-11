@@ -19,8 +19,8 @@ import {
   TEST_REPORT_TOTAL_LENGTH,
 } from './formattedTestReportNumber'
 import {
-  formatNablUlrNumber,
-  NABL_ULR_TOTAL_LENGTH,
+  NABL_ULR_CHAR_LENGTH,
+  nablUlrPlaceholder,
   sanitizeNablUlrInput,
   ULR_PREFIX_SETTING_NAMES,
 } from './nablUlrNumber'
@@ -185,14 +185,10 @@ function ScopePrepToolbar({
             className="h-9 text-sm font-mono tracking-wide"
             value={nablUlrNumber}
             onChange={(e) => onNablUlrNumberChange(sanitizeNablUlrInput(e.target.value))}
-            placeholder={
-              ulrPrefix
-                ? formatNablUlrNumber(ulrPrefix, 1).slice(0, NABL_ULR_TOTAL_LENGTH)
-                : '0'.repeat(Math.max(1, NABL_ULR_TOTAL_LENGTH - 1)) + 'F'
-            }
-            maxLength={NABL_ULR_TOTAL_LENGTH}
+            placeholder={nablUlrPlaceholder(ulrPrefix)}
+            maxLength={NABL_ULR_CHAR_LENGTH}
             disabled={disabled || ulrPrefixLoading}
-            title={`Lab Settings → Prefix (${ULR_PREFIX_SETTING_NAMES.join(' / ')}): ${ulrPrefix || '—'}`}
+            title={`NABL 18-position ULR (19 chars; TC = position 1) · Lab Settings → Prefix (${ULR_PREFIX_SETTING_NAMES.join(' / ')}): ${ulrPrefix || '—'}`}
           />
         </div>
       )}

@@ -55,11 +55,7 @@ import {
   isValidNablUlrFormat,
   sanitizeNablUlrInput,
 } from './nablUlrNumber'
-import {
-  fetchNextTestReportNumber,
-  isValidTestReportNumberFormat,
-  toCanonicalReportNumber,
-} from './formattedTestReportNumber'
+import { fetchNextTestReportNumber, toCanonicalReportNumber } from './formattedTestReportNumber'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 
@@ -326,10 +322,8 @@ export default function TestReportPreparationMasterPage() {
         setTestReportPrefix(trPrefix)
         setUlrPrefix(ulrPref)
 
-        const storedReport = toCanonicalReportNumber(
-          stripReportScopeSuffix(r.reportNumber ?? ''),
-        )
-        if (storedReport.length > 0 && isValidTestReportNumberFormat(storedReport, trPrefix, 'nabl')) {
+        const storedReport = toCanonicalReportNumber(r.reportNumber ?? '')
+        if (storedReport.length > 0) {
           setReportNumber(storedReport)
         } else {
           const { prefix, number } = await fetchNextTestReportNumber(r.id)
@@ -559,6 +553,17 @@ export default function TestReportPreparationMasterPage() {
       }
       if (uErr) throw uErr
       await saveReportResultRemarks(prepareResultRows)
+      const savedReportNumber = draftPayload.test_report_number
+      setActive((prev) =>
+        prev && prev.id === active.id
+          ? {
+              ...prev,
+              reportNumber: savedReportNumber,
+              draftNotes: draftPayload.test_report_draft_notes,
+              nablUlrNumber: draftPayload.test_report_nabl_ulr_number,
+            }
+          : prev,
+      )
       setSaveMessage('Draft saved.')
       await loadList()
     } catch (e) {

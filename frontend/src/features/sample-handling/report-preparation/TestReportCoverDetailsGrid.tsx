@@ -8,8 +8,8 @@ import {
   toReportNumberForScope,
 } from './formattedTestReportNumber'
 import {
-  formatNablUlrNumber,
-  NABL_ULR_TOTAL_LENGTH,
+  NABL_ULR_CHAR_LENGTH,
+  nablUlrPlaceholder,
   sanitizeNablUlrInput,
   ULR_PREFIX_SETTING_NAMES,
 } from './nablUlrNumber'
@@ -93,9 +93,7 @@ function PartAReportIdentifiersRow({
   const reportPlaceholder = testReportPrefix
     ? toReportNumberForScope(formatTestReportNumber(testReportPrefix, 1), activeScope)
     : '0'.repeat(Math.max(1, TEST_REPORT_TOTAL_LENGTH - 1)) + reportNumberLastCharForScope(activeScope)
-  const ulrPlaceholder = ulrPrefix
-    ? formatNablUlrNumber(ulrPrefix, 1).slice(0, NABL_ULR_TOTAL_LENGTH)
-    : '0'.repeat(Math.max(1, NABL_ULR_TOTAL_LENGTH - 1)) + 'F'
+  const ulrPlaceholder = nablUlrPlaceholder(ulrPrefix)
 
   return (
     <div className="md:col-span-2 border-b border-border/40">
@@ -126,9 +124,9 @@ function PartAReportIdentifiersRow({
             value={nablUlrNumber}
             onChange={(v) => onNablUlrNumberChange(sanitizeNablUlrInput(v))}
             placeholder={ulrPlaceholder}
-            maxLength={NABL_ULR_TOTAL_LENGTH}
+            maxLength={NABL_ULR_CHAR_LENGTH}
             disabled={disabled || ulrPrefixLoading}
-            title={`Same as Part C NABL toolbar · ${ULR_PREFIX_SETTING_NAMES.join(' / ')}`}
+            title={`NABL 18-position ULR (19 chars) · Same as Part C NABL toolbar · ${ULR_PREFIX_SETTING_NAMES.join(' / ')}`}
           />
         ) : null}
       </div>
