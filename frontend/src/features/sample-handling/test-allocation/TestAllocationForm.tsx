@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Pencil, FileText, FolderOpen } from 'lucide-react'
+import { Pencil, FileText, FolderOpen, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import type { TestAllocationRow } from '../types'
 
@@ -24,7 +23,17 @@ export type TestAllocationFormState = {
 }
 
 type EmployeeOption = { id: string; name: string; department: string; designation: string }
-export type TestParamOption = { id: string; label: string; specificRequirement?: string; underAccreditation?: string; isCodeId?: string | null; department?: string | null }
+export type TestParamOption = {
+  id: string
+  label: string
+  specificRequirement?: string
+  underAccreditation?: string
+  clauseNo?: string | null
+  unitValue?: string | null
+  uncertaintyMu?: string | null
+  isCodeId?: string | null
+  department?: string | null
+}
 
 export function TestAllocationForm({
   row,
@@ -47,7 +56,6 @@ export function TestAllocationForm({
   employeesFiltered: EmployeeOption[]
   designationOptions?: string[]
 }) {
-  const navigate = useNavigate()
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(() => new Set(form.testParameterIds))
   const [testParamSearch, setTestParamSearch] = useState('')
   const selectAllHeaderRef = useRef<HTMLInputElement>(null)
@@ -238,6 +246,15 @@ export function TestAllocationForm({
     }
   }
 
+  const openAddTestParameterDirectory = () => {
+    const params = new URLSearchParams({ openAdd: '1' })
+    if (row.isCodeId) params.set('isCodeId', row.isCodeId)
+    if (row.isCodeLabel?.trim()) params.set('isCodeLabel', row.isCodeLabel.trim())
+    if (row.department?.trim()) params.set('department', row.department.trim())
+    if (form.designation?.trim()) params.set('designation', form.designation.trim())
+    window.open(`/masters/test-parameter?${params.toString()}`, '_blank', 'noopener,noreferrer')
+  }
+
   const openViewFilesWindow = async () => {
     if (!row.isCodeId || !row.isCodeLabel) return
     const win = window.open('', '_blank', 'width=700,height=500')
@@ -368,17 +385,18 @@ export function TestAllocationForm({
       </div>
 
       <div className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Label className="text-sm font-medium shrink-0">Test Parameters</Label>
             <Button
               type="button"
-              variant="ghost"
+              variant="default"
               size="sm"
-              className="text-sm font-medium leading-none h-auto py-0 px-0 hover:bg-transparent"
-              onClick={() => navigate('/masters/test-parameter?openAdd=1')}
-              title="Open Add New Test Parameter form"
+              onClick={openAddTestParameterDirectory}
+              title="Add a new test parameter in Test Parameter directory"
             >
-              Test Parameters
+              <Plus className="mr-1 h-4 w-4" />
+              Add Test Parameter
             </Button>
             <Button
               type="button"
@@ -405,19 +423,22 @@ export function TestAllocationForm({
             placeholder="Search in table..."
             value={testParamSearch}
             onChange={(e) => setTestParamSearch(e.target.value)}
-            className="max-w-xs h-9"
+            className="w-full max-w-xs h-9"
           />
         </div>
-        <div className="max-h-48 overflow-y-auto rounded-md border">
+        <p className="text-xs text-muted-foreground">
+          Add opens Test Parameter master in a new tab with this IS Code and department pre-filled. Return here and refresh the list after saving.
+        </p>
+        <div className="max-h-[min(52vh,640px)] overflow-auto rounded-md border">
           {filteredTestParamOptions.length === 0 ? (
             <p className="text-sm text-muted-foreground p-2 text-center">No test parameters for this IS Code &amp; Department.</p>
           ) : searchFilteredOptions.length === 0 ? (
             <p className="text-sm text-muted-foreground p-2 text-center">No matches for &quot;{testParamSearch.trim()}&quot;.</p>
           ) : (
-            <table className="w-full text-sm border-collapse text-center">
+            <table className="w-max min-w-full table-auto text-sm border-collapse">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="w-9 p-2 font-medium">
+                  <th className="w-9 shrink-0 p-2 font-medium">
                     <div className="flex justify-center">
                       <input
                         ref={selectAllHeaderRef}
@@ -428,9 +449,11 @@ export function TestAllocationForm({
                       />
                     </div>
                   </th>
-                  <th className="p-2 font-medium">Test Name</th>
-                  <th className="p-2 font-medium">Specified Requirement</th>
-                  <th className="p-2 font-medium">Under Accreditation</th>
+                  <th className="p-2 font-medium text-left whitespace-nowrap">Test Name</th>
+                  <th className="p-2 px-3 font-medium text-center whitespace-nowrap">Clause Number</th>
+                  <th className="p-2 font-medium text-center whitespace-nowrap">Specified Requirement</th>
+                  <th className="p-2 px-3 font-medium text-center whitespace-nowrap">Uncertainty of Measurement</th>
+                  <th className="p-2 px-3 font-medium text-center whitespace-nowrap">Under Accreditation</th>
                 </tr>
               </thead>
               <tbody>
@@ -440,7 +463,7 @@ export function TestAllocationForm({
                     className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer"
                     onClick={() => toggleTestParam(opt.id)}
                   >
-                    <td className="p-2">
+                    <td className="w-9 shrink-0 p-2">
                       <div className="flex justify-center">
                         <input
                           type="checkbox"
@@ -450,10 +473,13 @@ export function TestAllocationForm({
                         />
                       </div>
                     </td>
-                    <td className="p-2">{opt.label || '-'}</td>
-                    <td className="p-2 text-muted-foreground">
-                      <div className="flex items-center justify-center gap-1">
-                        <span>{displaySpecificRequirement(opt)}</span>
+                    <td className="p-2 text-left align-top whitespace-nowrap">{opt.label || '-'}</td>
+                    <td className="p-2 px-3 text-center align-top text-muted-foreground whitespace-nowrap">
+                      {opt.clauseNo?.trim() || '-'}
+                    </td>
+                    <td className="p-2 text-center align-top text-muted-foreground max-w-md whitespace-normal">
+                      <div className="inline-flex items-center justify-center gap-1">
+                        <span className="break-words">{displaySpecificRequirement(opt)}</span>
                         <Button
                           type="button"
                           size="icon"
@@ -469,7 +495,10 @@ export function TestAllocationForm({
                         </Button>
                       </div>
                     </td>
-                    <td className="p-2">{opt.underAccreditation ?? '-'}</td>
+                    <td className="p-2 px-3 text-center align-top text-muted-foreground whitespace-nowrap">
+                      {opt.uncertaintyMu?.trim() || '-'}
+                    </td>
+                    <td className="p-2 px-3 text-center align-top whitespace-nowrap">{opt.underAccreditation ?? '-'}</td>
                   </tr>
                 ))}
               </tbody>

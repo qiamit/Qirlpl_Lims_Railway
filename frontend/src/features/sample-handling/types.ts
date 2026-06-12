@@ -149,8 +149,14 @@ export type TestAllocationRow = {
   declaredValue?: string | null
   /** True when results were sent for review — view-only until reviewer refers back */
   resultsLocked?: boolean
+  /** Section was referred back from Results Under Review; show in Pending until Send for Review */
+  referredBackFromReview?: boolean
+  /** Section results were approved in Results Under Review */
+  sectionReviewApproved?: boolean
   /** Reviewer name when resultsLocked */
   resultsReviewerName?: string | null
+  /** Parent sample workflow stage — used in Results Under Review grouping */
+  sampleStage?: SampleStage | null
 }
 
 /** Tab 1: Customer & Sample Details */

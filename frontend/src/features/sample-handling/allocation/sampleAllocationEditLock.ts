@@ -15,18 +15,31 @@ export function getSectionCodesInTestAllocation(
   return locked
 }
 
+const LOCKED_ALLOCATION_STAGES = new Set(['test_allocation', 'under_testing', 'results_review'])
+
 /** Block edit when any section code on this SRF is used in Test Allocation (unless referback). */
 export function isSampleAllocationEditLocked(
   row: AllocationRow,
   sampleAllocationIdsWithTestAllocation: Set<string>,
 ): boolean {
+  return areSampleAllocationActionsLocked(row, sampleAllocationIdsWithTestAllocation)
+}
+
+/** Block row actions for allocated SRFs until referback from Test Allocation. Pending rows stay unlocked. */
+export function areSampleAllocationActionsLocked(
+  row: AllocationRow,
+  sampleAllocationIdsWithTestAllocation: Set<string>,
+): boolean {
+  if (row.allocationIds.length === 0) return false
   if (row.sample.referback_from_allocation) return false
+  const stage = (row.sample.stage ?? '').trim().toLowerCase()
+  if (LOCKED_ALLOCATION_STAGES.has(stage)) return true
   return getSectionCodesInTestAllocation(row, sampleAllocationIdsWithTestAllocation).length > 0
 }
 
 export function sampleAllocationEditLockedTitle(lockedSectionCodes: string[]): string {
   if (lockedSectionCodes.length === 0) {
-    return 'Edit locked: this SRF was sent to Test Allocation. Use Refer back to Sample Receiving to return it here.'
+    return 'Actions locked: this SRF is in Test Allocation. Refer back from Test Allocation to unlock.'
   }
-  return `Edit locked: section code(s) ${lockedSectionCodes.join(', ')} are in Test Allocation. Use Refer back to Sample Receiving to unlock.`
+  return `Actions locked: section code(s) ${lockedSectionCodes.join(', ')} are in Test Allocation. Refer back from Test Allocation to unlock.`
 }

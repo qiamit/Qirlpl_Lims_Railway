@@ -1,4 +1,16 @@
 import { supabase } from '@/lib/supabaseClient'
+import { RESULTS_REVIEW_APPROVED_LABEL } from '../results-under-review/resultsUnderReviewPartitions'
+
+/** True when this parameter row is actively with a reviewer (not Approved / cleared). */
+export function isParameterActivelyUnderReview(row: {
+  results_reviewer_id?: string | null
+  results_reviewer_name?: string | null
+}): boolean {
+  if (row.results_reviewer_id) return true
+  const name = row.results_reviewer_name?.trim()
+  if (!name || name === RESULTS_REVIEW_APPROVED_LABEL) return false
+  return true
+}
 
 /** True when this test allocation parameter was sent to Results Under Review. */
 export function isParameterSentForReview(row: {
@@ -6,7 +18,9 @@ export function isParameterSentForReview(row: {
   results_reviewer_name?: string | null
 }): boolean {
   if (row.results_reviewer_id) return true
-  return Boolean(row.results_reviewer_name?.trim())
+  const name = row.results_reviewer_name?.trim()
+  if (!name) return false
+  return true
 }
 
 /**
@@ -29,7 +43,11 @@ export async function fetchSentForReviewTestAllocationIds(
   for (const row of Array.isArray(data) ? data : []) {
     const allocId = (row as { test_allocation_id?: string | null }).test_allocation_id
     if (!allocId) continue
-    if (isParameterSentForReview(row as { results_reviewer_id?: string | null; results_reviewer_name?: string | null })) {
+    if (
+      isParameterSentForReview(
+        row as { results_reviewer_id?: string | null; results_reviewer_name?: string | null },
+      )
+    ) {
       sent.add(allocId)
     }
   }
@@ -58,8 +76,8 @@ export function buildLegacyResultsReviewSampleIds(
 
   for (const [sampleId, allocIds] of allocsBySample) {
     if (samplesStageById.get(sampleId) !== 'results_review') continue
-    const anyReviewer = allocIds.some((id) => sentForReviewAllocIds.has(id))
-    if (!anyReviewer) legacy.add(sampleId)
+    const anyInReviewWorkflow = allocIds.some((id) => sentForReviewAllocIds.has(id))
+    if (!anyInReviewWorkflow) legacy.add(sampleId)
   }
 
   return legacy
@@ -73,10 +91,9 @@ export function shouldHideFromSampleUnderTesting(input: {
   /** Active in Sample Under Testing (incl. refer-back from Results Under Review). */
   sentForTesting?: boolean
 }): boolean {
-  // Sent-for-review sections stay visible (read-only in UI) until reviewer refers back.
-  void input.sentForReviewAllocIds
-  void input.testAllocationId
-  void input.sentForTesting
+  // Sections still marked sent for testing must stay visible — including sibling sections
+  // pending results when the SRF stage is results_review but reviewers were cleared (refer-back).
+  if (input.sentForTesting) return false
   if (input.legacyResultsReviewSampleIds.has(input.sampleId)) return true
   return false
 }

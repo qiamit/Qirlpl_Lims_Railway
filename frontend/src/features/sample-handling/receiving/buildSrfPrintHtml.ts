@@ -1,5 +1,6 @@
 import type { SrfPrintSettings } from '@/features/settings/lab-settings/printSettingsTypes'
 import type { SampleRow } from '../types'
+import { getSampleWorkflowStatusLabel } from '../sampleWorkflowStatus'
 import { buildSrfPrintStylesCss } from './buildSrfPrintStylesCss'
 
 function escapeHtml(s: string): string {
@@ -53,7 +54,7 @@ export function buildSrfPrintHtml(opts: BuildSrfPrintHtmlOptions): string {
   <td>${cell(r.sample_description ?? r.description)}</td>
   <td class="num">${cell(r.tentative_date_required)}</td>
   <td class="num">${cell(r.tentative_date_by_lab)}</td>
-  <td>${cell(r.sample_receiving_status)}</td>
+  <td>${cell(getSampleWorkflowStatusLabel(r))}</td>
   <td>${cell(r.receiving_report_type)}</td>
   <td>${cell(r.test_report_is_code_label)}</td>
   <td>${cell(r.test_required)}</td>

@@ -31,3 +31,29 @@ export function buildTestAllocationRowAssistantContext(row: TestAllocationRow): 
 
   return lines.filter((line) => line.length > 0).join('\n')
 }
+
+/** List-level context for Test Allocation header assistant. */
+export function buildTestAllocationListAssistantContext(
+  rows: TestAllocationRow[],
+  search: string,
+): string {
+  const pending = rows.filter((r) => !r.sentForTesting)
+  const sent = rows.filter((r) => r.sentForTesting)
+  const lines = [
+    'Module: Test Allocation — list assistant',
+    `Search filter: ${search.trim() || '(none)'}`,
+    `Total sections shown: ${rows.length}`,
+    `Pending for testing: ${pending.length}`,
+    `Sent for testing: ${sent.length}`,
+    '',
+    'Sections:',
+    ...rows.slice(0, 50).map((r) => {
+      const status = r.sentForTesting ? 'SENT' : 'PENDING'
+      return `- ${r.sectionCode} | ${status} | IS: ${fmt(r.isCodeLabel)} | ${fmt(r.assignedEmployeeName)} | ${fmt(r.testParameterSummary?.slice(0, 120))}`
+    }),
+    rows.length > 50 ? `… and ${rows.length - 50} more` : '',
+    '',
+    'Referback removes a section from Test Allocation and returns it to Sample Allocation (test parameters cleared).',
+  ]
+  return lines.filter((line) => line.length > 0).join('\n')
+}

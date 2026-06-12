@@ -1,22 +1,152 @@
 import { supabase } from '@/lib/supabaseClient'
-import type { TestAllocationRow } from '../types'
+import type { SampleStage, TestAllocationRow } from '../types'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
+import {
+  departmentsMatch,
+  designationsMatch,
+} from '@/features/sample-handling/shared/departmentMatch'
+import {
+  isActiveReviewerName,
+  isSectionVisibleInResultsUnderReview,
+  isSectionVisibleInScopedResultsUnderReview,
+  RESULTS_REVIEW_APPROVED_LABEL,
+} from './resultsUnderReviewPartitions'
 
-/** All section rows on SRFs in results_review (no reviewer / department filter). */
-export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAllocationRow[]> {
+export type ResultsUnderReviewLoadScope = {
+  department?: string | null
+  designation?: string | null
+}
+
+type SampleMeta = {
+  srf_number: string | null
+  date_of_sample_receiving: string | null
+  isCodeId: string | null
+  isCodeLabel: string | null
+  referbackFromAllocation: boolean
+  sampleDescription: string | null
+  declaredValue: string | null
+  stage: SampleStage | null
+}
+
+type AllocationRow = {
+  id: string
+  sample_id: string
+  section_code: string
+  allocation_date: string | null
+  department: string | null
+  designation: string | null
+}
+
+type TestAllocRow = {
+  id: string
+  sample_allocation_id: string
+  assigned_employee_id?: string | null
+  assigned_employee_name?: string | null
+  test_parameter_summary?: string | null
+  test_parameter_ids?: string[] | null
+  sent_for_testing?: boolean | null
+}
+
+type ParamRow = {
+  id: string
+  test_allocation_id: string
+  test_parameter_id: string | null
+  test_label: string
+  test_start_date: string | null
+  test_end_date: string | null
+  results: string | null
+  specific_requirement: string | null
+  results_reviewer_id: string | null
+  results_reviewer_name: string | null
+}
+
+const REVIEW_SAMPLE_STAGES = ['results_review', 'report_preparation'] as const
+const SCOPED_SAMPLE_STAGES = ['results_review', 'report_preparation', 'under_testing'] as const
+
+function filterAllocationsByScope(
+  allocations: AllocationRow[],
+  scope?: ResultsUnderReviewLoadScope,
+): AllocationRow[] {
+  if (!scope?.department?.trim()) return allocations
+  let filtered = allocations.filter((a) => departmentsMatch(a.department, scope.department))
+  if (scope.designation?.trim()) {
+    filtered = filtered.filter(
+      (a) => !a.designation?.trim() || designationsMatch(a.designation, scope.designation),
+    )
+  }
+  return filtered
+}
+
+function pickTestAllocationPerSection(
+  taList: TestAllocRow[],
+  paramsByAllocationId: Map<string, ParamRow[]>,
+): TestAllocRow[] {
+  const byAlloc = new Map<string, TestAllocRow[]>()
+  for (const ta of taList) {
+    const allocId = String(ta.sample_allocation_id ?? '').trim()
+    if (!allocId) continue
+    if (!byAlloc.has(allocId)) byAlloc.set(allocId, [])
+    byAlloc.get(allocId)!.push(ta)
+  }
+
+  const score = (ta: TestAllocRow): number => {
+    const params = paramsByAllocationId.get(ta.id) ?? []
+    const approved = params.some(
+      (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+    )
+    const activeReviewer = params.some(
+      (p) => p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name),
+    )
+    let value = 0
+    if (approved) value += 4
+    if (activeReviewer) value += 3
+    if (ta.sent_for_testing) value += 2
+    return value
+  }
+
+  const picked: TestAllocRow[] = []
+  for (const list of byAlloc.values()) {
+    const best = [...list].sort((a, b) => score(b) - score(a))[0]
+    if (best) picked.push(best)
+  }
+  return picked
+}
+
+async function loadIsCodeMap(isCodeIds: string[]): Promise<Map<string, string>> {
+  if (isCodeIds.length === 0) return new Map()
+  const { data: isCodeData } = await supabase
+    .from('is_codes')
+    .select('id, is_number, revision_year')
+    .in('id', isCodeIds)
+  const isCodes = Array.isArray(isCodeData) ? isCodeData : []
+  return new Map(
+    isCodes.map(
+      (c: { id: string; is_number?: string; revision_year?: string | null }) => [
+        c.id,
+        c.revision_year ? `${c.is_number ?? ''} : ${c.revision_year}` : (c.is_number ?? c.id),
+      ],
+    ),
+  )
+}
+
+async function loadSamplesMap(
+  sampleIds: string[],
+  stages: readonly string[],
+): Promise<Map<string, SampleMeta>> {
+  if (sampleIds.length === 0) return new Map()
+
   const { data: sampleRows, error: sampleErr } = await supabase
     .from('samples')
     .select(
-      'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration',
+      'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration, stage',
     )
-    .eq('stage', 'results_review')
+    .in('id', sampleIds)
+    .in('stage', [...stages])
     .order('created_at', { ascending: false })
   if (sampleErr) throw sampleErr
 
   const samples = Array.isArray(sampleRows) ? sampleRows : []
-  if (samples.length === 0) return []
-
-  const sampleIds = samples.map((s) => String((s as { id: string }).id))
+  if (samples.length === 0) return new Map()
 
   const isCodeIds = [
     ...new Set(
@@ -25,25 +155,9 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
         .filter(Boolean),
     ),
   ] as string[]
+  const isCodeMap = await loadIsCodeMap(isCodeIds)
 
-  let isCodeMap = new Map<string, string>()
-  if (isCodeIds.length > 0) {
-    const { data: isCodeData } = await supabase
-      .from('is_codes')
-      .select('id, is_number, revision_year')
-      .in('id', isCodeIds)
-    const isCodes = Array.isArray(isCodeData) ? isCodeData : []
-    isCodeMap = new Map(
-      isCodes.map(
-        (c: { id: string; is_number?: string; revision_year?: string | null }) => [
-          c.id,
-          c.revision_year ? `${c.is_number ?? ''} : ${c.revision_year}` : (c.is_number ?? c.id),
-        ],
-      ),
-    )
-  }
-
-  const samplesMap = new Map(
+  return new Map(
     samples.map(
       (s: {
         id: string
@@ -53,6 +167,7 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
         referback_from_allocation?: boolean | null
         sample_description?: string | null
         sample_declaration?: string | null
+        stage?: string | null
       }) => [
         s.id,
         {
@@ -65,96 +180,178 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
           referbackFromAllocation: !!s.referback_from_allocation,
           sampleDescription: s.sample_description ?? null,
           declaredValue: s.sample_declaration ?? null,
+          stage: (s.stage as SampleStage | null) ?? null,
         },
       ],
     ),
   )
+}
 
-  const { data: allocData, error: allocErr } = await supabase
-    .from('sample_allocations')
-    .select('id, sample_id, section_code, allocation_date, department, designation')
-    .in('sample_id', sampleIds)
-  if (allocErr) throw allocErr
+async function loadParamsByAllocationId(
+  allocationIds: string[],
+): Promise<Map<string, ParamRow[]>> {
+  const map = new Map<string, ParamRow[]>()
+  if (allocationIds.length === 0) return map
 
-  const allocations = Array.isArray(allocData) ? allocData : []
-  if (allocations.length === 0) return []
-
-  const allocMap = new Map(allocations.map((a: { id: string }) => [a.id, a]))
-  const allocIds = allocations.map((a: { id: string }) => a.id)
-
-  const { data: testAllocData, error: taErr } = await supabase
-    .from('test_allocations')
+  const { data: paramData, error: paramErr } = await supabase
+    .from('test_allocation_parameters')
     .select(
-      'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids',
+      'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement, results_reviewer_id, results_reviewer_name',
     )
-    .in('sample_allocation_id', allocIds)
-    .order('created_at', { ascending: false })
-  if (taErr) throw taErr
+    .in('test_allocation_id', allocationIds)
+  if (paramErr) throw paramErr
 
-  const testAllocs = Array.isArray(testAllocData) ? testAllocData : []
-  if (testAllocs.length === 0) return []
-
-  const allocationIds = testAllocs.map((t: { id: string }) => t.id)
-  let paramsByAllocationId = new Map<
-    string,
-    {
-      id: string
-      test_allocation_id: string
-      test_parameter_id: string | null
-      test_label: string
-      test_start_date: string | null
-      test_end_date: string | null
-      results: string | null
-    }[]
-  >()
-
-  if (allocationIds.length > 0) {
-    const { data: paramData, error: paramErr } = await supabase
-      .from('test_allocation_parameters')
-      .select(
-        'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement',
-      )
-      .in('test_allocation_id', allocationIds)
-    if (paramErr) throw paramErr
-
-    const map = new Map<
-      string,
-      {
-        id: string
-        test_allocation_id: string
-        test_parameter_id: string | null
-        test_label: string
-        test_start_date: string | null
-        test_end_date: string | null
-        results: string | null
-        specific_requirement: string | null
-      }[]
-    >()
-    for (const p of Array.isArray(paramData) ? paramData : []) {
-      const key = String((p as { test_allocation_id?: string }).test_allocation_id ?? '')
-      if (!key) continue
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push({
-        id: String((p as { id: string }).id),
-        test_allocation_id: key,
-        test_parameter_id: (p as { test_parameter_id?: string | null }).test_parameter_id ?? null,
-        test_label: String((p as { test_label?: string }).test_label ?? ''),
-        test_start_date: (p as { test_start_date?: string | null }).test_start_date ?? null,
-        test_end_date: (p as { test_end_date?: string | null }).test_end_date ?? null,
-        results: (p as { results?: string | null }).results ?? null,
-        specific_requirement: (p as { specific_requirement?: string | null }).specific_requirement ?? null,
-      })
-    }
-    paramsByAllocationId = map
+  for (const p of Array.isArray(paramData) ? paramData : []) {
+    const key = String((p as { test_allocation_id?: string }).test_allocation_id ?? '')
+    if (!key) continue
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push({
+      id: String((p as { id: string }).id),
+      test_allocation_id: key,
+      test_parameter_id: (p as { test_parameter_id?: string | null }).test_parameter_id ?? null,
+      test_label: String((p as { test_label?: string }).test_label ?? ''),
+      test_start_date: (p as { test_start_date?: string | null }).test_start_date ?? null,
+      test_end_date: (p as { test_end_date?: string | null }).test_end_date ?? null,
+      results: (p as { results?: string | null }).results ?? null,
+      specific_requirement: (p as { specific_requirement?: string | null }).specific_requirement ?? null,
+      results_reviewer_id: (p as { results_reviewer_id?: string | null }).results_reviewer_id ?? null,
+      results_reviewer_name: (p as { results_reviewer_name?: string | null }).results_reviewer_name ?? null,
+    })
   }
+  return map
+}
 
+function buildRowsFromTestAllocs(input: {
+  testAllocs: TestAllocRow[]
+  allocMap: Map<string, AllocationRow>
+  samplesMap: Map<string, SampleMeta>
+  paramsByAllocationId: Map<string, ParamRow[]>
+  testParamMetaById: Map<string, { name: string; specificRequirement: string | null }>
+}): TestAllocationRow[] {
+  const { testAllocs, allocMap, samplesMap, paramsByAllocationId, testParamMetaById } = input
+
+  return testAllocs
+    .map((t) => {
+      const a = allocMap.get(t.sample_allocation_id)
+      if (!a) return null
+      const sample = samplesMap.get(a.sample_id)
+      if (!sample) return null
+
+      const params = paramsByAllocationId.get(t.id) ?? []
+      const reviewerRow = params.find(
+        (p) => p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name),
+      )
+      const approvedRow = params.find(
+        (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+      )
+      let parameterRows = params.map((p) => ({
+        id: p.id,
+        testAllocationId: p.test_allocation_id,
+        testParameterId: p.test_parameter_id,
+        testLabel: p.test_label,
+        sectionSpecOverride: p.specific_requirement ?? null,
+        specificRequirement: resolveSectionSpecificRequirement(
+          p.specific_requirement,
+          p.test_parameter_id
+            ? testParamMetaById.get(p.test_parameter_id)?.specificRequirement
+            : null,
+        ),
+        testStartDate: p.test_start_date,
+        testEndDate: p.test_end_date,
+        results: p.results,
+        resultsReviewerId: p.results_reviewer_id,
+        resultsReviewerName: p.results_reviewer_name,
+      }))
+
+      if (parameterRows.length === 0) {
+        const summaryStr = (t.test_parameter_summary ?? '').trim()
+        const ids = Array.isArray(t.test_parameter_ids)
+          ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
+          : []
+        let labels = summaryStr
+          ? summaryStr.split(',').map((x) => x.trim()).filter(Boolean)
+          : []
+        if (labels.length === 0 && ids.length > 0) {
+          labels = ids.map((id) => testParamMetaById.get(id)?.name ?? id)
+        } else {
+          for (let i = labels.length; i < ids.length; i += 1) {
+            const id = ids[i]!
+            labels.push(testParamMetaById.get(id)?.name ?? id)
+          }
+        }
+        if (labels.length > 0) {
+          parameterRows = labels.map((label, i) => {
+            const tpId = ids[i] ?? null
+            return {
+              id: '',
+              testAllocationId: t.id,
+              testParameterId: tpId,
+              testLabel: label,
+              sectionSpecOverride: null,
+              specificRequirement: tpId
+                ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
+                : null,
+              testStartDate: null,
+              testEndDate: null,
+              results: null,
+            }
+          })
+        }
+      }
+
+      return {
+        testAllocationId: t.id,
+        sampleAllocationId: a.id,
+        sampleId: a.sample_id,
+        sectionCode: a.section_code,
+        isCodeId: sample.isCodeId ?? null,
+        isCodeLabel: sample.isCodeLabel ?? null,
+        sampleDescription: sample.sampleDescription ?? null,
+        declaredValue: sample.declaredValue ?? null,
+        sampleStage: sample.stage ?? null,
+        resultsReviewerName:
+          reviewerRow?.results_reviewer_name ??
+          approvedRow?.results_reviewer_name ??
+          null,
+        srfNumber: sample.srf_number ?? null,
+        allocationDate: a.allocation_date ?? sample.date_of_sample_receiving ?? null,
+        department: a.department ?? null,
+        designation: a.designation ?? null,
+        testParameterSummary: t.test_parameter_summary ?? null,
+        testParameterIds: [
+          ...new Set([
+            ...parameterRows
+              .map((p) => p.testParameterId)
+              .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
+            ...(Array.isArray(t.test_parameter_ids)
+              ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
+              : []),
+          ]),
+        ],
+        assignedEmployeeId: t.assigned_employee_id ?? null,
+        assignedEmployeeName: t.assigned_employee_name ?? null,
+        referbackFromAllocation: sample.referbackFromAllocation ?? false,
+        sentForTesting: Boolean(t.sent_for_testing),
+        testStartDate: null,
+        results: null,
+        testEndDate: null,
+        parameters: parameterRows,
+      } satisfies TestAllocationRow
+    })
+    .filter((r): r is TestAllocationRow => r != null)
+}
+
+async function loadTestParamMetaById(
+  testAllocs: TestAllocRow[],
+  paramsByAllocationId: Map<string, ParamRow[]>,
+): Promise<Map<string, { name: string; specificRequirement: string | null }>> {
   const tpIdsForLookup = new Set<string>()
   for (const params of paramsByAllocationId.values()) {
     for (const p of params) {
       if (p.test_parameter_id) tpIdsForLookup.add(p.test_parameter_id)
     }
   }
-  for (const t of testAllocs as { test_parameter_ids?: unknown }[]) {
+  for (const t of testAllocs) {
     const raw = t.test_parameter_ids
     if (!Array.isArray(raw)) continue
     for (const id of raw) {
@@ -163,131 +360,135 @@ export async function loadResultsUnderReviewRowsForDirector(): Promise<TestAlloc
   }
 
   const testParamMetaById = new Map<string, { name: string; specificRequirement: string | null }>()
-  if (tpIdsForLookup.size > 0) {
-    const { data: tpMetaRows } = await supabase
-      .from('test_parameters')
-      .select('id, item_name, specific_requirement')
-      .in('id', [...tpIdsForLookup])
-    for (const row of Array.isArray(tpMetaRows) ? tpMetaRows : []) {
-      const r = row as { id: string; item_name?: string | null; specific_requirement?: string | null }
-      testParamMetaById.set(r.id, {
-        name: (r.item_name ?? '').trim() || r.id,
-        specificRequirement: (r.specific_requirement ?? '').trim() || null,
-      })
-    }
+  if (tpIdsForLookup.size === 0) return testParamMetaById
+
+  const { data: tpMetaRows } = await supabase
+    .from('test_parameters')
+    .select('id, item_name, specific_requirement')
+    .in('id', [...tpIdsForLookup])
+  for (const row of Array.isArray(tpMetaRows) ? tpMetaRows : []) {
+    const r = row as { id: string; item_name?: string | null; specific_requirement?: string | null }
+    testParamMetaById.set(r.id, {
+      name: (r.item_name ?? '').trim() || r.id,
+      specificRequirement: (r.specific_requirement ?? '').trim() || null,
+    })
   }
+  return testParamMetaById
+}
 
-  return testAllocs
-    .map(
-      (t: {
-        id: string
-        sample_allocation_id: string
-        assigned_employee_id?: string | null
-        assigned_employee_name?: string | null
-        test_parameter_summary?: string | null
-        test_parameter_ids?: string[] | null
-      }) => {
-        const a = allocMap.get(t.sample_allocation_id) as
-          | {
-              id: string
-              sample_id: string
-              section_code: string
-              allocation_date: string | null
-              department: string | null
-              designation: string | null
-            }
-          | undefined
-        if (!a) return null
-        const sample = samplesMap.get(a.sample_id)
-        if (!sample) return null
+async function loadResultsUnderReviewRowsForDepartmentScope(
+  scope: ResultsUnderReviewLoadScope,
+): Promise<TestAllocationRow[]> {
+  const { data: allocData, error: allocErr } = await supabase
+    .from('sample_allocations')
+    .select('id, sample_id, section_code, allocation_date, department, designation')
+  if (allocErr) throw allocErr
 
-        const params = paramsByAllocationId.get(t.id) ?? []
-        let parameterRows = params.map((p) => ({
-          id: p.id,
-          testAllocationId: p.test_allocation_id,
-          testParameterId: p.test_parameter_id,
-          testLabel: p.test_label,
-          sectionSpecOverride: p.specific_requirement ?? null,
-          specificRequirement: resolveSectionSpecificRequirement(
-            p.specific_requirement,
-            p.test_parameter_id
-              ? testParamMetaById.get(p.test_parameter_id)?.specificRequirement
-              : null,
-          ),
-          testStartDate: p.test_start_date,
-          testEndDate: p.test_end_date,
-          results: p.results,
-        }))
+  const allocations = filterAllocationsByScope(
+    (Array.isArray(allocData) ? allocData : []) as AllocationRow[],
+    scope,
+  )
+  if (allocations.length === 0) return []
 
-        if (parameterRows.length === 0) {
-          const summaryStr = (t.test_parameter_summary ?? '').trim()
-          const ids = Array.isArray(t.test_parameter_ids)
-            ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-            : []
-          let labels = summaryStr
-            ? summaryStr.split(',').map((x) => x.trim()).filter(Boolean)
-            : []
-          if (labels.length === 0 && ids.length > 0) {
-            labels = ids.map((id) => testParamMetaById.get(id)?.name ?? id)
-          } else {
-            for (let i = labels.length; i < ids.length; i += 1) {
-              const id = ids[i]!
-              labels.push(testParamMetaById.get(id)?.name ?? id)
-            }
-          }
-          if (labels.length > 0) {
-            parameterRows = labels.map((label, i) => {
-              const tpId = ids[i] ?? null
-              return {
-                id: '',
-                testAllocationId: t.id,
-                testParameterId: tpId,
-                testLabel: label,
-                sectionSpecOverride: null,
-                specificRequirement: tpId
-                  ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
-                  : null,
-                testStartDate: null,
-                testEndDate: null,
-                results: null,
-              }
-            })
-          }
-        }
+  const sampleIds = [...new Set(allocations.map((a) => a.sample_id).filter(Boolean))]
+  const samplesMap = await loadSamplesMap(sampleIds, SCOPED_SAMPLE_STAGES)
+  if (samplesMap.size === 0) return []
 
-        return {
-          testAllocationId: t.id,
-          sampleAllocationId: a.id,
-          sampleId: a.sample_id,
-          sectionCode: a.section_code,
-          isCodeId: sample.isCodeId ?? null,
-          isCodeLabel: sample.isCodeLabel ?? null,
-          sampleDescription: sample.sampleDescription ?? null,
-          declaredValue: sample.declaredValue ?? null,
-          srfNumber: sample.srf_number ?? null,
-          allocationDate: a.allocation_date ?? sample.date_of_sample_receiving ?? null,
-          department: a.department ?? null,
-          designation: a.designation ?? null,
-          testParameterSummary: t.test_parameter_summary ?? null,
-          testParameterIds: [
-            ...new Set([
-              ...parameterRows
-                .map((p) => p.testParameterId)
-                .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
-              ...(Array.isArray(t.test_parameter_ids)
-                ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-                : []),
-            ]),
-          ],
-          assignedEmployeeId: t.assigned_employee_id ?? null,
-          assignedEmployeeName: t.assigned_employee_name ?? null,
-          referbackFromAllocation: sample.referbackFromAllocation ?? false,
-          testStartDate: null,
-          results: null,
-          testEndDate: null,
-          parameters: parameterRows,
-        } satisfies TestAllocationRow
-      },
+  const scopedAllocations = allocations.filter((a) => samplesMap.has(a.sample_id))
+  if (scopedAllocations.length === 0) return []
+
+  const allocMap = new Map(scopedAllocations.map((a) => [a.id, a]))
+  const allocIds = scopedAllocations.map((a) => a.id)
+
+  const { data: testAllocData, error: taErr } = await supabase
+    .from('test_allocations')
+    .select(
+      'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing',
     )
-    .filter((r): r is TestAllocationRow => r != null)
+    .in('sample_allocation_id', allocIds)
+    .order('created_at', { ascending: false })
+  if (taErr) throw taErr
+
+  const rawTestAllocs = (Array.isArray(testAllocData) ? testAllocData : []) as TestAllocRow[]
+  if (rawTestAllocs.length === 0) return []
+
+  const paramsByAllocationId = await loadParamsByAllocationId(
+    rawTestAllocs.map((t) => t.id),
+  )
+  const testAllocs = pickTestAllocationPerSection(rawTestAllocs, paramsByAllocationId)
+  const testParamMetaById = await loadTestParamMetaById(testAllocs, paramsByAllocationId)
+
+  return buildRowsFromTestAllocs({
+    testAllocs,
+    allocMap,
+    samplesMap,
+    paramsByAllocationId,
+    testParamMetaById,
+  }).filter(isSectionVisibleInScopedResultsUnderReview)
+}
+
+async function loadResultsUnderReviewRowsUnscoped(): Promise<TestAllocationRow[]> {
+  const { data: sampleRows, error: sampleErr } = await supabase
+    .from('samples')
+    .select(
+      'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration, stage',
+    )
+    .in('stage', [...REVIEW_SAMPLE_STAGES])
+    .order('created_at', { ascending: false })
+  if (sampleErr) throw sampleErr
+
+  const samples = Array.isArray(sampleRows) ? sampleRows : []
+  if (samples.length === 0) return []
+
+  const sampleIds = samples.map((s) => String((s as { id: string }).id))
+  const fullSamplesMap = await loadSamplesMap(sampleIds, REVIEW_SAMPLE_STAGES)
+  if (fullSamplesMap.size === 0) return []
+
+  const { data: allocData, error: allocErr } = await supabase
+    .from('sample_allocations')
+    .select('id, sample_id, section_code, allocation_date, department, designation')
+    .in('sample_id', sampleIds)
+  if (allocErr) throw allocErr
+
+  const allocations = Array.isArray(allocData) ? (allocData as AllocationRow[]) : []
+  if (allocations.length === 0) return []
+
+  const allocMap = new Map(allocations.map((a) => [a.id, a]))
+  const allocIds = allocations.map((a) => a.id)
+
+  const { data: testAllocData, error: taErr } = await supabase
+    .from('test_allocations')
+    .select(
+      'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing',
+    )
+    .in('sample_allocation_id', allocIds)
+    .order('created_at', { ascending: false })
+  if (taErr) throw taErr
+
+  const rawTestAllocs = (Array.isArray(testAllocData) ? testAllocData : []) as TestAllocRow[]
+  if (rawTestAllocs.length === 0) return []
+
+  const paramsByAllocationId = await loadParamsByAllocationId(
+    rawTestAllocs.map((t) => t.id),
+  )
+  const testAllocs = pickTestAllocationPerSection(rawTestAllocs, paramsByAllocationId)
+  const testParamMetaById = await loadTestParamMetaById(testAllocs, paramsByAllocationId)
+
+  return buildRowsFromTestAllocs({
+    testAllocs,
+    allocMap,
+    samplesMap: fullSamplesMap,
+    paramsByAllocationId,
+    testParamMetaById,
+  }).filter(isSectionVisibleInResultsUnderReview)
+}
+
+/** Section rows on SRFs in results review workflow. Optional scope filters by allocation department/designation. */
+export async function loadResultsUnderReviewRowsForDirector(
+  scope?: ResultsUnderReviewLoadScope,
+): Promise<TestAllocationRow[]> {
+  if (scope?.department?.trim()) {
+    return loadResultsUnderReviewRowsForDepartmentScope(scope)
+  }
+  return loadResultsUnderReviewRowsUnscoped()
 }

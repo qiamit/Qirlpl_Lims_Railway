@@ -6,8 +6,13 @@ import {
   deleteSamplesByIds,
 } from '@/features/sample-handling/shared/deleteSampleRecords'
 import { supabase } from '@/lib/supabaseClient'
-import { referbackSectionsToResultsReview } from '@/features/sample-handling/completed-results/referbackIssuedTestReport'
-import { TestReportReferbackToReviewDialog } from './TestReportReferbackToReviewDialog'
+import {
+  TestReportReferbackToReviewDialog,
+  type TestReportReferbackSubmitPayload,
+} from './TestReportReferbackToReviewDialog'
+import { referbackSectionFromReportPreparation } from './referbackFromReportPreparation'
+import { getSampleWorkflowStatusLabel } from '@/features/sample-handling/sampleWorkflowStatus'
+import type { SampleStage } from '@/features/sample-handling/types'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -31,10 +36,17 @@ import {
 import { partBDetailsToSampleUpdate, type TestReportPartBDetails } from './testReportPartB'
 import {
   fetchReportPrepLetterheads,
+  LETTERHEAD_NOT_APPLICABLE,
   letterheadsToSampleUpdate,
   type LetterheadTemplateOptions,
   type ReportPrepLetterheadsByScope,
 } from './reportPrepLetterhead'
+
+const DEFAULT_SCOPE_LETTERHEADS = {
+  headerName: LETTERHEAD_NOT_APPLICABLE,
+  footerName: LETTERHEAD_NOT_APPLICABLE,
+  watermarkName: LETTERHEAD_NOT_APPLICABLE,
+}
 import {
   fetchReportResultRowsForSample,
   filterReportRowsByScope,
@@ -59,10 +71,9 @@ import { fetchNextTestReportNumber, toCanonicalReportNumber } from './formattedT
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import {
-  fetchSampleReceivingEditUnlocked,
-  setSampleReceivingEditUnlocked,
-} from '@/features/sample-handling/receiving/sampleReceivingEditUnlock'
-
+  sortTestReportPreparationRows,
+  type TestReportPreparationSortKey,
+} from './sortTestReportPreparationRows'
 type ListRow = ReportPreparationListRow
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
@@ -82,6 +93,8 @@ export default function TestReportPreparationMasterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<TestReportPreparationSortKey>('dateReceiving')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
@@ -107,12 +120,10 @@ export default function TestReportPreparationMasterPage() {
     watermarks: [],
   })
   const [letterheadsByScope, setLetterheadsByScope] = useState<ReportPrepLetterheadsByScope>({
-    nabl: { headerName: '', footerName: '', watermarkName: '' },
-    non_nabl: { headerName: '', footerName: '', watermarkName: '' },
+    nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
+    non_nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
   })
   const [coverLoading, setCoverLoading] = useState(false)
-  const [sampleReceivingEditUnlocked, setSampleReceivingEditUnlockedState] = useState(false)
-  const [sampleReceivingEditUnlockLoading, setSampleReceivingEditUnlockLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
   const [issueLoading, setIssueLoading] = useState(false)
   const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
@@ -176,16 +187,6 @@ export default function TestReportPreparationMasterPage() {
         const sampleId = String((row as { id?: string }).id ?? '').trim()
         const stage = String((row as { stage?: string }).stage ?? '').trim()
         if (!sampleId) continue
-
-        if (stage === 'report_preparation') {
-          readySamples.push(row as Record<string, unknown>)
-          continue
-        }
-
-        // Do not pull SRFs out of Results Under Review when this page loads.
-        if (stage === 'results_review') {
-          continue
-        }
 
         const ready = await isSampleReadyForReportPreparation(sampleId)
         if (ready) {
@@ -265,17 +266,6 @@ export default function TestReportPreparationMasterPage() {
   }, [dialogOpen, active?.id, active?.clientName, active?.isCodeLabel])
 
   useEffect(() => {
-    if (!dialogOpen || !active) return
-    const refreshUnlock = () => {
-      void fetchSampleReceivingEditUnlocked(active.id)
-        .then(setSampleReceivingEditUnlockedState)
-        .catch(() => {})
-    }
-    window.addEventListener('focus', refreshUnlock)
-    return () => window.removeEventListener('focus', refreshUnlock)
-  }, [dialogOpen, active?.id])
-
-  useEffect(() => {
     if (!dialogOpen || !active || !applicableScopesKey) return
     const scopes = getApplicableReportScopes(prepareResultRows)
     void fetchReportPrepLetterheads(active.id, scopes)
@@ -320,11 +310,10 @@ export default function TestReportPreparationMasterPage() {
     setPrepareResultRows([])
     setCoverDetails(null)
     setPartBDetails(null)
-    setSampleReceivingEditUnlockedState(false)
     setLetterheadOptions({ headers: [], footers: [], watermarks: [] })
     setLetterheadsByScope({
-      nabl: { headerName: '', footerName: '', watermarkName: '' },
-      non_nabl: { headerName: '', footerName: '', watermarkName: '' },
+      nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
+      non_nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
     })
     setPrepareResultsLoading(true)
     setCoverLoading(true)
@@ -334,9 +323,6 @@ export default function TestReportPreparationMasterPage() {
       .finally(() => setPrepareResultsLoading(false))
     setUlrPrefixLoading(true)
     setReportNumberLoading(true)
-    void fetchSampleReceivingEditUnlocked(r.id)
-      .then(setSampleReceivingEditUnlockedState)
-      .catch(() => setSampleReceivingEditUnlockedState(false))
 
     void (async () => {
       try {
@@ -421,11 +407,26 @@ export default function TestReportPreparationMasterPage() {
     )
   }, [rows, search])
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const paged = useMemo(
-    () => filtered.slice((page - 1) * pageSize, page * pageSize),
-    [filtered, page, pageSize],
+  const sorted = useMemo(
+    () => sortTestReportPreparationRows(filtered, sortKey, sortDir),
+    [filtered, sortKey, sortDir],
   )
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const paged = useMemo(
+    () => sorted.slice((page - 1) * pageSize, page * pageSize),
+    [sorted, page, pageSize],
+  )
+
+  const handleSort = (key: TestReportPreparationSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+    setPage(1)
+  }
 
   const selectedRows = useMemo(
     () => rows.filter((r) => selectedIds.has(r.id)),
@@ -481,7 +482,7 @@ export default function TestReportPreparationMasterPage() {
   }
 
   const handlePrintSelected = () => {
-    const exportRows = selectedRows.length > 0 ? selectedRows : filtered
+    const exportRows = selectedRows.length > 0 ? selectedRows : sorted
     if (exportRows.length === 0) return
     const html = buildListPrintHtml(exportRows)
     const iframe = document.createElement('iframe')
@@ -543,28 +544,7 @@ export default function TestReportPreparationMasterPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, pageSize])
-
-  const handleSampleReceivingEditUnlockedChange = async (unlocked: boolean) => {
-    if (!active) return
-    const previous = sampleReceivingEditUnlocked
-    setSampleReceivingEditUnlockedState(unlocked)
-    setSampleReceivingEditUnlockLoading(true)
-    setSaveMessage(null)
-    try {
-      await setSampleReceivingEditUnlocked(active.id, unlocked)
-      setSaveMessage(
-        unlocked
-          ? 'Sample Receiving edit unlocked. It will lock again automatically after you save there.'
-          : 'Sample Receiving edit blocked.',
-      )
-    } catch (err) {
-      setSampleReceivingEditUnlockedState(previous)
-      setSaveMessage(err instanceof Error ? err.message : 'Unable to update Sample Receiving edit lock.')
-    } finally {
-      setSampleReceivingEditUnlockLoading(false)
-    }
-  }
+  }, [search, pageSize, sortKey, sortDir])
 
   const handleSaveDraft = async () => {
     if (!active) return
@@ -691,23 +671,36 @@ export default function TestReportPreparationMasterPage() {
     setReferbackDialogOpen(true)
   }
 
-  const submitReferbackToResultsReview = async (
-    sections: Array<{ testAllocationId: string; reviewer: { id: string; name: string } }>,
-  ) => {
+  const targetStageLabel = (stage: SampleStage | 'report_preparation') =>
+    getSampleWorkflowStatusLabel({
+      stage: stage === 'report_preparation' ? 'report_preparation' : stage,
+      sample_receiving_status: null,
+      status: null,
+    })
+
+  const submitReferback = async (payload: TestReportReferbackSubmitPayload) => {
     const row = referbackRow
     if (!row?.id) return
     const label = row.srfNumber?.trim() || 'this SRF'
     setReferbackBusyId(row.id)
     setReferbackSubmitError(null)
     try {
-      const { allSectionsReferred } = await referbackSectionsToResultsReview(row.id, sections)
+      const { sampleStage } = await referbackSectionFromReportPreparation({
+        sampleId: row.id,
+        sampleAllocationId: payload.sampleAllocationId,
+        testAllocationId: payload.testAllocationId,
+        targetStage: payload.targetStage,
+        remark: payload.remark,
+        assignee: payload.assignee,
+      })
       setReferbackDialogOpen(false)
       setReferbackRow(null)
-      if (active?.id === row.id && allSectionsReferred) {
+      const leftReportPrep = sampleStage !== 'report_preparation'
+      if (active?.id === row.id && leftReportPrep) {
         setDialogOpen(false)
         setActive(null)
       }
-      if (allSectionsReferred) {
+      if (leftReportPrep) {
         setSelectedIds((prev) => {
           const next = new Set(prev)
           next.delete(row.id)
@@ -715,11 +708,10 @@ export default function TestReportPreparationMasterPage() {
         })
       }
       await loadList()
-      const codes = sections.length
       setSaveMessage(
-        allSectionsReferred
-          ? `${label} — all section(s) referred back to Results Under Review.`
-          : `${label} — ${codes} section(s) referred back. SRF remains in Test Report Preparation for other sections.`,
+        leftReportPrep
+          ? `${label} — section referred back to ${targetStageLabel(sampleStage)}.`
+          : `${label} — section referred back. SRF remains in Test Report Preparation for other sections.`,
       )
     } catch (e) {
       setReferbackSubmitError(e instanceof Error ? e.message : 'Referback failed')
@@ -738,7 +730,7 @@ export default function TestReportPreparationMasterPage() {
           setPageSize(size)
           setPage(1)
         }}
-        assistantRows={filtered}
+        assistantRows={sorted}
       />
 
       <TestReportPreparationTable
@@ -754,6 +746,9 @@ export default function TestReportPreparationMasterPage() {
         onReferback={openReferbackToReviewDialog}
         referbackBusyId={referbackBusyId}
         canReferback={Boolean(user?.id)}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
       />
 
       <SampleSrfViewDialog
@@ -830,11 +825,6 @@ export default function TestReportPreparationMasterPage() {
             rows.map((r) => (r.rowKey === rowKey ? { ...r, remark } : r)),
           )
         }}
-        sampleReceivingEditUnlocked={sampleReceivingEditUnlocked}
-        onSampleReceivingEditUnlockedChange={(unlocked) => {
-          void handleSampleReceivingEditUnlockedChange(unlocked)
-        }}
-        sampleReceivingEditUnlockLoading={sampleReceivingEditUnlockLoading}
       />
 
       <Dialog
@@ -880,9 +870,7 @@ export default function TestReportPreparationMasterPage() {
         }}
         sampleId={referbackRow?.id ?? null}
         srfNumber={referbackRow?.srfNumber}
-        defaultEmployeeId={user?.id}
-        defaultDesignation={designation}
-        onSubmit={submitReferbackToResultsReview}
+        onSubmit={submitReferback}
         submitLoading={referbackBusyId === referbackRow?.id}
         submitError={referbackSubmitError}
       />

@@ -1,5 +1,3 @@
-import { Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
@@ -9,7 +7,6 @@ export function SampleAllocationHeaderBar({
   onSearchChange,
   pageSize,
   onPageSizeChange,
-  onNew,
   assistantContext,
   onAssistantDataChanged,
 }: {
@@ -17,7 +14,6 @@ export function SampleAllocationHeaderBar({
   onSearchChange: (value: string) => void
   pageSize: number
   onPageSizeChange: (size: number) => void
-  onNew: () => void
   assistantContext: string
   onAssistantDataChanged?: () => void
 }) {
@@ -43,26 +39,19 @@ export function SampleAllocationHeaderBar({
         </div>
       </div>
       <div className="flex items-center justify-end">
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <QiAssistant
-            page="samples/allocation"
-            pageTitle="Sample Allocation"
-            contextSummary={assistantContext}
-            suggestedQuestions={[
-              'Which SRFs are allocated to the Mechanical department?',
-              'Add a new section code for an SRF',
-              'Update department or quantity for a section code',
-              'Explain the difference between Sample Allocation and Test Allocation',
-            ]}
-            onDataChanged={onAssistantDataChanged}
-          />
-          <Button type="button" className="gap-2" onClick={onNew}>
-            <Plus size={16} />
-            Add a Section Code
-          </Button>
-        </div>
+        <QiAssistant
+          page="samples/allocation"
+          pageTitle="Sample Allocation"
+          contextSummary={assistantContext}
+          suggestedQuestions={[
+            'Which SRFs are allocated to the Mechanical department?',
+            'Add a new section code for an SRF',
+            'Update department or quantity for a section code',
+            'Explain the difference between Sample Allocation and Test Allocation',
+          ]}
+          onDataChanged={onAssistantDataChanged}
+        />
       </div>
     </div>
   )
 }
-

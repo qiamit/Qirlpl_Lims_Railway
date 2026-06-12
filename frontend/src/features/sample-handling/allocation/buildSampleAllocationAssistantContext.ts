@@ -27,14 +27,17 @@ export function buildSampleAllocationListAssistantContext(
     'Edit is locked when a section code is already in Test Allocation until Referback is used.',
     'For one SRF, use the sparkle Ask AI button on that row.',
     '',
-    'Allocated SRFs (up to 25):',
+    'Allocated SRFs (up to 15):',
   ]
 
-  const slice = rows.slice(0, 25)
-  if (slice.length === 0) {
+  const allocated = rows.filter((r) => r.allocationIds.length > 0)
+  const pending = rows.filter((r) => r.allocationIds.length === 0)
+
+  const allocatedSlice = allocated.slice(0, 15)
+  if (allocatedSlice.length === 0) {
     lines.push('(none)')
   } else {
-    for (const r of slice) {
+    for (const r of allocatedSlice) {
       const sections = allocationRecords.filter((rec) => r.allocationIds.includes(rec.id))
       const sectionDetail = sections
         .map(
@@ -46,8 +49,23 @@ export function buildSampleAllocationListAssistantContext(
         `- sample_id=${r.sampleId} | SRF=${fmt(r.sample.srf_number)} | IS=${fmt(r.sample.test_report_is_code_label)} | sections: ${sectionDetail || '-'}`,
       )
     }
-    if (rows.length > 25) {
-      lines.push(`… and ${rows.length - 25} more SRF rows not listed.`)
+    if (allocated.length > 15) {
+      lines.push(`… and ${allocated.length - 15} more allocated SRF rows not listed.`)
+    }
+  }
+
+  lines.push('', 'Pending for Allocation (up to 15):')
+  const pendingSlice = pending.slice(0, 15)
+  if (pendingSlice.length === 0) {
+    lines.push('(none)')
+  } else {
+    for (const r of pendingSlice) {
+      lines.push(
+        `- sample_id=${r.sampleId} | SRF=${fmt(r.sample.srf_number)} | IS=${fmt(r.sample.test_report_is_code_label)} | awaiting section codes`,
+      )
+    }
+    if (pending.length > 15) {
+      lines.push(`… and ${pending.length - 15} more pending SRF rows not listed.`)
     }
   }
 

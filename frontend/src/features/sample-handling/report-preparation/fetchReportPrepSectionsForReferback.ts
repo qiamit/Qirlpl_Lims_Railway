@@ -8,19 +8,8 @@ export type ReportPrepSectionOption = {
   designation: string | null
 }
 
-function sectionHasReviewer(
-  params: Array<{ results_reviewer_id?: string | null; results_reviewer_name?: string | null }>,
-): boolean {
-  return params.some(
-    (p) =>
-      Boolean(p.results_reviewer_id) ||
-      Boolean(String(p.results_reviewer_name ?? '').trim()),
-  )
-}
-
 /**
- * Sections on this SRF available for refer-back to Results Under Review.
- * Lists all section codes not already assigned to a results reviewer (any department).
+ * All section codes on this SRF (with department) for refer-back from Test Report Preparation.
  */
 export async function fetchReportPrepSectionsForReferback(
   sampleId: string,
@@ -59,33 +48,10 @@ export async function fetchReportPrepSectionsForReferback(
     taByAllocId.set(allocId, String((t as { id: string }).id))
   }
 
-  const taIds = testAllocs.map((t) => String((t as { id: string }).id))
-  const paramsByTa = new Map<string, Array<{ results_reviewer_id?: string | null; results_reviewer_name?: string | null }>>()
-
-  if (taIds.length > 0) {
-    const { data: paramRows, error: paramErr } = await supabase
-      .from('test_allocation_parameters')
-      .select('test_allocation_id, results_reviewer_id, results_reviewer_name')
-      .in('test_allocation_id', taIds)
-    if (paramErr) throw paramErr
-
-    for (const p of Array.isArray(paramRows) ? paramRows : []) {
-      const taId = String((p as { test_allocation_id?: string }).test_allocation_id ?? '')
-      if (!taId) continue
-      if (!paramsByTa.has(taId)) paramsByTa.set(taId, [])
-      paramsByTa.get(taId)!.push(p as { results_reviewer_id?: string | null; results_reviewer_name?: string | null })
-    }
-  }
-
   const out: ReportPrepSectionOption[] = []
 
   for (const [allocId, alloc] of allocById) {
     const taId = taByAllocId.get(allocId)
-    if (taId) {
-      const params = paramsByTa.get(taId) ?? []
-      if (params.length > 0 && sectionHasReviewer(params)) continue
-    }
-
     out.push({
       testAllocationId: taId ?? '',
       sampleAllocationId: allocId,

@@ -1,37 +1,98 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 import {
   fetchSampleSrfViewDetails,
   type SampleSrfViewDetails,
 } from '@/features/sample-handling/shared/fetchSampleSrfViewDetails'
+import { getSampleWorkflowStatusLabel } from '@/features/sample-handling/sampleWorkflowStatus'
+import type { SampleStage } from '@/features/sample-handling/types'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 const fmtDate = (v: string | null | undefined) =>
   v ? new Date(v).toISOString().slice(0, 10) : '—'
-const fmtBool = (v: boolean | null | undefined) => {
-  if (v === true) return 'Yes'
-  if (v === false) return 'No'
-  return '—'
+
+function fmtStage(details: SampleSrfViewDetails): string {
+  return getSampleWorkflowStatusLabel({
+    stage: (details.stage ?? 'receiving') as SampleStage,
+    sample_receiving_status: details.sampleReceivingStatus,
+    status: details.sampleReceivingStatus,
+  })
 }
 
-function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
+function BoolBadge({ value }: { value: boolean | null | undefined }) {
+  if (value === true) {
+    return (
+      <Badge variant="success" className="font-medium">
+        Yes
+      </Badge>
+    )
+  }
+  if (value === false) {
+    return (
+      <Badge variant="outline" className="font-medium text-muted-foreground">
+        No
+      </Badge>
+    )
+  }
+  return <span className="text-sm font-medium text-muted-foreground">—</span>
+}
+
+type DetailRow = [string, string] | [string, boolean | null | undefined, 'bool']
+
+function DetailField({ label, value, isBool }: { label: string; value: string; isBool?: boolean }) {
   return (
-    <div className="grid grid-cols-[160px_1fr] gap-x-3 gap-y-2 text-sm">
-      {rows.map(([label, value]) => (
-        <div key={label} className="contents">
-          <span className="text-muted-foreground">{label}</span>
-          <span className="whitespace-pre-wrap font-medium">{value}</span>
-        </div>
-      ))}
+    <div className="min-w-0 rounded-lg border border-border/50 bg-background/80 px-3 py-2 shadow-sm">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-sm font-medium leading-snug text-foreground">
+        {isBool ? (
+          <BoolBadge value={value === 'Yes' ? true : value === 'No' ? false : null} />
+        ) : (
+          <span className="whitespace-pre-wrap break-words">{value}</span>
+        )}
+      </dd>
     </div>
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function DetailFields({ rows, columns = 2 }: { rows: DetailRow[]; columns?: 1 | 2 }) {
   return (
-    <section>
-      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{title}</h4>
-      <div className="rounded-md bg-muted/30 border border-border/50 p-3">{children}</div>
+    <dl
+      className={cn(
+        'grid gap-2',
+        columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1',
+      )}
+    >
+      {rows.map(([label, value, kind]) => {
+        const display =
+          kind === 'bool'
+            ? value === true
+              ? 'Yes'
+              : value === false
+                ? 'No'
+                : '—'
+            : String(value)
+        return (
+          <DetailField
+            key={label}
+            label={label}
+            value={display}
+            isBool={kind === 'bool'}
+          />
+        )
+      })}
+    </dl>
+  )
+}
+
+function Section({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
+  return (
+    <section className={cn('rounded-xl border border-border/70 bg-card shadow-sm', className)}>
+      <div className="border-b border-border/60 bg-muted/25 px-4 py-2.5">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">{title}</h4>
+      </div>
+      <div className="p-3">{children}</div>
     </section>
   )
 }
@@ -41,24 +102,24 @@ function IsCodeFilesList({ files }: { files: SampleSrfViewDetails['isCodeFiles']
     return <p className="text-sm text-muted-foreground">No files uploaded for this IS Code.</p>
   }
   return (
-    <ul className="space-y-2">
+    <ul className="space-y-1.5">
       {files.map((f) => (
         <li
           key={f.file_name}
           className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-background px-3 py-2"
         >
-          <span className="text-sm truncate">{f.file_name}</span>
+          <span className="truncate text-sm">{f.file_name}</span>
           {f.url ? (
             <a
               href={f.url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs font-medium text-primary hover:underline shrink-0"
+              className="shrink-0 text-xs font-medium text-primary hover:underline"
             >
               View
             </a>
           ) : (
-            <span className="text-xs text-muted-foreground shrink-0">—</span>
+            <span className="shrink-0 text-xs text-muted-foreground">—</span>
           )}
         </li>
       ))}
@@ -110,115 +171,149 @@ export function SampleSrfViewDialog({
   }, [open, sampleId, fallbackSrf, fallbackClient, fallbackIsLabel])
 
   const titleSrf = details?.srfNumber ?? fallbackSrf ?? '—'
+  const stageLabel = details ? fmtStage(details) : null
+  const receivingStatus = details?.sampleReceivingStatus?.trim()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
+      <DialogContent className="flex max-h-[92vh] w-[min(96vw,72rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-xl">
+        <DialogHeader className="shrink-0 space-y-3 border-b border-border/60 bg-muted/20 px-6 py-4 pr-12">
+          <DialogTitle className="text-base font-semibold leading-tight sm:text-lg">
             {hideClient ? `Sample Details — ${fmt(titleSrf)}` : `SRF Details — ${fmt(titleSrf)}`}
           </DialogTitle>
+          {details && (
+            <div className="flex flex-wrap items-center gap-2">
+              {receivingStatus && (
+                <Badge variant="secondary" className="font-medium">
+                  {receivingStatus}
+                </Badge>
+              )}
+              {stageLabel && (
+                <Badge variant="info" className="font-medium">
+                  {stageLabel}
+                </Badge>
+              )}
+              {details.isCodeLabel?.trim() && (
+                <Badge variant="outline" className="max-w-full truncate font-medium">
+                  IS: {details.isCodeLabel.trim()}
+                </Badge>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
-        {loading && <p className="text-sm text-muted-foreground">Loading sample details…</p>}
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          {loading && <p className="text-sm text-muted-foreground">Loading sample details…</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-        {!loading && !error && details && (
-          <div className="space-y-5 text-sm">
-            <Section title="SRF & Receiving">
-              <DetailGrid
-                rows={[
-                  ['SRF Number', fmt(details.srfNumber)],
-                  ['Referenced SRF', fmt(details.referencedSrfNumber)],
-                  ['Report Type', fmt(details.receivingReportType)],
-                  ['Date of Receiving', fmtDate(details.dateOfSampleReceiving)],
-                  ['Receiving Status', fmt(details.sampleReceivingStatus)],
-                  ['Current Stage', fmt(details.stage)],
-                ]}
-              />
-            </Section>
+          {!loading && !error && details && (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="space-y-4">
+                <Section title="SRF & Receiving">
+                  <DetailFields
+                    columns={2}
+                    rows={[
+                      ['SRF Number', fmt(details.srfNumber)],
+                      ['Referenced SRF', fmt(details.referencedSrfNumber)],
+                      ['Report Type', fmt(details.receivingReportType)],
+                      ['Date of Receiving', fmtDate(details.dateOfSampleReceiving)],
+                      ['Receiving Status', fmt(details.sampleReceivingStatus)],
+                      ['Current Stage', stageLabel ?? fmt(details.stage)],
+                    ]}
+                  />
+                </Section>
 
-            {!hideClient && (
-              <Section title="Client">
-                <DetailGrid
+                {!hideClient && (
+                  <Section title="Client">
+                    <DetailFields
+                      columns={2}
+                      rows={[
+                        ['Customer', fmt(details.clientName)],
+                        ['Client Reference', fmt(details.clientReference)],
+                        ['Contact Person', fmt(details.clientContact)],
+                        ['Email', fmt(details.clientEmail)],
+                        ['Phone', fmt(details.clientPhone)],
+                        ['Address', fmt(details.clientAddress)],
+                      ]}
+                    />
+                    {details.clientReferenceUrl && (
+                      <p className="mt-3">
+                        <a
+                          href={details.clientReferenceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          View client reference document
+                        </a>
+                      </p>
+                    )}
+                  </Section>
+                )}
+
+                <Section title="IS Code">
+                  <p className="mb-3 text-sm font-semibold">{fmt(details.isCodeLabel)}</p>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    IS Code Files
+                  </p>
+                  <IsCodeFilesList files={details.isCodeFiles} />
+                </Section>
+              </div>
+
+              <div className="space-y-4">
+                <Section title="Sample Identification">
+                  <DetailFields
+                    columns={2}
+                    rows={[
+                      ['Sample Code', fmt(details.sampleCode)],
+                      ['Sample QR Code', fmt(details.sampleQrCode)],
+                      ['Batch Number', fmt(details.batchNumber)],
+                      ['Date of Manufacturing', fmtDate(details.dateOfManufacturing)],
+                      ['Sample Quantity', fmt(details.sampleQuantity)],
+                      ['Shelf Life', fmt(details.shelfLife)],
+                      ['Test Required', fmt(details.testRequired)],
+                      ['Nature of Sample', fmt(details.natureOfSample)],
+                      ['Mode of Disposal', fmt(details.modeOfDisposal)],
+                      ['Tentative Date (Required)', fmtDate(details.tentativeDateRequired)],
+                      ['Tentative Date (By Lab)', fmtDate(details.tentativeDateByLab)],
+                      ['BIS Seal', details.bisSeal, 'bool'],
+                      ['IO Signature', details.ioSignature, 'bool'],
+                    ]}
+                  />
+                </Section>
+
+                <Section title="Receiving Review">
+                  <DetailFields
+                    columns={2}
+                    rows={[
+                      ['Statement of Conformity', details.statementConformityRequired, 'bool'],
+                      ['Witness Test Required', details.witnessTestRequired, 'bool'],
+                      ['Competent Person Available', details.competentPersonAvailable, 'bool'],
+                      ['Equipment Available', details.equipmentAvailable, 'bool'],
+                      ['Can Complete Within Time', details.canCompleteWithinTime, 'bool'],
+                      ['Deviation from Methods', details.deviationFromMethods, 'bool'],
+                      ['Supporting Docs Required', details.supportingDocsRequired, 'bool'],
+                      ['Decision Rule Applied', details.decisionRuleApplied, 'bool'],
+                      ['Testing Method Available', details.testingMethodAvailable, 'bool'],
+                      ['Sampling Procedure Ref', details.samplingProcedureRef, 'bool'],
+                    ]}
+                  />
+                </Section>
+              </div>
+
+              <Section title="Sample Description & Declaration" className="xl:col-span-2">
+                <DetailFields
+                  columns={2}
                   rows={[
-                    ['Customer', fmt(details.clientName)],
-                    ['Client Reference', fmt(details.clientReference)],
-                    ['Contact Person', fmt(details.clientContact)],
-                    ['Email', fmt(details.clientEmail)],
-                    ['Phone', fmt(details.clientPhone)],
-                    ['Address', fmt(details.clientAddress)],
+                    ['Sample Description', fmt(details.sampleDescription)],
+                    ['Sample Declaration', fmt(details.sampleDeclaration)],
+                    ['Any Other Information', fmt(details.anyOtherInformation)],
                   ]}
                 />
-                {details.clientReferenceUrl && (
-                  <p className="mt-3">
-                    <a
-                      href={details.clientReferenceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      View client reference document
-                    </a>
-                  </p>
-                )}
               </Section>
-            )}
-
-            <Section title="Sample Identification">
-              <DetailGrid
-                rows={[
-                  ['Sample Code', fmt(details.sampleCode)],
-                  ['Sample QR Code', fmt(details.sampleQrCode)],
-                  ['Batch Number', fmt(details.batchNumber)],
-                  ['Date of Manufacturing', fmtDate(details.dateOfManufacturing)],
-                  ['Sample Quantity', fmt(details.sampleQuantity)],
-                  ['Shelf Life', fmt(details.shelfLife)],
-                  ['Test Required', fmt(details.testRequired)],
-                  ['Nature of Sample', fmt(details.natureOfSample)],
-                  ['Mode of Disposal', fmt(details.modeOfDisposal)],
-                  ['Tentative Date (Required)', fmtDate(details.tentativeDateRequired)],
-                  ['Tentative Date (By Lab)', fmtDate(details.tentativeDateByLab)],
-                  ['BIS Seal', fmtBool(details.bisSeal)],
-                  ['IO Signature', fmtBool(details.ioSignature)],
-                ]}
-              />
-            </Section>
-
-            <Section title="Sample Description & Declaration">
-              <DetailGrid
-                rows={[
-                  ['Sample Description', fmt(details.sampleDescription)],
-                  ['Sample Declaration', fmt(details.sampleDeclaration)],
-                  ['Any Other Information', fmt(details.anyOtherInformation)],
-                ]}
-              />
-            </Section>
-
-            <Section title="Receiving Review">
-              <DetailGrid
-                rows={[
-                  ['Statement of Conformity', fmtBool(details.statementConformityRequired)],
-                  ['Witness Test Required', fmtBool(details.witnessTestRequired)],
-                  ['Competent Person Available', fmtBool(details.competentPersonAvailable)],
-                  ['Equipment Available', fmtBool(details.equipmentAvailable)],
-                  ['Can Complete Within Time', fmtBool(details.canCompleteWithinTime)],
-                  ['Deviation from Methods', fmtBool(details.deviationFromMethods)],
-                  ['Supporting Docs Required', fmtBool(details.supportingDocsRequired)],
-                  ['Decision Rule Applied', fmtBool(details.decisionRuleApplied)],
-                  ['Testing Method Available', fmtBool(details.testingMethodAvailable)],
-                  ['Sampling Procedure Ref', fmtBool(details.samplingProcedureRef)],
-                ]}
-              />
-            </Section>
-
-            <Section title="IS Code">
-              <p className="text-sm font-medium mb-3">{fmt(details.isCodeLabel)}</p>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">IS Code Files</p>
-              <IsCodeFilesList files={details.isCodeFiles} />
-            </Section>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   )

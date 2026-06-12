@@ -1,4 +1,4 @@
-import { Copy, Pencil } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Copy, Eye, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import type { SampleRow } from '../types'
@@ -6,9 +6,44 @@ import {
   isSampleReceivingEditLocked,
   SAMPLE_RECEIVING_EDIT_LOCKED_TITLE,
 } from './sampleReceivingEditLock'
+import { getSampleWorkflowStatusLabel } from '../sampleWorkflowStatus'
+import type { SampleReceivingSortKey } from './sortSampleReceivingRows'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
 const fmtDate = (v: string | null | undefined) => (v ? v.slice(0, 10) : '-')
+
+function SortableHead({
+  label,
+  columnKey,
+  sortKey,
+  sortDir,
+  onSort,
+  className,
+}: {
+  label: string
+  columnKey: SampleReceivingSortKey
+  sortKey: SampleReceivingSortKey
+  sortDir: 'asc' | 'desc'
+  onSort: (key: SampleReceivingSortKey) => void
+  className?: string
+}) {
+  const active = sortKey === columnKey
+  const Icon = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        className="inline-flex w-full items-center justify-center gap-1 text-xs font-medium hover:text-foreground transition-colors"
+        onClick={() => onSort(columnKey)}
+        aria-label={`Sort by ${label}${active ? `, ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+      >
+        <span>{label}</span>
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+      </button>
+    </TableHead>
+  )
+}
 
 export function SampleReceivingTable({
   rows,
@@ -19,7 +54,11 @@ export function SampleReceivingTable({
   onToggleAll,
   onEdit,
   onCopy,
+  onViewDetails,
   sampleIdsInAllocation,
+  sortKey,
+  sortDir,
+  onSort,
 }: {
   rows: SampleRow[]
   loading: boolean
@@ -29,7 +68,11 @@ export function SampleReceivingTable({
   onToggleAll: (checked: boolean) => void
   onEdit: (row: SampleRow) => void
   onCopy: (row: SampleRow) => void
+  onViewDetails: (row: SampleRow) => void
   sampleIdsInAllocation?: Set<string>
+  sortKey: SampleReceivingSortKey
+  sortDir: 'asc' | 'desc'
+  onSort: (key: SampleReceivingSortKey) => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -59,12 +102,55 @@ export function SampleReceivingTable({
                   onChange={(e) => onToggleAll(e.target.checked)}
                 />
               </TableHead>
-              <TableHead className="text-xs">SRF Number &amp; Date</TableHead>
-              <TableHead className="text-xs text-center">Name of the Customer</TableHead>
-              <TableHead className="text-xs text-center">Sample Codes</TableHead>
-              <TableHead className="text-xs text-center">Sample Description</TableHead>
-              <TableHead className="text-xs text-center">Date for Reporting</TableHead>
-              <TableHead className="text-xs text-center">Sample Status</TableHead>
+              <SortableHead
+                label="SRF Number & Date"
+                columnKey="srfDate"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="text-xs"
+              />
+              <SortableHead
+                label="Name of the Customer"
+                columnKey="clientName"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="text-xs text-center"
+              />
+              <SortableHead
+                label="Sample Codes"
+                columnKey="sampleCode"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="text-xs text-center"
+              />
+              <SortableHead
+                label="IS Code"
+                columnKey="isCode"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="text-xs text-center"
+              />
+              <TableHead className="text-xs text-center">Sample Details</TableHead>
+              <SortableHead
+                label="Date for Reporting"
+                columnKey="reportingDate"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="text-xs text-center"
+              />
+              <SortableHead
+                label="Sample Status"
+                columnKey="status"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="text-xs text-center"
+              />
               <TableHead className="text-xs text-center">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -72,50 +158,67 @@ export function SampleReceivingTable({
             {rows.map((r) => {
               const editLocked = isSampleReceivingEditLocked(r, allocationSampleIds)
               return (
-              <TableRow key={r.id}>
-                <TableCell className="text-center">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${r.srf_number ?? r.sample_code ?? r.id}`}
-                    checked={selectedIds.has(r.id)}
-                    onChange={() => onToggle(r.id)}
-                  />
-                </TableCell>
-                <TableCell className="break-words">
-                  <div className="font-medium">{fmt(r.srf_number)}</div>
-                  <div className="text-xs text-muted-foreground">{fmtDate(r.date_of_sample_receiving)}</div>
-                </TableCell>
-                <TableCell className="text-center">{fmt(r.client_name)}</TableCell>
-                <TableCell className="text-center">
-                  <div>{fmt(r.sample_code)}</div>
-                  <div className="text-xs text-muted-foreground">{fmt(r.sample_qr_code)}</div>
-                </TableCell>
-                <TableCell className="text-center break-words">{fmt(r.sample_description || r.description)}</TableCell>
-                <TableCell className="text-center">
-                  <div>{fmtDate(r.tentative_date_required)}</div>
-                  <div className="text-xs text-muted-foreground">{fmtDate(r.tentative_date_by_lab)}</div>
-                </TableCell>
-                <TableCell className="text-center">{fmt(r.sample_receiving_status || r.status)}</TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-center gap-1">
+                <TableRow key={r.id}>
+                  <TableCell className="text-center">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${r.srf_number ?? r.sample_code ?? r.id}`}
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => onToggle(r.id)}
+                    />
+                  </TableCell>
+                  <TableCell className="break-words">
+                    <div className="font-medium">{fmt(r.srf_number)}</div>
+                    <div className="text-xs text-muted-foreground">{fmtDate(r.date_of_sample_receiving)}</div>
+                  </TableCell>
+                  <TableCell className="text-center">{fmt(r.client_name)}</TableCell>
+                  <TableCell className="text-center">
+                    <div>{fmt(r.sample_code)}</div>
+                    <div className="text-xs text-muted-foreground">{fmt(r.sample_qr_code)}</div>
+                  </TableCell>
+                  <TableCell className="text-center text-xs truncate" title={r.test_report_is_code_label ?? undefined}>
+                    {fmt(r.test_report_is_code_label)}
+                  </TableCell>
+                  <TableCell className="text-center">
                     <Button
                       type="button"
-                      size="icon"
-                      variant="ghost"
-                      aria-label="Edit"
-                      title={editLocked ? SAMPLE_RECEIVING_EDIT_LOCKED_TITLE : 'Edit sample receiving record'}
-                      disabled={editLocked}
-                      onClick={() => onEdit(r)}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5"
+                      aria-label={`View sample details for ${r.srf_number ?? r.sample_code ?? r.id}`}
+                      title="View sample description, declaration, and customer specific information"
+                      onClick={() => onViewDetails(r)}
                     >
-                      <Pencil size={16} />
+                      <Eye size={14} />
+                      View
                     </Button>
-                    <Button type="button" size="icon" variant="ghost" aria-label="Copy" onClick={() => onCopy(r)}>
-                      <Copy size={16} />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )})}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div>{fmtDate(r.tentative_date_required)}</div>
+                    <div className="text-xs text-muted-foreground">{fmtDate(r.tentative_date_by_lab)}</div>
+                  </TableCell>
+                  <TableCell className="text-center">{fmt(getSampleWorkflowStatusLabel(r))}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-center gap-1">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Edit"
+                        title={editLocked ? SAMPLE_RECEIVING_EDIT_LOCKED_TITLE : 'Edit sample receiving record'}
+                        disabled={editLocked}
+                        onClick={() => onEdit(r)}
+                      >
+                        <Pencil size={16} />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" aria-label="Copy" onClick={() => onCopy(r)}>
+                        <Copy size={16} />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       )}

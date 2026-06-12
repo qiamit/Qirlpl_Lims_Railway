@@ -52,9 +52,6 @@ export function TestReportPrepareDialog({
   onIssueReports,
   onPrintScope,
   onRemarkChange,
-  sampleReceivingEditUnlocked,
-  onSampleReceivingEditUnlockedChange,
-  sampleReceivingEditUnlockLoading,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -89,9 +86,6 @@ export function TestReportPrepareDialog({
   onIssueReports: () => void
   onPrintScope: (scope: ReportScopeKind) => void
   onRemarkChange?: (rowKey: string, remark: string) => void
-  sampleReceivingEditUnlocked: boolean
-  onSampleReceivingEditUnlockedChange: (unlocked: boolean) => void
-  sampleReceivingEditUnlockLoading?: boolean
 }) {
   const applicableScopes = getApplicableReportScopes(resultRows)
   const [activeReportScope, setActiveReportScope] = useState<ReportScopeKind>('nabl')
@@ -159,9 +153,6 @@ export function TestReportPrepareDialog({
                   ulrPrefix={ulrPrefix}
                   ulrPrefixLoading={ulrPrefixLoading}
                   activeScope={activeReportScope}
-                  sampleReceivingEditUnlocked={sampleReceivingEditUnlocked}
-                  onSampleReceivingEditUnlockedChange={onSampleReceivingEditUnlockedChange}
-                  sampleReceivingEditUnlockLoading={sampleReceivingEditUnlockLoading}
                   disabled={coverLoading || saveLoading || issueLoading}
                 />
                 {liveCoverDetails.partB && (

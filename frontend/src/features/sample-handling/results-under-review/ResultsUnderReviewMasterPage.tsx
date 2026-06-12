@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
+import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import type { TestAllocationRow } from '../types'
 import { ResultsUnderReviewTable } from './ResultsUnderReviewTable'
 import { ResultsUnderReviewAssistant } from './ResultsUnderReviewAssistant'
@@ -21,14 +22,19 @@ import {
   deleteTestAllocationsForSections,
 } from '@/features/sample-handling/shared/deleteSampleRecords'
 import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/SampleHandlingDeleteButton'
-import { departmentsMatch } from '@/features/sample-handling/shared/departmentMatch'
 import { loadResultsUnderReviewRowsForDirector } from './loadResultsUnderReviewRowsForDirector'
-import { fetchLinkedReviewerProfileIds } from '@/features/sample-handling/shared/reviewerProfileIds'
 import { resolveUserDepartment } from '@/features/sample-handling/shared/resolveUserDepartment'
 import { ensureTestAllocationParameterRows } from '@/features/sample-handling/shared/ensureTestAllocationParameterRows'
 import { ResultsUnderReviewReferbackDialog } from './ResultsUnderReviewReferbackDialog'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 import { SectionResultsEntryDialog } from '../sample-under-testing/SectionResultsEntryDialog'
+import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
+import { RESULTS_REVIEW_APPROVED_LABEL } from './resultsUnderReviewPartitions'
+import {
+  isSampleReadyForReportPreparation,
+  sampleStillHasResultsInReview,
+  syncSampleReportPreparationStage,
+} from '@/features/sample-handling/report-preparation/sampleReportReadiness'
 
 export default function ResultsUnderReviewMasterPage() {
   const { user, profileName, designation, departmentName, profileReady } = useAuth()
@@ -42,6 +48,7 @@ export default function ResultsUnderReviewMasterPage() {
   const [page, setPage] = useState(1)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [sampleDescViewRow, setSampleDescViewRow] = useState<TestAllocationRow | null>(null)
   const showDelete = canDeleteSampleHandlingRecords(designation)
 
   const [testParamViewOpen, setTestParamViewOpen] = useState(false)
@@ -91,7 +98,12 @@ export default function ResultsUnderReviewMasterPage() {
     try {
       if (isLaboratoryDirector(designation)) {
         setResolvedDepartment(departmentName.trim() || 'Administration')
-        const list = await loadResultsUnderReviewRowsForDirector()
+        let list = await loadResultsUnderReviewRowsForDirector()
+        const directorSampleIds = [
+          ...new Set(list.map((r) => r.sampleId?.trim()).filter(Boolean)),
+        ] as string[]
+        await Promise.all(directorSampleIds.map((id) => syncSampleReportPreparationStage(id)))
+        list = await loadResultsUnderReviewRowsForDirector()
         setRows(list)
         return
       }
@@ -106,352 +118,16 @@ export default function ResultsUnderReviewMasterPage() {
         return
       }
 
-      const reviewerProfileIds = await fetchLinkedReviewerProfileIds(user.id, userDept)
-      if (reviewerProfileIds.length === 0) {
-        setRows([])
-        return
+      const scope = {
+        department: userDept,
+        designation: designation?.trim() || null,
       }
-
-      // Reviewer is per parameter (test_allocation_parameters), not on samples.
-      const { data: reviewerParamRows, error: paramReviewerErr } = await supabase
-        .from('test_allocation_parameters')
-        .select('test_allocation_id')
-        .in('results_reviewer_id', reviewerProfileIds)
-      if (paramReviewerErr) throw paramReviewerErr
-      const reviewerParams = Array.isArray(reviewerParamRows) ? reviewerParamRows : []
-      if (reviewerParams.length === 0) {
-        setRows([])
-        return
-      }
-
-      const testAllocationIds = [
-        ...new Set(
-          reviewerParams
-            .map((p: { test_allocation_id?: string | null }) => p.test_allocation_id)
-            .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
-        ),
-      ]
-      if (testAllocationIds.length === 0) {
-        setRows([])
-        return
-      }
-
-      const { data: testAllocData, error: taErr } = await supabase
-        .from('test_allocations')
-        .select(
-          'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids',
-        )
-        .in('id', testAllocationIds)
-        .order('created_at', { ascending: false })
-      if (taErr) throw taErr
-      const testAllocs = Array.isArray(testAllocData) ? testAllocData : []
-      if (testAllocs.length === 0) {
-        setRows([])
-        return
-      }
-
-      const allocIds = [
-        ...new Set(
-          testAllocs
-            .map((t: { sample_allocation_id?: string | null }) => t.sample_allocation_id)
-            .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
-        ),
-      ]
-      if (allocIds.length === 0) {
-        setRows([])
-        return
-      }
-
-      const { data: allocData, error: allocErr } = await supabase
-        .from('sample_allocations')
-        .select('id, sample_id, section_code, allocation_date, department, designation')
-        .in('id', allocIds)
-      if (allocErr) throw allocErr
-
-      const allocations = (Array.isArray(allocData) ? allocData : []).filter((a: {
-        department?: string | null
-      }) => departmentsMatch(a.department, userDept))
-      const allocMap = new Map(allocations.map((a: { id: string }) => [a.id, a]))
-
-      const sampleIds = [
-        ...new Set(
-          allocations
-            .map((a: { sample_id?: string | null }) => a.sample_id)
-            .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
-        ),
-      ]
-      const { data: sampleRows, error: sampleErr } = await supabase
-        .from('samples')
-        .select(
-          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration',
-        )
-        .in('id', sampleIds)
-        .eq('stage', 'results_review')
-      if (sampleErr) throw sampleErr
-      const samples = Array.isArray(sampleRows) ? sampleRows : []
-      if (samples.length === 0) {
-        setRows([])
-        return
-      }
-
-      const isCodeIds = [
-        ...new Set(
-          samples
-            .map((s: { test_report_is_code_id?: string | null }) => s.test_report_is_code_id)
-            .filter(Boolean),
-        ),
+      let list = await loadResultsUnderReviewRowsForDirector(scope)
+      const scopedSampleIds = [
+        ...new Set(list.map((r) => r.sampleId?.trim()).filter(Boolean)),
       ] as string[]
-      let isCodeMap = new Map<string, string>()
-      if (isCodeIds.length > 0) {
-        const { data: isCodeData } = await supabase
-          .from('is_codes')
-          .select('id, is_number, revision_year')
-          .in('id', isCodeIds)
-        const isCodes = Array.isArray(isCodeData) ? isCodeData : []
-        isCodeMap = new Map(
-          isCodes.map(
-            (c: { id: string; is_number?: string; revision_year?: string | null }) => [
-              c.id,
-              c.revision_year ? `${c.is_number ?? ''} : ${c.revision_year}` : (c.is_number ?? c.id),
-            ],
-          ),
-        )
-      }
-      const samplesMap = new Map(
-        samples.map(
-          (s: {
-            id: string
-            srf_number?: string
-            date_of_sample_receiving?: string
-            test_report_is_code_id?: string | null
-            referback_from_allocation?: boolean | null
-            sample_description?: string | null
-            sample_declaration?: string | null
-          }) => [
-            s.id,
-            {
-              srf_number: s.srf_number ?? null,
-              date_of_sample_receiving: s.date_of_sample_receiving ?? null,
-              isCodeId: s.test_report_is_code_id ?? null,
-              isCodeLabel: s.test_report_is_code_id
-                ? (isCodeMap.get(s.test_report_is_code_id) ?? null)
-                : null,
-              referbackFromAllocation: !!s.referback_from_allocation,
-              sampleDescription: s.sample_description ?? null,
-              declaredValue: s.sample_declaration ?? null,
-            },
-          ],
-        ),
-      )
-
-      const visibleTestAllocs = testAllocs.filter((t: { sample_allocation_id: string }) => {
-        const a = allocMap.get(t.sample_allocation_id) as
-          | { sample_id?: string; department?: string | null }
-          | undefined
-        if (!a?.sample_id || !samplesMap.has(a.sample_id)) return false
-        if (!departmentsMatch(a.department, userDept)) return false
-        return true
-      })
-      const allocationIds = visibleTestAllocs.map((t: { id: string }) => t.id)
-      let paramsByAllocationId = new Map<
-        string,
-        {
-          id: string
-          test_allocation_id: string
-          test_parameter_id: string | null
-          test_label: string
-          test_start_date: string | null
-          test_end_date: string | null
-          results: string | null
-        }[]
-      >()
-      if (allocationIds.length > 0) {
-        const { data: paramData, error: paramErr } = await supabase
-          .from('test_allocation_parameters')
-          .select(
-            'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement',
-          )
-          .in('test_allocation_id', allocationIds)
-        if (paramErr) throw paramErr
-        const paramRows = Array.isArray(paramData) ? paramData : []
-        const map = new Map<
-          string,
-          {
-            id: string
-            test_allocation_id: string
-            test_parameter_id: string | null
-            test_label: string
-            test_start_date: string | null
-            test_end_date: string | null
-            results: string | null
-            specific_requirement: string | null
-          }[]
-        >()
-        for (const p of paramRows as {
-          id: string
-          test_allocation_id?: string | null
-          test_parameter_id?: string | null
-          test_label?: string | null
-          test_start_date?: string | null
-          test_end_date?: string | null
-          results?: string | null
-          specific_requirement?: string | null
-        }[]) {
-          const key = (p.test_allocation_id as string) ?? ''
-          if (!key) continue
-          if (!map.has(key)) map.set(key, [])
-          map.get(key)!.push({
-            id: p.id,
-            test_allocation_id: key,
-            test_parameter_id: p.test_parameter_id ?? null,
-            test_label: p.test_label ?? '',
-            test_start_date: p.test_start_date ?? null,
-            test_end_date: p.test_end_date ?? null,
-            results: p.results ?? null,
-            specific_requirement: p.specific_requirement ?? null,
-          })
-        }
-        paramsByAllocationId = map
-      }
-
-      const tpIdsForLookup = new Set<string>()
-      for (const params of paramsByAllocationId.values()) {
-        for (const p of params) {
-          if (p.test_parameter_id) tpIdsForLookup.add(p.test_parameter_id)
-        }
-      }
-      for (const t of testAllocs as { test_parameter_ids?: unknown }[]) {
-        const raw = t.test_parameter_ids
-        if (!Array.isArray(raw)) continue
-        for (const id of raw) {
-          if (typeof id === 'string' && id.trim()) tpIdsForLookup.add(id.trim())
-        }
-      }
-      const testParamMetaById = new Map<string, { name: string; specificRequirement: string | null }>()
-      if (tpIdsForLookup.size > 0) {
-        const { data: tpMetaRows } = await supabase
-          .from('test_parameters')
-          .select('id, item_name, specific_requirement')
-          .in('id', [...tpIdsForLookup])
-        for (const row of Array.isArray(tpMetaRows) ? tpMetaRows : []) {
-          const r = row as { id: string; item_name?: string | null; specific_requirement?: string | null }
-          testParamMetaById.set(r.id, {
-            name: (r.item_name ?? '').trim() || r.id,
-            specificRequirement: (r.specific_requirement ?? '').trim() || null,
-          })
-        }
-      }
-
-      const list: TestAllocationRow[] = visibleTestAllocs
-        .map(
-          (t: {
-            id: string
-            sample_allocation_id: string
-            assigned_employee_id?: string | null
-            assigned_employee_name?: string | null
-            test_parameter_summary?: string | null
-            test_parameter_ids?: string[] | null
-          }) => {
-            const a = allocMap.get(t.sample_allocation_id) as
-              | {
-                  id: string
-                  sample_id: string
-                  section_code: string
-                  allocation_date: string | null
-                  department: string | null
-                  designation: string | null
-                }
-              | undefined
-            if (!a) return null
-            const sample = samplesMap.get(a.sample_id)
-            if (!sample) return null
-            const params = paramsByAllocationId.get(t.id) ?? []
-            let parameterRows = params.map((p) => ({
-              id: p.id,
-              testAllocationId: p.test_allocation_id,
-              testParameterId: p.test_parameter_id,
-              testLabel: p.test_label,
-              sectionSpecOverride: p.specific_requirement ?? null,
-              specificRequirement: resolveSectionSpecificRequirement(
-                p.specific_requirement,
-                p.test_parameter_id
-                  ? testParamMetaById.get(p.test_parameter_id)?.specificRequirement
-                  : null,
-              ),
-              testStartDate: p.test_start_date,
-              testEndDate: p.test_end_date,
-              results: p.results,
-            }))
-            if (parameterRows.length === 0) {
-              const summaryStr = (t.test_parameter_summary ?? '').trim()
-              const ids = Array.isArray(t.test_parameter_ids)
-                ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-                : []
-              let labels = summaryStr
-                ? summaryStr.split(',').map((x) => x.trim()).filter(Boolean)
-                : []
-              if (labels.length === 0 && ids.length > 0) {
-                labels = ids.map((id) => testParamMetaById.get(id)?.name ?? id)
-              } else {
-                for (let i = labels.length; i < ids.length; i += 1) {
-                  const id = ids[i]!
-                  labels.push(testParamMetaById.get(id)?.name ?? id)
-                }
-              }
-              if (labels.length > 0) {
-                parameterRows = labels.map((label, i) => {
-                  const tpId = ids[i] ?? null
-                  return {
-                    id: '',
-                    testAllocationId: t.id,
-                    testParameterId: tpId,
-                    testLabel: label,
-                    sectionSpecOverride: null,
-                    specificRequirement: tpId
-                      ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
-                      : null,
-                    testStartDate: null,
-                    testEndDate: null,
-                    results: null,
-                  }
-                })
-              }
-            }
-            return {
-              testAllocationId: t.id,
-              sampleAllocationId: a.id,
-              sampleId: a.sample_id,
-              sectionCode: a.section_code,
-              isCodeId: sample?.isCodeId ?? null,
-              isCodeLabel: sample?.isCodeLabel ?? null,
-              sampleDescription: (sample as { sampleDescription?: string | null }).sampleDescription ?? null,
-              declaredValue: (sample as { declaredValue?: string | null }).declaredValue ?? null,
-              srfNumber: sample?.srf_number ?? null,
-              allocationDate: a.allocation_date ?? sample?.date_of_sample_receiving ?? null,
-              department: a.department ?? null,
-              designation: a.designation ?? null,
-              testParameterSummary: t.test_parameter_summary ?? null,
-              testParameterIds: [
-                ...new Set([
-                  ...parameterRows
-                    .map((p) => p.testParameterId)
-                    .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
-                  ...(Array.isArray(t.test_parameter_ids)
-                    ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-                    : []),
-                ]),
-              ],
-              assignedEmployeeId: t.assigned_employee_id ?? null,
-              assignedEmployeeName: t.assigned_employee_name ?? null,
-              referbackFromAllocation: sample?.referbackFromAllocation ?? false,
-              testStartDate: null,
-              results: null,
-              testEndDate: null,
-              parameters: parameterRows,
-            }
-          },
-        )
-        .filter((r): r is TestAllocationRow => r != null)
+      await Promise.all(scopedSampleIds.map((id) => syncSampleReportPreparationStage(id)))
+      list = await loadResultsUnderReviewRowsForDirector(scope)
       setRows(list)
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Unable to load results for review')
@@ -765,35 +441,15 @@ export default function ResultsUnderReviewMasterPage() {
     if (error) throw error
   }
 
-  const sampleStillHasResultsInReview = async (sampleId: string): Promise<boolean> => {
-    const { data: allocRows, error: allocErr } = await supabase
-      .from('sample_allocations')
-      .select('id')
-      .eq('sample_id', sampleId)
-    if (allocErr) throw allocErr
-    const allocIds = (Array.isArray(allocRows) ? allocRows : [])
-      .map((r) => String((r as { id?: string }).id ?? '').trim())
-      .filter(Boolean)
-    if (allocIds.length === 0) return false
-
-    const { data: taRows, error: taErr } = await supabase
-      .from('test_allocations')
-      .select('id')
-      .in('sample_allocation_id', allocIds)
-    if (taErr) throw taErr
-    const taIds = (Array.isArray(taRows) ? taRows : [])
-      .map((r) => String((r as { id?: string }).id ?? '').trim())
-      .filter(Boolean)
-    if (taIds.length === 0) return false
-
-    const { data: paramRows, error: paramErr } = await supabase
+  const markSectionResultsApproved = async (testAllocationId: string) => {
+    const { error } = await supabase
       .from('test_allocation_parameters')
-      .select('results_reviewer_id')
-      .in('test_allocation_id', taIds)
-    if (paramErr) throw paramErr
-    return (Array.isArray(paramRows) ? paramRows : []).some(
-      (p) => (p as { results_reviewer_id?: string | null }).results_reviewer_id,
-    )
+      .update({
+        results_reviewer_id: null,
+        results_reviewer_name: RESULTS_REVIEW_APPROVED_LABEL,
+      })
+      .eq('test_allocation_id', testAllocationId)
+    if (error) throw error
   }
 
   const openReferbackDialog = (row: TestAllocationRow) => {
@@ -818,29 +474,41 @@ export default function ResultsUnderReviewMasterPage() {
       await ensureTestAllocationParameterRows(testAllocationId)
       await clearSectionReviewAssignment(testAllocationId)
 
-      const { error: taErr } = await supabase
+      const taPatch: Record<string, unknown> = {
+        sent_for_testing: true,
+        assigned_employee_id: employee.id,
+        assigned_employee_name: employee.name,
+        referred_back_from_review: true,
+      }
+      let { error: taErr } = await supabase
         .from('test_allocations')
-        .update({
-          sent_for_testing: true,
-          assigned_employee_id: employee.id,
-          assigned_employee_name: employee.name,
-        })
+        .update(taPatch)
         .eq('id', testAllocationId)
+      if (taErr && isSupabaseMissingColumnError(taErr, 'referred_back_from_review')) {
+        const { referred_back_from_review: _drop, ...fallback } = taPatch
+        void _drop
+        const retry = await supabase
+          .from('test_allocations')
+          .update(fallback)
+          .eq('id', testAllocationId)
+        taErr = retry.error
+      }
       if (taErr) throw taErr
 
-      const stillInReview = await sampleStillHasResultsInReview(sampleId)
-      if (!stillInReview) {
-        const { error: stageErr } = await supabase
-          .from('samples')
-          .update({ stage: 'under_testing', referback_from_allocation: false })
-          .eq('id', sampleId)
-        if (stageErr) throw stageErr
-      } else {
+      const stillInReviewWorkflow = await sampleStillHasResultsInReview(sampleId)
+      if (stillInReviewWorkflow) {
+        await syncSampleReportPreparationStage(sampleId)
         const { error: flagErr } = await supabase
           .from('samples')
           .update({ referback_from_allocation: false })
           .eq('id', sampleId)
         if (flagErr) throw flagErr
+      } else {
+        const { error: stageErr } = await supabase
+          .from('samples')
+          .update({ stage: 'under_testing', referback_from_allocation: false })
+          .eq('id', sampleId)
+        if (stageErr) throw stageErr
       }
 
       setSaveMessage(
@@ -865,18 +533,16 @@ export default function ResultsUnderReviewMasterPage() {
         return
       }
 
-      await clearSectionReviewAssignment(testAllocationId)
+      await ensureTestAllocationParameterRows(testAllocationId)
+      await markSectionResultsApproved(testAllocationId)
+      await syncSampleReportPreparationStage(sampleId)
 
-      const stillInReview = await sampleStillHasResultsInReview(sampleId)
-      if (!stillInReview) {
-        const { error: stageErr } = await supabase
-          .from('samples')
-          .update({ stage: 'report_preparation' })
-          .eq('id', sampleId)
-        if (stageErr) throw stageErr
-      }
-
-      setSaveMessage(`Section ${row.sectionCode} approved for test report preparation (Clause 7.8).`)
+      const ready = await isSampleReadyForReportPreparation(sampleId)
+      setSaveMessage(
+        ready
+          ? `Section ${row.sectionCode} approved. All sections reviewed — SRF ready for Test Report Preparation.`
+          : `Section ${row.sectionCode} approved. Other section(s) on this SRF are still pending review.`,
+      )
       await loadRows()
     } catch (err) {
       setSaveMessage(formatSupabaseError(err))
@@ -943,7 +609,7 @@ export default function ResultsUnderReviewMasterPage() {
       </div>
 
       <ResultsUnderReviewTable
-        rows={pagedRows}
+        rows={filteredRows}
         loading={listLoading}
         error={listError}
         onReferback={openReferbackDialog}
@@ -952,10 +618,25 @@ export default function ResultsUnderReviewMasterPage() {
           setReviewDialogRow(row)
           setReviewDialogOpen(true)
         }}
+        onViewSampleDetails={setSampleDescViewRow}
         showSelection={showDelete}
         selectedIds={selectedIds}
         onToggleSelection={toggleRow}
         onToggleAllSelection={toggleAllOnPage}
+        groupBySrf
+        emptyStateMessage={
+          isLaboratoryDirector(designation)
+            ? 'No sections in results review or report preparation. Items appear when testing sends results for review or after sections are approved.'
+            : 'No section codes allotted to your department and designation are in results review or report preparation. Pending and reviewed sections appear here after testing sends results for review.'
+        }
+      />
+
+      <SectionSampleDescViewDialog
+        row={sampleDescViewRow}
+        open={sampleDescViewRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setSampleDescViewRow(null)
+        }}
       />
 
       <SectionResultsEntryDialog

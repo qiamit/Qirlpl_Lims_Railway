@@ -27,7 +27,7 @@ export type QiAssistantSendContext = {
 export function QiAssistantChatPanel({
   page,
   contextSummary,
-  welcomeMessage,
+  welcomeMessage = '',
   suggestedQuestions = [],
   placeholder = 'Ask QI Assistant…',
   staticIsCodeId,
@@ -35,10 +35,12 @@ export function QiAssistantChatPanel({
   staticActiveRecordTable,
   resetKey = 0,
   resolveContextOnSend,
+  prepareMessage,
+  primaryAction,
 }: {
   page: string
   contextSummary: string
-  welcomeMessage: string
+  welcomeMessage?: string
   suggestedQuestions?: string[]
   placeholder?: string
   staticIsCodeId?: string
@@ -47,6 +49,10 @@ export function QiAssistantChatPanel({
   /** Change to reset conversation when dialog reopens */
   resetKey?: number
   resolveContextOnSend?: (message: string) => Promise<QiAssistantSendContext>
+  /** Transform user text before sending to the API (display text unchanged). */
+  prepareMessage?: (text: string) => string
+  /** Optional prominent action (e.g. Full Review). */
+  primaryAction?: { label: string; message: string }
 }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -58,7 +64,8 @@ export function QiAssistantChatPanel({
   const prompts = suggestedQuestions.length > 0 ? suggestedQuestions : []
 
   useEffect(() => {
-    setMessages([{ id: newId(), role: 'assistant', content: welcomeMessage }])
+    const intro = welcomeMessage.trim()
+    setMessages(intro ? [{ id: newId(), role: 'assistant', content: intro }] : [])
     setInput('')
     setError(null)
   }, [resetKey, welcomeMessage])
@@ -110,6 +117,7 @@ export function QiAssistantChatPanel({
         }
       }
 
+      const apiMessage = prepareMessage?.(trimmed) ?? trimmed
       const userMsg: QiChatMessage = { id: newId(), role: 'user', content: userDisplay }
       setMessages((prev) => [...prev, userMsg])
       setLoading(true)
@@ -122,7 +130,7 @@ export function QiAssistantChatPanel({
 
         const { reply, actionsExecuted } = await sendQiAssistantMessage({
           page,
-          message: trimmed,
+          message: apiMessage,
           context: effectiveContext,
           isCodeId,
           activeRecordId,
@@ -151,6 +159,7 @@ export function QiAssistantChatPanel({
       staticActiveRecordId,
       staticActiveRecordTable,
       staticIsCodeId,
+      prepareMessage,
     ],
   )
 
@@ -169,6 +178,19 @@ export function QiAssistantChatPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {primaryAction ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-border/60 pb-3">
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1.5"
+            disabled={loading}
+            onClick={() => void sendMessage(primaryAction.message)}
+          >
+            {primaryAction.label}
+          </Button>
+        </div>
+      ) : null}
       <div ref={scrollRef} className="min-h-[240px] max-h-[45vh] flex-1 space-y-3 overflow-y-auto px-1 py-2">
         {messages.map((m) => (
           <div

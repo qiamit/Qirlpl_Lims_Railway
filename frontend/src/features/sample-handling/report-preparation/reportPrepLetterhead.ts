@@ -100,7 +100,8 @@ function pickTemplateName(
   return available[0] ?? ''
 }
 
-export function resolveScopeLetterheadDefaults(
+/** Lab Settings / template list defaults (used when user picks "Default" in the dropdown). */
+export function resolveScopeLetterheadFromLabSettings(
   scope: ReportScopeKind,
   configBinding: ReportScopeTemplateBinding,
   options: LetterheadTemplateOptions,
@@ -117,6 +118,19 @@ export function resolveScopeLetterheadDefaults(
       options.footers,
     ),
     watermarkName: configBinding.watermarkName.trim(),
+  }
+}
+
+/** Initial selection when opening report prep or when no per-SRF template is stored. */
+export function resolveScopeLetterheadDefaults(
+  _scope: ReportScopeKind,
+  _configBinding: ReportScopeTemplateBinding,
+  _options: LetterheadTemplateOptions,
+): ScopeLetterheadSelection {
+  return {
+    headerName: LETTERHEAD_NOT_APPLICABLE,
+    footerName: LETTERHEAD_NOT_APPLICABLE,
+    watermarkName: LETTERHEAD_NOT_APPLICABLE,
   }
 }
 
@@ -201,7 +215,7 @@ export function bindingFromLetterheadSelection(
 ): ReportScopeTemplateBinding {
   const base = config[scope]
   const fallbacks = options
-    ? resolveScopeLetterheadDefaults(scope, base, options)
+    ? resolveScopeLetterheadFromLabSettings(scope, base, options)
     : {
         headerName: base.headerName,
         footerName: base.footerName,

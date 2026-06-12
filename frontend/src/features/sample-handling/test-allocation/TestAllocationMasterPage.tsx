@@ -8,11 +8,15 @@ import { TestAllocationHeaderBar } from './TestAllocationHeaderBar'
 import { TestAllocationTable } from './TestAllocationTable'
 import { TestAllocationFooterBar } from './TestAllocationFooterBar'
 import { TestAllocationForm } from './TestAllocationForm'
+import { TestAllocationParametersViewDialog } from './TestAllocationParametersViewDialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { deleteTestAllocationsForSampleAllocations } from '../referbackFlow'
+import { buildTestAllocationListAssistantContext } from './buildTestAllocationAssistantContext'
 import {
-  deleteTestAllocationsForSampleAllocations,
-  referbackSectionToSampleReceiving,
-} from '../referbackFlow'
+  isPendingTestAllocationRow,
+  sortTestAllocationRows,
+  type TestAllocationSortKey,
+} from './sortTestAllocationRows'
 import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
@@ -30,6 +34,8 @@ export default function TestAllocationMasterPage() {
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<TestAllocationSortKey>('srfSection')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const [jumpTo, setJumpTo] = useState('')
@@ -41,10 +47,18 @@ export default function TestAllocationMasterPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [formRow, setFormRow] = useState<TestAllocationRow | null>(null)
   const [form, setForm] = useState<TestAllocationFormState | null>(null)
-  const [availableSections, setAvailableSections] = useState<TestAllocationRow[]>([])
-  const [availableSectionsLoading, setAvailableSectionsLoading] = useState(false)
-
-  const [testParamOptions, setTestParamOptions] = useState<Array<{ id: string; label: string }>>([])
+  const [testParamOptions, setTestParamOptions] = useState<
+    Array<{
+      id: string
+      label: string
+      specificRequirement?: string
+      underAccreditation?: string
+      isCodeId?: string | null
+      department?: string | null
+    }>
+  >([])
+  const [paramsViewRow, setParamsViewRow] = useState<TestAllocationRow | null>(null)
+  const [paramsViewOpen, setParamsViewOpen] = useState(false)
   const [users, setUsers] = useState<UserFromApi[]>([])
 
   const loadUsers = async () => {
@@ -72,7 +86,9 @@ export default function TestAllocationMasterPage() {
     const [{ data, error }, { data: abData }] = await Promise.all([
       supabase
         .from('test_parameters')
-        .select('id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id')
+        .select(
+          'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, clause_no, unit_value, uncertainty_mu',
+        )
         .order('item_name', { ascending: true }),
       supabase.from('accreditation_bodies').select('id, name').order('name', { ascending: true }),
     ])
@@ -86,6 +102,9 @@ export default function TestAllocationMasterPage() {
       department: string | null
       designation: string | null
       is_code_id: string | null
+      clause_no: string | null
+      unit_value: string | null
+      uncertainty_mu: string | null
     }>
     const underAccrLabel = (ids: string[] | null) => {
       if (!Array.isArray(ids) || ids.length === 0) return 'Not Accredited'
@@ -100,6 +119,9 @@ export default function TestAllocationMasterPage() {
         label: r.item_name ?? r.id,
         specificRequirement: r.specific_requirement ?? '',
         underAccreditation: underAccrLabel(r.under_accreditation_ids ?? null),
+        clauseNo: r.clause_no ?? null,
+        unitValue: r.unit_value ?? null,
+        uncertaintyMu: r.uncertainty_mu ?? null,
         isCodeId: r.is_code_id ?? null,
         department: r.department ?? null,
       })),
@@ -110,18 +132,34 @@ export default function TestAllocationMasterPage() {
     setListError(null)
     setListLoading(true)
     try {
-      const { data: testAllocData, error: taErr } = await supabase
-        .from('test_allocations')
-        .select(
-          'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_start_date, results, test_end_date, sent_for_testing',
-        )
-        .order('created_at', { ascending: false })
+      const [{ data: testAllocData, error: taErr }, { data: allAllocData, error: allocListErr }] =
+        await Promise.all([
+          supabase
+            .from('test_allocations')
+            .select(
+              'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_start_date, results, test_end_date, sent_for_testing',
+            )
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('sample_allocations')
+            .select('id, sample_id, section_code, allocation_date, department, designation')
+            .order('allocation_date', { ascending: false }),
+        ])
       if (taErr) throw taErr
+      if (allocListErr) throw allocListErr
+
       const testAllocs = Array.isArray(testAllocData) ? testAllocData : []
-      if (testAllocs.length === 0) {
-        setRows([])
-        return
-      }
+      const allAllocations = Array.isArray(allAllocData) ? allAllocData : []
+      const withTest = new Set(
+        testAllocs.map((t: { sample_allocation_id: string }) => t.sample_allocation_id),
+      )
+      const sampleIdsInTestFlow = new Set<string>()
+      testAllocs.forEach((t: { sample_allocation_id: string }) => {
+        const a = allAllocations.find((row: { id: string }) => row.id === t.sample_allocation_id) as
+          | { sample_id: string }
+          | undefined
+        if (a?.sample_id) sampleIdsInTestFlow.add(a.sample_id)
+      })
       const testAllocationIds = testAllocs.map((t: { id: string }) => t.id)
       const paramIdsByAllocation = new Map<string, string[]>()
       if (testAllocationIds.length > 0) {
@@ -138,25 +176,42 @@ export default function TestAllocationMasterPage() {
           paramIdsByAllocation.set(taId, list)
         }
       }
-      const allocIds = testAllocs.map((t: { sample_allocation_id: string }) => t.sample_allocation_id)
-      const { data: allocData, error: allocErr } = await supabase
-        .from('sample_allocations')
-        .select('id, sample_id, section_code, allocation_date, department, designation')
-        .in('id', allocIds)
-      if (allocErr) throw allocErr
-      const allocations = Array.isArray(allocData) ? allocData : []
-      const allocMap = new Map(allocations.map((a: { id: string }) => [a.id, a]))
-      const sampleIds = [...new Set(allocations.map((a: { sample_id: string }) => a.sample_id))]
-      const { data: sampleData, error: sampleErr } = await supabase
-        .from('samples')
-        .select('id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation')
-        .in('id', sampleIds)
+
+      const allocIdsFromTest = testAllocs.map((t: { sample_allocation_id: string }) => t.sample_allocation_id)
+      const allocMap = new Map(
+        allAllocations
+          .filter((a: { id: string }) => allocIdsFromTest.includes(a.id))
+          .map((a: { id: string }) => [a.id, a]),
+      )
+      const sampleIds = [
+        ...new Set(allAllocations.map((a: { sample_id: string }) => a.sample_id)),
+      ]
+      const { data: sampleData, error: sampleErr } = sampleIds.length
+        ? await supabase
+            .from('samples')
+            .select('id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, stage')
+            .in('id', sampleIds)
+        : { data: [], error: null }
       if (sampleErr) throw sampleErr
-      const isCodeIds = [...new Set(
-        (Array.isArray(sampleData) ? sampleData : [])
-          .map((s: { test_report_is_code_id?: string | null }) => s.test_report_is_code_id)
-          .filter(Boolean),
-      )] as string[]
+
+      for (const s of Array.isArray(sampleData) ? sampleData : []) {
+        const stage = String((s as { stage?: string | null }).stage ?? '').trim().toLowerCase()
+        if (stage === 'test_allocation' || stage === 'under_testing') {
+          sampleIdsInTestFlow.add(String((s as { id: string }).id))
+        }
+      }
+      const visiblePendingAllocations = allAllocations.filter(
+        (a: { id: string; sample_id: string }) =>
+          !withTest.has(a.id) && sampleIdsInTestFlow.has(a.sample_id),
+      )
+
+      const isCodeIds = [
+        ...new Set(
+          (Array.isArray(sampleData) ? sampleData : [])
+            .map((s: { test_report_is_code_id?: string | null }) => s.test_report_is_code_id)
+            .filter(Boolean),
+        ),
+      ] as string[]
       let isCodeMap = new Map<string, string>()
       if (isCodeIds.length > 0) {
         const { data: isCodeData } = await supabase
@@ -172,41 +227,52 @@ export default function TestAllocationMasterPage() {
         )
       }
       const samplesMap = new Map(
-        (Array.isArray(sampleData) ? sampleData : []).map((s: { id: string; srf_number?: string; date_of_sample_receiving?: string; test_report_is_code_id?: string | null; referback_from_allocation?: boolean | null }) => [
-          s.id,
-          {
-            srf_number: s.srf_number ?? null,
-            date_of_sample_receiving: s.date_of_sample_receiving ?? null,
-            isCodeId: s.test_report_is_code_id ?? null,
-            isCodeLabel: s.test_report_is_code_id ? (isCodeMap.get(s.test_report_is_code_id) ?? null) : null,
-            referbackFromAllocation: !!s.referback_from_allocation,
-          },
-        ]),
+        (Array.isArray(sampleData) ? sampleData : []).map(
+          (s: {
+            id: string
+            srf_number?: string
+            date_of_sample_receiving?: string
+            test_report_is_code_id?: string | null
+            referback_from_allocation?: boolean | null
+          }) => [
+            s.id,
+            {
+              srf_number: s.srf_number ?? null,
+              date_of_sample_receiving: s.date_of_sample_receiving ?? null,
+              isCodeId: s.test_report_is_code_id ?? null,
+              isCodeLabel: s.test_report_is_code_id
+                ? (isCodeMap.get(s.test_report_is_code_id) ?? null)
+                : null,
+              referbackFromAllocation: !!s.referback_from_allocation,
+            },
+          ],
+        ),
       )
-      const list: TestAllocationRow[] = testAllocs.map((t: {
-        id: string
-        sample_allocation_id: string
-        assigned_employee_id?: string | null
-        assigned_employee_name?: string | null
-        test_parameter_summary?: string | null
-        test_parameter_ids?: string[] | null
-        test_start_date?: string | null
-        results?: string | null
-        test_end_date?: string | null
-        sent_for_testing?: boolean | null
-      }) => {
-        const a = allocMap.get(t.sample_allocation_id) as {
+
+      const buildRowFromAllocation = (
+        a: {
           id: string
           sample_id: string
           section_code: string
           allocation_date: string | null
           department: string | null
           designation: string | null
-        } | undefined
-        if (!a) return null
+        },
+        testAlloc?: {
+          id: string
+          assigned_employee_id?: string | null
+          assigned_employee_name?: string | null
+          test_parameter_summary?: string | null
+          test_start_date?: string | null
+          results?: string | null
+          test_end_date?: string | null
+          sent_for_testing?: boolean | null
+        },
+      ): TestAllocationRow => {
         const sample = samplesMap.get(a.sample_id)
+        const taId = testAlloc?.id
         return {
-          testAllocationId: t.id,
+          testAllocationId: taId,
           sampleAllocationId: a.id,
           sampleId: a.sample_id,
           sectionCode: a.section_code,
@@ -216,21 +282,59 @@ export default function TestAllocationMasterPage() {
           allocationDate: a.allocation_date ?? sample?.date_of_sample_receiving ?? null,
           department: a.department ?? null,
           designation: a.designation ?? null,
-          testParameterSummary: t.test_parameter_summary ?? null,
-          testParameterIds: paramIdsByAllocation.get(t.id) ?? (Array.isArray(t.test_parameter_ids) ? t.test_parameter_ids : []),
-          assignedEmployeeId: t.assigned_employee_id ?? null,
-          assignedEmployeeName: t.assigned_employee_name ?? null,
+          testParameterSummary: testAlloc?.test_parameter_summary ?? null,
+          testParameterIds: taId ? (paramIdsByAllocation.get(taId) ?? []) : [],
+          assignedEmployeeId: testAlloc?.assigned_employee_id ?? null,
+          assignedEmployeeName: testAlloc?.assigned_employee_name ?? null,
           referbackFromAllocation: sample?.referbackFromAllocation ?? false,
-          sentForTesting: !!t.sent_for_testing,
-          testStartDate: (t as { test_start_date?: string | null }).test_start_date ?? null,
-          results: (t as { results?: string | null }).results ?? null,
-          testEndDate: (t as { test_end_date?: string | null }).test_end_date ?? null,
+          sentForTesting: !!testAlloc?.sent_for_testing,
+          testStartDate: testAlloc?.test_start_date ?? null,
+          results: testAlloc?.results ?? null,
+          testEndDate: testAlloc?.test_end_date ?? null,
         }
-      })
+      }
+
+      const allottedRows: TestAllocationRow[] = testAllocs
+        .map(
+          (t: {
+            id: string
+            sample_allocation_id: string
+            assigned_employee_id?: string | null
+            assigned_employee_name?: string | null
+            test_parameter_summary?: string | null
+            test_start_date?: string | null
+            results?: string | null
+            test_end_date?: string | null
+            sent_for_testing?: boolean | null
+          }) => {
+            const a = allocMap.get(t.sample_allocation_id) as
+              | {
+                  id: string
+                  sample_id: string
+                  section_code: string
+                  allocation_date: string | null
+                  department: string | null
+                  designation: string | null
+                }
+              | undefined
+            if (!a) return null
+            return buildRowFromAllocation(a, t)
+          },
+        )
         .filter((r): r is TestAllocationRow => r != null)
-        // Sections sent to Sample Under Testing are hidden; refer-back sets sent_for_testing false.
-        .filter((r) => !r.sentForTesting)
-      setRows(list)
+
+      const pendingRows: TestAllocationRow[] = visiblePendingAllocations.map(
+        (a: {
+          id: string
+          sample_id: string
+          section_code: string
+          allocation_date: string | null
+          department: string | null
+          designation: string | null
+        }) => buildRowFromAllocation(a),
+      )
+
+      setRows([...pendingRows, ...allottedRows])
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Unable to load test allocations')
     } finally {
@@ -247,96 +351,19 @@ export default function TestAllocationMasterPage() {
     void loadUsers()
   }, [formOpen])
 
-  const loadAvailableSections = async () => {
-    setAvailableSectionsLoading(true)
-    try {
-      const { data: taData } = await supabase.from('test_allocations').select('sample_allocation_id')
-      const withTest = new Set(
-        (Array.isArray(taData) ? taData : []).map((t: { sample_allocation_id: string }) => t.sample_allocation_id),
-      )
-      const { data: allocData, error } = await supabase
-        .from('sample_allocations')
-        .select('id, sample_id, section_code, allocation_date, department, designation')
-        .order('allocation_date', { ascending: false })
-      if (error || !Array.isArray(allocData)) {
-        setAvailableSections([])
-        return
-      }
-      const withoutTest = allocData.filter((a: { id: string }) => !withTest.has(a.id))
-      if (withoutTest.length === 0) {
-        setAvailableSections([])
-        return
-      }
-      const sampleIds = [...new Set(withoutTest.map((a: { sample_id: string }) => a.sample_id))]
-      const { data: sampleData } = await supabase
-        .from('samples')
-        .select('id, srf_number, date_of_sample_receiving, test_report_is_code_id')
-        .in('id', sampleIds)
-      const isCodeIds = [...new Set(
-        (Array.isArray(sampleData) ? sampleData : [])
-          .map((s: { test_report_is_code_id?: string | null }) => s.test_report_is_code_id)
-          .filter(Boolean),
-      )] as string[]
-      let isCodeMap = new Map<string, string>()
-      if (isCodeIds.length > 0) {
-        const { data: isCodeData } = await supabase
-          .from('is_codes')
-          .select('id, is_number, revision_year')
-          .in('id', isCodeIds)
-        const isCodes = Array.isArray(isCodeData) ? isCodeData : []
-        isCodeMap = new Map(
-          isCodes.map((c: { id: string; is_number?: string; revision_year?: string | null }) => [
-            c.id,
-            c.revision_year ? `${c.is_number ?? ''} : ${c.revision_year}` : (c.is_number ?? c.id),
-          ]),
-        )
-      }
-      const samplesMap = new Map(
-        (Array.isArray(sampleData) ? sampleData : []).map((s: { id: string; srf_number?: string; date_of_sample_receiving?: string; test_report_is_code_id?: string | null }) => [
-          s.id,
-          {
-            srf_number: s.srf_number ?? null,
-            date_of_sample_receiving: s.date_of_sample_receiving ?? null,
-            isCodeId: s.test_report_is_code_id ?? null,
-            isCodeLabel: s.test_report_is_code_id ? (isCodeMap.get(s.test_report_is_code_id) ?? null) : null,
-          },
-        ]),
-      )
-      const list: TestAllocationRow[] = withoutTest.map((a: {
-        id: string
-        sample_id: string
-        section_code: string
-        allocation_date: string | null
-        department: string | null
-        designation: string | null
-      }) => {
-        const sample = samplesMap.get(a.sample_id)
-        return {
-          sampleAllocationId: a.id,
-          sampleId: a.sample_id,
-          sectionCode: a.section_code,
-          isCodeId: sample?.isCodeId ?? null,
-          isCodeLabel: sample?.isCodeLabel ?? null,
-          srfNumber: sample?.srf_number ?? null,
-          allocationDate: a.allocation_date ?? sample?.date_of_sample_receiving ?? null,
-          department: a.department ?? null,
-          designation: a.designation ?? null,
-          testParameterSummary: null,
-          testParameterIds: [],
-          assignedEmployeeId: null,
-          assignedEmployeeName: null,
-        }
-      })
-      setAvailableSections(list)
-    } finally {
-      setAvailableSectionsLoading(false)
-    }
-  }
-
   useEffect(() => {
     void loadTestParams()
     void loadRows()
   }, [])
+
+  useEffect(() => {
+    if (!formOpen) return
+    const refresh = () => {
+      void loadTestParams()
+    }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [formOpen])
 
   const departmentScopedRows = useMemo(() => {
     const dept = departmentName.trim()
@@ -348,13 +375,23 @@ export default function TestAllocationMasterPage() {
   const filteredRows = useMemo(() => {
     let list = departmentScopedRows
     if (employeeFilterId) {
-      list = list.filter((r) => r.assignedEmployeeId === employeeFilterId)
+      list = list.filter(
+        (r) => isPendingTestAllocationRow(r) || r.assignedEmployeeId === employeeFilterId,
+      )
     }
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter(
         (r) =>
-          [r.sectionCode, r.srfNumber, r.department, r.designation, r.testParameterSummary, r.assignedEmployeeName]
+          [
+            r.sectionCode,
+            r.srfNumber,
+            r.isCodeLabel,
+            r.department,
+            r.designation,
+            r.testParameterSummary,
+            r.assignedEmployeeName,
+          ]
             .filter(Boolean)
             .join(' ')
             .toLowerCase()
@@ -364,11 +401,41 @@ export default function TestAllocationMasterPage() {
     return list
   }, [departmentScopedRows, search, employeeFilterId])
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-  const pagedRows = useMemo(
-    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
-    [filteredRows, page, pageSize],
+  const sortedFiltered = useMemo(
+    () => sortTestAllocationRows(filteredRows, sortKey, sortDir),
+    [filteredRows, sortKey, sortDir],
   )
+  const pendingAllotmentRows = useMemo(
+    () => sortedFiltered.filter((r) => isPendingTestAllocationRow(r)),
+    [sortedFiltered],
+  )
+  const pendingTestingRows = useMemo(
+    () => sortedFiltered.filter((r) => !r.sentForTesting && !isPendingTestAllocationRow(r)),
+    [sortedFiltered],
+  )
+  const sentRows = useMemo(
+    () => sortedFiltered.filter((r) => r.sentForTesting),
+    [sortedFiltered],
+  )
+  const pageCount = Math.max(1, Math.ceil(sentRows.length / pageSize))
+  const pagedSentRows = useMemo(
+    () => sentRows.slice((page - 1) * pageSize, page * pageSize),
+    [sentRows, page, pageSize],
+  )
+  const tableRows = useMemo(
+    () => [...pendingAllotmentRows, ...pendingTestingRows, ...pagedSentRows],
+    [pendingAllotmentRows, pendingTestingRows, pagedSentRows],
+  )
+
+  const handleSort = (key: TestAllocationSortKey) => {
+    setPage(1)
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
 
   const designationOptionsForForm = useMemo(() => {
     const dept = (formRow?.department ?? '').trim()
@@ -412,13 +479,6 @@ export default function TestAllocationMasterPage() {
       }))
   }, [users, formRow?.department, form?.designation])
 
-  const departmentFilteredAvailableSections = useMemo(() => {
-    const dept = departmentName.trim()
-    if (!dept || isLaboratoryDirector(designation)) return availableSections
-    const deptNorm = normUserField(dept)
-    return availableSections.filter((r) => normUserField(r.department) === deptNorm)
-  }, [availableSections, departmentName, designation])
-
   const toggleRow = (id: string) =>
     setSelectedIds((prev) => {
       const n = new Set(prev)
@@ -429,7 +489,7 @@ export default function TestAllocationMasterPage() {
   const toggleAll = (checked: boolean) =>
     setSelectedIds((prev) => {
       const n = new Set(prev)
-      pagedRows.forEach((r) => (checked ? n.add(r.sampleAllocationId) : n.delete(r.sampleAllocationId)))
+      tableRows.forEach((r) => (checked ? n.add(r.sampleAllocationId) : n.delete(r.sampleAllocationId)))
       return n
     })
 
@@ -477,17 +537,6 @@ export default function TestAllocationMasterPage() {
       })
       setFormOpen(true)
     })()
-  }
-
-  const handleOpenAddDialog = () => {
-    setFormRow(null)
-    setForm(null)
-    setFormOpen(true)
-    void loadAvailableSections()
-  }
-
-  const handleSelectSectionForAdd = (row: TestAllocationRow) => {
-    handleAddTestParameter(row)
   }
 
   const handleSaveForm = () => {
@@ -667,37 +716,6 @@ export default function TestAllocationMasterPage() {
     }
   }
 
-  const handleReferbackToReceiving = async (row: TestAllocationRow) => {
-    const sampleId = row.sampleId?.trim()
-    const section = row.sectionCode?.trim() || 'this section'
-    if (!sampleId || !row.sampleAllocationId?.trim()) {
-      setSaveMessage('Missing section data for refer back.')
-      return
-    }
-    if (
-      !window.confirm(
-        `Refer back section ${section} to Sample Receiving?\n\nTest parameters and this section code will be removed from allocation. If this is the last section on the SRF, the record will unlock in Sample Receiving for editing.`,
-      )
-    ) {
-      return
-    }
-    try {
-      const result = await referbackSectionToSampleReceiving(row.sampleAllocationId, sampleId)
-      if (result === 'receiving') {
-        setSaveMessage(
-          `Section ${section} removed. SRF referred back to Sample Receiving — edit unlocked there.`,
-        )
-      } else {
-        setSaveMessage(
-          `Section ${section} removed from allocation. Other sections for this SRF remain in Sample Allocation.`,
-        )
-      }
-      await loadRows()
-    } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : 'Refer back to Sample Receiving failed')
-    }
-  }
-
   const handleReferback = async (row: TestAllocationRow) => {
     try {
       const sampleId = row.sampleId?.trim()
@@ -735,15 +753,15 @@ export default function TestAllocationMasterPage() {
       if (remainingCount === 0) {
         const { error } = await supabase
           .from('samples')
-          .update({ referback_from_allocation: true })
+          .update({ stage: 'allocation', referback_from_allocation: true })
           .eq('id', sampleId)
         if (error) {
           setSaveMessage(formatSupabaseError(error))
           return
         }
-        setSaveMessage('Referred back to Sample Allocation. Edit unlocked there for this SRF.')
+        setSaveMessage(`Section ${section} referred back to Sample Allocation.`)
       } else {
-        setSaveMessage('Section referred back. Other sections for this SRF remain in Test Allocation.')
+        setSaveMessage(`Section ${section} referred back to Sample Allocation. Other sections remain in Test Allocation.`)
       }
       await loadRows()
     } catch (err) {
@@ -780,14 +798,18 @@ export default function TestAllocationMasterPage() {
           setPageSize(s)
           setPage(1)
         }}
-        onAddTestParameter={handleOpenAddDialog}
         employeeOptions={users.map((u) => ({ id: u.id, name: u.name }))}
         selectedEmployeeId={employeeFilterId || 'all'}
         onEmployeeFilterChange={setEmployeeFilterId}
+        assistantContextSummary={buildTestAllocationListAssistantContext(filteredRows, search)}
+        onAssistantDataChanged={() => {
+          void loadRows()
+          void loadTestParams()
+        }}
       />
 
       <TestAllocationTable
-        rows={pagedRows}
+        rows={tableRows}
         loading={listLoading}
         error={listError}
         selectedIds={selectedIds}
@@ -795,11 +817,22 @@ export default function TestAllocationMasterPage() {
         onToggleAll={toggleAll}
         onAddTestParameter={handleAddTestParameter}
         onReferback={handleReferback}
-        onReferbackToReceiving={handleReferbackToReceiving}
         onSendForTesting={handleSendForTesting}
-        onAssistantDataChanged={() => {
-          void loadRows()
-          void loadTestParams()
+        onViewParameters={(row) => {
+          setParamsViewRow(row)
+          setParamsViewOpen(true)
+        }}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
+      />
+
+      <TestAllocationParametersViewDialog
+        row={paramsViewRow}
+        open={paramsViewOpen}
+        onOpenChange={(open) => {
+          setParamsViewOpen(open)
+          if (!open) setParamsViewRow(null)
         }}
       />
 
@@ -830,66 +863,39 @@ export default function TestAllocationMasterPage() {
         }
         setFormOpen(open)
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          persistOnFocusLoss
+          className="left-0 top-0 flex h-[100dvh] w-[100vw] max-h-[100dvh] max-w-[100vw] translate-x-0 translate-y-0 flex-col gap-4 overflow-hidden rounded-none border-0 p-4 sm:p-6"
+        >
           <DialogHeader>
-            <DialogTitle>{formRow ? 'Edit Test Parameter' : 'Add Test Parameter'}</DialogTitle>
+            <DialogTitle>
+              {formRow && isPendingTestAllocationRow(formRow) ? 'Allot Tests' : 'Edit Test Parameter'}
+            </DialogTitle>
           </DialogHeader>
           {saveMessage && (
             <p className={`text-sm ${saveMessage === 'Test allocation saved.' ? 'text-green-600' : 'text-destructive'}`}>
               {saveMessage}
             </p>
           )}
-          {!formRow ? (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Select a section to add test parameters and assign an employee.</p>
-              {availableSectionsLoading ? (
-                <p className="text-sm">Loading sections…</p>
-              ) : departmentFilteredAvailableSections.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {availableSections.length > 0 && departmentName.trim()
-                    ? `No sections for your department (${departmentName.trim()}). Only section codes allocated to your department in Sample Allocation are shown here.`
-                    : 'No section available. All sections from Sample Allocation already have test allocation, or there are no sections yet.'}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Section</label>
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    onChange={(e) => {
-                      const id = e.target.value
-                      if (!id) return
-                      const row = departmentFilteredAvailableSections.find((r) => r.sampleAllocationId === id)
-                      if (row) handleSelectSectionForAdd(row)
-                    }}
-                    value=""
-                  >
-                    <option value="">Choose section…</option>
-                    {departmentFilteredAvailableSections.map((r) => (
-                      <option key={r.sampleAllocationId} value={r.sampleAllocationId}>
-                        {r.sectionCode} — {r.srfNumber ?? '-'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+          {formRow && form ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <TestAllocationForm
+                row={formRow}
+                form={form}
+                onChange={setForm}
+                onSave={handleSaveForm}
+                saveLoading={saveLoading}
+                onClose={() => {
+                  setFormOpen(false)
+                  setFormRow(null)
+                  setForm(null)
+                }}
+                testParamOptions={testParamOptions}
+                employeesFiltered={employeesFilteredForRow}
+                designationOptions={designationOptionsForForm}
+              />
             </div>
-          ) : form && (
-            <TestAllocationForm
-              row={formRow}
-              form={form}
-              onChange={setForm}
-              onSave={handleSaveForm}
-              saveLoading={saveLoading}
-              onClose={() => {
-                setFormOpen(false)
-                setFormRow(null)
-                setForm(null)
-              }}
-              testParamOptions={testParamOptions}
-              employeesFiltered={employeesFilteredForRow}
-              designationOptions={designationOptionsForForm}
-            />
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

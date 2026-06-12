@@ -13,6 +13,7 @@ import { AddIsCodeDialog } from './AddIsCodeDialog'
 import { SampleReceivingHeaderBar } from './SampleReceivingHeaderBar'
 import { SampleReceivingForm } from './SampleReceivingForm'
 import { SampleReceivingTable } from './SampleReceivingTable'
+import { SampleReceivingDetailsViewDialog } from './SampleReceivingDetailsViewDialog'
 import { SampleReceivingTableFooterBar } from './SampleReceivingFooterBar'
 import { buildSampleReceivingAssistantContext } from './buildSampleReceivingAssistantContext'
 import {
@@ -33,6 +34,11 @@ import { outputSrfDocument } from './outputSrfDocument'
 import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { fetchSrfPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
 import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/report-preparation/reportScopeConfig'
+import {
+  sortSampleReceivingRows,
+  type SampleReceivingSortKey,
+} from './sortSampleReceivingRows'
+import { getSampleWorkflowStatusLabel } from '../sampleWorkflowStatus'
 
 const STAGE = 'receiving' as const
 const BUCKET = 'sample-client-references'
@@ -64,6 +70,8 @@ export default function SampleReceivingMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [activeTab, setActiveTab] = useState('details')
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<SampleReceivingSortKey>('srfDate')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [rows, setRows] = useState<SampleRow[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -89,6 +97,7 @@ export default function SampleReceivingMasterPage() {
   const [addClientOpen, setAddClientOpen] = useState(false)
   const [addIsCodeOpen, setAddIsCodeOpen] = useState(false)
   const [sampleIdsInAllocation, setSampleIdsInAllocation] = useState<Set<string>>(() => new Set())
+  const [detailsViewRow, setDetailsViewRow] = useState<SampleRow | null>(null)
 
   const isNewReport = form.receivingReportType === RECEIVING_REPORT_TYPES[0]
   const canSave =
@@ -503,14 +512,39 @@ export default function SampleReceivingMasterPage() {
     })()
   }
 
+  const rowsWithIsCode = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        test_report_is_code_label:
+          r.test_report_is_code_label ??
+          isCodeOptions.find((c) => c.id === r.test_report_is_code_id)?.label ??
+          null,
+      })),
+    [rows, isCodeOptions],
+  )
+
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) => {
-      const blob = [r.srf_number, r.sample_code, r.client_name, r.sample_description, r.description].filter(Boolean).join(' ').toLowerCase()
+    if (!q) return rowsWithIsCode
+    return rowsWithIsCode.filter((r) => {
+      const blob = [
+        r.srf_number,
+        r.sample_code,
+        r.client_name,
+        r.test_report_is_code_label,
+        r.sample_description,
+        r.description,
+        r.sample_declaration,
+        r.any_other_information,
+        getSampleWorkflowStatusLabel(r),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
       return blob.includes(q)
     })
-  }, [rows, search])
+  }, [rowsWithIsCode, search])
 
   const assistantContext = useMemo(
     () =>
@@ -523,9 +557,25 @@ export default function SampleReceivingMasterPage() {
     [filteredRows, search, clientOptions, isCodeOptions],
   )
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-  useEffect(() => { setPage(1); setJumpTo('') }, [search, pageSize])
-  const pagedRows = useMemo(() => filteredRows.slice((page - 1) * pageSize, page * pageSize), [filteredRows, page, pageSize])
+  const sortedRows = useMemo(
+    () => sortSampleReceivingRows(filteredRows, sortKey, sortDir),
+    [filteredRows, sortKey, sortDir],
+  )
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize))
+  useEffect(() => { setPage(1); setJumpTo('') }, [search, pageSize, sortKey, sortDir])
+  const pagedRows = useMemo(
+    () => sortedRows.slice((page - 1) * pageSize, page * pageSize),
+    [sortedRows, page, pageSize],
+  )
+
+  const handleSort = (key: SampleReceivingSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
 
   const toggleRow = (id: string) => {
     setSelectedIds((prev) => {
@@ -682,7 +732,11 @@ export default function SampleReceivingMasterPage() {
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
         onCopy={handleCopy}
+        onViewDetails={setDetailsViewRow}
         sampleIdsInAllocation={sampleIdsInAllocation}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
       />
       <SampleReceivingTableFooterBar
         message={saveMessage}
@@ -717,6 +771,13 @@ export default function SampleReceivingMasterPage() {
         onSaved={(id) => {
           void loadIsCodes()
           setForm((prev) => ({ ...prev, testReportAsPerIsId: id }))
+        }}
+      />
+      <SampleReceivingDetailsViewDialog
+        row={detailsViewRow}
+        open={detailsViewRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailsViewRow(null)
         }}
       />
     </div>

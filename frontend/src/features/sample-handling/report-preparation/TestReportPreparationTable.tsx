@@ -1,10 +1,44 @@
-import { Eye, FileText, Undo2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, FileText, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDate } from '@/lib/utils'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
+import type { TestReportPreparationSortKey } from './sortTestReportPreparationRows'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
+
+function SortableHead({
+  label,
+  columnKey,
+  sortKey,
+  sortDir,
+  onSort,
+  className,
+}: {
+  label: string
+  columnKey: TestReportPreparationSortKey
+  sortKey: TestReportPreparationSortKey
+  sortDir: 'asc' | 'desc'
+  onSort: (key: TestReportPreparationSortKey) => void
+  className?: string
+}) {
+  const active = sortKey === columnKey
+  const Icon = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        className="inline-flex w-full items-center justify-center gap-1 text-xs font-medium hover:text-foreground transition-colors"
+        onClick={() => onSort(columnKey)}
+        aria-label={`Sort by ${label}${active ? `, ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+      >
+        <span>{label}</span>
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+      </button>
+    </TableHead>
+  )
+}
 
 export function TestReportPreparationTable({
   rows,
@@ -19,6 +53,9 @@ export function TestReportPreparationTable({
   onReferback,
   referbackBusyId,
   canReferback,
+  sortKey,
+  sortDir,
+  onSort,
 }: {
   rows: ReportPreparationListRow[]
   loading: boolean
@@ -32,6 +69,9 @@ export function TestReportPreparationTable({
   onReferback: (row: ReportPreparationListRow) => void
   referbackBusyId: string | null
   canReferback: boolean
+  sortKey: TestReportPreparationSortKey
+  sortDir: 'asc' | 'desc'
+  onSort: (key: TestReportPreparationSortKey) => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -55,8 +95,8 @@ export function TestReportPreparationTable({
               <col className="w-[14%]" />
               <col className="w-[14%]" />
               <col className="w-[11%]" />
-              <col className="w-[13%]" />
-              <col className="w-[88px]" />
+              <col className="w-[12%]" />
+              <col className="w-[200px]" />
             </colgroup>
             <TableHeader>
               <TableRow className="bg-muted/50">
@@ -71,13 +111,41 @@ export function TestReportPreparationTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className="text-left text-xs">SRF</TableHead>
+                <SortableHead
+                  label="SRF"
+                  columnKey="srfNumber"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                  className="text-xs [&_button]:justify-start"
+                />
                 <TableHead className="text-xs text-center">View Sample Details</TableHead>
-                <TableHead className="text-xs text-center">Client</TableHead>
-                <TableHead className="text-xs text-center">IS Code</TableHead>
-                <TableHead className="text-xs text-center">Received Date</TableHead>
+                <SortableHead
+                  label="Client"
+                  columnKey="clientName"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                  className="text-xs text-center"
+                />
+                <SortableHead
+                  label="IS Code"
+                  columnKey="isCode"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                  className="text-xs text-center"
+                />
+                <SortableHead
+                  label="Received Date"
+                  columnKey="dateReceiving"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                  className="text-xs text-center"
+                />
                 <TableHead className="text-xs text-center">View Results</TableHead>
-                <TableHead className="text-xs text-center">Action</TableHead>
+                <TableHead className="text-xs text-right pr-3">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -129,30 +197,33 @@ export function TestReportPreparationTable({
                       View
                     </Button>
                   </TableCell>
-                  <TableCell className="align-middle text-center">
-                    <div className="flex items-center justify-center gap-0.5">
+                  <TableCell className="align-middle text-right pr-3">
+                    <div className="inline-flex flex-col items-stretch gap-1.5 min-w-[148px]">
                       <Button
                         type="button"
-                        size="icon"
-                        variant="ghost"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 justify-center gap-1.5 text-xs font-medium shadow-sm"
                         aria-label={`Prepare report for ${fmt(r.srfNumber)}`}
-                        title="Prepare test report"
+                        title="Prepare test report (Clause 7.8)"
                         onClick={() => onPrepare(r)}
                         disabled={referbackBusyId === r.id}
                       >
-                        <FileText size={16} />
+                        <FileText size={14} className="shrink-0" />
+                        Prepare Report
                       </Button>
                       <Button
                         type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        aria-label={`Referback ${fmt(r.srfNumber)} to Results Under Review`}
-                        title="Refer back — select section(s) to send to Results Under Review"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 justify-center gap-1.5 text-xs font-medium border-amber-200/90 bg-amber-50/50 text-amber-950 hover:bg-amber-50 hover:text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-100 dark:hover:bg-amber-950/40"
+                        aria-label={`Refer back ${fmt(r.srfNumber)} to Results Under Review`}
+                        title="Refer back — select section, destination stage, and remark"
                         onClick={() => onReferback(r)}
                         disabled={!canReferback || referbackBusyId === r.id}
                       >
-                        <Undo2 size={16} />
+                        <Undo2 size={14} className="shrink-0" />
+                        Refer Back
                       </Button>
                     </div>
                   </TableCell>

@@ -285,9 +285,6 @@ export function TestReportCoverDetailsGrid({
   ulrPrefix,
   ulrPrefixLoading,
   activeScope,
-  sampleReceivingEditUnlocked,
-  onSampleReceivingEditUnlockedChange,
-  sampleReceivingEditUnlockLoading,
   disabled,
 }: {
   details: TestReportCoverDetails
@@ -300,35 +297,14 @@ export function TestReportCoverDetailsGrid({
   ulrPrefix: string
   ulrPrefixLoading: boolean
   activeScope: ReportScopeKind
-  sampleReceivingEditUnlocked: boolean
-  onSampleReceivingEditUnlockedChange: (unlocked: boolean) => void
-  sampleReceivingEditUnlockLoading?: boolean
   disabled?: boolean
 }) {
-  const receivingEditToggleDisabled = Boolean(disabled || sampleReceivingEditUnlockLoading)
-
   return (
     <div className={REPORT_PART_OUTER_CLASS}>
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
           Part A — Particulars of Sample Submitted
         </h3>
-        <label
-          htmlFor="part-a-receiving-edit-unlock"
-          className={`flex max-w-md items-start gap-2 rounded-md border border-primary/25 bg-background/90 px-3 py-2 text-sm shadow-sm ${
-            receivingEditToggleDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-          }`}
-        >
-          <input
-            id="part-a-receiving-edit-unlock"
-            type="checkbox"
-            className="rounded border-border mt-0.5"
-            checked={sampleReceivingEditUnlocked}
-            disabled={receivingEditToggleDisabled}
-            onChange={(e) => onSampleReceivingEditUnlockedChange(e.target.checked)}
-          />
-          <span className="font-medium">Allow Sample Receiving edit</span>
-        </label>
       </div>
       <div className={`${REPORT_PART_INNER_CLASS} grid grid-cols-1 text-sm`}>
         {COVER_ITEMS.map((item) => (

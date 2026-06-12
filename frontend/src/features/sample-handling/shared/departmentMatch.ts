@@ -14,3 +14,15 @@ export function departmentsMatch(
   if (!alloc) return false
   return alloc === user
 }
+
+/** True when sample allocation designation matches the logged-in user's designation. */
+export function designationsMatch(
+  allocationDesignation: string | null | undefined,
+  userDesignation: string | null | undefined,
+): boolean {
+  const alloc = normalizeDepartmentName(allocationDesignation)
+  const user = normalizeDepartmentName(userDesignation)
+  if (!user) return false
+  if (!alloc) return false
+  return alloc === user
+}

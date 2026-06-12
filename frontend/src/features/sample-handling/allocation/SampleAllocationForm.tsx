@@ -71,6 +71,22 @@ export function SampleAllocationForm({
   const [sampleDetailsOpen, setSampleDetailsOpen] = useState(false)
 
   const currentSample = samples.find((s) => s.id === form.sampleId) ?? null
+
+  // Keep search input in sync when parent sets sample/SRF (dialog reuse, edit row, refer-back).
+  useEffect(() => {
+    const fromForm = form.srfNumber?.trim()
+    if (fromForm) {
+      setSrfInput(fromForm)
+      return
+    }
+    if (form.sampleId && currentSample) {
+      const label = currentSample.srf_number || currentSample.sample_code || currentSample.id
+      if (label) setSrfInput(label)
+    } else if (!form.sampleId) {
+      setSrfInput('')
+    }
+  }, [form.sampleId, form.srfNumber, currentSample?.id, currentSample?.srf_number, currentSample?.sample_code])
+
   const sampleOptions = samples
     .filter(
       (s) =>
@@ -88,18 +104,27 @@ export function SampleAllocationForm({
       )
     : sampleOptions
 
-  // When sample is selected, set IS Code label and default date from sample
+  // When sample is pre-selected, auto-fill SRF, IS code, and allocation date.
   useEffect(() => {
     if (!currentSample) {
-      onChange({ ...form, isCodeLabel: '' })
+      if (!form.sampleId && form.isCodeLabel) {
+        onChange({ ...form, isCodeLabel: '' })
+      }
       return
     }
+    const label = currentSample.srf_number || currentSample.sample_code || currentSample.id
     const isLabel =
       currentSample.test_report_is_code_id != null
         ? isCodeOptions.find((o) => o.id === currentSample.test_report_is_code_id)?.label ?? ''
         : ''
     const date = form.allocationDate || currentSample.date_of_sample_receiving?.slice(0, 10) || today()
-    onChange({ ...form, isCodeLabel: isLabel, allocationDate: date })
+    const patch: Partial<SampleAllocationFormState> = {}
+    if (label && form.srfNumber !== label) patch.srfNumber = label
+    if (form.isCodeLabel !== isLabel) patch.isCodeLabel = isLabel
+    if (form.allocationDate !== date) patch.allocationDate = date
+    if (Object.keys(patch).length > 0) {
+      onChange({ ...form, ...patch })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSample?.id, currentSample?.test_report_is_code_id])
 
@@ -218,9 +243,9 @@ export function SampleAllocationForm({
         <div className="grid grid-cols-4 gap-4">
           <div className="space-y-2 min-w-0">
             <Label>SRF Number</Label>
-            {lockSrfSection ? (
+            {lockSrfSection || form.sampleId ? (
               <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm min-h-10 flex items-center">
-                {form.srfNumber || '—'}
+                {form.srfNumber || srfInput || '—'}
               </div>
             ) : (
               <div className="relative">

@@ -1,40 +1,48 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabaseClient'
 import {
   fetchReportPrepSectionsForReferback,
   type ReportPrepSectionOption,
 } from './fetchReportPrepSectionsForReferback'
+import type { ReportPrepReferbackTarget } from './referbackFromReportPreparation'
 
 type ReviewUser = { id: string; name: string; designation: string; departmentName: string }
 
-type ReferbackFormRow = {
-  localId: string
-  sampleAllocationId: string
-  department: string
-  designation: string
-  employeeId: string
-}
+const TARGET_OPTIONS: Array<{ value: ReportPrepReferbackTarget; label: string; hint: string }> = [
+  {
+    value: 'results_review',
+    label: 'Results Under Review',
+    hint: 'Clears approval and sends the section back for results review. Test results are kept.',
+  },
+  {
+    value: 'under_testing',
+    label: 'Sample Under Testing',
+    hint: 'Send back for result correction. Test data is kept.',
+  },
+  {
+    value: 'test_allocation',
+    label: 'Test Allocation',
+    hint: 'Re-open test allocation for this section. Parameters and results are kept.',
+  },
+  {
+    value: 'allocation',
+    label: 'Sample Allocation',
+    hint: 'Remove test allocation for this section; section code stays for re-assignment.',
+  },
+  {
+    value: 'receiving',
+    label: 'Sample Receiving',
+    hint: 'Remove section from allocation and unlock Sample Receiving when applicable.',
+  },
+]
 
+const DEFAULT_TESTING_DESIGNATION = 'Testing Engineer'
 const norm = (s: string) => (s ?? '').trim().toLowerCase()
-
-function newLocalId() {
-  return `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
-
-function emptyFormRow(): ReferbackFormRow {
-  return {
-    localId: newLocalId(),
-    sampleAllocationId: '',
-    department: '',
-    designation: '',
-    employeeId: '',
-  }
-}
 
 function designationOptionsForDepartment(users: ReviewUser[], department: string): string[] {
   if (!department.trim()) return []
@@ -60,13 +68,25 @@ function designationOptionsForDepartment(users: ReviewUser[], department: string
   return [...set].sort((a, b) => a.localeCompare(b))
 }
 
+function sectionLabel(s: ReportPrepSectionOption): string {
+  const code = s.sectionCode?.trim() || '—'
+  const dept = s.department?.trim()
+  return dept ? `${code} — ${dept}` : code
+}
+
+export type TestReportReferbackSubmitPayload = {
+  sampleAllocationId: string
+  testAllocationId: string
+  targetStage: ReportPrepReferbackTarget
+  remark: string
+  assignee?: { id: string; name: string }
+}
+
 export function TestReportReferbackToReviewDialog({
   open,
   onOpenChange,
   sampleId,
   srfNumber,
-  defaultEmployeeId,
-  defaultDesignation,
   onSubmit,
   submitLoading,
   submitError,
@@ -75,11 +95,7 @@ export function TestReportReferbackToReviewDialog({
   onOpenChange: (open: boolean) => void
   sampleId: string | null
   srfNumber: string | null
-  defaultEmployeeId?: string
-  defaultDesignation?: string
-  onSubmit: (
-    sections: Array<{ testAllocationId: string; reviewer: { id: string; name: string } }>,
-  ) => Promise<void>
+  onSubmit: (payload: TestReportReferbackSubmitPayload) => Promise<void>
   submitLoading: boolean
   submitError: string | null
 }) {
@@ -87,14 +103,32 @@ export function TestReportReferbackToReviewDialog({
   const [sectionsLoading, setSectionsLoading] = useState(false)
   const [users, setUsers] = useState<ReviewUser[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
-  const [formRows, setFormRows] = useState<ReferbackFormRow[]>([emptyFormRow()])
+  const [sampleAllocationId, setSampleAllocationId] = useState('')
+  const [targetStage, setTargetStage] = useState<ReportPrepReferbackTarget>('results_review')
+  const [remark, setRemark] = useState('')
+  const [designation, setDesignation] = useState(DEFAULT_TESTING_DESIGNATION)
+  const [employeeId, setEmployeeId] = useState('')
 
   const srfLabel = srfNumber?.trim() || '—'
+
+  const selectedSection = useMemo(
+    () => sectionOptions.find((s) => s.sampleAllocationId === sampleAllocationId) ?? null,
+    [sectionOptions, sampleAllocationId],
+  )
+
+  const department = selectedSection?.department?.trim() ?? ''
+  const needsTestingAssignee = targetStage === 'under_testing'
+  const needsTestAllocation =
+    targetStage === 'results_review' || targetStage === 'under_testing' || targetStage === 'test_allocation'
 
   useEffect(() => {
     if (!open || !sampleId) {
       setSectionOptions([])
-      setFormRows([emptyFormRow()])
+      setSampleAllocationId('')
+      setTargetStage('results_review')
+      setRemark('')
+      setDesignation(DEFAULT_TESTING_DESIGNATION)
+      setEmployeeId('')
       return
     }
 
@@ -105,20 +139,16 @@ export function TestReportReferbackToReviewDialog({
         if (canceled) return
         setSectionOptions(opts)
         const first = opts[0]
-        setFormRows([
-          {
-            localId: newLocalId(),
-            sampleAllocationId: first?.sampleAllocationId ?? '',
-            department: first?.department?.trim() ?? '',
-            designation: defaultDesignation?.trim() || 'Quality Manager',
-            employeeId: defaultEmployeeId?.trim() ?? '',
-          },
-        ])
+        setSampleAllocationId(first?.sampleAllocationId ?? '')
+        setTargetStage('results_review')
+        setRemark('')
+        setDesignation(DEFAULT_TESTING_DESIGNATION)
+        setEmployeeId('')
       })
       .catch(() => {
         if (!canceled) {
           setSectionOptions([])
-          setFormRows([emptyFormRow()])
+          setSampleAllocationId('')
         }
       })
       .finally(() => {
@@ -128,10 +158,10 @@ export function TestReportReferbackToReviewDialog({
     return () => {
       canceled = true
     }
-  }, [open, sampleId, defaultEmployeeId, defaultDesignation])
+  }, [open, sampleId])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !needsTestingAssignee) return
     let canceled = false
     setUsersLoading(true)
     void (async () => {
@@ -162,253 +192,196 @@ export function TestReportReferbackToReviewDialog({
     return () => {
       canceled = true
     }
-  }, [open])
+  }, [open, needsTestingAssignee])
 
-  const usedAllocIds = useMemo(
-    () => new Set(formRows.map((r) => r.sampleAllocationId).filter(Boolean)),
-    [formRows],
-  )
+  useEffect(() => {
+    if (!open || targetStage !== 'under_testing') return
+    setDesignation(DEFAULT_TESTING_DESIGNATION)
+    setEmployeeId('')
+  }, [open, targetStage])
 
-  const sectionByAllocId = useMemo(
-    () => new Map(sectionOptions.map((s) => [s.sampleAllocationId, s])),
-    [sectionOptions],
-  )
+  const designationOptions = useMemo(() => {
+    const fromUsers = designationOptionsForDepartment(users, department)
+    const merged = new Set([DEFAULT_TESTING_DESIGNATION, ...fromUsers])
+    if (designation.trim()) merged.add(designation.trim())
+    return [...merged].sort((a, b) => a.localeCompare(b))
+  }, [users, department, designation])
 
-  const updateRow = (localId: string, patch: Partial<ReferbackFormRow>) => {
-    setFormRows((prev) => prev.map((r) => (r.localId === localId ? { ...r, ...patch } : r)))
-  }
+  const employeeOptions = useMemo(() => {
+    if (!department || !designation) return []
+    const dept = norm(department)
+    const des = norm(designation)
+    return users.filter((u) => norm(u.departmentName) === dept && norm(u.designation) === des)
+  }, [users, department, designation])
 
-  const onSectionChange = (localId: string, sampleAllocationId: string) => {
-    const sec = sectionByAllocId.get(sampleAllocationId)
-    updateRow(localId, {
-      sampleAllocationId,
-      department: sec?.department?.trim() ?? '',
-      designation: defaultDesignation?.trim() || 'Quality Manager',
-      employeeId: '',
-    })
-  }
+  const targetHint = TARGET_OPTIONS.find((o) => o.value === targetStage)?.hint ?? ''
+  const testAllocationMissing = needsTestAllocation && !selectedSection?.testAllocationId?.trim()
 
-  const addRow = () => {
-    const next = sectionOptions.find((s) => !usedAllocIds.has(s.sampleAllocationId))
-    setFormRows((prev) => [
-      ...prev,
-      {
-        localId: newLocalId(),
-        sampleAllocationId: next?.sampleAllocationId ?? '',
-        department: next?.department?.trim() ?? '',
-        designation: defaultDesignation?.trim() || 'Quality Manager',
-        employeeId: '',
-      },
-    ])
-  }
-
-  const removeRow = (localId: string) => {
-    setFormRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.localId !== localId)))
-  }
-
-  const canAddRow = sectionOptions.length > formRows.length
+  const submitReady =
+    Boolean(sampleAllocationId) &&
+    remark.trim().length > 0 &&
+    !testAllocationMissing &&
+    (!needsTestingAssignee || Boolean(employeeId))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const payload: Array<{ testAllocationId: string; reviewer: { id: string; name: string } }> = []
+    if (!submitReady || !selectedSection) return
 
-    for (const row of formRows) {
-      if (!row.sampleAllocationId.trim()) continue
-      const sec = sectionByAllocId.get(row.sampleAllocationId)
-      const taId = sec?.testAllocationId?.trim()
-      if (!taId) return
-      const dept = row.department.trim()
-      const des = row.designation.trim()
-      const person = users.find(
-        (u) => u.id === row.employeeId && norm(u.departmentName) === norm(dept) && norm(u.designation) === norm(des),
-      )
-      if (!person) return
-      payload.push({
-        testAllocationId: taId,
-        reviewer: { id: person.id, name: person.name },
-      })
-    }
+    const person = needsTestingAssignee ? employeeOptions.find((u) => u.id === employeeId) : undefined
+    if (needsTestingAssignee && !person) return
 
-    if (payload.length === 0) return
-    await onSubmit(payload)
+    await onSubmit({
+      sampleAllocationId: selectedSection.sampleAllocationId,
+      testAllocationId: selectedSection.testAllocationId?.trim() ?? '',
+      targetStage,
+      remark: remark.trim(),
+      assignee: person ? { id: person.id, name: person.name } : undefined,
+    })
   }
-
-  const submitReady = formRows.some((row) => {
-    const taId = sectionByAllocId.get(row.sampleAllocationId)?.testAllocationId?.trim()
-    if (!row.sampleAllocationId || !taId || !row.designation || !row.employeeId) return false
-    const person = users.find(
-      (u) =>
-        u.id === row.employeeId &&
-        norm(u.departmentName) === norm(row.department) &&
-        norm(u.designation) === norm(row.designation),
-    )
-    return Boolean(person)
-  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Refer back to Results Under Review</DialogTitle>
+          <DialogTitle>Refer back section</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground -mt-2">
-          Select section code(s) to send for re-review. The SRF stays in Test Report Preparation if other
-          sections are not referred back.
+          SRF <span className="font-medium text-foreground">{srfLabel}</span> — choose section, destination stage,
+          and reason. Only workflow fields needed for refer-back are updated; test results stay unless you send
+          the section to Sample Allocation or Sample Receiving.
         </p>
         <form className="space-y-4 py-2" onSubmit={(e) => void handleSubmit(e)}>
           <div className="space-y-2">
-            <Label htmlFor="prep-referback-srf">SRF number</Label>
-            <Select value={sampleId ?? 'srf'} disabled>
-              <SelectTrigger id="prep-referback-srf" aria-label="SRF number">
+            <Label htmlFor="prep-referback-section">Section code</Label>
+            {sectionsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading section codes…</p>
+            ) : sectionOptions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No section codes found on this SRF.</p>
+            ) : (
+              <Select value={sampleAllocationId || undefined} onValueChange={setSampleAllocationId}>
+                <SelectTrigger id="prep-referback-section" aria-label="Section code">
+                  <SelectValue placeholder="Select section code" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sectionOptions.map((s) => (
+                    <SelectItem key={s.sampleAllocationId} value={s.sampleAllocationId}>
+                      {sectionLabel(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="prep-referback-target">Refer back to</Label>
+            <Select
+              value={targetStage}
+              onValueChange={(v) => setTargetStage(v as ReportPrepReferbackTarget)}
+              disabled={!sampleAllocationId}
+            >
+              <SelectTrigger id="prep-referback-target" aria-label="Refer back to">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {sampleId ? <SelectItem value={sampleId}>{srfLabel}</SelectItem> : null}
+                {TARGET_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {targetHint ? <p className="text-xs text-muted-foreground">{targetHint}</p> : null}
+            {testAllocationMissing ? (
+              <p className="text-xs text-destructive">
+                This section has no test allocation. Choose Sample Allocation or Sample Receiving.
+              </p>
+            ) : null}
           </div>
 
-          {sectionsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading section codes…</p>
-          ) : sectionOptions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No sections available for refer back on this SRF (they may already be in review).
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {formRows.map((row, index) => {
-                const designationOptions = designationOptionsForDepartment(users, row.department)
-                const employeeOptions = users.filter(
-                  (u) =>
-                    norm(u.departmentName) === norm(row.department) &&
-                    norm(u.designation) === norm(row.designation),
-                )
-                const availableSections = sectionOptions.filter(
-                  (s) =>
-                    s.sampleAllocationId === row.sampleAllocationId ||
-                    !usedAllocIds.has(s.sampleAllocationId),
-                )
+          <div className="space-y-2">
+            <Label htmlFor="prep-referback-remark">Remark</Label>
+            <Textarea
+              id="prep-referback-remark"
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              placeholder="Why are you referring back this section?"
+              rows={3}
+              className="resize-y min-h-[80px]"
+            />
+          </div>
 
-                return (
-                  <div
-                    key={row.localId}
-                    className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Section {index + 1}
-                      </span>
-                      {formRows.length > 1 ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          aria-label="Remove row"
-                          onClick={() => removeRow(row.localId)}
-                        >
-                          <Trash2 size={14} />
-                        </Button>
-                      ) : null}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Section code</Label>
-                      <Select
-                        value={row.sampleAllocationId || undefined}
-                        onValueChange={(v) => onSectionChange(row.localId, v)}
-                      >
-                        <SelectTrigger aria-label={`Section code row ${index + 1}`}>
-                          <SelectValue placeholder="Select section code" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableSections.map((s) => (
-                            <SelectItem key={s.sampleAllocationId} value={s.sampleAllocationId}>
-                              {s.sectionCode}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Department</Label>
-                      <Select value={row.department || 'dept'} disabled>
-                        <SelectTrigger aria-label="Department">
-                          <SelectValue placeholder="—" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {row.department ? (
-                            <SelectItem value={row.department}>{row.department}</SelectItem>
-                          ) : (
-                            <SelectItem value="dept">—</SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Designation</Label>
-                      <Select
-                        value={row.designation}
-                        onValueChange={(v) => updateRow(row.localId, { designation: v, employeeId: '' })}
-                        disabled={!row.sampleAllocationId}
-                      >
-                        <SelectTrigger aria-label="Designation">
-                          <SelectValue placeholder="Select designation" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {designationOptions.map((d) => (
-                            <SelectItem key={d} value={d}>
-                              {d}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Name of employee (reviewer)</Label>
-                      <Select
-                        value={row.employeeId}
-                        onValueChange={(v) => updateRow(row.localId, { employeeId: v })}
-                        disabled={
-                          !row.designation || usersLoading || employeeOptions.length === 0
-                        }
-                      >
-                        <SelectTrigger aria-label="Select reviewer">
-                          <SelectValue
-                            placeholder={
-                              usersLoading
-                                ? 'Loading users…'
-                                : employeeOptions.length === 0
-                                  ? 'No user for this department & designation'
-                                  : 'Select employee'
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {employeeOptions.map((u) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              {u.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )
-              })}
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={addRow}
-                disabled={!canAddRow}
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                Add section row
-              </Button>
+          {needsTestingAssignee && selectedSection ? (
+            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Assign testing engineer
+              </p>
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select value={department || 'dept'} disabled>
+                  <SelectTrigger aria-label="Department">
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {department ? (
+                      <SelectItem value={department}>{department}</SelectItem>
+                    ) : (
+                      <SelectItem value="dept">—</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Designation</Label>
+                <Select
+                  value={designation}
+                  onValueChange={(v) => {
+                    setDesignation(v)
+                    setEmployeeId('')
+                  }}
+                  disabled={!department}
+                >
+                  <SelectTrigger aria-label="Designation">
+                    <SelectValue placeholder="Select designation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {designationOptions.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Name of employee</Label>
+                <Select
+                  value={employeeId}
+                  onValueChange={setEmployeeId}
+                  disabled={!designation || usersLoading || employeeOptions.length === 0}
+                >
+                  <SelectTrigger aria-label="Select employee">
+                    <SelectValue
+                      placeholder={
+                        usersLoading
+                          ? 'Loading users…'
+                          : employeeOptions.length === 0
+                            ? 'No user for this department & designation'
+                            : 'Select employee'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employeeOptions.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          )}
+          ) : null}
 
           {submitError && <p className="text-sm text-destructive">{submitError}</p>}
           <div className="flex justify-end gap-2 pt-2">

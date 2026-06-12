@@ -20,6 +20,10 @@ import {
 } from '../referbackFlow'
 import { buildSampleAllocationListAssistantContext } from './buildSampleAllocationAssistantContext'
 import { isSampleAllocationEditLocked, sampleAllocationEditLockedTitle, getSectionCodesInTestAllocation } from './sampleAllocationEditLock'
+import {
+  sortSampleAllocationRows,
+  type SampleAllocationSortKey,
+} from './sortSampleAllocationRows'
 import { generateSectionCode } from './sectionCode'
 
 type AllocationRecord = {
@@ -69,6 +73,8 @@ export default function SampleAllocationMasterPage() {
   const [listError, setListError] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<SampleAllocationSortKey>('srfDate')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const [jumpTo, setJumpTo] = useState('')
@@ -359,7 +365,13 @@ export default function SampleAllocationMasterPage() {
     void loadUserManagementOptions()
   }, [formOpen])
 
-  const rows = useMemo(() => {
+  const sortAllocationRows = (a: AllocationRow, b: AllocationRow) => {
+    const da = a.sample.date_of_sample_receiving ?? a.sample.collection_date ?? ''
+    const db = b.sample.date_of_sample_receiving ?? b.sample.collection_date ?? ''
+    return db.localeCompare(da)
+  }
+
+  const allocatedRows = useMemo(() => {
     const bySample = new Map<string, AllocationRecord[]>()
     for (const rec of allocationRecords) {
       const sid = rec.sample.id
@@ -368,8 +380,8 @@ export default function SampleAllocationMasterPage() {
     }
     const result: AllocationRow[] = []
     bySample.forEach((recs, sampleId) => {
-      const sample = recs[0]!.sample
-      if (!isSampleVisibleInAllocationList(sample.stage)) return
+      const embedded = recs[0]!.sample
+      const sample = samples.find((s) => s.id === sampleId) ?? embedded
       result.push({
         sampleId,
         sample,
@@ -379,13 +391,32 @@ export default function SampleAllocationMasterPage() {
         allocationIds: recs.map((r) => r.id),
       })
     })
-    result.sort((a, b) => {
-      const da = a.sample.date_of_sample_receiving ?? a.sample.collection_date ?? ''
-      const db = b.sample.date_of_sample_receiving ?? b.sample.collection_date ?? ''
-      return db.localeCompare(da)
-    })
+    result.sort(sortAllocationRows)
     return result
-  }, [allocationRecords])
+  }, [allocationRecords, samples])
+
+  const pendingRows = useMemo(() => {
+    const allocatedIds = new Set(allocationRecords.map((r) => r.sample.id))
+    const result: AllocationRow[] = samples
+      .filter((s) => isSampleVisibleInAllocationList(s.stage))
+      .filter((s) => !allocatedIds.has(s.id))
+      .filter((s) => Boolean(s.srf_number?.trim() || s.sample_code?.trim()))
+      .map((s) => ({
+        sampleId: s.id,
+        sample: s,
+        sectionCodes: [],
+        departments: [],
+        quantities: [],
+        allocationIds: [],
+      }))
+    result.sort(sortAllocationRows)
+    return result
+  }, [samples, allocationRecords])
+
+  const rows = useMemo(
+    () => [...allocatedRows, ...pendingRows],
+    [allocatedRows, pendingRows],
+  )
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -394,6 +425,7 @@ export default function SampleAllocationMasterPage() {
       [
         r.sample.srf_number,
         r.sample.sample_code,
+        r.sample.test_report_is_code_label,
         r.sectionCodes.join(' '),
         r.departments.join(' '),
       ]
@@ -429,11 +461,41 @@ export default function SampleAllocationMasterPage() {
   const isRowInTestAllocation = (row: AllocationRow) =>
     isSampleAllocationEditLocked(row, sampleAllocationIdsWithTestAllocation)
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-  const pagedRows = useMemo(
-    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
-    [filteredRows, page, pageSize],
+  const filteredAllocated = useMemo(
+    () => filteredRows.filter((r) => r.allocationIds.length > 0),
+    [filteredRows],
   )
+  const filteredPending = useMemo(
+    () => filteredRows.filter((r) => r.allocationIds.length === 0),
+    [filteredRows],
+  )
+  const sortedAllocated = useMemo(
+    () => sortSampleAllocationRows(filteredAllocated, sortKey, sortDir),
+    [filteredAllocated, sortKey, sortDir],
+  )
+  const sortedPending = useMemo(
+    () => sortSampleAllocationRows(filteredPending, sortKey, sortDir),
+    [filteredPending, sortKey, sortDir],
+  )
+  const pageCount = Math.max(1, Math.ceil(sortedPending.length / pageSize))
+  const pagedPending = useMemo(
+    () => sortedPending.slice((page - 1) * pageSize, page * pageSize),
+    [sortedPending, page, pageSize],
+  )
+  const tableRows = useMemo(
+    () => [...pagedPending, ...sortedAllocated],
+    [pagedPending, sortedAllocated],
+  )
+
+  const handleSort = (key: SampleAllocationSortKey) => {
+    setPage(1)
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
 
   const selectedRows = useMemo(
     () => rows.filter((r) => selectedIds.has(r.sampleId)),
@@ -451,7 +513,9 @@ export default function SampleAllocationMasterPage() {
   const toggleAll = (checked: boolean) =>
     setSelectedIds((prev) => {
       const n = new Set(prev)
-      pagedRows.forEach((r) => (checked ? n.add(r.sampleId) : n.delete(r.sampleId)))
+      tableRows
+        .filter((r) => r.allocationIds.length > 0)
+        .forEach((r) => (checked ? n.add(r.sampleId) : n.delete(r.sampleId)))
       return n
     })
 
@@ -483,19 +547,6 @@ export default function SampleAllocationMasterPage() {
         setSaveMessage(err instanceof Error ? err.message : 'Unable to delete')
       }
     })()
-  }
-
-  const handleNew = () => {
-    setSaveMessage(null)
-    setFormIsEditMode(false)
-    setForm({
-      sampleId: '',
-      srfNumber: '',
-      allocationDate: today(),
-      isCodeLabel: '',
-      sections: [],
-    })
-    setFormOpen(true)
   }
 
   const handleSaveForm = () => {
@@ -570,6 +621,23 @@ export default function SampleAllocationMasterPage() {
   }
 
   const handleEdit = async (row: AllocationRow) => {
+    if (row.allocationIds.length === 0) {
+      setSaveMessage(null)
+      setFormIsEditMode(false)
+      setForm({
+        sampleId: row.sampleId,
+        srfNumber: row.sample.srf_number ?? '',
+        allocationDate:
+          row.sample.date_of_sample_receiving?.slice(0, 10) ??
+          row.sample.collection_date?.slice(0, 10) ??
+          today(),
+        isCodeLabel:
+          isCodeOptions.find((o) => o.id === row.sample.test_report_is_code_id)?.label ?? '',
+        sections: [emptySection()],
+      })
+      setFormOpen(true)
+      return
+    }
     if (isSampleAllocationEditLocked(row, sampleAllocationIdsWithTestAllocation)) {
       const locked = getSectionCodesInTestAllocation(row, sampleAllocationIdsWithTestAllocation)
       setSaveMessage(sampleAllocationEditLockedTitle(locked))
@@ -669,7 +737,7 @@ export default function SampleAllocationMasterPage() {
     }
     if (
       !window.confirm(
-        `Send ${label} to Test Allocation?\n\nAll section codes (${row.sectionCodes.join(', ')}) will appear in Test Allocation for parameter assignment. This SRF will be removed from the Sample Allocation list.`,
+        `Send ${label} to Test Allocation?\n\nAll section codes (${row.sectionCodes.join(', ')}) will appear in Test Allocation for parameter assignment.`,
       )
     ) {
       return
@@ -693,13 +761,12 @@ export default function SampleAllocationMasterPage() {
           setPageSize(s)
           setPage(1)
         }}
-        onNew={handleNew}
         assistantContext={assistantContext}
         onAssistantDataChanged={refreshAll}
       />
 
       <SampleAllocationTable
-        rows={pagedRows}
+        rows={tableRows}
         loading={listLoading}
         error={listError}
         selectedIds={selectedIds}
@@ -709,8 +776,9 @@ export default function SampleAllocationMasterPage() {
         onReferbackToReceiving={handleReferbackToReceiving}
         onSendToTestAllocation={handleSendToTestAllocation}
         sampleAllocationIdsWithTestAllocation={sampleAllocationIdsWithTestAllocation}
-        allocationRecords={allocationRecordsLite}
-        onAssistantDataChanged={refreshAll}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
       />
 
       <SampleAllocationFooterBar
@@ -747,6 +815,7 @@ export default function SampleAllocationMasterPage() {
             </p>
           )}
           <SampleAllocationForm
+            key={form.sampleId || 'new-allocation'}
             form={form}
             onChange={setForm}
             onSave={handleSaveForm}
@@ -758,7 +827,7 @@ export default function SampleAllocationMasterPage() {
             designationsByDepartment={designationsByDepartment}
             isCodeOptions={isCodeOptions}
             allocatedSampleIds={allocatedSampleIds}
-            lockSrfSection={formIsEditMode}
+            lockSrfSection={formIsEditMode || Boolean(form.sampleId?.trim())}
           />
         </DialogContent>
       </Dialog>

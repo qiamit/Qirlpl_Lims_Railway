@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
+import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import type { TestAllocationRow } from '../types'
 import type { UnderTestingFormState } from './SampleUnderTestingForm'
 import { SampleUnderTestingTable } from './SampleUnderTestingTable'
@@ -32,8 +33,22 @@ import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpeci
 import {
   buildLegacyResultsReviewSampleIds,
   fetchSentForReviewTestAllocationIds,
+  isParameterSentForReview,
   shouldHideFromSampleUnderTesting,
 } from './sampleUnderTestingVisibility'
+import {
+  isActiveReviewerName,
+  RESULTS_REVIEW_APPROVED_LABEL,
+} from '../results-under-review/resultsUnderReviewPartitions'
+import {
+  buildAssignmentFilterHiddenEntries,
+  buildLoadDiagnostics,
+  mergeDiagnosticEntries,
+  type SampleUnderTestingLoadDiagnostics,
+} from './sampleUnderTestingDiagnostics'
+import { HiddenSrfsDiagnosticBadge } from './HiddenSrfsDiagnosticBadge'
+import { syncSampleReportPreparationStage } from '@/features/sample-handling/report-preparation/sampleReportReadiness'
+import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
 
 type ReviewUser = { id: string; name: string; designation: string; departmentName: string }
 
@@ -46,6 +61,58 @@ function isRowAssignedToUser(
   const assignedName = (row.assignedEmployeeName ?? '').trim().toLowerCase()
   const myName = profileName.trim().toLowerCase()
   return Boolean(assignedName && myName && assignedName === myName)
+}
+
+type LoadedTestAlloc = {
+  id: string
+  sample_allocation_id: string
+  assigned_employee_id?: string | null
+  assigned_employee_name?: string | null
+  test_parameter_summary?: string | null
+  test_parameter_ids?: string[] | null
+  sent_for_testing?: boolean | null
+  referred_back_from_review?: boolean | null
+}
+
+function pickTestAllocationPerSection(
+  taList: LoadedTestAlloc[],
+  paramsByAllocationId: Map<
+    string,
+    {
+      results_reviewer_id: string | null
+      results_reviewer_name: string | null
+    }[]
+  >,
+): LoadedTestAlloc[] {
+  const byAlloc = new Map<string, LoadedTestAlloc[]>()
+  for (const ta of taList) {
+    const key = String(ta.sample_allocation_id ?? '').trim()
+    if (!key) continue
+    if (!byAlloc.has(key)) byAlloc.set(key, [])
+    byAlloc.get(key)!.push(ta)
+  }
+
+  const score = (ta: LoadedTestAlloc): number => {
+    const params = paramsByAllocationId.get(ta.id) ?? []
+    const approved = params.some(
+      (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+    )
+    const activeReviewer = params.some(
+      (p) => p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name),
+    )
+    let value = 0
+    if (approved) value += 4
+    if (activeReviewer) value += 3
+    if (ta.sent_for_testing) value += 2
+    return value
+  }
+
+  const picked: LoadedTestAlloc[] = []
+  for (const list of byAlloc.values()) {
+    const best = [...list].sort((a, b) => score(b) - score(a))[0]
+    if (best) picked.push(best)
+  }
+  return picked
 }
 
 export default function SampleUnderTestingMasterPage() {
@@ -65,6 +132,7 @@ export default function SampleUnderTestingMasterPage() {
   const [formRow, setFormRow] = useState<TestAllocationRow | null>(null)
   const [formInitial, setFormInitial] = useState<UnderTestingFormState | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [sampleDescViewRow, setSampleDescViewRow] = useState<TestAllocationRow | null>(null)
   const [testParamViewOpen, setTestParamViewOpen] = useState(false)
   const [testParamViewRow, setTestParamViewRow] = useState<TestAllocationRow | null>(null)
   const [testParamViewData, setTestParamViewData] = useState<Record<string, unknown>[]>([])
@@ -108,6 +176,9 @@ export default function SampleUnderTestingMasterPage() {
   const [reviewSubmitError, setReviewSubmitError] = useState<string | null>(null)
   /** Off for Lab Director (can show all). On for everyone else — only Test Allocation rows where Select Employee = you. */
   const [onlyMyAssignments, setOnlyMyAssignments] = useState(true)
+  const [loadDiagnostics, setLoadDiagnostics] = useState<SampleUnderTestingLoadDiagnostics | null>(
+    null,
+  )
 
   const loadRows = async () => {
     if (!user?.id) {
@@ -121,17 +192,24 @@ export default function SampleUnderTestingMasterPage() {
       const { data: testAllocData, error: taErr } = await supabase
         .from('test_allocations')
         .select(
-          'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing',
+          'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing, referred_back_from_review',
         )
         .eq('sent_for_testing', true)
         .order('created_at', { ascending: false })
       if (taErr) throw taErr
-      const testAllocs = Array.isArray(testAllocData) ? testAllocData : []
-      if (testAllocs.length === 0) {
+      const testAllocsRaw = Array.isArray(testAllocData) ? testAllocData : []
+      if (testAllocsRaw.length === 0) {
         setRows([])
+        setLoadDiagnostics({
+          totalSentSections: 0,
+          totalSentSrfs: 0,
+          visibleSectionsAfterVisibility: 0,
+          visibleSrfsAfterVisibility: 0,
+          entries: [],
+        })
         return
       }
-      const allocIds = testAllocs.map((t: { sample_allocation_id: string }) => t.sample_allocation_id)
+      const allocIds = testAllocsRaw.map((t: { sample_allocation_id: string }) => t.sample_allocation_id)
       const { data: allocData, error: allocErr } = await supabase
         .from('sample_allocations')
         .select('id, sample_id, section_code, allocation_date, department, designation')
@@ -200,7 +278,7 @@ export default function SampleUnderTestingMasterPage() {
           ],
         ),
       )
-      const allocationIds = Array.from(new Set(testAllocs.map((t: { id: string }) => t.id)))
+      const allocationIds = Array.from(new Set(testAllocsRaw.map((t: { id: string }) => t.id)))
 
       const sentForReviewAllocIds = await fetchSentForReviewTestAllocationIds(allocationIds)
 
@@ -211,7 +289,7 @@ export default function SampleUnderTestingMasterPage() {
         [...samplesMap.entries()].map(([id, s]) => [id, (s as { stage?: string | null }).stage ?? null]),
       )
       const legacyResultsReviewSampleIds = buildLegacyResultsReviewSampleIds(
-        testAllocs as { id: string; sample_allocation_id: string }[],
+        testAllocsRaw as { id: string; sample_allocation_id: string }[],
         sampleIdBySampleAllocationId,
         samplesStageById,
         sentForReviewAllocIds,
@@ -281,6 +359,11 @@ export default function SampleUnderTestingMasterPage() {
         paramsByAllocationId = map
       }
 
+      const testAllocs = pickTestAllocationPerSection(
+        testAllocsRaw as LoadedTestAlloc[],
+        paramsByAllocationId,
+      )
+
       const tpIdsForLookup = new Set<string>()
       for (const params of paramsByAllocationId.values()) {
         for (const p of params) {
@@ -318,6 +401,13 @@ export default function SampleUnderTestingMasterPage() {
         }
       }
 
+      const visibilityHiddenSections: {
+        sampleId: string
+        srfNumber: string | null
+        stage: string | null
+        sectionCode: string
+      }[] = []
+
       const list: TestAllocationRow[] = testAllocs
         .map(
           (t: {
@@ -346,6 +436,8 @@ export default function SampleUnderTestingMasterPage() {
 
             const testAllocationId = t.id
             const sentForTesting = !!(t as { sent_for_testing?: boolean | null }).sent_for_testing
+            const referredBackFromReview =
+              (t as { referred_back_from_review?: boolean | null }).referred_back_from_review === true
             if (
               shouldHideFromSampleUnderTesting({
                 testAllocationId,
@@ -355,11 +447,29 @@ export default function SampleUnderTestingMasterPage() {
                 sentForTesting,
               })
             ) {
+              visibilityHiddenSections.push({
+                sampleId: a.sample_id,
+                srfNumber: sample.srf_number ?? null,
+                stage: sample.stage ?? null,
+                sectionCode: a.section_code,
+              })
               return null
             }
 
             const allocationId = testAllocationId
             const fromDb = paramsByAllocationId.get(testAllocationId) ?? []
+            const sectionApproved = fromDb.some(
+              (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+            )
+            const sectionSentForReview =
+              !referredBackFromReview &&
+              fromDb.some((p) =>
+                isParameterSentForReview({
+                  results_reviewer_id: p.results_reviewer_id,
+                  results_reviewer_name: p.results_reviewer_name,
+                }),
+              )
+
             let parameterRows = fromDb.map((p) => ({
               id: p.id,
               testAllocationId: p.test_allocation_id,
@@ -419,9 +529,15 @@ export default function SampleUnderTestingMasterPage() {
             parameterRows = sortParametersByClause(parameterRows)
             const fromDbParams = paramsByAllocationId.get(testAllocationId) ?? []
             const reviewerRow = fromDbParams.find(
-              (p) => p.results_reviewer_id || p.results_reviewer_name?.trim(),
+              (p) =>
+                p.results_reviewer_id ||
+                (p.results_reviewer_name?.trim() &&
+                  p.results_reviewer_name.trim() !== RESULTS_REVIEW_APPROVED_LABEL),
             )
-            const resultsLocked = sentForReviewAllocIds.has(testAllocationId)
+            const approvedRow = fromDbParams.find(
+              (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+            )
+            const resultsLocked = sectionSentForReview
             return {
               testAllocationId,
               sampleAllocationId: a.id,
@@ -432,7 +548,12 @@ export default function SampleUnderTestingMasterPage() {
               sampleDescription: (sample as { sampleDescription?: string | null }).sampleDescription ?? null,
               declaredValue: (sample as { declaredValue?: string | null }).declaredValue ?? null,
               resultsLocked,
-              resultsReviewerName: reviewerRow?.results_reviewer_name ?? null,
+              sectionReviewApproved: sectionApproved,
+              referredBackFromReview,
+              resultsReviewerName:
+                reviewerRow?.results_reviewer_name ??
+                approvedRow?.results_reviewer_name ??
+                null,
               srfNumber: sample?.srf_number ?? null,
               allocationDate: a.allocation_date ?? sample?.date_of_sample_receiving ?? null,
               department: a.department ?? null,
@@ -451,6 +572,7 @@ export default function SampleUnderTestingMasterPage() {
               assignedEmployeeId: t.assigned_employee_id ?? null,
               assignedEmployeeName: t.assigned_employee_name ?? null,
               referbackFromAllocation: sample?.referbackFromAllocation ?? false,
+              sampleStage: sample?.stage ?? null,
               testStartDate: null,
               results: null,
               testEndDate: null,
@@ -459,6 +581,24 @@ export default function SampleUnderTestingMasterPage() {
           },
         )
         .filter((r): r is TestAllocationRow => r != null)
+
+      const samplesById = new Map(
+        [...samplesMap.entries()].map(([id, s]) => [
+          id,
+          { srf_number: s.srf_number, stage: s.stage },
+        ]),
+      )
+      setLoadDiagnostics(
+        buildLoadDiagnostics({
+          testAllocs: testAllocs as { id: string; sample_allocation_id: string }[],
+          visibleRows: list,
+          legacyResultsReviewSampleIds,
+          visibilityHiddenSections,
+          sampleIdBySampleAllocationId,
+          allocations: allocations as { id: string; sample_id: string; section_code: string }[],
+          samplesById,
+        }),
+      )
       setRows(list)
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Unable to load your test allocations')
@@ -470,6 +610,7 @@ export default function SampleUnderTestingMasterPage() {
   useEffect(() => {
     if (!user?.id) {
       setRows([])
+      setLoadDiagnostics(null)
       return
     }
     if (!profileReady) return
@@ -478,33 +619,48 @@ export default function SampleUnderTestingMasterPage() {
 
   useEffect(() => {
     if (!profileReady) return
-    if (forceOwnAssignmentsOnly || !isLaboratoryDirector(designation)) {
-      setOnlyMyAssignments(true)
-    } else {
+    if (isLaboratoryDirector(designation)) {
       setOnlyMyAssignments(false)
+    } else {
+      setOnlyMyAssignments(true)
     }
-  }, [profileReady, designation, forceOwnAssignmentsOnly])
+  }, [profileReady, designation])
+
+  const restrictToOwnAssignments = useMemo(() => {
+    if (!profileReady) return false
+    if (isLaboratoryDirector(designation)) return onlyMyAssignments
+    return forceOwnAssignmentsOnly || onlyMyAssignments || true
+  }, [profileReady, designation, onlyMyAssignments, forceOwnAssignmentsOnly])
 
   const rowsForAssignmentFilter = useMemo(() => {
-    const filterActive =
-      forceOwnAssignmentsOnly || onlyMyAssignments || !isLaboratoryDirector(designation)
-    if (!filterActive || !user?.id) return rows
+    if (!restrictToOwnAssignments || !user?.id) return rows
     return rows.filter((r) => isRowAssignedToUser(r, user.id, profileName))
-  }, [
-    rows,
-    onlyMyAssignments,
-    forceOwnAssignmentsOnly,
-    user?.id,
-    profileName,
-    designation,
-  ])
+  }, [rows, restrictToOwnAssignments, user?.id, profileName])
+
+  const srfDiagnostics = useMemo(() => {
+    if (!loadDiagnostics || !isLaboratoryDirector(designation)) return null
+    if (!onlyMyAssignments || rows.length === 0) return loadDiagnostics
+    const assignmentHidden = buildAssignmentFilterHiddenEntries(rows, rowsForAssignmentFilter)
+    if (assignmentHidden.length === 0) return loadDiagnostics
+    return mergeDiagnosticEntries(loadDiagnostics, assignmentHidden)
+  }, [loadDiagnostics, designation, onlyMyAssignments, rows, rowsForAssignmentFilter])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rowsForAssignmentFilter
     return rowsForAssignmentFilter.filter(
       (r) =>
-        [r.sectionCode, r.srfNumber, r.testParameterSummary, r.results, r.sampleDescription, r.declaredValue, r.isCodeLabel]
+        [
+          r.sectionCode,
+          r.department,
+          r.srfNumber,
+          r.testParameterSummary,
+          r.results,
+          r.sampleDescription,
+          r.declaredValue,
+          r.isCodeLabel,
+          r.assignedEmployeeName,
+        ]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -557,7 +713,7 @@ export default function SampleUnderTestingMasterPage() {
   const toggleAll = (checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      pagedRows.forEach((r) => (checked ? next.add(r.sampleAllocationId) : next.delete(r.sampleAllocationId)))
+      filteredRows.forEach((r) => (checked ? next.add(r.sampleAllocationId) : next.delete(r.sampleAllocationId)))
       return next
     })
   }
@@ -735,7 +891,11 @@ export default function SampleUnderTestingMasterPage() {
             testEndDate: p.testEndDate,
             results: p.results,
           }))
-          return { ...r, parameters: sortParametersByClause(nextParams) }
+          return {
+            ...r,
+            parameters: sortParametersByClause(nextParams),
+            referredBackFromReview: r.referredBackFromReview,
+          }
         }),
       )
 
@@ -747,6 +907,7 @@ export default function SampleUnderTestingMasterPage() {
       )
       setResultsDialogOpen(false)
       setResultsDialogRow(null)
+      await loadRows()
     } catch (err) {
       setSaveMessage(err instanceof Error ? err.message : 'Save failed')
     } finally {
@@ -943,11 +1104,33 @@ export default function SampleUnderTestingMasterPage() {
         .eq('test_allocation_id', testAllocationId)
       if (paramErr) throw paramErr
 
-      const { error: stageErr } = await supabase
+      const clearReferbackFlag = await supabase
+        .from('test_allocations')
+        .update({ referred_back_from_review: false })
+        .eq('id', testAllocationId)
+      if (
+        clearReferbackFlag.error &&
+        !isSupabaseMissingColumnError(clearReferbackFlag.error, 'referred_back_from_review')
+      ) {
+        throw clearReferbackFlag.error
+      }
+
+      const { data: stageRow, error: stageReadErr } = await supabase
         .from('samples')
-        .update({ stage: 'results_review' })
+        .select('stage')
         .eq('id', reviewSampleId)
-      if (stageErr) throw stageErr
+        .maybeSingle()
+      if (stageReadErr) throw stageReadErr
+      const curStage = String((stageRow as { stage?: string | null } | null)?.stage ?? '').trim()
+      if (curStage === 'results_review' || curStage === 'report_preparation') {
+        await syncSampleReportPreparationStage(reviewSampleId)
+      } else {
+        const { error: stageErr } = await supabase
+          .from('samples')
+          .update({ stage: 'results_review' })
+          .eq('id', reviewSampleId)
+        if (stageErr) throw stageErr
+      }
 
       setSaveMessage('Sent for review.')
       setSendForReviewOpen(false)
@@ -1238,6 +1421,9 @@ export default function SampleUnderTestingMasterPage() {
               <span>Only my assignments</span>
             </label>
           )}
+          {isLaboratoryDirector(designation) ? (
+            <HiddenSrfsDiagnosticBadge diagnostics={srfDiagnostics} loading={listLoading} />
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3 shrink-0">
           <SampleUnderTestingAssistant rows={filteredRows} search={search} />
@@ -1260,11 +1446,11 @@ export default function SampleUnderTestingMasterPage() {
       </div>
 
       <SampleUnderTestingTable
-        rows={pagedRows}
+        rows={filteredRows}
         loading={listLoading}
         error={listError}
         emptyStateMessage={
-          forceOwnAssignmentsOnly || onlyMyAssignments || !isLaboratoryDirector(designation)
+          restrictToOwnAssignments
             ? 'No sections sent for testing are assigned to you. Ask your Technical Manager to use Send for Testing in Test Allocation.'
             : 'No sections sent for testing. Use Send for Testing in Test Allocation, or check the error above.'
         }
@@ -1272,8 +1458,18 @@ export default function SampleUnderTestingMasterPage() {
         onToggle={toggleRow}
         onToggleAll={toggleAll}
         onOpenResults={openResultsDialog}
+        onViewSampleDetails={setSampleDescViewRow}
         onReferback={handleReferback}
         onSendForReview={openSendForReviewForRow}
+        groupBySrf={isLaboratoryDirector(designation)}
+      />
+
+      <SectionSampleDescViewDialog
+        row={sampleDescViewRow}
+        open={sampleDescViewRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setSampleDescViewRow(null)
+        }}
       />
 
       <SectionResultsEntryDialog

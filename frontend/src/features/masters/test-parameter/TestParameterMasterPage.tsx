@@ -175,17 +175,36 @@ export default function TestParameterMasterPage() {
   )
 
   useEffect(() => {
-    if (searchParams.get('openAdd') === '1') {
-      setSaveMessage(null)
-      setForm(emptyTestParameterForm())
-      setEditingId(null)
-      setShowForm(true)
-      const next = new URLSearchParams(searchParams)
-      next.delete('openAdd')
-      setSearchParams(next, { replace: true })
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
-  }, [searchParams, setSearchParams])
+    if (searchParams.get('openAdd') !== '1') return
+
+    const isCodeId = searchParams.get('isCodeId') ?? ''
+    const isCodeLabelParam = searchParams.get('isCodeLabel') ?? ''
+    const departmentParam = searchParams.get('department') ?? ''
+    const designationParam = searchParams.get('designation') ?? ''
+    const isCodeRow = isCodes.find((c) => c.id === isCodeId)
+    const base = emptyTestParameterForm()
+
+    setSaveMessage(null)
+    setEditingId(null)
+    setForm({
+      ...base,
+      isCodeId,
+      isCodeLabel: isCodeLabelParam || isCodeRow?.displayCode || '',
+      testMethod: isCodeRow?.defaultTestMethod ?? base.testMethod,
+      department: departmentParam || base.department,
+      designation: designationParam || base.designation,
+    })
+    setShowForm(true)
+
+    const next = new URLSearchParams(searchParams)
+    next.delete('openAdd')
+    next.delete('isCodeId')
+    next.delete('isCodeLabel')
+    next.delete('department')
+    next.delete('designation')
+    setSearchParams(next, { replace: true })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [searchParams, setSearchParams, isCodes])
 
   const canSave =
     !saveLoading &&

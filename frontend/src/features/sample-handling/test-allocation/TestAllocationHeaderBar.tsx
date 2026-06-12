@@ -1,8 +1,7 @@
-import { Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 
 type EmployeeOption = { id: string; name: string }
 
@@ -11,21 +10,21 @@ export function TestAllocationHeaderBar({
   onSearchChange,
   pageSize,
   onPageSizeChange,
-  onAddTestParameter,
-  disabled,
   employeeOptions,
   selectedEmployeeId,
   onEmployeeFilterChange,
+  assistantContextSummary,
+  onAssistantDataChanged,
 }: {
   search: string
   onSearchChange: (value: string) => void
   pageSize: number
   onPageSizeChange: (size: number) => void
-  onAddTestParameter: () => void
-  disabled?: boolean
   employeeOptions?: EmployeeOption[]
   selectedEmployeeId?: string
   onEmployeeFilterChange?: (value: string) => void
+  assistantContextSummary?: string
+  onAssistantDataChanged?: () => void
 }) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-xl border border-border bg-card px-5 py-4 shadow-sm">
@@ -70,10 +69,23 @@ export function TestAllocationHeaderBar({
             </Select>
           </div>
         )}
-        <Button type="button" className="gap-2" onClick={onAddTestParameter} disabled={disabled}>
-          <Plus size={16} />
-          Add Test Parameter
-        </Button>
+        {assistantContextSummary ? (
+          <QiAssistant
+            page="samples/test-allocation"
+            pageTitle="Test Allocation"
+            contextSummary={assistantContextSummary}
+            triggerVariant="default"
+            welcomeMessage="I'm your **Test Allocation Assistant**. I can summarize allotted sections, explain pending vs sent status, and help update allocations when you ask."
+            suggestedQuestions={[
+              'Summarize pending vs sent for testing sections',
+              'Which sections still need an employee assigned?',
+              'What happens when I refer back to Sample Allocation?',
+              'Explain how to allot tests for a section code',
+            ]}
+            onDataChanged={onAssistantDataChanged}
+            enablePdfImport={false}
+          />
+        ) : null}
       </div>
     </div>
   )
