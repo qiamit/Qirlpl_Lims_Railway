@@ -29,6 +29,51 @@ export async function deleteTestAllocationsForSampleAllocations(
   if (taErr) throw taErr
 }
 
+/** Count test_allocation rows still linked to a sample's section allocations. */
+export async function countTestAllocationsForSample(sampleId: string): Promise<number> {
+  const sid = sampleId.trim()
+  if (!sid) return 0
+
+  const { data: allocRows, error: allocErr } = await supabase
+    .from('sample_allocations')
+    .select('id')
+    .eq('sample_id', sid)
+  if (allocErr) throw allocErr
+
+  const allocIds = (Array.isArray(allocRows) ? allocRows : [])
+    .map((r) => String((r as { id?: string }).id ?? '').trim())
+    .filter(Boolean)
+  if (allocIds.length === 0) return 0
+
+  const { data: taRows, error: taErr } = await supabase
+    .from('test_allocations')
+    .select('id')
+    .in('sample_allocation_id', allocIds)
+  if (taErr) throw taErr
+  return Array.isArray(taRows) ? taRows.length : 0
+}
+
+/**
+ * After refer-back from Test Allocation → Sample Allocation, unlock edit and align stage.
+ * Always sets referback_from_allocation so Sample Allocation edit is enabled consistently.
+ */
+export async function syncSampleAfterTestAllocationReferback(sampleId: string): Promise<number> {
+  const sid = sampleId.trim()
+  if (!sid) throw new Error('Missing sample id.')
+
+  const remainingCount = await countTestAllocationsForSample(sid)
+  const patch: { referback_from_allocation: boolean; stage?: string } = {
+    referback_from_allocation: true,
+  }
+  if (remainingCount === 0) {
+    patch.stage = 'allocation'
+  }
+
+  const { error } = await supabase.from('samples').update(patch).eq('id', sid)
+  if (error) throw error
+  return remainingCount
+}
+
 /** Where the SRF lands after removing a section from Test Allocation → Sample Receiving. */
 export type ReferbackToReceivingResult = 'receiving' | 'allocation'
 

@@ -17,7 +17,7 @@ import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
-import { isSampleReadyForReportPreparation } from './sampleReportReadiness'
+import { isSampleVisibleInReportPreparation } from './sampleReportReadiness'
 import { ReportResultsTable } from './ReportResultsTable'
 import { TestReportPreparationFooterBar } from './TestReportPreparationFooterBar'
 import { TestReportPreparationHeaderBar } from './TestReportPreparationHeaderBar'
@@ -51,6 +51,7 @@ import {
   fetchReportResultRowsForSample,
   filterReportRowsByScope,
   getApplicableReportScopes,
+  patchReportResultRowsSectionCode,
   saveReportResultRemarks,
   type ReportResultRow,
 } from './reportResultRows'
@@ -188,8 +189,8 @@ export default function TestReportPreparationMasterPage() {
         const stage = String((row as { stage?: string }).stage ?? '').trim()
         if (!sampleId) continue
 
-        const ready = await isSampleReadyForReportPreparation(sampleId)
-        if (ready) {
+        const visible = await isSampleVisibleInReportPreparation(sampleId)
+        if (visible) {
           readySamples.push(row as Record<string, unknown>)
           if (stage !== 'report_preparation') {
             syncStageIds.push(sampleId)
@@ -298,6 +299,40 @@ export default function TestReportPreparationMasterPage() {
       .catch(() => setResultsViewRows([]))
       .finally(() => setResultsViewLoading(false))
   }
+
+  const patchCoverSectionCodes = useCallback((oldCode: string, newCode: string) => {
+    setCoverDetails((prev) => {
+      if (!prev?.sectionCodes) return prev
+      const oldTrim = oldCode.trim()
+      const nextCodes = [
+        ...new Set(
+          prev.sectionCodes
+            .split(',')
+            .map((s) => s.trim())
+            .map((c) => (c === oldTrim ? newCode.trim() : c))
+            .filter(Boolean),
+        ),
+      ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+      const sectionCodes = nextCodes.length > 0 ? nextCodes.join(', ') : null
+      return {
+        ...prev,
+        sectionCodes,
+        sectionReportLine: formatSectionReportLine(sectionCodes, prev.sectionReportNo, prev.reportType),
+      }
+    })
+  }, [])
+
+  const handlePrepareSectionCodeUpdated = useCallback(
+    (oldCode: string, newCode: string) => {
+      setPrepareResultRows((rows) => patchReportResultRowsSectionCode(rows, oldCode, newCode))
+      patchCoverSectionCodes(oldCode, newCode)
+    },
+    [patchCoverSectionCodes],
+  )
+
+  const handleResultsViewSectionCodeUpdated = useCallback((oldCode: string, newCode: string) => {
+    setResultsViewRows((rows) => patchReportResultRowsSectionCode(rows, oldCode, newCode))
+  }, [])
 
   const openPrepare = (r: ListRow) => {
     setActive(r)
@@ -680,19 +715,23 @@ export default function TestReportPreparationMasterPage() {
 
   const submitReferback = async (payload: TestReportReferbackSubmitPayload) => {
     const row = referbackRow
-    if (!row?.id) return
+    if (!row?.id || payload.sections.length === 0) return
     const label = row.srfNumber?.trim() || 'this SRF'
     setReferbackBusyId(row.id)
     setReferbackSubmitError(null)
     try {
-      const { sampleStage } = await referbackSectionFromReportPreparation({
-        sampleId: row.id,
-        sampleAllocationId: payload.sampleAllocationId,
-        testAllocationId: payload.testAllocationId,
-        targetStage: payload.targetStage,
-        remark: payload.remark,
-        assignee: payload.assignee,
-      })
+      let sampleStage: SampleStage | 'report_preparation' = 'report_preparation'
+      for (const section of payload.sections) {
+        const result = await referbackSectionFromReportPreparation({
+          sampleId: row.id,
+          sampleAllocationId: section.sampleAllocationId,
+          testAllocationId: section.testAllocationId,
+          targetStage: payload.targetStage,
+          remark: payload.remark,
+          assignee: payload.assignee,
+        })
+        sampleStage = result.sampleStage
+      }
       setReferbackDialogOpen(false)
       setReferbackRow(null)
       const leftReportPrep = sampleStage !== 'report_preparation'
@@ -708,10 +747,11 @@ export default function TestReportPreparationMasterPage() {
         })
       }
       await loadList()
+      const sectionCount = payload.sections.length
       setSaveMessage(
         leftReportPrep
-          ? `${label} — section referred back to ${targetStageLabel(sampleStage)}.`
-          : `${label} — section referred back. SRF remains in Test Report Preparation for other sections.`,
+          ? `${label} — ${sectionCount > 1 ? `${sectionCount} sections` : 'section'} referred back to ${targetStageLabel(sampleStage)}.`
+          : `${label} — ${sectionCount > 1 ? `${sectionCount} sections` : 'section'} referred back. SRF remains in Test Report Preparation for other sections.`,
       )
     } catch (e) {
       setReferbackSubmitError(e instanceof Error ? e.message : 'Referback failed')
@@ -761,6 +801,26 @@ export default function TestReportPreparationMasterPage() {
         fallbackSrf={srfViewRow?.srfNumber}
         fallbackClient={srfViewRow?.clientName}
         fallbackIsLabel={srfViewRow?.isCodeLabel}
+        onSampleUpdated={({ sampleId, srfNumber }) => {
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === sampleId
+                ? { ...r, srfNumber: srfNumber ?? r.srfNumber }
+                : r,
+            ),
+          )
+          setSrfViewRow((prev) =>
+            prev && prev.id === sampleId
+              ? { ...prev, srfNumber: srfNumber ?? prev.srfNumber }
+              : prev,
+          )
+          if (active?.id === sampleId) {
+            setActive((prev) =>
+              prev ? { ...prev, srfNumber: srfNumber ?? prev.srfNumber } : prev,
+            )
+          }
+          void loadList()
+        }}
       />
 
       <TestReportPreparationFooterBar
@@ -825,6 +885,9 @@ export default function TestReportPreparationMasterPage() {
             rows.map((r) => (r.rowKey === rowKey ? { ...r, remark } : r)),
           )
         }}
+        sampleId={active?.id ?? null}
+        sectionCodeEditable
+        onSectionCodeUpdated={handlePrepareSectionCodeUpdated}
       />
 
       <Dialog
@@ -852,7 +915,14 @@ export default function TestReportPreparationMasterPage() {
               ) : resultsViewRows.length === 0 ? (
                 <p className="text-muted-foreground">No completed test parameter results for this SRF.</p>
               ) : (
-                <ReportResultsTable rows={resultsViewRows} showScope />
+                <ReportResultsTable
+                  rows={resultsViewRows}
+                  showScope
+                  groupBySectionCode
+                  sampleId={resultsViewRow.id}
+                  sectionCodeEditable
+                  onSectionCodeUpdated={handleResultsViewSectionCodeUpdated}
+                />
               )}
             </div>
           )}

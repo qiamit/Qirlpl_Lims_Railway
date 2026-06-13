@@ -272,7 +272,7 @@ function formatPartCBlock(rows: ReportResultRow[]): string {
       lines.push(`\n[Section ${r.sectionCode}]`)
     }
     lines.push(
-      `  ${r.srNo}. ${fmt(r.testName)} | method/clause=${fmt(r.testMethodClause)} | unit=${fmt(r.unit)} | requirement=${fmt(r.specifiedRequirement)} | observed=${fmt(r.observedValue)} | remark=${fmt(r.remark)} | scope=${fmt(r.scope)}`,
+      `  ${r.srNo}. ${fmt(r.testName)} | method/clause=${fmt(r.testMethodClause)} | unit=${fmt(r.unit)} | requirement=${fmt(r.specifiedRequirement)} | observed=${fmt(r.observedValue)} | uncertainty=${fmt(r.uncertainty)} | remark=${fmt(r.remark)} | scope=${fmt(r.scope)}`,
     )
   }
   return lines.join('\n')

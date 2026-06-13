@@ -5,6 +5,7 @@ import {
   departmentsMatch,
   designationsMatch,
 } from '@/features/sample-handling/shared/departmentMatch'
+import { pickTestAllocationPerSection } from '../shared/pickTestAllocationPerSection'
 import {
   isActiveReviewerName,
   isSectionVisibleInResultsUnderReview,
@@ -15,6 +16,8 @@ import {
 export type ResultsUnderReviewLoadScope = {
   department?: string | null
   designation?: string | null
+  /** When set, also include sections explicitly assigned to this reviewer. */
+  reviewerUserId?: string | null
 }
 
 type SampleMeta = {
@@ -45,6 +48,7 @@ type TestAllocRow = {
   test_parameter_summary?: string | null
   test_parameter_ids?: string[] | null
   sent_for_testing?: boolean | null
+  referred_back_from_review?: boolean | null
 }
 
 type ParamRow = {
@@ -77,39 +81,97 @@ function filterAllocationsByScope(
   return filtered
 }
 
-function pickTestAllocationPerSection(
-  taList: TestAllocRow[],
-  paramsByAllocationId: Map<string, ParamRow[]>,
-): TestAllocRow[] {
-  const byAlloc = new Map<string, TestAllocRow[]>()
-  for (const ta of taList) {
-    const allocId = String(ta.sample_allocation_id ?? '').trim()
-    if (!allocId) continue
-    if (!byAlloc.has(allocId)) byAlloc.set(allocId, [])
-    byAlloc.get(allocId)!.push(ta)
+function mergeAllocationsById(...lists: AllocationRow[][]): AllocationRow[] {
+  const map = new Map<string, AllocationRow>()
+  for (const list of lists) {
+    for (const row of list) {
+      if (row.id) map.set(row.id, row)
+    }
   }
+  return [...map.values()]
+}
 
-  const score = (ta: TestAllocRow): number => {
-    const params = paramsByAllocationId.get(ta.id) ?? []
-    const approved = params.some(
-      (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
-    )
-    const activeReviewer = params.some(
-      (p) => p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name),
-    )
-    let value = 0
-    if (approved) value += 4
-    if (activeReviewer) value += 3
-    if (ta.sent_for_testing) value += 2
-    return value
-  }
+async function loadReviewerAssignedAllocations(
+  reviewerUserId: string,
+  allowedSampleIds: Set<string>,
+): Promise<AllocationRow[]> {
+  const uid = reviewerUserId.trim()
+  if (!uid || allowedSampleIds.size === 0) return []
 
-  const picked: TestAllocRow[] = []
-  for (const list of byAlloc.values()) {
-    const best = [...list].sort((a, b) => score(b) - score(a))[0]
-    if (best) picked.push(best)
-  }
-  return picked
+  const { data: paramRows, error: paramErr } = await supabase
+    .from('test_allocation_parameters')
+    .select('test_allocation_id')
+    .eq('results_reviewer_id', uid)
+  if (paramErr) throw paramErr
+
+  const taIds = [
+    ...new Set(
+      (Array.isArray(paramRows) ? paramRows : [])
+        .map((r) => String((r as { test_allocation_id?: string }).test_allocation_id ?? '').trim())
+        .filter(Boolean),
+    ),
+  ]
+  if (taIds.length === 0) return []
+
+  const { data: taRows, error: taErr } = await supabase
+    .from('test_allocations')
+    .select('sample_allocation_id')
+    .in('id', taIds)
+  if (taErr) throw taErr
+
+  const allocIds = [
+    ...new Set(
+      (Array.isArray(taRows) ? taRows : [])
+        .map((r) => String((r as { sample_allocation_id?: string }).sample_allocation_id ?? '').trim())
+        .filter(Boolean),
+    ),
+  ]
+  if (allocIds.length === 0) return []
+
+  const { data: allocRows, error: allocErr } = await supabase
+    .from('sample_allocations')
+    .select('id, sample_id, section_code, allocation_date, department, designation')
+    .in('id', allocIds)
+  if (allocErr) throw allocErr
+
+  return (Array.isArray(allocRows) ? allocRows : []).filter((a) =>
+    allowedSampleIds.has(String((a as { sample_id?: string }).sample_id ?? '').trim()),
+  ) as AllocationRow[]
+}
+
+async function buildRowsForAllocations(input: {
+  allocations: AllocationRow[]
+  samplesMap: Map<string, SampleMeta>
+}): Promise<TestAllocationRow[]> {
+  const { allocations, samplesMap } = input
+  if (allocations.length === 0 || samplesMap.size === 0) return []
+
+  const allocMap = new Map(allocations.map((a) => [a.id, a]))
+  const allocIds = allocations.map((a) => a.id)
+
+  const { data: testAllocData, error: taErr } = await supabase
+    .from('test_allocations')
+    .select(
+      'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing, referred_back_from_review',
+    )
+    .in('sample_allocation_id', allocIds)
+    .order('created_at', { ascending: false })
+  if (taErr) throw taErr
+
+  const rawTestAllocs = (Array.isArray(testAllocData) ? testAllocData : []) as TestAllocRow[]
+  if (rawTestAllocs.length === 0) return []
+
+  const paramsByAllocationId = await loadParamsByAllocationId(rawTestAllocs.map((t) => t.id))
+  const testAllocs = pickTestAllocationPerSection(rawTestAllocs, paramsByAllocationId)
+  const testParamMetaById = await loadTestParamMetaById(testAllocs, paramsByAllocationId)
+
+  return buildRowsFromTestAllocs({
+    testAllocs,
+    allocMap,
+    samplesMap,
+    paramsByAllocationId,
+    testParamMetaById,
+  })
 }
 
 async function loadIsCodeMap(isCodeIds: string[]): Promise<Map<string, string>> {
@@ -331,6 +393,7 @@ function buildRowsFromTestAllocs(input: {
         assignedEmployeeId: t.assigned_employee_id ?? null,
         assignedEmployeeName: t.assigned_employee_name ?? null,
         referbackFromAllocation: sample.referbackFromAllocation ?? false,
+        referredBackFromReview: t.referred_back_from_review === true,
         sentForTesting: Boolean(t.sent_for_testing),
         testStartDate: null,
         results: null,
@@ -379,70 +442,54 @@ async function loadTestParamMetaById(
 async function loadResultsUnderReviewRowsForDepartmentScope(
   scope: ResultsUnderReviewLoadScope,
 ): Promise<TestAllocationRow[]> {
+  const sampleIdsFromStages = await loadSampleIdsInStages(SCOPED_SAMPLE_STAGES)
+  if (sampleIdsFromStages.length === 0) return []
+
+  const allowedSampleIds = new Set(sampleIdsFromStages)
+  const samplesMap = await loadSamplesMap(sampleIdsFromStages, SCOPED_SAMPLE_STAGES)
+  if (samplesMap.size === 0) return []
+
   const { data: allocData, error: allocErr } = await supabase
     .from('sample_allocations')
     .select('id, sample_id, section_code, allocation_date, department, designation')
+    .in('sample_id', sampleIdsFromStages)
   if (allocErr) throw allocErr
 
-  const allocations = filterAllocationsByScope(
+  const deptScoped = filterAllocationsByScope(
     (Array.isArray(allocData) ? allocData : []) as AllocationRow[],
     scope,
   )
-  if (allocations.length === 0) return []
 
-  const sampleIds = [...new Set(allocations.map((a) => a.sample_id).filter(Boolean))]
-  const samplesMap = await loadSamplesMap(sampleIds, SCOPED_SAMPLE_STAGES)
-  if (samplesMap.size === 0) return []
+  const reviewerAllocs = scope.reviewerUserId?.trim()
+    ? await loadReviewerAssignedAllocations(scope.reviewerUserId, allowedSampleIds)
+    : []
 
-  const scopedAllocations = allocations.filter((a) => samplesMap.has(a.sample_id))
+  const scopedAllocations = mergeAllocationsById(deptScoped, reviewerAllocs).filter((a) =>
+    samplesMap.has(a.sample_id),
+  )
   if (scopedAllocations.length === 0) return []
 
-  const allocMap = new Map(scopedAllocations.map((a) => [a.id, a]))
-  const allocIds = scopedAllocations.map((a) => a.id)
+  const rows = await buildRowsForAllocations({ allocations: scopedAllocations, samplesMap })
+  return rows.filter(isSectionVisibleInScopedResultsUnderReview)
+}
 
-  const { data: testAllocData, error: taErr } = await supabase
-    .from('test_allocations')
-    .select(
-      'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing',
-    )
-    .in('sample_allocation_id', allocIds)
-    .order('created_at', { ascending: false })
-  if (taErr) throw taErr
-
-  const rawTestAllocs = (Array.isArray(testAllocData) ? testAllocData : []) as TestAllocRow[]
-  if (rawTestAllocs.length === 0) return []
-
-  const paramsByAllocationId = await loadParamsByAllocationId(
-    rawTestAllocs.map((t) => t.id),
-  )
-  const testAllocs = pickTestAllocationPerSection(rawTestAllocs, paramsByAllocationId)
-  const testParamMetaById = await loadTestParamMetaById(testAllocs, paramsByAllocationId)
-
-  return buildRowsFromTestAllocs({
-    testAllocs,
-    allocMap,
-    samplesMap,
-    paramsByAllocationId,
-    testParamMetaById,
-  }).filter(isSectionVisibleInScopedResultsUnderReview)
+async function loadSampleIdsInStages(stages: readonly string[]): Promise<string[]> {
+  const { data: sampleRows, error: sampleErr } = await supabase
+    .from('samples')
+    .select('id')
+    .in('stage', [...stages])
+  if (sampleErr) throw sampleErr
+  return (Array.isArray(sampleRows) ? sampleRows : [])
+    .map((s) => String((s as { id?: string }).id ?? '').trim())
+    .filter(Boolean)
 }
 
 async function loadResultsUnderReviewRowsUnscoped(): Promise<TestAllocationRow[]> {
-  const { data: sampleRows, error: sampleErr } = await supabase
-    .from('samples')
-    .select(
-      'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration, stage',
-    )
-    .in('stage', [...REVIEW_SAMPLE_STAGES])
-    .order('created_at', { ascending: false })
-  if (sampleErr) throw sampleErr
+  const sampleIds = await loadSampleIdsInStages(REVIEW_SAMPLE_STAGES)
+  if (sampleIds.length === 0) return []
 
-  const samples = Array.isArray(sampleRows) ? sampleRows : []
-  if (samples.length === 0) return []
-
-  const sampleIds = samples.map((s) => String((s as { id: string }).id))
-  const fullSamplesMap = await loadSamplesMap(sampleIds, REVIEW_SAMPLE_STAGES)
-  if (fullSamplesMap.size === 0) return []
+  const samplesMap = await loadSamplesMap(sampleIds, REVIEW_SAMPLE_STAGES)
+  if (samplesMap.size === 0) return []
 
   const { data: allocData, error: allocErr } = await supabase
     .from('sample_allocations')
@@ -453,34 +500,8 @@ async function loadResultsUnderReviewRowsUnscoped(): Promise<TestAllocationRow[]
   const allocations = Array.isArray(allocData) ? (allocData as AllocationRow[]) : []
   if (allocations.length === 0) return []
 
-  const allocMap = new Map(allocations.map((a) => [a.id, a]))
-  const allocIds = allocations.map((a) => a.id)
-
-  const { data: testAllocData, error: taErr } = await supabase
-    .from('test_allocations')
-    .select(
-      'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing',
-    )
-    .in('sample_allocation_id', allocIds)
-    .order('created_at', { ascending: false })
-  if (taErr) throw taErr
-
-  const rawTestAllocs = (Array.isArray(testAllocData) ? testAllocData : []) as TestAllocRow[]
-  if (rawTestAllocs.length === 0) return []
-
-  const paramsByAllocationId = await loadParamsByAllocationId(
-    rawTestAllocs.map((t) => t.id),
-  )
-  const testAllocs = pickTestAllocationPerSection(rawTestAllocs, paramsByAllocationId)
-  const testParamMetaById = await loadTestParamMetaById(testAllocs, paramsByAllocationId)
-
-  return buildRowsFromTestAllocs({
-    testAllocs,
-    allocMap,
-    samplesMap: fullSamplesMap,
-    paramsByAllocationId,
-    testParamMetaById,
-  }).filter(isSectionVisibleInResultsUnderReview)
+  const rows = await buildRowsForAllocations({ allocations, samplesMap })
+  return rows.filter(isSectionVisibleInResultsUnderReview)
 }
 
 /** Section rows on SRFs in results review workflow. Optional scope filters by allocation department/designation. */

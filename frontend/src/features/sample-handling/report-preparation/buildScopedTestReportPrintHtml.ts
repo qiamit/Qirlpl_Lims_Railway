@@ -190,6 +190,8 @@ function partCDataCell(key: PartCReportColumnKey, row: ReportResultRow): string 
       return `<td class="c">${escapeHtml(row.specifiedRequirement)}</td>`
     case 'observedValue':
       return `<td class="c strong">${escapeHtml(row.observedValue)}</td>`
+    case 'uncertainty':
+      return `<td class="c">${escapeHtml(row.uncertainty)}</td>`
     case 'remark':
       return `<td class="c ${remarkClass(row.remark)}">${escapeHtml(row.remark)}</td>`
     default:

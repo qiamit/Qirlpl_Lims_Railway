@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
+import { sanitizeSectionCodeInput } from '@/features/sample-handling/allocation/sectionCode'
 import { getReportedTestResult } from '@/features/sample-handling/sample-under-testing/testResultValues'
 import { compareClauseNumbers } from './clauseNumberSort'
 import { evaluateResultConformity, type ConformityRemark } from './evaluateResultConformity'
@@ -12,12 +13,15 @@ export type ReportResultRow = {
   rowKey: string
   srNo: number
   sectionCode: string
+  sampleAllocationId: string
+  testAllocationId: string
   clauseNo: string | null
   testName: string
   testMethodClause: string | null
   unit: string
   specifiedRequirement: string
   observedValue: string
+  uncertainty: string
   remark: string
   scope: string
 }
@@ -35,6 +39,8 @@ function buildResultRowKey(p: {
 
 export type ReportResultSectionGroup = {
   sectionCode: string
+  sampleAllocationId: string
+  testAllocationId: string
   rows: ReportResultRow[]
 }
 
@@ -44,6 +50,7 @@ type TestParameterSnapshot = {
   clause_no: string | null
   unit_value: string | null
   specific_requirement: string | null
+  uncertainty_mu: string | null
   under_accreditation_ids: string[] | null
 }
 
@@ -111,7 +118,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
   const allocIds = allocList.map((a: { id: string }) => a.id)
   const { data: tas, error: tErr } = await supabase
     .from('test_allocations')
-    .select('id, section_code')
+    .select('id, section_code, sample_allocation_id')
     .in('sample_allocation_id', allocIds)
     .eq('sent_for_testing', true)
   if (tErr) throw tErr
@@ -119,10 +126,16 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
   const taIds = taList.map((t: { id: string }) => t.id)
   if (taIds.length === 0) return []
 
-  const sectionCodeByTaId = new Map<string, string>()
+  const sectionMetaByTaId = new Map<
+    string,
+    { sectionCode: string; sampleAllocationId: string }
+  >()
   for (const t of taList) {
-    const row = t as { id: string; section_code?: string | null }
-    sectionCodeByTaId.set(row.id, String(row.section_code ?? '').trim() || '—')
+    const row = t as { id: string; section_code?: string | null; sample_allocation_id?: string | null }
+    sectionMetaByTaId.set(row.id, {
+      sectionCode: String(row.section_code ?? '').trim() || '—',
+      sampleAllocationId: String(row.sample_allocation_id ?? '').trim(),
+    })
   }
 
   let paramRows: Array<{
@@ -173,7 +186,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
       ? supabase
           .from('test_parameters')
           .select(
-            'id, item_name, test_method, clause_no, unit_value, specific_requirement, under_accreditation_ids',
+            'id, item_name, test_method, clause_no, unit_value, specific_requirement, uncertainty_mu, under_accreditation_ids',
           )
           .in('id', tpIds)
       : Promise.resolve({ data: [] as TestParameterSnapshot[], error: null }),
@@ -205,17 +218,21 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
       )
         ? (storedRemark as ConformityRemark)
         : evaluateResultConformity(observed, requirement)
+    const meta = sectionMetaByTaId.get(p.test_allocation_id)
     return {
       parameterId: p.id,
       rowKey: buildResultRowKey(p),
       srNo: 0,
-      sectionCode: sectionCodeByTaId.get(p.test_allocation_id) ?? '—',
+      sectionCode: meta?.sectionCode ?? '—',
+      sampleAllocationId: meta?.sampleAllocationId ?? '',
+      testAllocationId: p.test_allocation_id,
       clauseNo: tp?.clause_no?.trim() || null,
       testName,
       testMethodClause,
       unit: fmt(tp?.unit_value),
       specifiedRequirement: fmt(p.specific_requirement?.trim() || tp?.specific_requirement),
       observedValue: fmt(observed),
+      uncertainty: fmt(tp?.uncertainty_mu),
       remark,
       scope: resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),
     }
@@ -264,20 +281,84 @@ export function getApplicableReportScopes(rows: ReportResultRow[]): ReportScopeK
 
 /** Group scoped rows by section code; Sr No restarts at 1 per section. */
 export function groupReportRowsBySectionCode(rows: ReportResultRow[]): ReportResultSectionGroup[] {
-  const order: string[] = []
   const byCode = new Map<string, ReportResultRow[]>()
 
   for (const row of rows) {
     const code = row.sectionCode.trim() || '—'
-    if (!byCode.has(code)) {
-      byCode.set(code, [])
-      order.push(code)
-    }
+    if (!byCode.has(code)) byCode.set(code, [])
     byCode.get(code)!.push(row)
   }
 
-  return order.map((sectionCode) => ({
-    sectionCode,
-    rows: sortRowsWithinSection(byCode.get(sectionCode)!),
-  }))
+  const sectionCodes = [...byCode.keys()].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+  )
+
+  return sectionCodes.map((sectionCode) => {
+    const sectionRows = sortRowsWithinSection(byCode.get(sectionCode)!)
+    const first = sectionRows[0]
+    return {
+      sectionCode,
+      sampleAllocationId: first?.sampleAllocationId ?? '',
+      testAllocationId: first?.testAllocationId ?? '',
+      rows: sectionRows,
+    }
+  })
+}
+
+export function patchReportResultRowsSectionCode(
+  rows: ReportResultRow[],
+  oldCode: string,
+  newCode: string,
+): ReportResultRow[] {
+  const trimmedOld = oldCode.trim()
+  const trimmedNew = newCode.trim()
+  if (!trimmedOld || !trimmedNew || trimmedOld === trimmedNew) return rows
+  return rows.map((row) =>
+    row.sectionCode.trim() === trimmedOld ? { ...row, sectionCode: trimmedNew } : row,
+  )
+}
+
+/** Update section code on sample_allocations and test_allocations for one section. */
+export async function updateReportSectionCode(opts: {
+  sampleId: string
+  sampleAllocationId: string
+  testAllocationId: string
+  currentSectionCode: string
+  newSectionCode: string
+}): Promise<string> {
+  const sampleAllocationId = opts.sampleAllocationId.trim()
+  const testAllocationId = opts.testAllocationId.trim()
+  const sampleId = opts.sampleId.trim()
+  const code = sanitizeSectionCodeInput(opts.newSectionCode)
+
+  if (!sampleAllocationId || !testAllocationId || !sampleId) {
+    throw new Error('Section allocation is missing.')
+  }
+  if (!code) {
+    throw new Error('Section code is required.')
+  }
+
+  const current = sanitizeSectionCodeInput(opts.currentSectionCode)
+  if (code === current) return code
+
+  const { data: duplicate, error: dupErr } = await supabase
+    .from('sample_allocations')
+    .select('id')
+    .eq('sample_id', sampleId)
+    .eq('section_code', code)
+    .neq('id', sampleAllocationId)
+    .maybeSingle()
+  if (dupErr) throw dupErr
+  if (duplicate?.id) {
+    throw new Error('This section code is already used for another section on this SRF.')
+  }
+
+  const [sampleRes, testRes] = await Promise.all([
+    supabase.from('sample_allocations').update({ section_code: code }).eq('id', sampleAllocationId),
+    supabase.from('test_allocations').update({ section_code: code }).eq('id', testAllocationId),
+  ])
+  if (sampleRes.error) throw sampleRes.error
+  if (testRes.error) throw testRes.error
+
+  return code
 }

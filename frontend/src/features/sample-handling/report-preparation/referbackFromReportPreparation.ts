@@ -170,9 +170,10 @@ async function syncSampleStageAfterReferback(sampleId: string): Promise<SampleSt
     return 'under_testing'
   }
 
+  const anyWithoutTestAlloc = sections.some((s) => !s.testAllocationId)
   const { error } = await supabase
     .from('samples')
-    .update({ referback_from_allocation: false })
+    .update({ referback_from_allocation: anyWithoutTestAlloc })
     .eq('id', sampleId)
   if (error) throw error
   return 'report_preparation'
@@ -189,11 +190,19 @@ async function clearSectionReviewMarkers(testAllocationId: string): Promise<void
 async function referbackToResultsReview(testAllocationId: string): Promise<void> {
   await ensureTestAllocationParameterRows(testAllocationId)
   await clearSectionReviewMarkers(testAllocationId)
-  const { error: taErr } = await supabase
-    .from('test_allocations')
-    .update({ sent_for_testing: true })
-    .eq('id', testAllocationId)
-  if (taErr) throw taErr
+  const patch: Record<string, unknown> = {
+    sent_for_testing: true,
+    referred_back_from_review: false,
+  }
+  const { error: taErr } = await supabase.from('test_allocations').update(patch).eq('id', testAllocationId)
+  if (taErr && !isSupabaseMissingColumnError(taErr, 'referred_back_from_review')) throw taErr
+  if (taErr && isSupabaseMissingColumnError(taErr, 'referred_back_from_review')) {
+    const { error: retryErr } = await supabase
+      .from('test_allocations')
+      .update({ sent_for_testing: true })
+      .eq('id', testAllocationId)
+    if (retryErr) throw retryErr
+  }
 }
 
 async function referbackToUnderTesting(

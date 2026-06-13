@@ -532,6 +532,14 @@ export default function SampleAllocationMasterPage() {
     await loadAllocations(enriched)
   }
 
+  useEffect(() => {
+    const refresh = () => {
+      void refreshAll()
+    }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [])
+
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return
     if (!window.confirm(`Delete allocation(s) for ${selectedIds.size} selected SRF(s)?`)) return

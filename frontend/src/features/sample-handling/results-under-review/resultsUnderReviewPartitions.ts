@@ -38,28 +38,34 @@ function sectionHasCompleteResults(row: TestAllocationRow): boolean {
   return total > 0 && filled === total
 }
 
-/** Section actually entered the results-review workflow (sent and/or approved). */
+function isSampleInReviewWorkflowStage(stage: TestAllocationRow['sampleStage']): boolean {
+  return stage === 'results_review' || stage === 'report_preparation' || stage === 'under_testing'
+}
+
+/**
+ * Section belongs on Results Under Review — active review, approved history,
+ * or sections awaiting re-review. Excludes sections referred back to Sample Under Testing.
+ */
 export function isSectionVisibleInResultsUnderReview(row: TestAllocationRow): boolean {
+  if (row.referredBackFromReview) return false
   if (sectionHasReviewerAssignment(row)) return true
   if (sectionWasApprovedForReview(row)) return true
-  if (row.sampleStage === 'report_preparation' && sectionHasCompleteResults(row)) return true
+  if (!isSampleInReviewWorkflowStage(row.sampleStage)) return false
+
+  if (row.sentForTesting && sectionHasCompleteResults(row)) return true
+
   return false
 }
 
-/** Scoped dept/designation view: include reviewed (Approved) sections on in-review SRFs. */
+/** Dept/designation scoped list uses the same visibility rules. */
 export function isSectionVisibleInScopedResultsUnderReview(row: TestAllocationRow): boolean {
-  if (isSectionVisibleInResultsUnderReview(row)) return true
-  const stage = row.sampleStage ?? ''
-  if (stage !== 'results_review' && stage !== 'report_preparation' && stage !== 'under_testing') {
-    return false
-  }
-  return sectionWasApprovedForReview(row)
+  return isSectionVisibleInResultsUnderReview(row)
 }
 
-/** Section still awaiting review approval (not yet marked Approved). */
+/** Pending = in review workflow and not yet marked Approved. */
 export function isResultsReviewPendingRow(row: TestAllocationRow): boolean {
-  if (!isSectionVisibleInResultsUnderReview(row)) return false
-  return !sectionWasApprovedForReview(row)
+  if (sectionWasApprovedForReview(row)) return false
+  return isSectionVisibleInResultsUnderReview(row)
 }
 
 /** True when any section on this SRF is still pending review approval. */
@@ -73,12 +79,14 @@ export function srfHasPendingReviewSections(
 }
 
 export function partitionResultsUnderReviewRows(rows: TestAllocationRow[]) {
-  const visible = rows.filter(isSectionVisibleInResultsUnderReview)
   const pending: TestAllocationRow[] = []
   const reviewed: TestAllocationRow[] = []
-  visible.forEach((row) => {
-    if (isResultsReviewPendingRow(row)) pending.push(row)
-    else reviewed.push(row)
-  })
+  for (const row of rows) {
+    if (sectionWasApprovedForReview(row)) {
+      reviewed.push(row)
+    } else if (isResultsReviewPendingRow(row)) {
+      pending.push(row)
+    }
+  }
   return { pending, reviewed }
 }

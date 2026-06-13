@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { Pencil } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import {
@@ -8,6 +10,7 @@ import {
 } from '@/features/sample-handling/shared/fetchSampleSrfViewDetails'
 import { getSampleWorkflowStatusLabel } from '@/features/sample-handling/sampleWorkflowStatus'
 import type { SampleStage } from '@/features/sample-handling/types'
+import { SampleReceivingEditDialog } from '@/features/sample-handling/receiving/SampleReceivingEditDialog'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 const fmtDate = (v: string | null | undefined) =>
@@ -135,6 +138,8 @@ export function SampleSrfViewDialog({
   fallbackClient,
   fallbackIsLabel,
   hideClient = false,
+  allowEdit = true,
+  onSampleUpdated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -144,17 +149,19 @@ export function SampleSrfViewDialog({
   fallbackIsLabel?: string | null
   /** Omit client section (e.g. Sample Allocation form). */
   hideClient?: boolean
+  /** Show Edit to open Sample Receiving form (default true). */
+  allowEdit?: boolean
+  /** Called after receiving data is saved — refresh parent lists. */
+  onSampleUpdated?: (payload: { sampleId: string; srfNumber: string | null }) => void
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [details, setDetails] = useState<SampleSrfViewDetails | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [detailsVersion, setDetailsVersion] = useState(0)
 
-  useEffect(() => {
-    if (!open || !sampleId) {
-      setDetails(null)
-      setError(null)
-      return
-    }
+  const reloadDetails = () => {
+    if (!sampleId) return
     setLoading(true)
     setError(null)
     void fetchSampleSrfViewDetails(sampleId, {
@@ -168,19 +175,44 @@ export function SampleSrfViewDialog({
         setError(e instanceof Error ? e.message : 'Unable to load sample details')
       })
       .finally(() => setLoading(false))
-  }, [open, sampleId, fallbackSrf, fallbackClient, fallbackIsLabel])
+  }
+
+  useEffect(() => {
+    if (!open || !sampleId) {
+      setDetails(null)
+      setError(null)
+      setEditOpen(false)
+      return
+    }
+    reloadDetails()
+  }, [open, sampleId, fallbackSrf, fallbackClient, fallbackIsLabel, detailsVersion])
 
   const titleSrf = details?.srfNumber ?? fallbackSrf ?? '—'
   const stageLabel = details ? fmtStage(details) : null
   const receivingStatus = details?.sampleReceivingStatus?.trim()
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] w-[min(96vw,72rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:rounded-xl">
         <DialogHeader className="shrink-0 space-y-3 border-b border-border/60 bg-muted/20 px-6 py-4 pr-12">
-          <DialogTitle className="text-base font-semibold leading-tight sm:text-lg">
-            {hideClient ? `Sample Details — ${fmt(titleSrf)}` : `SRF Details — ${fmt(titleSrf)}`}
-          </DialogTitle>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <DialogTitle className="text-base font-semibold leading-tight sm:text-lg">
+              {hideClient ? `Sample Details — ${fmt(titleSrf)}` : `SRF Details — ${fmt(titleSrf)}`}
+            </DialogTitle>
+            {allowEdit && sampleId && !loading && !error && details ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0 gap-1.5"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil size={14} />
+                Edit
+              </Button>
+            ) : null}
+          </div>
           {details && (
             <div className="flex flex-wrap items-center gap-2">
               {receivingStatus && (
@@ -316,5 +348,16 @@ export function SampleSrfViewDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    <SampleReceivingEditDialog
+      open={editOpen}
+      onOpenChange={setEditOpen}
+      sampleId={sampleId}
+      onSaved={(result) => {
+        setDetailsVersion((v) => v + 1)
+        onSampleUpdated?.(result)
+      }}
+    />
+    </>
   )
 }

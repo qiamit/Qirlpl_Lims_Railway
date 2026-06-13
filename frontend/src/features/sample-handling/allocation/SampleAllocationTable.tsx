@@ -163,7 +163,11 @@ export function SampleAllocationTable({
         <TableCell className="text-center text-xs truncate">
           {isPending ? '-' : joinList(r.departments)}
         </TableCell>
-        <TableCell className="text-center truncate">{isPending ? '-' : joinList(r.quantities)}</TableCell>
+        <TableCell className="text-center text-xs align-top max-w-[240px]">
+          <span className="line-clamp-2 break-words whitespace-normal leading-snug">
+            {isPending ? '-' : joinList(r.quantities)}
+          </span>
+        </TableCell>
         <TableCell>
           <div className="flex items-center justify-center gap-1">
             <Button

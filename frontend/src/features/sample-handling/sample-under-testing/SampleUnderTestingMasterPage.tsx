@@ -36,10 +36,8 @@ import {
   isParameterSentForReview,
   shouldHideFromSampleUnderTesting,
 } from './sampleUnderTestingVisibility'
-import {
-  isActiveReviewerName,
-  RESULTS_REVIEW_APPROVED_LABEL,
-} from '../results-under-review/resultsUnderReviewPartitions'
+import { RESULTS_REVIEW_APPROVED_LABEL } from '../results-under-review/resultsUnderReviewPartitions'
+import { pickTestAllocationPerSection } from '../shared/pickTestAllocationPerSection'
 import {
   buildAssignmentFilterHiddenEntries,
   buildLoadDiagnostics,
@@ -72,47 +70,6 @@ type LoadedTestAlloc = {
   test_parameter_ids?: string[] | null
   sent_for_testing?: boolean | null
   referred_back_from_review?: boolean | null
-}
-
-function pickTestAllocationPerSection(
-  taList: LoadedTestAlloc[],
-  paramsByAllocationId: Map<
-    string,
-    {
-      results_reviewer_id: string | null
-      results_reviewer_name: string | null
-    }[]
-  >,
-): LoadedTestAlloc[] {
-  const byAlloc = new Map<string, LoadedTestAlloc[]>()
-  for (const ta of taList) {
-    const key = String(ta.sample_allocation_id ?? '').trim()
-    if (!key) continue
-    if (!byAlloc.has(key)) byAlloc.set(key, [])
-    byAlloc.get(key)!.push(ta)
-  }
-
-  const score = (ta: LoadedTestAlloc): number => {
-    const params = paramsByAllocationId.get(ta.id) ?? []
-    const approved = params.some(
-      (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
-    )
-    const activeReviewer = params.some(
-      (p) => p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name),
-    )
-    let value = 0
-    if (approved) value += 4
-    if (activeReviewer) value += 3
-    if (ta.sent_for_testing) value += 2
-    return value
-  }
-
-  const picked: LoadedTestAlloc[] = []
-  for (const list of byAlloc.values()) {
-    const best = [...list].sort((a, b) => score(b) - score(a))[0]
-    if (best) picked.push(best)
-  }
-  return picked
 }
 
 export default function SampleUnderTestingMasterPage() {

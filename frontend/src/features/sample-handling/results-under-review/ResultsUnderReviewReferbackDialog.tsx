@@ -46,7 +46,7 @@ export function ResultsUnderReviewReferbackDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   row: TestAllocationRow | null
-  onSubmit: (employee: { id: string; name: string }) => Promise<void>
+  onSubmit: (employee: { id: string; name: string; designation: string }) => Promise<void>
   submitLoading: boolean
   submitError: string | null
 }) {
@@ -127,7 +127,11 @@ export function ResultsUnderReviewReferbackDialog({
     if (!employeeId) return
     const person = employeeOptions.find((u) => u.id === employeeId)
     if (!person) return
-    await onSubmit({ id: person.id, name: person.name })
+    await onSubmit({
+      id: person.id,
+      name: person.name,
+      designation: designation.trim() || person.designation,
+    })
   }
 
   return (

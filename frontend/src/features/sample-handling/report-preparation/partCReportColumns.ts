@@ -4,6 +4,7 @@ export type PartCReportColumnKey =
   | 'unit'
   | 'specifiedRequirement'
   | 'observedValue'
+  | 'uncertainty'
   | 'remark'
 
 export type PartCReportColumnVisibility = Record<PartCReportColumnKey, boolean>
@@ -17,6 +18,7 @@ export const PART_C_REPORT_COLUMN_DEFS: ReadonlyArray<{
   { key: 'unit', label: 'Unit' },
   { key: 'specifiedRequirement', label: 'Specified Requirements' },
   { key: 'observedValue', label: 'Observed Value' },
+  { key: 'uncertainty', label: 'Uncertainty' },
   { key: 'remark', label: 'Remark' },
 ]
 
@@ -26,6 +28,7 @@ export const DEFAULT_PART_C_REPORT_COLUMNS: PartCReportColumnVisibility = {
   unit: true,
   specifiedRequirement: true,
   observedValue: true,
+  uncertainty: true,
   remark: true,
 }
 

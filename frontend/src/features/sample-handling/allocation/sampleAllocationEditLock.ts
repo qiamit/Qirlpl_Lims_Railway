@@ -15,7 +15,21 @@ export function getSectionCodesInTestAllocation(
   return locked
 }
 
-const LOCKED_ALLOCATION_STAGES = new Set(['test_allocation', 'under_testing', 'results_review'])
+/** Block row actions when every section on this SRF is still in Test Allocation. */
+export function areSampleAllocationActionsLocked(
+  row: AllocationRow,
+  sampleAllocationIdsWithTestAllocation: Set<string>,
+): boolean {
+  if (row.allocationIds.length === 0) return false
+  if (row.sample.referback_from_allocation) return false
+
+  const lockedSections = getSectionCodesInTestAllocation(row, sampleAllocationIdsWithTestAllocation)
+  if (lockedSections.length === 0) return false
+  // At least one section was referred back — allow Sample Allocation edit for the SRF
+  if (lockedSections.length < row.sectionCodes.length) return false
+
+  return true
+}
 
 /** Block edit when any section code on this SRF is used in Test Allocation (unless referback). */
 export function isSampleAllocationEditLocked(
@@ -25,21 +39,9 @@ export function isSampleAllocationEditLocked(
   return areSampleAllocationActionsLocked(row, sampleAllocationIdsWithTestAllocation)
 }
 
-/** Block row actions for allocated SRFs until referback from Test Allocation. Pending rows stay unlocked. */
-export function areSampleAllocationActionsLocked(
-  row: AllocationRow,
-  sampleAllocationIdsWithTestAllocation: Set<string>,
-): boolean {
-  if (row.allocationIds.length === 0) return false
-  if (row.sample.referback_from_allocation) return false
-  const stage = (row.sample.stage ?? '').trim().toLowerCase()
-  if (LOCKED_ALLOCATION_STAGES.has(stage)) return true
-  return getSectionCodesInTestAllocation(row, sampleAllocationIdsWithTestAllocation).length > 0
-}
-
 export function sampleAllocationEditLockedTitle(lockedSectionCodes: string[]): string {
   if (lockedSectionCodes.length === 0) {
     return 'Actions locked: this SRF is in Test Allocation. Refer back from Test Allocation to unlock.'
   }
-  return `Actions locked: section code(s) ${lockedSectionCodes.join(', ')} are in Test Allocation. Refer back from Test Allocation to unlock.`
+  return `Actions locked: all section code(s) (${lockedSectionCodes.join(', ')}) are still in Test Allocation. Refer back each section from Test Allocation to unlock edit.`
 }

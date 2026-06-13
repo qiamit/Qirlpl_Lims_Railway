@@ -250,6 +250,9 @@ export function TestReportResultsSection({
   onLetterheadChange,
   onRemarkChange,
   disabled,
+  sampleId = null,
+  sectionCodeEditable = false,
+  onSectionCodeUpdated,
 }: {
   resultsLoading: boolean
   applicableScopes: ReportScopeKind[]
@@ -273,6 +276,9 @@ export function TestReportResultsSection({
   ) => void
   onRemarkChange?: (rowKey: string, remark: string) => void
   disabled?: boolean
+  sampleId?: string | null
+  sectionCodeEditable?: boolean
+  onSectionCodeUpdated?: (oldCode: string, newCode: string) => void
 }) {
   return (
     <div className={REPORT_PART_OUTER_CLASS}>
@@ -340,6 +346,9 @@ export function TestReportResultsSection({
                       editable
                       onRemarkChange={onRemarkChange}
                       disabled={disabled}
+                      sampleId={sampleId}
+                      sectionCodeEditable={sectionCodeEditable}
+                      onSectionCodeUpdated={onSectionCodeUpdated}
                     />
                     {scopedRows.length > 0 && <TestReportEndNotesBlock />}
                   </div>

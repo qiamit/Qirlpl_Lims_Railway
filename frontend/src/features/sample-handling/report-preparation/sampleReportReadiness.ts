@@ -6,6 +6,13 @@ type SectionApprovalOptions = {
   allowLegacyCompleteResults?: boolean
 }
 
+type SectionApprovalState = {
+  sampleAllocationId: string
+  testAllocationId: string
+  sentForTesting: boolean
+  approved: boolean
+}
+
 /** Section has no pending reviewer and was approved in Results Under Review. */
 async function testAllocationSectionIsReviewApproved(
   testAllocationId: string,
@@ -56,11 +63,9 @@ function pickTestAllocationPerSection(
   return byAlloc
 }
 
-/**
- * SRF is ready for Test Report Preparation only when every allocated section was
- * sent for testing and each section's results were approved in review.
- */
-export async function isSampleReadyForReportPreparation(sampleId: string): Promise<boolean> {
+async function loadSampleSectionApprovalStates(
+  sampleId: string,
+): Promise<{ states: SectionApprovalState[]; allowLegacyCompleteResults: boolean }> {
   const { data: sampleRow, error: sampleErr } = await supabase
     .from('samples')
     .select('stage')
@@ -82,7 +87,10 @@ export async function isSampleReadyForReportPreparation(sampleId: string): Promi
   const allocIds = (Array.isArray(allocRows) ? allocRows : [])
     .map((r) => String((r as { id?: string }).id ?? '').trim())
     .filter(Boolean)
-  if (allocIds.length === 0) return false
+
+  if (allocIds.length === 0) {
+    return { states: [], allowLegacyCompleteResults }
+  }
 
   const { data: taRows, error: taErr } = await supabase
     .from('test_allocations')
@@ -96,18 +104,50 @@ export async function isSampleReadyForReportPreparation(sampleId: string): Promi
     sent_for_testing?: boolean | null
   }>
   const taByAlloc = pickTestAllocationPerSection(taList)
-  if (taByAlloc.size < allocIds.length) return false
 
+  const states: SectionApprovalState[] = []
   for (const allocId of allocIds) {
     const ta = taByAlloc.get(allocId)
-    if (!ta?.sent_for_testing) return false
+    if (!ta) {
+      states.push({
+        sampleAllocationId: allocId,
+        testAllocationId: '',
+        sentForTesting: false,
+        approved: false,
+      })
+      continue
+    }
     const approved = await testAllocationSectionIsReviewApproved(ta.id, {
       allowLegacyCompleteResults,
     })
-    if (!approved) return false
+    states.push({
+      sampleAllocationId: allocId,
+      testAllocationId: ta.id,
+      sentForTesting: ta.sent_for_testing,
+      approved,
+    })
   }
 
-  return true
+  return { states, allowLegacyCompleteResults }
+}
+
+/**
+ * Show SRF in Test Report Preparation when at least one section was sent for testing
+ * and its results were approved in Results Under Review.
+ */
+export async function isSampleVisibleInReportPreparation(sampleId: string): Promise<boolean> {
+  const { states } = await loadSampleSectionApprovalStates(sampleId)
+  return states.some((s) => s.sentForTesting && s.approved)
+}
+
+/**
+ * SRF is fully ready to issue when every allocated section was sent for testing
+ * and each section's results were approved in review.
+ */
+export async function isSampleReadyForReportPreparation(sampleId: string): Promise<boolean> {
+  const { states } = await loadSampleSectionApprovalStates(sampleId)
+  if (states.length === 0) return false
+  return states.every((s) => s.sentForTesting && s.approved)
 }
 
 /** Any parameter still assigned to a results reviewer for this SRF. */
@@ -149,7 +189,7 @@ export async function sampleStillHasResultsInReview(sampleId: string): Promise<b
   })
 }
 
-/** Keep sample stage aligned: report_preparation only when every section is approved. */
+/** Keep sample stage aligned: report_preparation when any section is approved for prep. */
 export async function syncSampleReportPreparationStage(sampleId: string): Promise<void> {
   const id = sampleId.trim()
   if (!id) return
@@ -160,8 +200,8 @@ export async function syncSampleReportPreparationStage(sampleId: string): Promis
   const stage = String((data as { stage?: string | null } | null)?.stage ?? '').trim()
   if (stage !== 'results_review' && stage !== 'report_preparation') return
 
-  const ready = await isSampleReadyForReportPreparation(id)
-  const nextStage = ready ? 'report_preparation' : 'results_review'
+  const visible = await isSampleVisibleInReportPreparation(id)
+  const nextStage = visible ? 'report_preparation' : 'results_review'
   if (stage === nextStage) return
 
   const { error: updErr } = await supabase.from('samples').update({ stage: nextStage }).eq('id', id)

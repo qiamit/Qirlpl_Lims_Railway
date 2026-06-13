@@ -98,13 +98,9 @@ export default function ResultsUnderReviewMasterPage() {
     try {
       if (isLaboratoryDirector(designation)) {
         setResolvedDepartment(departmentName.trim() || 'Administration')
-        let list = await loadResultsUnderReviewRowsForDirector()
-        const directorSampleIds = [
-          ...new Set(list.map((r) => r.sampleId?.trim()).filter(Boolean)),
-        ] as string[]
-        await Promise.all(directorSampleIds.map((id) => syncSampleReportPreparationStage(id)))
-        list = await loadResultsUnderReviewRowsForDirector()
+        const list = await loadResultsUnderReviewRowsForDirector()
         setRows(list)
+        void refreshRowsAfterStageSync(list, undefined)
         return
       }
 
@@ -121,18 +117,32 @@ export default function ResultsUnderReviewMasterPage() {
       const scope = {
         department: userDept,
         designation: designation?.trim() || null,
+        reviewerUserId: user.id,
       }
-      let list = await loadResultsUnderReviewRowsForDirector(scope)
-      const scopedSampleIds = [
-        ...new Set(list.map((r) => r.sampleId?.trim()).filter(Boolean)),
-      ] as string[]
-      await Promise.all(scopedSampleIds.map((id) => syncSampleReportPreparationStage(id)))
-      list = await loadResultsUnderReviewRowsForDirector(scope)
+      const list = await loadResultsUnderReviewRowsForDirector(scope)
       setRows(list)
+      void refreshRowsAfterStageSync(list, scope)
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Unable to load results for review')
     } finally {
       setListLoading(false)
+    }
+  }
+
+  const refreshRowsAfterStageSync = async (
+    initialList: TestAllocationRow[],
+    scope?: { department: string; designation: string | null; reviewerUserId: string },
+  ) => {
+    const sampleIds = [
+      ...new Set(initialList.map((r) => r.sampleId?.trim()).filter(Boolean)),
+    ] as string[]
+    if (sampleIds.length === 0) return
+    try {
+      await Promise.all(sampleIds.map((id) => syncSampleReportPreparationStage(id)))
+      const refreshed = await loadResultsUnderReviewRowsForDirector(scope)
+      setRows(refreshed)
+    } catch {
+      /* keep initial list visible */
     }
   }
 
@@ -458,12 +468,17 @@ export default function ResultsUnderReviewMasterPage() {
     setReferbackDialogOpen(true)
   }
 
-  const submitReferbackToUnderTesting = async (employee: { id: string; name: string }) => {
+  const submitReferbackToUnderTesting = async (employee: {
+    id: string
+    name: string
+    designation: string
+  }) => {
     const row = referbackRow
     if (!row) return
     const testAllocationId = row.testAllocationId?.trim()
+    const sampleAllocationId = row.sampleAllocationId?.trim()
     const sampleId = row.sampleId?.trim()
-    if (!testAllocationId || !sampleId) {
+    if (!testAllocationId || !sampleAllocationId || !sampleId) {
       setReferbackSubmitError('Missing section data for refer back.')
       return
     }
@@ -471,8 +486,25 @@ export default function ResultsUnderReviewMasterPage() {
     setReferbackSubmitLoading(true)
     setReferbackSubmitError(null)
     try {
+      const { data: sectionTaRows, error: sectionTaErr } = await supabase
+        .from('test_allocations')
+        .select('id')
+        .eq('sample_allocation_id', sampleAllocationId)
+      if (sectionTaErr) throw sectionTaErr
+
+      const sectionTaIds = (Array.isArray(sectionTaRows) ? sectionTaRows : [])
+        .map((r) => String((r as { id?: string }).id ?? '').trim())
+        .filter(Boolean)
+
       await ensureTestAllocationParameterRows(testAllocationId)
-      await clearSectionReviewAssignment(testAllocationId)
+
+      if (sectionTaIds.length > 0) {
+        const { error: clearErr } = await supabase
+          .from('test_allocation_parameters')
+          .update({ results_reviewer_id: null, results_reviewer_name: null })
+          .in('test_allocation_id', sectionTaIds)
+        if (clearErr) throw clearErr
+      }
 
       const taPatch: Record<string, unknown> = {
         sent_for_testing: true,
@@ -483,17 +515,26 @@ export default function ResultsUnderReviewMasterPage() {
       let { error: taErr } = await supabase
         .from('test_allocations')
         .update(taPatch)
-        .eq('id', testAllocationId)
+        .eq('sample_allocation_id', sampleAllocationId)
       if (taErr && isSupabaseMissingColumnError(taErr, 'referred_back_from_review')) {
         const { referred_back_from_review: _drop, ...fallback } = taPatch
         void _drop
         const retry = await supabase
           .from('test_allocations')
           .update(fallback)
-          .eq('id', testAllocationId)
+          .eq('sample_allocation_id', sampleAllocationId)
         taErr = retry.error
       }
       if (taErr) throw taErr
+
+      const nextDesignation = employee.designation?.trim()
+      if (nextDesignation) {
+        const { error: allocErr } = await supabase
+          .from('sample_allocations')
+          .update({ designation: nextDesignation })
+          .eq('id', sampleAllocationId)
+        if (allocErr) throw allocErr
+      }
 
       const stillInReviewWorkflow = await sampleStillHasResultsInReview(sampleId)
       if (stillInReviewWorkflow) {

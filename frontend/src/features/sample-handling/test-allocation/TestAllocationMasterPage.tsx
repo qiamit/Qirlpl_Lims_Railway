@@ -10,7 +10,10 @@ import { TestAllocationFooterBar } from './TestAllocationFooterBar'
 import { TestAllocationForm } from './TestAllocationForm'
 import { TestAllocationParametersViewDialog } from './TestAllocationParametersViewDialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { deleteTestAllocationsForSampleAllocations } from '../referbackFlow'
+import {
+  deleteTestAllocationsForSampleAllocations,
+  syncSampleAfterTestAllocationReferback,
+} from '../referbackFlow'
 import { buildTestAllocationListAssistantContext } from './buildTestAllocationAssistantContext'
 import {
   isPendingTestAllocationRow,
@@ -150,16 +153,6 @@ export default function TestAllocationMasterPage() {
 
       const testAllocs = Array.isArray(testAllocData) ? testAllocData : []
       const allAllocations = Array.isArray(allAllocData) ? allAllocData : []
-      const withTest = new Set(
-        testAllocs.map((t: { sample_allocation_id: string }) => t.sample_allocation_id),
-      )
-      const sampleIdsInTestFlow = new Set<string>()
-      testAllocs.forEach((t: { sample_allocation_id: string }) => {
-        const a = allAllocations.find((row: { id: string }) => row.id === t.sample_allocation_id) as
-          | { sample_id: string }
-          | undefined
-        if (a?.sample_id) sampleIdsInTestFlow.add(a.sample_id)
-      })
       const testAllocationIds = testAllocs.map((t: { id: string }) => t.id)
       const paramIdsByAllocation = new Map<string, string[]>()
       if (testAllocationIds.length > 0) {
@@ -193,17 +186,6 @@ export default function TestAllocationMasterPage() {
             .in('id', sampleIds)
         : { data: [], error: null }
       if (sampleErr) throw sampleErr
-
-      for (const s of Array.isArray(sampleData) ? sampleData : []) {
-        const stage = String((s as { stage?: string | null }).stage ?? '').trim().toLowerCase()
-        if (stage === 'test_allocation' || stage === 'under_testing') {
-          sampleIdsInTestFlow.add(String((s as { id: string }).id))
-        }
-      }
-      const visiblePendingAllocations = allAllocations.filter(
-        (a: { id: string; sample_id: string }) =>
-          !withTest.has(a.id) && sampleIdsInTestFlow.has(a.sample_id),
-      )
 
       const isCodeIds = [
         ...new Set(
@@ -323,18 +305,9 @@ export default function TestAllocationMasterPage() {
         )
         .filter((r): r is TestAllocationRow => r != null)
 
-      const pendingRows: TestAllocationRow[] = visiblePendingAllocations.map(
-        (a: {
-          id: string
-          sample_id: string
-          section_code: string
-          allocation_date: string | null
-          department: string | null
-          designation: string | null
-        }) => buildRowFromAllocation(a),
-      )
-
-      setRows([...pendingRows, ...allottedRows])
+      // Only rows with an active test_allocation record belong here. Sections referred back
+      // to Sample Allocation have their test_allocation deleted and appear only in Sample Allocation.
+      setRows(allottedRows)
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Unable to load test allocations')
     } finally {
@@ -733,35 +706,16 @@ export default function TestAllocationMasterPage() {
       }
       await deleteTestAllocationsForSampleAllocations([row.sampleAllocationId])
 
-      const { data: sampleAllocRows } = await supabase
-        .from('sample_allocations')
-        .select('id')
-        .eq('sample_id', sampleId)
-      const allocIds = (Array.isArray(sampleAllocRows) ? sampleAllocRows : [])
-        .map((r) => String((r as { id?: unknown }).id ?? '').trim())
-        .filter(Boolean)
-
-      let remainingCount = 0
-      if (allocIds.length > 0) {
-        const { data: remainingTa } = await supabase
-          .from('test_allocations')
-          .select('id')
-          .in('sample_allocation_id', allocIds)
-        remainingCount = Array.isArray(remainingTa) ? remainingTa.length : 0
-      }
+      const remainingCount = await syncSampleAfterTestAllocationReferback(sampleId)
 
       if (remainingCount === 0) {
-        const { error } = await supabase
-          .from('samples')
-          .update({ stage: 'allocation', referback_from_allocation: true })
-          .eq('id', sampleId)
-        if (error) {
-          setSaveMessage(formatSupabaseError(error))
-          return
-        }
-        setSaveMessage(`Section ${section} referred back to Sample Allocation.`)
+        setSaveMessage(
+          `Section ${section} referred back to Sample Allocation. Edit section codes and departments in Sample Allocation.`,
+        )
       } else {
-        setSaveMessage(`Section ${section} referred back to Sample Allocation. Other sections remain in Test Allocation.`)
+        setSaveMessage(
+          `Section ${section} referred back to Sample Allocation. Edit is unlocked in Sample Allocation; other section(s) remain in Test Allocation.`,
+        )
       }
       await loadRows()
     } catch (err) {

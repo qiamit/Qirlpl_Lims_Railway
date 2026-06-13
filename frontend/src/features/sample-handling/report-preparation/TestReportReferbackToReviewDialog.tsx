@@ -74,9 +74,15 @@ function sectionLabel(s: ReportPrepSectionOption): string {
   return dept ? `${code} — ${dept}` : code
 }
 
-export type TestReportReferbackSubmitPayload = {
+export const REFERBACK_ALL_SECTIONS_VALUE = '__all_sections__'
+
+export type TestReportReferbackSectionRef = {
   sampleAllocationId: string
   testAllocationId: string
+}
+
+export type TestReportReferbackSubmitPayload = {
+  sections: TestReportReferbackSectionRef[]
   targetStage: ReportPrepReferbackTarget
   remark: string
   assignee?: { id: string; name: string }
@@ -111,10 +117,13 @@ export function TestReportReferbackToReviewDialog({
 
   const srfLabel = srfNumber?.trim() || '—'
 
-  const selectedSection = useMemo(
-    () => sectionOptions.find((s) => s.sampleAllocationId === sampleAllocationId) ?? null,
-    [sectionOptions, sampleAllocationId],
-  )
+  const selectedSections = useMemo(() => {
+    if (sampleAllocationId === REFERBACK_ALL_SECTIONS_VALUE) return sectionOptions
+    const one = sectionOptions.find((s) => s.sampleAllocationId === sampleAllocationId)
+    return one ? [one] : []
+  }, [sectionOptions, sampleAllocationId])
+
+  const selectedSection = selectedSections[0] ?? null
 
   const department = selectedSection?.department?.trim() ?? ''
   const needsTestingAssignee = targetStage === 'under_testing'
@@ -215,24 +224,28 @@ export function TestReportReferbackToReviewDialog({
   }, [users, department, designation])
 
   const targetHint = TARGET_OPTIONS.find((o) => o.value === targetStage)?.hint ?? ''
-  const testAllocationMissing = needsTestAllocation && !selectedSection?.testAllocationId?.trim()
+  const testAllocationMissing =
+    needsTestAllocation &&
+    selectedSections.some((s) => !s.testAllocationId?.trim())
 
   const submitReady =
-    Boolean(sampleAllocationId) &&
+    selectedSections.length > 0 &&
     remark.trim().length > 0 &&
     !testAllocationMissing &&
     (!needsTestingAssignee || Boolean(employeeId))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!submitReady || !selectedSection) return
+    if (!submitReady || selectedSections.length === 0) return
 
     const person = needsTestingAssignee ? employeeOptions.find((u) => u.id === employeeId) : undefined
     if (needsTestingAssignee && !person) return
 
     await onSubmit({
-      sampleAllocationId: selectedSection.sampleAllocationId,
-      testAllocationId: selectedSection.testAllocationId?.trim() ?? '',
+      sections: selectedSections.map((s) => ({
+        sampleAllocationId: s.sampleAllocationId,
+        testAllocationId: s.testAllocationId?.trim() ?? '',
+      })),
       targetStage,
       remark: remark.trim(),
       assignee: person ? { id: person.id, name: person.name } : undefined,
@@ -263,6 +276,11 @@ export function TestReportReferbackToReviewDialog({
                   <SelectValue placeholder="Select section code" />
                 </SelectTrigger>
                 <SelectContent>
+                  {sectionOptions.length >= 2 ? (
+                    <SelectItem value={REFERBACK_ALL_SECTIONS_VALUE}>
+                      Both section codes ({sectionOptions.map((s) => s.sectionCode).join(', ')})
+                    </SelectItem>
+                  ) : null}
                   {sectionOptions.map((s) => (
                     <SelectItem key={s.sampleAllocationId} value={s.sampleAllocationId}>
                       {sectionLabel(s)}
@@ -311,7 +329,7 @@ export function TestReportReferbackToReviewDialog({
             />
           </div>
 
-          {needsTestingAssignee && selectedSection ? (
+          {needsTestingAssignee && selectedSections.length > 0 ? (
             <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Assign testing engineer
