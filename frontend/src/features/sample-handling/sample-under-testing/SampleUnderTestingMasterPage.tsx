@@ -175,7 +175,7 @@ export default function SampleUnderTestingMasterPage() {
   const [reviewSubmitLoading, setReviewSubmitLoading] = useState(false)
   const [reviewSubmitError, setReviewSubmitError] = useState<string | null>(null)
   /** Off for Lab Director (can show all). On for everyone else — only Test Allocation rows where Select Employee = you. */
-  const [onlyMyAssignments, setOnlyMyAssignments] = useState(true)
+  const [onlyMyAssignments, setOnlyMyAssignments] = useState(false)
   const [loadDiagnostics, setLoadDiagnostics] = useState<SampleUnderTestingLoadDiagnostics | null>(
     null,
   )
