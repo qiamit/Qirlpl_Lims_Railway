@@ -55,6 +55,8 @@ export function TestReportPrepareDialog({
   sampleId = null,
   sectionCodeEditable = false,
   onSectionCodeUpdated,
+  specifiedRequirementEditable = false,
+  onSpecifiedRequirementUpdated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -92,6 +94,8 @@ export function TestReportPrepareDialog({
   sampleId?: string | null
   sectionCodeEditable?: boolean
   onSectionCodeUpdated?: (oldCode: string, newCode: string) => void
+  specifiedRequirementEditable?: boolean
+  onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
 }) {
   const applicableScopes = getApplicableReportScopes(resultRows)
   const [activeReportScope, setActiveReportScope] = useState<ReportScopeKind>('nabl')
@@ -195,6 +199,8 @@ export function TestReportPrepareDialog({
               sampleId={sampleId}
               sectionCodeEditable={sectionCodeEditable}
               onSectionCodeUpdated={onSectionCodeUpdated}
+              specifiedRequirementEditable={specifiedRequirementEditable}
+              onSpecifiedRequirementUpdated={onSpecifiedRequirementUpdated}
             />
 
             <TestReportRemarksSection

@@ -14,6 +14,7 @@ import {
   type CalibrationPoint,
 } from './types'
 import { ClientSearchSelect } from '../equipment-master/ClientSearchSelect'
+import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
 
 function parseAcceptanceLimit(criteria: string | null | undefined): number | null {
   if (!criteria) return null
@@ -45,7 +46,6 @@ export function IqcMasterForm({
   canSave,
   saveLoading,
   onSave,
-  onClear,
   clients,
   employees,
   locations,
@@ -59,7 +59,6 @@ export function IqcMasterForm({
   canSave: boolean
   saveLoading: boolean
   onSave: () => void
-  onClear: () => void
   clients: Array<{ id: string; company_name: string }>
   employees: Array<{ id: string; full_name: string }>
   locations: string[]
@@ -295,13 +294,13 @@ export function IqcMasterForm({
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label htmlFor="eq-calc-unit" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Reading Unit</Label>
-                  <Input
+                  <MeasurementUnitSelect
                     id="eq-calc-unit"
-                    type="text"
-                    placeholder="e.g. N, mm"
                     value={parsedUnit}
-                    onChange={(e) => handleUpdateCheck(parsedReadings, undefined, undefined, e.target.value)}
-                    className="h-7 text-xs py-0.5 px-2 bg-white"
+                    onChange={(unit) => handleUpdateCheck(parsedReadings, undefined, undefined, unit)}
+                    showLabel={false}
+                    inputClassName="h-7 text-xs py-0.5 px-2 bg-white"
+                    className="space-y-0"
                   />
                 </div>
                 
@@ -822,20 +821,11 @@ export function IqcMasterForm({
         <CardFooter className="flex items-center justify-end gap-2 border-t pt-4 px-6 bg-slate-50/50 rounded-b-lg">
           <Button
             type="button"
-            variant="outline"
-            onClick={onClear}
-            disabled={saveLoading}
-            className="w-28"
-          >
-            Clear
-          </Button>
-          <Button
-            type="button"
             onClick={onSave}
             disabled={!canSave || saveLoading}
-            className="w-28 bg-primary hover:bg-primary/90 text-white"
+            className="min-w-32 bg-primary hover:bg-primary/90 text-white"
           >
-            {saveLoading ? 'Saving…' : 'Save'}
+            {saveLoading ? 'Saving…' : 'Save & Close'}
           </Button>
         </CardFooter>
       </Card>
@@ -1362,20 +1352,11 @@ export function IqcMasterForm({
       <CardFooter className="flex items-center justify-end gap-2 border-t pt-4 px-6 bg-slate-50/50 rounded-b-lg">
         <Button
           type="button"
-          variant="outline"
-          onClick={onClear}
-          disabled={saveLoading}
-          className="w-28"
-        >
-          Clear
-        </Button>
-        <Button
-          type="button"
           onClick={onSave}
           disabled={!canSave || saveLoading}
-          className="w-28 bg-primary hover:bg-primary/90 text-white"
+          className="min-w-32 bg-primary hover:bg-primary/90 text-white"
         >
-          {saveLoading ? 'Saving…' : 'Save'}
+          {saveLoading ? 'Saving…' : 'Save & Close'}
         </Button>
       </CardFooter>
     </Card>

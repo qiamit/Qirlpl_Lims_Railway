@@ -1,4 +1,5 @@
-import { useEffect, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +10,15 @@ export type FilterComboboxExtraAction = {
   label: string
   onSelect: () => void
   className?: string
+}
+
+type DropdownPlacement = 'auto' | 'top' | 'bottom'
+
+type DropdownPosition = {
+  left: number
+  width: number
+  top?: number
+  bottom?: number
 }
 
 export function FilterCombobox({
@@ -24,6 +34,8 @@ export function FilterCombobox({
   inputClassName,
   listId,
   disabled,
+  dropdownPlacement = 'auto',
+  onInputFocus,
 }: {
   value: string
   onValueChange: (value: string) => void
@@ -37,12 +49,17 @@ export function FilterCombobox({
   inputClassName?: string
   listId?: string
   disabled?: boolean
+  dropdownPlacement?: DropdownPlacement
+  onInputFocus?: () => void
 }) {
+  const inputRef = useRef<HTMLInputElement>(null)
   const [highlightIndex, setHighlightIndex] = useState(-1)
+  const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null)
   const optionListId = listId ?? 'filter-combobox-list'
 
   const itemCount = options.length + extraActions.length
-  const showList = open && itemCount > 0
+  const showList = open
+  const showOptions = itemCount > 0
 
   useEffect(() => {
     if (!open) {
@@ -58,10 +75,57 @@ export function FilterCombobox({
     })
   }, [itemCount])
 
+  const updateDropdownPosition = () => {
+    const input = inputRef.current
+    if (!input) return
+
+    const rect = input.getBoundingClientRect()
+    const estimatedHeight = Math.min(itemCount * 36, 192)
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const openUp =
+      dropdownPlacement === 'top' ||
+      (dropdownPlacement === 'auto' && spaceBelow < estimatedHeight + 8 && spaceAbove > spaceBelow)
+
+    setDropdownPosition(
+      openUp
+        ? {
+            left: rect.left,
+            width: rect.width,
+            bottom: window.innerHeight - rect.top + 4,
+          }
+        : {
+            left: rect.left,
+            width: rect.width,
+            top: rect.bottom + 4,
+          },
+    )
+  }
+
+  useLayoutEffect(() => {
+    if (!showList) {
+      setDropdownPosition(null)
+      return
+    }
+
+    updateDropdownPosition()
+
+    const handleReposition = () => updateDropdownPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [showList, itemCount, dropdownPlacement, value])
+
   const selectIndex = (index: number) => {
     if (index < 0) return
     if (index < options.length) {
-      onSelectOption(options[index])
+      const selected = options[index]
+      onValueChange(selected.label)
+      onSelectOption(selected)
       onOpenChange(false)
       setHighlightIndex(-1)
       return
@@ -91,9 +155,9 @@ export function FilterCombobox({
     }
 
     if (e.key === 'Enter') {
-      if (!open || highlightIndex < 0) return
+      if (!open || itemCount === 0) return
       e.preventDefault()
-      selectIndex(highlightIndex)
+      selectIndex(highlightIndex >= 0 ? highlightIndex : 0)
       return
     }
 
@@ -105,32 +169,19 @@ export function FilterCombobox({
     }
   }
 
-  return (
-    <div className={cn('relative', className)}>
-      <Input
-        value={value}
-        disabled={disabled}
-        onChange={(e) => {
-          onValueChange(e.target.value)
-          onOpenChange(true)
-          setHighlightIndex(-1)
-        }}
-        onFocus={() => onOpenChange(true)}
-        onBlur={() => setTimeout(() => onOpenChange(false), 150)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        className={inputClassName}
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={showList}
-        aria-controls={showList ? optionListId : undefined}
-        aria-activedescendant={
-          showList && highlightIndex >= 0 ? `${optionListId}-option-${highlightIndex}` : undefined
-        }
-      />
-      {showList && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
-          <ul id={optionListId} role="listbox" className="max-h-48 overflow-auto text-sm">
+  const dropdownList = showList && dropdownPosition ? (
+    <div
+      className="fixed z-[200] rounded-md border border-border bg-popover shadow-lg"
+      style={{
+        left: dropdownPosition.left,
+        width: dropdownPosition.width,
+        top: dropdownPosition.top,
+        bottom: dropdownPosition.bottom,
+      }}
+    >
+      <ul id={optionListId} role="listbox" className="max-h-48 overflow-auto text-sm">
+        {showOptions ? (
+          <>
             {options.map((opt, index) => (
               <li key={opt.id} role="presentation">
                 <button
@@ -142,9 +193,11 @@ export function FilterCombobox({
                     'w-full px-3 py-2 text-left',
                     highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
                   )}
-                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    selectIndex(index)
+                  }}
                   onMouseEnter={() => setHighlightIndex(index)}
-                  onClick={() => selectIndex(index)}
                 >
                   {opt.label}
                 </button>
@@ -164,18 +217,53 @@ export function FilterCombobox({
                       highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
                       action.className,
                     )}
-                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      selectIndex(index)
+                    }}
                     onMouseEnter={() => setHighlightIndex(index)}
-                    onClick={() => selectIndex(index)}
                   >
                     {action.label}
                   </button>
                 </li>
               )
             })}
-          </ul>
-        </div>
-      )}
+          </>
+        ) : (
+          <li className="px-3 py-2 text-sm text-muted-foreground">No results found</li>
+        )}
+      </ul>
+    </div>
+  ) : null
+
+  return (
+    <div className={cn('relative', className)}>
+      <Input
+        ref={inputRef}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => {
+          onValueChange(e.target.value)
+          onOpenChange(true)
+          setHighlightIndex(-1)
+        }}
+        onFocus={() => {
+          onInputFocus?.()
+          onOpenChange(true)
+        }}
+        onBlur={() => setTimeout(() => onOpenChange(false), 200)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className={inputClassName}
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={showList}
+        aria-controls={showList ? optionListId : undefined}
+        aria-activedescendant={
+          showList && highlightIndex >= 0 ? `${optionListId}-option-${highlightIndex}` : undefined
+        }
+      />
+      {dropdownList ? createPortal(dropdownList, document.body) : null}
     </div>
   )
 }

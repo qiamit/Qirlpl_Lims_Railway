@@ -3,14 +3,14 @@ import type { SampleStage, TestAllocationRow } from '../types'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 import {
   departmentsMatch,
-  designationsMatch,
 } from '@/features/sample-handling/shared/departmentMatch'
 import { pickTestAllocationPerSection } from '../shared/pickTestAllocationPerSection'
+import { fetchByIdChunks } from '../shared/fetchByIdChunks'
 import {
   isActiveReviewerName,
+  isResultsReviewStatusApproved,
   isSectionVisibleInResultsUnderReview,
   isSectionVisibleInScopedResultsUnderReview,
-  RESULTS_REVIEW_APPROVED_LABEL,
 } from './resultsUnderReviewPartitions'
 
 export type ResultsUnderReviewLoadScope = {
@@ -62,23 +62,26 @@ type ParamRow = {
   specific_requirement: string | null
   results_reviewer_id: string | null
   results_reviewer_name: string | null
+  results_review_status: string | null
 }
 
-const REVIEW_SAMPLE_STAGES = ['results_review', 'report_preparation'] as const
-const SCOPED_SAMPLE_STAGES = ['results_review', 'report_preparation', 'under_testing'] as const
+const REVIEW_SAMPLE_STAGES = ['results_review', 'report_preparation', 'completed'] as const
+/** Dept-scoped: include under_testing (awaiting send) plus review / issued history. */
+const SCOPED_SAMPLE_STAGES = [
+  'results_review',
+  'report_preparation',
+  'under_testing',
+  'completed',
+] as const
 
 function filterAllocationsByScope(
   allocations: AllocationRow[],
   scope?: ResultsUnderReviewLoadScope,
 ): AllocationRow[] {
   if (!scope?.department?.trim()) return allocations
-  let filtered = allocations.filter((a) => departmentsMatch(a.department, scope.department))
-  if (scope.designation?.trim()) {
-    filtered = filtered.filter(
-      (a) => !a.designation?.trim() || designationsMatch(a.designation, scope.designation),
-    )
-  }
-  return filtered
+  // Department is the primary allotment filter. Designation on allocation is often
+  // Testing Engineer while the reviewer is Technical Manager — do not hide those.
+  return allocations.filter((a) => departmentsMatch(a.department, scope.department))
 }
 
 function mergeAllocationsById(...lists: AllocationRow[][]): AllocationRow[] {
@@ -197,17 +200,17 @@ async function loadSamplesMap(
 ): Promise<Map<string, SampleMeta>> {
   if (sampleIds.length === 0) return new Map()
 
-  const { data: sampleRows, error: sampleErr } = await supabase
-    .from('samples')
-    .select(
-      'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration, stage',
-    )
-    .in('id', sampleIds)
-    .in('stage', [...stages])
-    .order('created_at', { ascending: false })
-  if (sampleErr) throw sampleErr
-
-  const samples = Array.isArray(sampleRows) ? sampleRows : []
+  const samples = await fetchByIdChunks(sampleIds, 80, async (chunkIds) => {
+    const { data: sampleRows, error: sampleErr } = await supabase
+      .from('samples')
+      .select(
+        'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, sample_description, sample_declaration, stage',
+      )
+      .in('id', chunkIds)
+      .in('stage', [...stages])
+    if (sampleErr) throw sampleErr
+    return Array.isArray(sampleRows) ? sampleRows : []
+  })
   if (samples.length === 0) return new Map()
 
   const isCodeIds = [
@@ -255,15 +258,18 @@ async function loadParamsByAllocationId(
   const map = new Map<string, ParamRow[]>()
   if (allocationIds.length === 0) return map
 
-  const { data: paramData, error: paramErr } = await supabase
-    .from('test_allocation_parameters')
-    .select(
-      'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement, results_reviewer_id, results_reviewer_name',
-    )
-    .in('test_allocation_id', allocationIds)
-  if (paramErr) throw paramErr
+  const paramData = await fetchByIdChunks(allocationIds, 40, async (chunkIds) => {
+    const { data, error: paramErr } = await supabase
+      .from('test_allocation_parameters')
+      .select(
+        'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement, results_reviewer_id, results_reviewer_name, results_review_status',
+      )
+      .in('test_allocation_id', chunkIds)
+    if (paramErr) throw paramErr
+    return Array.isArray(data) ? data : []
+  })
 
-  for (const p of Array.isArray(paramData) ? paramData : []) {
+  for (const p of paramData) {
     const key = String((p as { test_allocation_id?: string }).test_allocation_id ?? '')
     if (!key) continue
     if (!map.has(key)) map.set(key, [])
@@ -278,6 +284,7 @@ async function loadParamsByAllocationId(
       specific_requirement: (p as { specific_requirement?: string | null }).specific_requirement ?? null,
       results_reviewer_id: (p as { results_reviewer_id?: string | null }).results_reviewer_id ?? null,
       results_reviewer_name: (p as { results_reviewer_name?: string | null }).results_reviewer_name ?? null,
+      results_review_status: (p as { results_review_status?: string | null }).results_review_status ?? null,
     })
   }
   return map
@@ -301,10 +308,12 @@ function buildRowsFromTestAllocs(input: {
 
       const params = paramsByAllocationId.get(t.id) ?? []
       const reviewerRow = params.find(
-        (p) => p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name),
+        (p) =>
+          !isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name) &&
+          (p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name)),
       )
-      const approvedRow = params.find(
-        (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+      const approvedRow = params.find((p) =>
+        isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name),
       )
       let parameterRows = params.map((p) => ({
         id: p.id,
@@ -323,6 +332,7 @@ function buildRowsFromTestAllocs(input: {
         results: p.results,
         resultsReviewerId: p.results_reviewer_id,
         resultsReviewerName: p.results_reviewer_name,
+        resultsReviewStatus: p.results_review_status,
       }))
 
       if (parameterRows.length === 0) {
@@ -373,7 +383,14 @@ function buildRowsFromTestAllocs(input: {
         sampleStage: sample.stage ?? null,
         resultsReviewerName:
           reviewerRow?.results_reviewer_name ??
-          approvedRow?.results_reviewer_name ??
+          (isActiveReviewerName(approvedRow?.results_reviewer_name)
+            ? approvedRow?.results_reviewer_name
+            : null) ??
+          null,
+        resultsReviewStatus:
+          approvedRow?.results_review_status ??
+          reviewerRow?.results_review_status ??
+          params.find((p) => p.results_review_status)?.results_review_status ??
           null,
         srfNumber: sample.srf_number ?? null,
         allocationDate: a.allocation_date ?? sample.date_of_sample_receiving ?? null,
@@ -449,16 +466,16 @@ async function loadResultsUnderReviewRowsForDepartmentScope(
   const samplesMap = await loadSamplesMap(sampleIdsFromStages, SCOPED_SAMPLE_STAGES)
   if (samplesMap.size === 0) return []
 
-  const { data: allocData, error: allocErr } = await supabase
-    .from('sample_allocations')
-    .select('id, sample_id, section_code, allocation_date, department, designation')
-    .in('sample_id', sampleIdsFromStages)
-  if (allocErr) throw allocErr
+  const allocData = await fetchByIdChunks(sampleIdsFromStages, 80, async (chunkIds) => {
+    const { data, error: allocErr } = await supabase
+      .from('sample_allocations')
+      .select('id, sample_id, section_code, allocation_date, department, designation')
+      .in('sample_id', chunkIds)
+    if (allocErr) throw allocErr
+    return Array.isArray(data) ? data : []
+  })
 
-  const deptScoped = filterAllocationsByScope(
-    (Array.isArray(allocData) ? allocData : []) as AllocationRow[],
-    scope,
-  )
+  const deptScoped = filterAllocationsByScope(allocData as AllocationRow[], scope)
 
   const reviewerAllocs = scope.reviewerUserId?.trim()
     ? await loadReviewerAssignedAllocations(scope.reviewerUserId, allowedSampleIds)
@@ -491,13 +508,16 @@ async function loadResultsUnderReviewRowsUnscoped(): Promise<TestAllocationRow[]
   const samplesMap = await loadSamplesMap(sampleIds, REVIEW_SAMPLE_STAGES)
   if (samplesMap.size === 0) return []
 
-  const { data: allocData, error: allocErr } = await supabase
-    .from('sample_allocations')
-    .select('id, sample_id, section_code, allocation_date, department, designation')
-    .in('sample_id', sampleIds)
-  if (allocErr) throw allocErr
+  const allocData = await fetchByIdChunks(sampleIds, 80, async (chunkIds) => {
+    const { data, error: allocErr } = await supabase
+      .from('sample_allocations')
+      .select('id, sample_id, section_code, allocation_date, department, designation')
+      .in('sample_id', chunkIds)
+    if (allocErr) throw allocErr
+    return Array.isArray(data) ? data : []
+  })
 
-  const allocations = Array.isArray(allocData) ? (allocData as AllocationRow[]) : []
+  const allocations = allocData as AllocationRow[]
   if (allocations.length === 0) return []
 
   const rows = await buildRowsForAllocations({ allocations, samplesMap })

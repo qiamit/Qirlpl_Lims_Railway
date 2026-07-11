@@ -8,11 +8,14 @@ import SampleUnderTestingMasterPage from '@/features/sample-handling/sample-unde
 import ResultsUnderReviewMasterPage from '@/features/sample-handling/results-under-review/ResultsUnderReviewMasterPage'
 import TestReportPreparationMasterPage from '@/features/sample-handling/report-preparation/TestReportPreparationMasterPage'
 import CompletedResultsMasterPage from '@/features/sample-handling/completed-results/CompletedResultsMasterPage'
+import RetainDisposedMasterPage from '@/features/sample-handling/retain-disposed/RetainDisposedMasterPage'
+import ResultValidationPage from '@/features/quality/ResultValidationPage'
 import LabSettingsPage from '@/features/settings/LabSettingsPage'
 import UserManagementPage from '@/features/settings/UserManagementPage'
 import AiSettingsPage from '@/features/settings/AiSettingsPage'
 import ClientsPage from '@/features/masters/ClientsPage'
 import IsCodesPage from '@/features/masters/IsCodesPage'
+import ConsentLetterPage from '@/features/masters/ConsentLetterPage'
 import ProductServicesPage from '@/features/masters/ProductServicesPage'
 import TestParameterPage from '@/features/masters/TestParameterPage'
 import EquipmentPage from '@/features/masters/EquipmentPage'
@@ -87,8 +90,11 @@ export {
   ResultsUnderReviewMasterPage,
   TestReportPreparationMasterPage,
   CompletedResultsMasterPage,
+  RetainDisposedMasterPage,
+  ResultValidationPage,
   ClientsPage,
   IsCodesPage,
+  ConsentLetterPage,
   ProductServicesPage,
   TestParameterPage,
   EquipmentPage,

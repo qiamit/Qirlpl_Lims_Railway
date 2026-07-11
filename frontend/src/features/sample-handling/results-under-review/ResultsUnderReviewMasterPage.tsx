@@ -7,14 +7,12 @@ import type { TestAllocationRow } from '../types'
 import { ResultsUnderReviewTable } from './ResultsUnderReviewTable'
 import { ResultsUnderReviewAssistant } from './ResultsUnderReviewAssistant'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
@@ -27,9 +25,10 @@ import { resolveUserDepartment } from '@/features/sample-handling/shared/resolve
 import { ensureTestAllocationParameterRows } from '@/features/sample-handling/shared/ensureTestAllocationParameterRows'
 import { ResultsUnderReviewReferbackDialog } from './ResultsUnderReviewReferbackDialog'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
+import { TestParameterViewDialog } from '../shared/TestParameterViewDialog'
 import { SectionResultsEntryDialog } from '../sample-under-testing/SectionResultsEntryDialog'
 import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
-import { RESULTS_REVIEW_APPROVED_LABEL } from './resultsUnderReviewPartitions'
+import { RESULTS_REVIEW_STATUS_APPROVED } from './resultsUnderReviewPartitions'
 import {
   isSampleReadyForReportPreparation,
   sampleStillHasResultsInReview,
@@ -446,17 +445,21 @@ export default function ResultsUnderReviewMasterPage() {
   const clearSectionReviewAssignment = async (testAllocationId: string) => {
     const { error } = await supabase
       .from('test_allocation_parameters')
-      .update({ results_reviewer_id: null, results_reviewer_name: null })
+      .update({
+        results_reviewer_id: null,
+        results_reviewer_name: null,
+        results_review_status: null,
+      })
       .eq('test_allocation_id', testAllocationId)
     if (error) throw error
   }
 
   const markSectionResultsApproved = async (testAllocationId: string) => {
+    // Keep reviewer id/name; approval goes in results_review_status only
     const { error } = await supabase
       .from('test_allocation_parameters')
       .update({
-        results_reviewer_id: null,
-        results_reviewer_name: RESULTS_REVIEW_APPROVED_LABEL,
+        results_review_status: RESULTS_REVIEW_STATUS_APPROVED,
       })
       .eq('test_allocation_id', testAllocationId)
     if (error) throw error
@@ -501,7 +504,11 @@ export default function ResultsUnderReviewMasterPage() {
       if (sectionTaIds.length > 0) {
         const { error: clearErr } = await supabase
           .from('test_allocation_parameters')
-          .update({ results_reviewer_id: null, results_reviewer_name: null })
+          .update({
+            results_reviewer_id: null,
+            results_reviewer_name: null,
+            results_review_status: null,
+          })
           .in('test_allocation_id', sectionTaIds)
         if (clearErr) throw clearErr
       }
@@ -667,8 +674,8 @@ export default function ResultsUnderReviewMasterPage() {
         groupBySrf
         emptyStateMessage={
           isLaboratoryDirector(designation)
-            ? 'No sections in results review or report preparation. Items appear when testing sends results for review or after sections are approved.'
-            : 'No section codes allotted to your department and designation are in results review or report preparation. Pending and reviewed sections appear here after testing sends results for review.'
+            ? 'No sections in results review, report preparation, or issued (completed). Items appear when testing sends results for review or after sections are approved.'
+            : 'No section codes allotted to your department are in results review, report preparation, or issued. Pending and reviewed sections appear here after testing sends results for review.'
         }
       />
 
@@ -736,155 +743,16 @@ export default function ResultsUnderReviewMasterPage() {
         </div>
       </div>
 
-      <Dialog open={testParamViewOpen} onOpenChange={setTestParamViewOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader className="border-b border-border pb-3">
-            <DialogTitle className="text-lg">Test Parameter: {testParamViewLabel || '—'}</DialogTitle>
-          </DialogHeader>
-          <div className="overflow-y-auto space-y-5 pr-1">
-            {testParamViewData.length === 0 && !testParamViewExtras.loading ? (
-              <p className="text-sm text-muted-foreground py-4">
-                No matching test parameter found in Test Parameter directory.
-              </p>
-            ) : (
-              testParamViewData.map((tp, idx) => {
-                const fmt = (v: unknown) =>
-                  v !== null && v !== undefined && String(v).trim() !== '' ? String(v) : '—'
-                const tpId = typeof tp.id === 'string' ? tp.id.trim() : ''
-                const sectionParam = testParamViewRow?.parameters?.find((p) => p.testParameterId === tpId)
-                const displaySpecificRequirement = fmt(
-                  resolveSectionSpecificRequirement(
-                    sectionParam?.sectionSpecOverride,
-                    String(tp.specific_requirement ?? ''),
-                  ),
-                )
-                return (
-                  <Card key={tpId || idx} className="overflow-hidden border-border shadow-sm">
-                    <CardHeader className="py-4 px-5 bg-primary/5 border-b border-border">
-                      <CardTitle className="text-base font-semibold text-foreground">{fmt(tp.item_name)}</CardTitle>
-                      <div className="flex flex-wrap gap-2 mt-2 text-xs text-muted-foreground">
-                        <span>
-                          IS Code:{' '}
-                          <span className="font-medium text-foreground">
-                            {fmt(testParamViewExtras.isCodeLabel ?? tp.is_code_label)}
-                          </span>
-                        </span>
-                        <span className="text-border">|</span>
-                        <span>
-                          Method: <span className="font-medium text-foreground">{fmt(tp.test_method)}</span>
-                        </span>
-                        <span className="text-border">|</span>
-                        <span>
-                          Clause {fmt(tp.clause_no)} · Unit: {fmt(tp.unit_value)}
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-5 space-y-5 pt-4">
-                      <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                          Sample &amp; IS Code
-                        </h4>
-                        {testParamViewExtras.loading ? (
-                          <p className="text-sm text-muted-foreground">Loading sample details…</p>
-                        ) : (
-                          <div className="rounded-md bg-muted/30 border border-border/50 p-3 space-y-4 text-sm">
-                            <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2">
-                              <span className="text-muted-foreground">Sample Description</span>
-                              <span className="whitespace-pre-wrap font-medium">
-                                {fmt(testParamViewExtras.sampleDescription)}
-                              </span>
-                              <span className="text-muted-foreground">Declared Value</span>
-                              <span className="whitespace-pre-wrap font-medium">
-                                {fmt(testParamViewExtras.declaredValue)}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-                                IS Code Files
-                              </p>
-                              {testParamViewExtras.isCodeFiles.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No files uploaded for this IS Code.</p>
-                              ) : (
-                                <ul className="space-y-2">
-                                  {testParamViewExtras.isCodeFiles.map((f) => (
-                                    <li
-                                      key={f.file_name}
-                                      className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-background px-3 py-2"
-                                    >
-                                      <span className="text-sm truncate">{f.file_name}</span>
-                                      {f.url ? (
-                                        <a
-                                          href={f.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-xs font-medium text-primary hover:underline shrink-0"
-                                        >
-                                          View
-                                        </a>
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground shrink-0">—</span>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </section>
-                      <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Requirements</h4>
-                        <div className="rounded-md bg-muted/30 border border-border/50 p-3 space-y-1.5 text-sm">
-                          <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2">
-                            <span className="text-muted-foreground">Specific Requirement</span>
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <span className="whitespace-pre-wrap font-medium">{displaySpecificRequirement}</span>
-                              {tpId && testParamViewRow ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 shrink-0 gap-1.5"
-                                  aria-label="Edit specified requirement for this section"
-                                  title="Section-only override (does not change Test Parameter master)"
-                                  onClick={() => openEditSpecificRequirement(tp)}
-                                >
-                                  <Pencil size={14} />
-                                  Edit
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  Link test parameter in Test Allocation to enable edit.
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-muted-foreground">Acceptance Criteria</span>
-                            <span>{fmt(tp.acceptance_criteria)}</span>
-                          </div>
-                        </div>
-                      </section>
-                      <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Uncertainty</h4>
-                        <div className="rounded-md bg-muted/30 border border-border/50 p-3 text-sm">
-                          <span className="text-muted-foreground mr-1">Uncertainty (MU):</span>
-                          <span className="font-medium">{fmt(tp.uncertainty_mu)}</span>
-                        </div>
-                      </section>
-                    </CardContent>
-                  </Card>
-                )
-              })
-            )}
-            {testParamViewData.length === 0 && testParamViewExtras.loading && (
-              <Card className="overflow-hidden border-border shadow-sm">
-                <CardContent className="p-5 pt-4">
-                  <p className="text-sm text-muted-foreground">Loading sample details…</p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <TestParameterViewDialog
+        open={testParamViewOpen}
+        onOpenChange={setTestParamViewOpen}
+        label={testParamViewLabel}
+        parameters={testParamViewData}
+        extras={testParamViewExtras}
+        sectionParameters={testParamViewRow?.parameters}
+        sectionCode={testParamViewRow?.sectionCode}
+        onEditSpecificRequirement={openEditSpecificRequirement}
+      />
 
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
         <DialogContent className="max-w-md">

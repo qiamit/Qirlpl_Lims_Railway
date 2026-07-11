@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Calculator, Plus, Trash2 } from 'lucide-react'
+import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
 import type { SectionCompareSource } from './sectionCompareSources'
 import { TestResultMiniCalculator } from './TestResultMiniCalculator'
 import {
@@ -327,16 +328,16 @@ export function TestResultsEntryCell({
                         )
                       }
                     />
-                    <Input
-                      type="text"
-                      className="h-8 text-sm"
-                      placeholder="Unit"
+                    <MeasurementUnitSelect
                       value={row.unit}
-                      onChange={(e) =>
+                      onChange={(unit) =>
                         setReadingRows((prev) =>
-                          prev.map((r, i) => (i === index ? { ...r, unit: e.target.value } : r)),
+                          prev.map((r, i) => (i === index ? { ...r, unit } : r)),
                         )
                       }
+                      showLabel={false}
+                      inputClassName="h-8 text-sm"
+                      className="space-y-0"
                     />
                     <Button
                       type="button"

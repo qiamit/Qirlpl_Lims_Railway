@@ -15,7 +15,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import type { AccreditationBodyRow, TestParameterForm, UnitRow } from './types'
+import type { AccreditationBodyRow, TestParameterForm } from './types'
+import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
 
 const SCIENTIFIC_SYMBOLS = [
   '±', 'µ', 'Ω', 'Δ', '∑', '√', '≤', '≥', '≈', '≠', '≡', '∝', '∫', '∂', '∇',
@@ -58,13 +59,6 @@ export function TestParameterForm({
   setNewAccreditationBody,
   onAddAccreditationBody,
   onDeleteAccreditationBody,
-  units = [],
-  unitDialogOpen,
-  setUnitDialogOpen,
-  newUnitName,
-  setNewUnitName,
-  onAddUnit,
-  onDeleteUnit,
   onOpenAddIsCodeForm,
   departments = [],
   designations = [],
@@ -84,13 +78,6 @@ export function TestParameterForm({
   setNewAccreditationBody: (value: string) => void
   onAddAccreditationBody: () => void
   onDeleteAccreditationBody: (id: string) => void
-  units?: UnitRow[]
-  unitDialogOpen: boolean
-  setUnitDialogOpen: (open: boolean) => void
-  newUnitName: string
-  setNewUnitName: (value: string) => void
-  onAddUnit: () => void
-  onDeleteUnit: (id: string) => void
   onOpenAddIsCodeForm: (typedCode: string) => void
   departments?: string[]
   designations?: string[]
@@ -98,7 +85,6 @@ export function TestParameterForm({
 }) {
   const isCodeOptions = isCodes ?? []
   const accreditationBodyOptions = accreditationBodies ?? []
-  const unitOptions = units ?? []
   const departmentOptions = departments ?? []
   const allDesignations = designations ?? []
   const deptDesignationMap = designationsByDepartment ?? {}
@@ -125,9 +111,6 @@ export function TestParameterForm({
   const [testMethodOpen, setTestMethodOpen] = useState(false)
   const [isCodeHighlight, setIsCodeHighlight] = useState(0)
   const [testMethodHighlight, setTestMethodHighlight] = useState(0)
-  const [unitOpen, setUnitOpen] = useState(false)
-  const [unitHighlight, setUnitHighlight] = useState(0)
-  const unitInputRef = useRef<HTMLInputElement | null>(null)
   const specificRequirementRef = useRef<HTMLTextAreaElement | null>(null)
   const selectedIs = isCodeOptions.find((x) => x.id === form.isCodeId)
   const [symbolDialogOpen, setSymbolDialogOpen] = useState(false)
@@ -162,18 +145,6 @@ export function TestParameterForm({
     return !isCodeOptions.some((code) => code.displayCode.toLowerCase() === typed.toLowerCase())
   }, [form.isCodeLabel, isCodeOptions])
 
-  const filteredUnits = useMemo(() => {
-    const q = form.unitValue.trim().toLowerCase()
-    if (!q) return unitOptions
-    return unitOptions.filter((u) => u.name.toLowerCase().includes(q))
-  }, [unitOptions, form.unitValue])
-
-  const showAddUnitAction = useMemo(() => {
-    const typed = form.unitValue.trim()
-    if (!typed) return false
-    return !unitOptions.some((u) => u.name.toLowerCase() === typed.toLowerCase())
-  }, [form.unitValue, unitOptions])
-
   const totalIsCodeOptions = filteredIsCodesByCode.length + (showAddIsCodeAction ? 1 : 0)
   const showAddTestMethodAction = useMemo(() => {
     const typed = form.testMethod.trim()
@@ -181,7 +152,6 @@ export function TestParameterForm({
     return !isCodeOptions.some((c) => c.defaultTestMethod.toLowerCase() === typed.toLowerCase())
   }, [form.testMethod, isCodeOptions])
   const totalTestMethodOptions = filteredIsCodesByMethod.length + (showAddTestMethodAction ? 1 : 0)
-  const totalUnitOptions = filteredUnits.length + (showAddUnitAction ? 1 : 0)
 
   useEffect(() => {
     setIsCodeHighlight((prev) => (totalIsCodeOptions === 0 ? 0 : Math.min(prev, totalIsCodeOptions - 1)))
@@ -190,10 +160,6 @@ export function TestParameterForm({
   useEffect(() => {
     setTestMethodHighlight((prev) => (totalTestMethodOptions === 0 ? 0 : Math.min(prev, totalTestMethodOptions - 1)))
   }, [totalTestMethodOptions])
-
-  useEffect(() => {
-    setUnitHighlight((prev) => (totalUnitOptions === 0 ? 0 : Math.min(prev, totalUnitOptions - 1)))
-  }, [totalUnitOptions])
 
   const handleIsCodeTyping = (value: string) => {
     setIsCodeOpen(true)
@@ -230,45 +196,6 @@ export function TestParameterForm({
   const handleTestMethodPick = (match: { defaultTestMethod: string }) => {
     onChange({ ...form, testMethod: match.defaultTestMethod })
     setTestMethodOpen(false)
-  }
-
-  const handleUnitTyping = (value: string) => {
-    setUnitOpen(true)
-    onChange({ ...form, unitValue: value })
-    setUnitHighlight(0)
-  }
-
-  const handleUnitPick = (name: string) => {
-    onChange({ ...form, unitValue: name })
-    setUnitOpen(false)
-  }
-
-  const handleUnitKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Tab' || event.key === 'Shift+Tab') {
-      setUnitOpen(false)
-      return
-    }
-    if (!unitOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      setUnitOpen(true)
-    }
-    if (event.key === 'ArrowDown' && totalUnitOptions > 0) {
-      event.preventDefault()
-      setUnitHighlight((prev) => (prev + 1) % totalUnitOptions)
-    }
-    if (event.key === 'ArrowUp' && totalUnitOptions > 0) {
-      event.preventDefault()
-      setUnitHighlight((prev) => (prev - 1 + totalUnitOptions) % totalUnitOptions)
-    }
-    if (event.key === 'Enter' && totalUnitOptions > 0) {
-      event.preventDefault()
-      if (unitHighlight < filteredUnits.length) {
-        handleUnitPick(filteredUnits[unitHighlight].name)
-      } else if (showAddUnitAction) {
-        setNewUnitName(form.unitValue.trim())
-        setUnitDialogOpen(true)
-        setUnitOpen(false)
-      }
-    }
   }
 
   const filteredScientificSymbols = useMemo(() => {
@@ -448,123 +375,12 @@ export function TestParameterForm({
           </div>
 
           <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex min-h-6 items-center justify-between">
-              <Label htmlFor="unit-value">Unit of Measurement</Label>
-              <Dialog open={unitDialogOpen} onOpenChange={setUnitDialogOpen}>
-                <DialogTrigger asChild>
-                  <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
-                    <Plus size={12} />
-                    Add New
-                  </button>
-                </DialogTrigger>
-                <DialogContent aria-describedby={undefined}>
-                  <DialogHeader>
-                    <DialogTitle>Add Measurement Unit</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="new-unit">Unit Name</Label>
-                      <Input
-                        id="new-unit"
-                        placeholder="e.g., kN"
-                        value={newUnitName}
-                        onChange={(e) => setNewUnitName(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Existing Units</p>
-                      <div className="space-y-1 max-h-40 overflow-auto">
-                        {unitOptions.length > 0 ? (
-                          unitOptions.map((unit) => (
-                            <div key={unit.id} className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm">
-                              <span>{unit.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => onDeleteUnit(unit.id)}
-                                className="text-destructive hover:text-destructive/80"
-                                aria-label={`Delete ${unit.name}`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-xs text-muted-foreground">No units added yet.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <UiDialogFooter>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setUnitDialogOpen(false)
-                        setNewUnitName('')
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="button" onClick={onAddUnit} disabled={!newUnitName.trim()}>
-                      Save Unit
-                    </Button>
-                  </UiDialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <div className="relative">
-              <Input
-                ref={unitInputRef}
-                id="unit-value"
-                value={form.unitValue}
-                onChange={(e) => handleUnitTyping(e.target.value)}
-                onFocus={() => setUnitOpen(true)}
-                onBlur={() => setTimeout(() => setUnitOpen(false), 150)}
-                onKeyDown={handleUnitKeyDown}
-                placeholder={unitOptions.length > 0 ? 'Select unit' : 'Add units to use them here'}
-                autoComplete="off"
-              />
-              {(filteredUnits.length > 0 || showAddUnitAction) && unitOpen && (
-                <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg" tabIndex={-1}>
-                  <ul className="max-h-56 overflow-auto text-sm">
-                    {filteredUnits.map((unit, index) => (
-                      <li key={unit.id}>
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          className={`w-full px-3 py-2 text-left ${index === unitHighlight ? 'bg-muted font-semibold' : 'hover:bg-muted'}`}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onMouseEnter={() => setUnitHighlight(index)}
-                          onClick={() => handleUnitPick(unit.name)}
-                        >
-                          {unit.name}
-                        </button>
-                      </li>
-                    ))}
-                    {showAddUnitAction && (
-                      <li>
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          className={`w-full px-3 py-2 text-left text-primary ${
-                            unitHighlight === filteredUnits.length ? 'bg-muted font-semibold' : 'hover:bg-muted'
-                          }`}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onMouseEnter={() => setUnitHighlight(filteredUnits.length)}
-                          onClick={() => {
-                            setNewUnitName(form.unitValue.trim())
-                            setUnitDialogOpen(true)
-                            setUnitOpen(false)
-                          }}
-                        >
-                          Add &quot;{form.unitValue.trim()}&quot; as new unit
-                        </button>
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              )}
-            </div>
+            <MeasurementUnitSelect
+              id="unit-value"
+              label="Unit of Measurement"
+              value={form.unitValue}
+              onChange={(unitValue) => onChange({ ...form, unitValue })}
+            />
           </div>
 
           <div className="col-span-12 md:col-span-3 space-y-2">

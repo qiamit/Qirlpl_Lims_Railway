@@ -111,6 +111,10 @@ export type TestAllocationParameterRow = {
   testStartDate: string | null
   testEndDate: string | null
   results: string | null
+  resultsReviewerId?: string | null
+  resultsReviewerName?: string | null
+  /** under_review | approved — separate from reviewer identity columns */
+  resultsReviewStatus?: string | null
 }
 
 /** One row per section (sample_allocation) in Test Allocation table */
@@ -153,6 +157,8 @@ export type TestAllocationRow = {
   referredBackFromReview?: boolean
   /** Section results were approved in Results Under Review */
   sectionReviewApproved?: boolean
+  /** results_review_status from parameters (under_review | approved) */
+  resultsReviewStatus?: string | null
   /** Reviewer name when resultsLocked */
   resultsReviewerName?: string | null
   /** Parent sample workflow stage — used in Results Under Review grouping */

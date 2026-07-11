@@ -373,11 +373,6 @@ export default function IqcMasterPage() {
     })()
   }
 
-  const handleClear = () => {
-    setSaveMessage(null)
-    setForm(emptyIqcForm())
-  }
-
   const handleNew = () => {
     setSaveMessage(null)
     setForm(emptyIqcForm())
@@ -875,7 +870,6 @@ export default function IqcMasterPage() {
             canSave={canSave}
             saveLoading={saveLoading}
             onSave={handleSave}
-            onClear={handleClear}
             clients={clients}
             employees={employees}
             locations={locations}

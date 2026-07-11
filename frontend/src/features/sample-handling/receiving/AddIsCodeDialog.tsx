@@ -7,14 +7,31 @@ import { Label } from '@/components/ui/label'
 import { emptyIsCodeForm, type IsCodeForm } from '@/features/masters/is-codes/types'
 import { IsCodesForm } from '@/features/masters/is-codes/IsCodesForm'
 
+function parseIsCodeLabelInput(label: string): Partial<IsCodeForm> {
+  const raw = label.trim()
+  if (!raw) return {}
+  if (raw.includes(':')) {
+    const [numberPart, rest] = raw.split(':')
+    return {
+      isNumber: numberPart.trim(),
+      revisionYear: (rest ?? '').trim().replace(/[^0-9]/g, '').slice(0, 4),
+    }
+  }
+  return { isNumber: raw }
+}
+
 export function AddIsCodeDialog({
   open,
   onOpenChange,
   onSaved,
+  initialLabel,
+  nested = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (id: string) => void
+  initialLabel?: string
+  nested?: boolean
 }) {
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -42,6 +59,12 @@ export function AddIsCodeDialog({
     }
     load()
   }, [open])
+
+  useEffect(() => {
+    if (!open || !initialLabel?.trim()) return
+    const parsed = parseIsCodeLabelInput(initialLabel)
+    setForm((prev) => ({ ...prev, ...parsed }))
+  }, [open, initialLabel])
 
   const onAddAspect = async () => {
     const name = newAspect.trim()
@@ -94,7 +117,11 @@ export function AddIsCodeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl w-[66vw] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
+      <DialogContent
+        className="max-w-2xl w-[66vw] max-h-[90vh] overflow-y-auto"
+        aria-describedby={undefined}
+        layer={nested ? 'nested' : 'default'}
+      >
         <DialogHeader>
           <DialogTitle>Add new IS Code (same as IS Code Directory form)</DialogTitle>
         </DialogHeader>

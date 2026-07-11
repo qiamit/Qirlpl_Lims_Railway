@@ -1,6 +1,6 @@
 import {
   isActiveReviewerName,
-  RESULTS_REVIEW_APPROVED_LABEL,
+  isResultsReviewStatusApproved,
 } from '../results-under-review/resultsUnderReviewPartitions'
 
 export type PickTestAllocationRow = {
@@ -13,11 +13,13 @@ export type PickTestAllocationRow = {
 export type PickTestAllocationParamRow = {
   results_reviewer_id: string | null
   results_reviewer_name: string | null
+  results_review_status?: string | null
+  results?: string | null
 }
 
 /**
  * When duplicate test_allocations exist for one section, pick the row that best
- * reflects current workflow (active review > refer-back > sent for testing > stale approved).
+ * reflects current workflow (results + approved/review beat empty stale rows).
  */
 export function pickTestAllocationPerSection<T extends PickTestAllocationRow>(
   taList: T[],
@@ -33,19 +35,23 @@ export function pickTestAllocationPerSection<T extends PickTestAllocationRow>(
 
   const score = (ta: T): number => {
     const params = paramsByAllocationId.get(ta.id) ?? []
-    const approved = params.some(
-      (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+    const approved = params.some((p) =>
+      isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name),
     )
     const activeReviewer = params.some(
-      (p) => p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name),
+      (p) =>
+        !isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name) &&
+        (p.results_reviewer_id || isActiveReviewerName(p.results_reviewer_name)),
     )
-    const markersCleared = params.length > 0 && !approved && !activeReviewer
+    const filledResults = params.filter((p) => Boolean(p.results?.trim())).length
+    const markersCleared = params.length > 0 && !approved && !activeReviewer && filledResults === 0
     let value = 0
+    if (filledResults > 0) value += 60 + Math.min(filledResults, 20)
+    if (approved) value += 55
     if (activeReviewer) value += 50
-    if (markersCleared && ta.sent_for_testing) value += 40
     if (ta.referred_back_from_review && ta.sent_for_testing) value += 35
+    if (markersCleared && ta.sent_for_testing) value += 15
     if (ta.sent_for_testing) value += 10
-    if (approved) value += 5
     return value
   }
 

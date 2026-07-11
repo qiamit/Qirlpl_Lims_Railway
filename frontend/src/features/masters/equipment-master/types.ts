@@ -1,6 +1,18 @@
+import type { MaintenanceHistoryRecord } from './maintenanceHistory'
+import type { IntermediateCheckHistoryRecord } from './intermediateCheckHistory'
+
 export type EquipmentStatus = 'Active' | 'In Repair' | 'Idle'
 
 export type Frequency = 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Half Yearly' | 'Yearly' | ''
+
+export type MaintenanceChecklistItem = {
+  checkPoint: string
+  status: 'OK' | 'Not OK'
+  repairIfAny: string
+}
+
+export type { MaintenanceHistoryRecord } from './maintenanceHistory'
+export type { IntermediateCheckHistoryRecord } from './intermediateCheckHistory'
 
 export type EquipmentRow = {
   id: string
@@ -21,15 +33,21 @@ export type EquipmentRow = {
   last_calibration_date: string | null
   next_calibration_due: string | null
   calibration_certificate_number: string | null
+  calibration_certificate_uncertainty: string | null
+  calibration_uncertainty_unit: string | null
+  calibration_coverage_factor: string | null
   external_calibration_agency: string | null
   intermediate_check_frequency: string | null
   last_intermediate_check_date: string | null
   next_intermediate_check_date: string | null
   intermediate_check_result: string | null
+  intermediate_check_history: IntermediateCheckHistoryRecord[] | null
   maintenance_schedule_frequency: string | null
   last_maintenance_date: string | null
   next_maintenance_date: string | null
   maintenance_done_by: string | null
+  maintenance_checklist: MaintenanceChecklistItem[] | null
+  maintenance_history: MaintenanceHistoryRecord[] | null
   history_of_damage: string | null
   upload_certificate_path: string | null
   upload_manual_sop_path: string | null
@@ -56,15 +74,21 @@ export type EquipmentForm = {
   lastCalibrationDate: string
   nextCalibrationDue: string
   calibrationCertificateNumber: string
+  calibrationCertificateUncertainty: string
+  calibrationUncertaintyUnit: string
+  calibrationCoverageFactor: string
   externalCalibrationAgency: string
   intermediateCheckFrequency: Frequency
   lastIntermediateCheckDate: string
   nextIntermediateCheckDate: string
   intermediateCheckResult: string
+  intermediateCheckHistory: IntermediateCheckHistoryRecord[]
   maintenanceScheduleFrequency: Frequency
   lastMaintenanceDate: string
   nextMaintenanceDate: string
   maintenanceDoneBy: string
+  maintenanceChecklist: MaintenanceChecklistItem[]
+  maintenanceHistory: MaintenanceHistoryRecord[]
   historyOfDamage: string
   uploadCertificatePath: string
   uploadManualSopPath: string
@@ -91,15 +115,21 @@ export const emptyEquipmentForm = (): EquipmentForm => ({
   lastCalibrationDate: '',
   nextCalibrationDue: '',
   calibrationCertificateNumber: '',
+  calibrationCertificateUncertainty: '',
+  calibrationUncertaintyUnit: '',
+  calibrationCoverageFactor: '',
   externalCalibrationAgency: '',
   intermediateCheckFrequency: '',
   lastIntermediateCheckDate: '',
   nextIntermediateCheckDate: '',
   intermediateCheckResult: '',
+  intermediateCheckHistory: [],
   maintenanceScheduleFrequency: '',
   lastMaintenanceDate: '',
   nextMaintenanceDate: '',
   maintenanceDoneBy: '',
+  maintenanceChecklist: [],
+  maintenanceHistory: [],
   historyOfDamage: '',
   uploadCertificatePath: '',
   uploadManualSopPath: '',

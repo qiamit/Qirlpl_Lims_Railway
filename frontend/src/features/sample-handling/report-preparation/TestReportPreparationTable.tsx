@@ -96,7 +96,7 @@ export function TestReportPreparationTable({
               <col className="w-[14%]" />
               <col className="w-[11%]" />
               <col className="w-[12%]" />
-              <col className="w-[200px]" />
+              <col className="w-[90px]" />
             </colgroup>
             <TableHeader>
               <TableRow className="bg-muted/50">
@@ -198,32 +198,30 @@ export function TestReportPreparationTable({
                     </Button>
                   </TableCell>
                   <TableCell className="align-middle text-right pr-3">
-                    <div className="inline-flex flex-col items-stretch gap-1.5 min-w-[148px]">
+                    <div className="inline-flex items-center justify-end gap-1">
                       <Button
                         type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 justify-center gap-1.5 text-xs font-medium shadow-sm"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
                         aria-label={`Prepare report for ${fmt(r.srfNumber)}`}
-                        title="Prepare test report (Clause 7.8)"
+                        title="Prepare Report (Clause 7.8)"
                         onClick={() => onPrepare(r)}
                         disabled={referbackBusyId === r.id}
                       >
-                        <FileText size={14} className="shrink-0" />
-                        Prepare Report
+                        <FileText size={16} />
                       </Button>
                       <Button
                         type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8 justify-center gap-1.5 text-xs font-medium border-amber-200/90 bg-amber-50/50 text-amber-950 hover:bg-amber-50 hover:text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-100 dark:hover:bg-amber-950/40"
-                        aria-label={`Refer back ${fmt(r.srfNumber)} to Results Under Review`}
-                        title="Refer back — select section, destination stage, and remark"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        aria-label={`Refer back ${fmt(r.srfNumber)}`}
+                        title="Refer Back"
                         onClick={() => onReferback(r)}
                         disabled={!canReferback || referbackBusyId === r.id}
                       >
-                        <Undo2 size={14} className="shrink-0" />
-                        Refer Back
+                        <Undo2 size={16} className="text-amber-700 dark:text-amber-500" />
                       </Button>
                     </div>
                   </TableCell>

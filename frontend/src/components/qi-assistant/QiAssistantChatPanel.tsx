@@ -37,6 +37,7 @@ export function QiAssistantChatPanel({
   resolveContextOnSend,
   prepareMessage,
   primaryAction,
+  onAssistantReply,
 }: {
   page: string
   contextSummary: string
@@ -53,6 +54,8 @@ export function QiAssistantChatPanel({
   prepareMessage?: (text: string) => string
   /** Optional prominent action (e.g. Full Review). */
   primaryAction?: { label: string; message: string }
+  /** Called after a successful assistant reply (before chat append). */
+  onAssistantReply?: (reply: string) => void
 }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -138,6 +141,7 @@ export function QiAssistantChatPanel({
           history,
         })
 
+        onAssistantReply?.(reply)
         appendAssistantResult(reply, actionsExecuted)
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unable to get a response'
@@ -154,6 +158,7 @@ export function QiAssistantChatPanel({
       contextSummary,
       loading,
       messages,
+      onAssistantReply,
       page,
       resolveContextOnSend,
       staticActiveRecordId,

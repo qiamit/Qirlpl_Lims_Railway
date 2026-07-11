@@ -10,16 +10,19 @@ import {
   SectionResultsEntryDialog,
   type SectionResultsDraft,
 } from './SectionResultsEntryDialog'
+import type { SectionTestSelectionChange } from './allocatedTestsForSection'
+import {
+  fetchSectionParameterRows,
+  insertAllocatedTestsIntoSection,
+  removeAllocatedTestsFromSection,
+} from './insertAllocatedTestsIntoSection'
 import { SampleUnderTestingForm } from './SampleUnderTestingForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
@@ -30,14 +33,22 @@ import { isDepartmentTestingEngineer, type UserAccessContext } from '@/lib/modul
 import { SampleUnderTestingAssistant } from './SampleUnderTestingAssistant'
 import { sortParametersByClause } from './sectionParameterRows'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
+import { TestParameterViewDialog } from '../shared/TestParameterViewDialog'
+import { saveSectionSpecificRequirement } from '../shared/saveSectionSpecificRequirement'
+import type { SectionParameterEntry } from './sectionParameterRows'
 import {
-  buildLegacyResultsReviewSampleIds,
-  fetchSentForReviewTestAllocationIds,
   isParameterSentForReview,
   shouldHideFromSampleUnderTesting,
+  buildLegacyResultsReviewSampleIds,
+  fetchSentForReviewTestAllocationIds,
 } from './sampleUnderTestingVisibility'
-import { RESULTS_REVIEW_APPROVED_LABEL } from '../results-under-review/resultsUnderReviewPartitions'
+import {
+  isActiveReviewerName,
+  isResultsReviewStatusApproved,
+  RESULTS_REVIEW_STATUS_UNDER_REVIEW,
+} from '../results-under-review/resultsUnderReviewPartitions'
 import { pickTestAllocationPerSection } from '../shared/pickTestAllocationPerSection'
+import { fetchByIdChunks } from '../shared/fetchByIdChunks'
 import {
   buildAssignmentFilterHiddenEntries,
   buildLoadDiagnostics,
@@ -111,12 +122,6 @@ export default function SampleUnderTestingMasterPage() {
   })
 
   const IS_CODE_FILES_BUCKET = 'is-code-files'
-
-  const [editSpecOpen, setEditSpecOpen] = useState(false)
-  const [editSpecParamId, setEditSpecParamId] = useState<string | null>(null)
-  const [editSpecValue, setEditSpecValue] = useState('')
-  const [editSpecSaving, setEditSpecSaving] = useState(false)
-  const [editSpecError, setEditSpecError] = useState<string | null>(null)
 
   const [resultsDialogOpen, setResultsDialogOpen] = useState(false)
   const [resultsDialogRow, setResultsDialogRow] = useState<TestAllocationRow | null>(null)
@@ -262,17 +267,22 @@ export default function SampleUnderTestingMasterPage() {
         results: string | null
         results_reviewer_id: string | null
         results_reviewer_name: string | null
+        results_review_status: string | null
         specific_requirement: string | null
       }[]>()
       if (allocationIds.length > 0) {
-        const { data: paramData, error: paramErr } = await supabase
-          .from('test_allocation_parameters')
-          .select(
-            'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, results_reviewer_id, results_reviewer_name, specific_requirement',
-          )
-          .in('test_allocation_id', allocationIds)
-        if (paramErr) throw paramErr
-        const paramRows = Array.isArray(paramData) ? paramData : []
+        // Chunk by allocation id — a single .in() can exceed PostgREST max-rows (~1000)
+        // and drop results for later sections (they then look empty / Pending).
+        const paramRows = await fetchByIdChunks(allocationIds, 40, async (chunkIds) => {
+          const { data: paramData, error: paramErr } = await supabase
+            .from('test_allocation_parameters')
+            .select(
+              'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, results_reviewer_id, results_reviewer_name, results_review_status, specific_requirement',
+            )
+            .in('test_allocation_id', chunkIds)
+          if (paramErr) throw paramErr
+          return Array.isArray(paramData) ? paramData : []
+        })
         const map = new Map<string, {
           id: string
           test_allocation_id: string
@@ -283,6 +293,7 @@ export default function SampleUnderTestingMasterPage() {
           results: string | null
           results_reviewer_id: string | null
           results_reviewer_name: string | null
+          results_review_status: string | null
           specific_requirement: string | null
         }[]>()
         for (const p of paramRows as {
@@ -295,6 +306,7 @@ export default function SampleUnderTestingMasterPage() {
           results?: string | null
           results_reviewer_id?: string | null
           results_reviewer_name?: string | null
+          results_review_status?: string | null
           specific_requirement?: string | null
         }[]) {
           const key = (p.test_allocation_id as string) ?? ''
@@ -310,6 +322,7 @@ export default function SampleUnderTestingMasterPage() {
             results: p.results ?? null,
             results_reviewer_id: p.results_reviewer_id ?? null,
             results_reviewer_name: p.results_reviewer_name ?? null,
+            results_review_status: p.results_review_status ?? null,
             specific_requirement: p.specific_requirement ?? null,
           })
         }
@@ -415,17 +428,25 @@ export default function SampleUnderTestingMasterPage() {
 
             const allocationId = testAllocationId
             const fromDb = paramsByAllocationId.get(testAllocationId) ?? []
-            const sectionApproved = fromDb.some(
-              (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
-            )
+            const sectionApproved =
+              fromDb.some((p) =>
+                isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name),
+              ) ||
+              String(sample.stage ?? '')
+                .trim()
+                .toLowerCase() === 'completed'
             const sectionSentForReview =
               !referredBackFromReview &&
-              fromDb.some((p) =>
+              (fromDb.some((p) =>
                 isParameterSentForReview({
                   results_reviewer_id: p.results_reviewer_id,
                   results_reviewer_name: p.results_reviewer_name,
+                  results_review_status: p.results_review_status,
                 }),
-              )
+              ) ||
+                String(sample.stage ?? '')
+                  .trim()
+                  .toLowerCase() === 'completed')
 
             let parameterRows = fromDb.map((p) => ({
               id: p.id,
@@ -445,6 +466,9 @@ export default function SampleUnderTestingMasterPage() {
               testStartDate: p.test_start_date,
               testEndDate: p.test_end_date,
               results: p.results,
+              resultsReviewerId: p.results_reviewer_id,
+              resultsReviewerName: p.results_reviewer_name,
+              resultsReviewStatus: p.results_review_status,
             }))
             if (parameterRows.length === 0 && allocationId) {
               const summaryStr = (t.test_parameter_summary ?? '').trim()
@@ -488,13 +512,17 @@ export default function SampleUnderTestingMasterPage() {
             const reviewerRow = fromDbParams.find(
               (p) =>
                 p.results_reviewer_id ||
-                (p.results_reviewer_name?.trim() &&
-                  p.results_reviewer_name.trim() !== RESULTS_REVIEW_APPROVED_LABEL),
+                isActiveReviewerName(p.results_reviewer_name),
             )
-            const approvedRow = fromDbParams.find(
-              (p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL,
+            const approvedRow = fromDbParams.find((p) =>
+              isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name),
             )
             const resultsLocked = sectionSentForReview
+            const reviewStatus =
+              approvedRow?.results_review_status ??
+              reviewerRow?.results_review_status ??
+              fromDbParams.find((p) => p.results_review_status)?.results_review_status ??
+              null
             return {
               testAllocationId,
               sampleAllocationId: a.id,
@@ -507,9 +535,12 @@ export default function SampleUnderTestingMasterPage() {
               resultsLocked,
               sectionReviewApproved: sectionApproved,
               referredBackFromReview,
+              resultsReviewStatus: reviewStatus,
               resultsReviewerName:
                 reviewerRow?.results_reviewer_name ??
-                approvedRow?.results_reviewer_name ??
+                (isActiveReviewerName(approvedRow?.results_reviewer_name)
+                  ? approvedRow?.results_reviewer_name
+                  : null) ??
                 null,
               srfNumber: sample?.srf_number ?? null,
               allocationDate: a.allocation_date ?? sample?.date_of_sample_receiving ?? null,
@@ -797,6 +828,146 @@ export default function SampleUnderTestingMasterPage() {
     setResultsDialogOpen(true)
   }
 
+  const handleAddTestsToSection = async (change: SectionTestSelectionChange) => {
+    const row = resultsDialogRow
+    if (!row?.testAllocationId || row.resultsLocked) return
+    if (
+      change.toAdd.length === 0 &&
+      change.toRemove.length === 0 &&
+      change.toUpdate.length === 0
+    ) {
+      return
+    }
+
+    setSaveMessage(null)
+    try {
+      if (change.toAdd.length > 0) {
+        await insertAllocatedTestsIntoSection(row.testAllocationId, change.toAdd)
+      }
+      if (change.toRemove.length > 0) {
+        await removeAllocatedTestsFromSection(row.testAllocationId, change.toRemove)
+      }
+      for (const test of change.toUpdate) {
+        const draftEntry = row.parameters?.find(
+          (p) =>
+            p.testParameterId === test.testParameterId ||
+            p.testLabel.trim().toLowerCase() === test.testLabel.trim().toLowerCase(),
+        )
+        await saveSectionSpecificRequirement({
+          testAllocationId: row.testAllocationId,
+          testParameterId: test.testParameterId,
+          testLabel: test.testLabel,
+          paramRowId: draftEntry?.id ?? null,
+          specificRequirement: test.specificRequirement,
+        })
+      }
+      const parameters = await fetchSectionParameterRows(row.testAllocationId)
+      const testParameterIds = parameters
+        .map((p) => p.testParameterId?.trim())
+        .filter((id): id is string => Boolean(id))
+      const testParameterSummary = parameters.map((p) => p.testLabel).join(', ')
+      const updatedRow: TestAllocationRow = {
+        ...row,
+        parameters,
+        testParameterIds,
+        testParameterSummary: testParameterSummary || row.testParameterSummary,
+      }
+      setResultsDialogRow(updatedRow)
+      setRows((prev) =>
+        prev.map((r) =>
+          r.testAllocationId === row.testAllocationId
+            ? {
+                ...r,
+                parameters,
+                testParameterIds,
+                testParameterSummary: testParameterSummary || r.testParameterSummary,
+              }
+            : r,
+        ),
+      )
+      const parts: string[] = []
+      if (change.toAdd.length > 0) {
+        parts.push(
+          `added ${change.toAdd.length} test${change.toAdd.length === 1 ? '' : 's'}`,
+        )
+      }
+      if (change.toRemove.length > 0) {
+        parts.push(
+          `removed ${change.toRemove.length} test${change.toRemove.length === 1 ? '' : 's'}`,
+        )
+      }
+      if (change.toUpdate.length > 0) {
+        parts.push(
+          `updated ${change.toUpdate.length} requirement${change.toUpdate.length === 1 ? '' : 's'}`,
+        )
+      }
+      setSaveMessage(
+        `Section ${row.sectionCode}: ${parts.join(', ')}. Test Allocation updated.`,
+      )
+      void loadRows()
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : 'Unable to update section tests')
+      throw err
+    }
+  }
+
+  const handleUpdateSectionSpecificRequirement = async (
+    entry: SectionParameterEntry,
+    nextValue: string,
+  ): Promise<{ sectionSpecOverride: string | null; specificRequirement: string | null }> => {
+    const row = resultsDialogRow
+    if (!row?.testAllocationId || row.resultsLocked) {
+      throw new Error('Editing is locked for this section.')
+    }
+    const testParameterId = entry.testParameterId?.trim()
+    if (!testParameterId) {
+      throw new Error('Test parameter is not linked to this section.')
+    }
+
+    const { data: tpRow } = await supabase
+      .from('test_parameters')
+      .select('specific_requirement')
+      .eq('id', testParameterId)
+      .maybeSingle()
+    const masterValue = String(
+      (tpRow as { specific_requirement?: string | null } | null)?.specific_requirement ?? '',
+    )
+    const normalized = nextValue.trim() || null
+
+    const paramRowId = await saveSectionSpecificRequirement({
+      testAllocationId: row.testAllocationId,
+      testParameterId,
+      testLabel: entry.testLabel,
+      paramRowId: entry.paramRowId,
+      specificRequirement: normalized,
+    })
+
+    const resolvedDisplay = resolveSectionSpecificRequirement(normalized, masterValue)
+    const updatedRow: TestAllocationRow = {
+      ...row,
+      parameters: row.parameters?.map((p) =>
+        p.testParameterId === testParameterId
+          ? {
+              ...p,
+              id: paramRowId ?? p.id,
+              sectionSpecOverride: normalized,
+              specificRequirement: resolvedDisplay,
+            }
+          : p,
+      ),
+    }
+
+    setResultsDialogRow(updatedRow)
+    setRows((prev) =>
+      prev.map((r) => (r.testAllocationId === row.testAllocationId ? updatedRow : r)),
+    )
+
+    return {
+      sectionSpecOverride: normalized,
+      specificRequirement: resolvedDisplay,
+    }
+  }
+
   const handleSaveSectionResults = async (draft: SectionResultsDraft[]) => {
     const row = resultsDialogRow
     if (!row?.testAllocationId || row.resultsLocked) return
@@ -1057,6 +1228,7 @@ export default function SampleUnderTestingMasterPage() {
         .update({
           results_reviewer_id: reviewEmployeeId,
           results_reviewer_name: reviewerName,
+          results_review_status: RESULTS_REVIEW_STATUS_UNDER_REVIEW,
         })
         .eq('test_allocation_id', testAllocationId)
       if (paramErr) throw paramErr
@@ -1227,105 +1399,6 @@ export default function SampleUnderTestingMasterPage() {
     }
   }
 
-  const openEditSpecificRequirement = (tp: Record<string, unknown>) => {
-    const id = typeof tp.id === 'string' ? tp.id : null
-    if (!id || !testParamViewRow) return
-    const sectionParam = testParamViewRow.parameters?.find((p) => p.testParameterId === id)
-    const current = resolveSectionSpecificRequirement(
-      sectionParam?.sectionSpecOverride,
-      String(tp.specific_requirement ?? ''),
-    )
-    setEditSpecParamId(id)
-    setEditSpecValue(current ?? '')
-    setEditSpecError(null)
-    setEditSpecOpen(true)
-  }
-
-  const saveEditSpecificRequirement = async () => {
-    if (!editSpecParamId || !testParamViewRow?.testAllocationId) return
-    setEditSpecSaving(true)
-    setEditSpecError(null)
-    const nextValue = editSpecValue.trim() || null
-    const testAllocationId = testParamViewRow.testAllocationId
-    const label =
-      testParamViewRow.parameters?.find((p) => p.testParameterId === editSpecParamId)?.testLabel ??
-      testParamViewLabel
-    try {
-      const masterValue = String(
-        testParamViewData.find((tp) => typeof tp.id === 'string' && tp.id === editSpecParamId)
-          ?.specific_requirement ?? '',
-      )
-      const resolvedDisplay = resolveSectionSpecificRequirement(nextValue, masterValue)
-      const sectionParam = testParamViewRow.parameters?.find((p) => p.testParameterId === editSpecParamId)
-      const paramRowId = sectionParam?.id && !sectionParam.id.startsWith('local-') ? sectionParam.id : null
-
-      if (paramRowId) {
-        const { error } = await supabase
-          .from('test_allocation_parameters')
-          .update({ specific_requirement: nextValue })
-          .eq('id', paramRowId)
-          .eq('test_allocation_id', testAllocationId)
-        if (error) throw error
-      } else {
-        const { data: existing } = await supabase
-          .from('test_allocation_parameters')
-          .select('id')
-          .eq('test_allocation_id', testAllocationId)
-          .eq('test_parameter_id', editSpecParamId)
-          .maybeSingle()
-        if (existing?.id) {
-          const { error } = await supabase
-            .from('test_allocation_parameters')
-            .update({ specific_requirement: nextValue })
-            .eq('id', existing.id)
-          if (error) throw error
-        } else {
-          const { error } = await supabase.from('test_allocation_parameters').insert({
-            test_allocation_id: testAllocationId,
-            test_parameter_id: editSpecParamId,
-            test_label: label,
-            specific_requirement: nextValue,
-          })
-          if (error) throw error
-        }
-      }
-
-      setRows((prev) =>
-        prev.map((row) => {
-          if (row.testAllocationId !== testAllocationId) return row
-          return {
-            ...row,
-            parameters: row.parameters?.map((p) =>
-              p.testParameterId === editSpecParamId
-                ? { ...p, sectionSpecOverride: nextValue, specificRequirement: resolvedDisplay }
-                : p,
-            ),
-          }
-        }),
-      )
-      setTestParamViewRow((prev) =>
-        prev && prev.testAllocationId === testAllocationId
-          ? {
-              ...prev,
-              parameters: prev.parameters?.map((p) =>
-                p.testParameterId === editSpecParamId
-                  ? { ...p, sectionSpecOverride: nextValue, specificRequirement: resolvedDisplay }
-                  : p,
-              ),
-            }
-          : prev,
-      )
-      setEditSpecOpen(false)
-      setEditSpecParamId(null)
-      setEditSpecValue('')
-      setSaveMessage(`Specified requirement updated for section ${testParamViewRow.sectionCode} only.`)
-    } catch (err) {
-      setEditSpecError(err instanceof Error ? err.message : 'Update failed')
-    } finally {
-      setEditSpecSaving(false)
-    }
-  }
-
   const displayName = profileName || user?.email || 'User'
   const displayDepartment = departmentName?.trim() ? departmentName.trim() : '—'
   const displayDesignation = designation?.trim() ? designation : '—'
@@ -1439,6 +1512,8 @@ export default function SampleUnderTestingMasterPage() {
         readOnly={Boolean(resultsDialogRow?.resultsLocked)}
         saving={resultsDialogSaving}
         onSave={handleSaveSectionResults}
+        onAddTests={handleAddTestsToSection}
+        onUpdateSpecificRequirement={handleUpdateSectionSpecificRequirement}
         onViewTestParameter={
           resultsDialogRow
             ? (testLabel) => void handleViewTestParameter(resultsDialogRow, testLabel)
@@ -1514,234 +1589,15 @@ export default function SampleUnderTestingMasterPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={testParamViewOpen} onOpenChange={setTestParamViewOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader className="border-b border-border pb-3">
-            <DialogTitle className="text-lg">Test Parameter: {testParamViewLabel || '—'}</DialogTitle>
-          </DialogHeader>
-          <div className="overflow-y-auto space-y-5 pr-1">
-            {testParamViewData.length === 0 ? (
-              <>
-                {!testParamViewExtras.loading && (
-                  <p className="text-sm text-muted-foreground py-2">
-                    No matching test parameter found in Test Parameter directory.
-                  </p>
-                )}
-                <Card className="overflow-hidden border-border shadow-sm">
-                  <CardContent className="p-5 pt-4">
-                    <section>
-                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                        Sample &amp; IS Code
-                      </h4>
-                      {testParamViewExtras.loading ? (
-                        <p className="text-sm text-muted-foreground">Loading sample details…</p>
-                      ) : (
-                        <div className="rounded-md bg-muted/30 border border-border/50 p-3 space-y-4 text-sm">
-                          <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2">
-                            <span className="text-muted-foreground">IS Code</span>
-                            <span className="font-medium">{testParamViewExtras.isCodeLabel?.trim() || '—'}</span>
-                            <span className="text-muted-foreground">Sample Description</span>
-                            <span className="whitespace-pre-wrap font-medium">
-                              {testParamViewExtras.sampleDescription?.trim() || '—'}
-                            </span>
-                            <span className="text-muted-foreground">Declared Value</span>
-                            <span className="whitespace-pre-wrap font-medium">
-                              {testParamViewExtras.declaredValue?.trim() || '—'}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">
-                              IS Code Files
-                            </p>
-                            {testParamViewExtras.isCodeFiles.length === 0 ? (
-                              <p className="text-sm text-muted-foreground">No files uploaded for this IS Code.</p>
-                            ) : (
-                              <ul className="space-y-2">
-                                {testParamViewExtras.isCodeFiles.map((f) => (
-                                  <li
-                                    key={f.file_name}
-                                    className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-background px-3 py-2"
-                                  >
-                                    <span className="text-sm truncate">{f.file_name}</span>
-                                    {f.url ? (
-                                      <a
-                                        href={f.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="text-xs font-medium text-primary hover:underline shrink-0"
-                                      >
-                                        View
-                                      </a>
-                                    ) : (
-                                      <span className="text-xs text-muted-foreground shrink-0">—</span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </section>
-                  </CardContent>
-                </Card>
-              </>
-            ) : (
-              testParamViewData.map((tp, idx) => {
-                const fmt = (v: unknown) => (v !== null && v !== undefined && String(v).trim() !== '' ? String(v) : '—')
-                const tpId = typeof tp.id === 'string' ? tp.id.trim() : ''
-                const sectionParam = testParamViewRow?.parameters?.find((p) => p.testParameterId === tpId)
-                const displaySpecificRequirement = fmt(
-                  resolveSectionSpecificRequirement(
-                    sectionParam?.sectionSpecOverride,
-                    String(tp.specific_requirement ?? ''),
-                  ),
-                )
-                return (
-                  <Card key={tpId || idx} className="overflow-hidden border-border shadow-sm">
-                    <CardHeader className="py-4 px-5 bg-primary/5 border-b border-border">
-                      <CardTitle className="text-base font-semibold text-foreground">{fmt(tp.item_name)}</CardTitle>
-                      <div className="flex flex-wrap gap-2 mt-2 text-xs text-muted-foreground">
-                        <span>IS Code: <span className="font-medium text-foreground">{fmt(testParamViewExtras.isCodeLabel ?? tp.is_code_label)}</span></span>
-                        <span className="text-border">|</span>
-                        <span>Method: <span className="font-medium text-foreground">{fmt(tp.test_method)}</span></span>
-                        <span className="text-border">|</span>
-                        <span>Clause {fmt(tp.clause_no)} · Unit: {fmt(tp.unit_value)}</span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-5 space-y-5 pt-4">
-                      <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                          Sample &amp; IS Code
-                        </h4>
-                        {testParamViewExtras.loading ? (
-                          <p className="text-sm text-muted-foreground">Loading sample details…</p>
-                        ) : (
-                          <div className="rounded-md bg-muted/30 border border-border/50 p-3 space-y-4 text-sm">
-                            <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2">
-                              <span className="text-muted-foreground">IS Code</span>
-                              <span className="font-medium">{testParamViewExtras.isCodeLabel?.trim() || '—'}</span>
-                              <span className="text-muted-foreground">Sample Description</span>
-                              <span className="whitespace-pre-wrap font-medium">
-                                {testParamViewExtras.sampleDescription?.trim() || '—'}
-                              </span>
-                              <span className="text-muted-foreground">Declared Value</span>
-                              <span className="whitespace-pre-wrap font-medium">
-                                {testParamViewExtras.declaredValue?.trim() || '—'}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">
-                                IS Code Files
-                              </p>
-                              {testParamViewExtras.isCodeFiles.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No files uploaded for this IS Code.</p>
-                              ) : (
-                                <ul className="space-y-2">
-                                  {testParamViewExtras.isCodeFiles.map((f) => (
-                                    <li
-                                      key={f.file_name}
-                                      className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-background px-3 py-2"
-                                    >
-                                      <span className="text-sm truncate">{f.file_name}</span>
-                                      {f.url ? (
-                                        <a
-                                          href={f.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-xs font-medium text-primary hover:underline shrink-0"
-                                        >
-                                          View
-                                        </a>
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground shrink-0">—</span>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </section>
-                      <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Requirements</h4>
-                        <div className="rounded-md bg-muted/30 border border-border/50 p-3 space-y-1.5 text-sm">
-                          <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2">
-                            <span className="text-muted-foreground">Specific Requirement</span>
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <span className="whitespace-pre-wrap font-medium">{displaySpecificRequirement}</span>
-                              {tpId && testParamViewRow && !testParamViewRow.resultsLocked ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 shrink-0 gap-1.5"
-                                  aria-label="Edit specified requirement for this section"
-                                  title="Section-only override (does not change Test Parameter master)"
-                                  onClick={() => openEditSpecificRequirement(tp)}
-                                >
-                                  <Pencil size={14} />
-                                  Edit
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Link test parameter in Test Allocation to enable edit.</span>
-                              )}
-                            </div>
-                            <span className="text-muted-foreground">Acceptance Criteria</span>
-                            <span>{fmt(tp.acceptance_criteria)}</span>
-                          </div>
-                        </div>
-                      </section>
-                      <section>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Uncertainty</h4>
-                        <div className="rounded-md bg-muted/30 border border-border/50 p-3 text-sm">
-                          <span className="text-muted-foreground mr-1">Uncertainty (MU):</span>
-                          <span className="font-medium">{fmt(tp.uncertainty_mu)}</span>
-                        </div>
-                      </section>
-                    </CardContent>
-                  </Card>
-                )
-              })
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Edit Specific Requirement — Section {testParamViewRow?.sectionCode ?? '—'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Applies only to this section code. Test Parameter master and other sections are not changed.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="under-test-edit-spec">Specific Requirement</Label>
-              <Textarea
-                id="under-test-edit-spec"
-                rows={3}
-                value={editSpecValue}
-                onChange={(e) => setEditSpecValue(e.target.value)}
-                placeholder="e.g. 0.12 Maximum"
-              />
-            </div>
-            {editSpecError && <p className="text-sm text-destructive">{editSpecError}</p>}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setEditSpecOpen(false)} disabled={editSpecSaving}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={() => void saveEditSpecificRequirement()} disabled={editSpecSaving}>
-                {editSpecSaving ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <TestParameterViewDialog
+        open={testParamViewOpen}
+        onOpenChange={setTestParamViewOpen}
+        label={testParamViewLabel}
+        parameters={testParamViewData}
+        extras={testParamViewExtras}
+        sectionParameters={testParamViewRow?.parameters}
+        sectionCode={testParamViewRow?.sectionCode}
+      />
 
       <Dialog
         open={sendForReviewOpen}

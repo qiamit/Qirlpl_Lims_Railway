@@ -10,6 +10,11 @@ export function openHtmlPreviewWindow(html: string): void {
   win.addEventListener(
     'load',
     () => {
+      try {
+        win.document.title = ''
+      } catch {
+        /* cross-origin guard */
+      }
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
     },
     { once: true },

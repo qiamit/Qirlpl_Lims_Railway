@@ -203,7 +203,7 @@ function buildPartCResultsHtml(
   rows: ReportResultRow[],
   columns: PartCReportColumnVisibility = DEFAULT_PART_C_REPORT_COLUMNS,
   options?: { showEndNotes?: boolean; showSectionRows?: boolean },
-): string {
+): { tableHtml: string; endNotesBlock: string } {
   const showEndNotes = options?.showEndNotes !== false
   const showSectionRows = options?.showSectionRows !== false
   const visibleCols = visiblePartCReportColumns(columns)

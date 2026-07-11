@@ -253,6 +253,8 @@ export function TestReportResultsSection({
   sampleId = null,
   sectionCodeEditable = false,
   onSectionCodeUpdated,
+  specifiedRequirementEditable = false,
+  onSpecifiedRequirementUpdated,
 }: {
   resultsLoading: boolean
   applicableScopes: ReportScopeKind[]
@@ -279,6 +281,8 @@ export function TestReportResultsSection({
   sampleId?: string | null
   sectionCodeEditable?: boolean
   onSectionCodeUpdated?: (oldCode: string, newCode: string) => void
+  specifiedRequirementEditable?: boolean
+  onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
 }) {
   return (
     <div className={REPORT_PART_OUTER_CLASS}>
@@ -349,6 +353,8 @@ export function TestReportResultsSection({
                       sampleId={sampleId}
                       sectionCodeEditable={sectionCodeEditable}
                       onSectionCodeUpdated={onSectionCodeUpdated}
+                      specifiedRequirementEditable={specifiedRequirementEditable}
+                      onSpecifiedRequirementUpdated={onSpecifiedRequirementUpdated}
                     />
                     {scopedRows.length > 0 && <TestReportEndNotesBlock />}
                   </div>

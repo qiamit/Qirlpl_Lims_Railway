@@ -16,6 +16,9 @@ import {
   type EquipmentStatus,
   sanitizeDateStr,
 } from './types'
+import { parseMaintenanceChecklistFromDb } from './maintenanceChecklist'
+import { parseMaintenanceHistoryFromDb } from './maintenanceHistory'
+import { parseIntermediateCheckHistoryFromDb } from './intermediateCheckHistory'
 
 const BUCKET = 'equipment-files'
 
@@ -260,15 +263,24 @@ export default function EquipmentMasterPage() {
           last_calibration_date: sanitizeDateStr(form.lastCalibrationDate) || null,
           next_calibration_due: sanitizeDateStr(form.nextCalibrationDue) || null,
           calibration_certificate_number: form.calibrationCertificateNumber.trim() || null,
+          calibration_certificate_uncertainty: form.calibrationCertificateUncertainty.trim() || null,
+          calibration_uncertainty_unit: form.calibrationUncertaintyUnit.trim() || null,
+          calibration_coverage_factor: form.calibrationCoverageFactor.trim() || null,
           external_calibration_agency: form.externalCalibrationAgency || null,
           intermediate_check_frequency: form.intermediateCheckFrequency || null,
           last_intermediate_check_date: sanitizeDateStr(form.lastIntermediateCheckDate) || null,
           next_intermediate_check_date: sanitizeDateStr(form.nextIntermediateCheckDate) || null,
           intermediate_check_result: form.intermediateCheckResult.trim() || null,
+          intermediate_check_history:
+            form.intermediateCheckHistory.length > 0 ? form.intermediateCheckHistory : null,
           maintenance_schedule_frequency: form.maintenanceScheduleFrequency || null,
           last_maintenance_date: sanitizeDateStr(form.lastMaintenanceDate) || null,
           next_maintenance_date: sanitizeDateStr(form.nextMaintenanceDate) || null,
           maintenance_done_by: form.maintenanceDoneBy || null,
+          maintenance_checklist:
+            form.maintenanceChecklist.length > 0 ? form.maintenanceChecklist : null,
+          maintenance_history:
+            form.maintenanceHistory.length > 0 ? form.maintenanceHistory : null,
           history_of_damage: form.historyOfDamage.trim() || null,
           upload_certificate_path: certPath || null,
           upload_manual_sop_path: manualPath || null,
@@ -289,11 +301,6 @@ export default function EquipmentMasterPage() {
         setSaveLoading(false)
       }
     })()
-  }
-
-  const handleClear = () => {
-    setSaveMessage(null)
-    setForm(emptyEquipmentForm())
   }
 
   const handleNew = () => {
@@ -325,15 +332,21 @@ export default function EquipmentMasterPage() {
       lastCalibrationDate: row.last_calibration_date ?? '',
       nextCalibrationDue: row.next_calibration_due ?? '',
       calibrationCertificateNumber: row.calibration_certificate_number ?? '',
+      calibrationCertificateUncertainty: row.calibration_certificate_uncertainty ?? '',
+      calibrationUncertaintyUnit: row.calibration_uncertainty_unit ?? '',
+      calibrationCoverageFactor: row.calibration_coverage_factor ?? '',
       externalCalibrationAgency: row.external_calibration_agency ?? '',
       intermediateCheckFrequency: (row.intermediate_check_frequency ?? '') as Frequency,
       lastIntermediateCheckDate: row.last_intermediate_check_date ?? '',
       nextIntermediateCheckDate: row.next_intermediate_check_date ?? '',
       intermediateCheckResult: row.intermediate_check_result ?? '',
+      intermediateCheckHistory: parseIntermediateCheckHistoryFromDb(row.intermediate_check_history),
       maintenanceScheduleFrequency: (row.maintenance_schedule_frequency ?? '') as Frequency,
       lastMaintenanceDate: row.last_maintenance_date ?? '',
       nextMaintenanceDate: row.next_maintenance_date ?? '',
       maintenanceDoneBy: row.maintenance_done_by ?? '',
+      maintenanceChecklist: parseMaintenanceChecklistFromDb(row.maintenance_checklist),
+      maintenanceHistory: parseMaintenanceHistoryFromDb(row.maintenance_history),
       historyOfDamage: row.history_of_damage ?? '',
       uploadCertificatePath: row.upload_certificate_path ?? '',
       uploadManualSopPath: row.upload_manual_sop_path ?? '',
@@ -365,15 +378,21 @@ export default function EquipmentMasterPage() {
       lastCalibrationDate: row.last_calibration_date ?? '',
       nextCalibrationDue: row.next_calibration_due ?? '',
       calibrationCertificateNumber: row.calibration_certificate_number ?? '',
+      calibrationCertificateUncertainty: row.calibration_certificate_uncertainty ?? '',
+      calibrationUncertaintyUnit: row.calibration_uncertainty_unit ?? '',
+      calibrationCoverageFactor: row.calibration_coverage_factor ?? '',
       externalCalibrationAgency: row.external_calibration_agency ?? '',
       intermediateCheckFrequency: (row.intermediate_check_frequency ?? '') as Frequency,
       lastIntermediateCheckDate: row.last_intermediate_check_date ?? '',
       nextIntermediateCheckDate: row.next_intermediate_check_date ?? '',
       intermediateCheckResult: row.intermediate_check_result ?? '',
+      intermediateCheckHistory: parseIntermediateCheckHistoryFromDb(row.intermediate_check_history),
       maintenanceScheduleFrequency: (row.maintenance_schedule_frequency ?? '') as Frequency,
       lastMaintenanceDate: row.last_maintenance_date ?? '',
       nextMaintenanceDate: row.next_maintenance_date ?? '',
       maintenanceDoneBy: row.maintenance_done_by ?? '',
+      maintenanceChecklist: parseMaintenanceChecklistFromDb(row.maintenance_checklist),
+      maintenanceHistory: parseMaintenanceHistoryFromDb(row.maintenance_history),
       historyOfDamage: row.history_of_damage ?? '',
       uploadCertificatePath: row.upload_certificate_path ?? '',
       uploadManualSopPath: row.upload_manual_sop_path ?? '',
@@ -553,6 +572,10 @@ export default function EquipmentMasterPage() {
       'last_calibration_date',
       'next_calibration_due',
       'calibration_certificate_number',
+      'calibration_certificate_uncertainty',
+      'calibration_uncertainty_unit',
+      'calibration_coverage_factor',
+      'calibration_coverage_factor',
       'external_calibration_agency',
       'intermediate_check_frequency',
       'last_intermediate_check_date',
@@ -590,6 +613,9 @@ export default function EquipmentMasterPage() {
         last_calibration_date: r.last_calibration_date ?? '',
         next_calibration_due: r.next_calibration_due ?? '',
         calibration_certificate_number: r.calibration_certificate_number ?? '',
+        calibration_certificate_uncertainty: r.calibration_certificate_uncertainty ?? '',
+        calibration_uncertainty_unit: r.calibration_uncertainty_unit ?? '',
+        calibration_coverage_factor: r.calibration_coverage_factor ?? '',
         external_calibration_agency: agency,
         intermediate_check_frequency: r.intermediate_check_frequency ?? '',
         last_intermediate_check_date: r.last_intermediate_check_date ?? '',
@@ -704,6 +730,9 @@ export default function EquipmentMasterPage() {
             last_calibration_date: lastCal || null,
             next_calibration_due: nextCal || null,
             calibration_certificate_number: get('calibration_certificate_number') || null,
+            calibration_certificate_uncertainty: get('calibration_certificate_uncertainty') || null,
+            calibration_uncertainty_unit: get('calibration_uncertainty_unit') || null,
+            calibration_coverage_factor: get('calibration_coverage_factor') || null,
             external_calibration_agency: agencyName ? findClientUuid(agencyName) : null,
             intermediate_check_frequency: checkFreq || null,
             last_intermediate_check_date: lastCheck || null,
@@ -771,7 +800,6 @@ export default function EquipmentMasterPage() {
             canSave={canSave}
             saveLoading={saveLoading}
             onSave={handleSave}
-            onClear={handleClear}
             clients={clients}
             employees={employees}
             locations={locations}
@@ -958,6 +986,7 @@ function buildEquipmentPrintHtml(
             <div class="field border-cal"><div class="k">Next Calibration Due</div><div class="v font-bold">${esc(r.next_calibration_due || '-')}</div></div>
             
             <div class="field"><div class="k">Calibration Certificate</div><div class="v">${esc(r.calibration_certificate_number || '-')}</div></div>
+            <div class="field"><div class="k">Calibration Uncertainty</div><div class="v">${esc(r.calibration_certificate_uncertainty || '-')}${r.calibration_uncertainty_unit ? ` ${esc(r.calibration_uncertainty_unit)}` : ''}</div></div>
             <div class="field"><div class="k">External Calibration Agency</div><div class="v">${esc(agencyName)}</div></div>
             
             <div class="field"><div class="k">Intermediate Check (Freq / Last / Next)</div><div class="v">${esc(r.intermediate_check_frequency || '-')}: ${esc(r.last_intermediate_check_date || '-')} / ${esc(r.next_intermediate_check_date || '-')}</div></div>

@@ -6,7 +6,12 @@ import type { TestAllocationRow } from '../types'
 import { groupRowsBySrf } from '../test-allocation/sortTestAllocationRows'
 import { countFilledResults, getSectionParametersForEntry } from './sectionParameterRows'
 import { ClipboardList, Eye, Undo2, FileCheck } from 'lucide-react'
-import { RESULTS_REVIEW_APPROVED_LABEL } from '../results-under-review/resultsUnderReviewPartitions'
+import { isActiveReviewerName } from '../results-under-review/resultsUnderReviewPartitions'
+import {
+  getUnderTestingSubmittedStatus,
+  isSectionApprovedForDisplay,
+  UNDER_TESTING_SUBMITTED_STATUS_LABEL,
+} from './underTestingSectionStatus'
 
 const COLUMN_COUNT = 6
 
@@ -14,6 +19,12 @@ const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '—')
 
 function isSectionSubmittedForReview(row: TestAllocationRow): boolean {
   if (row.referredBackFromReview) return false
+  const stage = String(row.sampleStage ?? '')
+    .trim()
+    .toLowerCase()
+  // Issued / completed work must never sit in Pending for Results
+  if (stage === 'completed') return true
+  if (stage === 'report_preparation' && (row.resultsLocked || row.sectionReviewApproved)) return true
   return Boolean(row.resultsLocked)
 }
 
@@ -141,12 +152,21 @@ export function SampleUnderTestingTable({
 
   const renderDataRow = (r: TestAllocationRow) => {
     const locked = Boolean(r.resultsLocked)
-    const approved =
-      r.sectionReviewApproved ||
-      r.resultsReviewerName?.trim() === RESULTS_REVIEW_APPROVED_LABEL
+    const approved = isSectionApprovedForDisplay(r)
+    const submittedStatus = locked ? getUnderTestingSubmittedStatus(r) : null
+    const submittedStatusLabel = submittedStatus
+      ? UNDER_TESTING_SUBMITTED_STATUS_LABEL[submittedStatus]
+      : null
     const entries = getSectionParametersForEntry(r)
     const { filled, total } = countFilledResults(entries)
     const allFilled = total > 0 && filled === total
+
+    const badgeLabel =
+      submittedStatus === 'test_report_issued'
+        ? 'Issued'
+        : approved
+          ? 'Approved'
+          : 'Under Review'
 
     return (
       <TableRow key={r.sampleAllocationId}>
@@ -201,43 +221,40 @@ export function SampleUnderTestingTable({
           {locked ? (
             <div className="inline-flex flex-col items-end gap-1 min-w-[148px]">
               <Badge variant="secondary" className="text-[10px] font-medium">
-                {approved ? 'Approved' : 'Under Review'}
+                {badgeLabel}
               </Badge>
-              {approved ? (
-                <span className="text-[10px] text-muted-foreground">Submitted for review</span>
-              ) : r.resultsReviewerName?.trim() ? (
-                <span className="text-[10px] text-muted-foreground text-right line-clamp-2 max-w-[148px]">
+              <span className="text-[10px] text-muted-foreground text-right line-clamp-2 max-w-[160px]">
+                {submittedStatusLabel}
+              </span>
+              {!approved && isActiveReviewerName(r.resultsReviewerName) ? (
+                <span className="text-[10px] text-muted-foreground text-right line-clamp-2 max-w-[160px]">
                   {r.resultsReviewerName}
                 </span>
-              ) : (
-                <span className="text-[10px] text-muted-foreground">Sent for review</span>
-              )}
+              ) : null}
             </div>
           ) : (
-            <div className="inline-flex flex-col items-stretch gap-1.5 min-w-[148px]">
+            <div className="inline-flex items-center justify-end gap-1">
               <Button
                 type="button"
-                size="sm"
-                variant="secondary"
-                className="h-8 justify-center gap-1.5 text-xs font-medium shadow-sm"
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
                 aria-label={`Send results for review — section ${fmt(r.sectionCode)}`}
-                title="Send for review — assign a reviewer in Results Under Review"
+                title="Send for Review"
                 onClick={() => onSendForReview(r)}
               >
-                <FileCheck size={14} className="shrink-0" />
-                Send for Review
+                <FileCheck size={16} />
               </Button>
               <Button
                 type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 justify-center gap-1.5 text-xs font-medium border-amber-200/90 bg-amber-50/50 text-amber-950 hover:bg-amber-50 hover:text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-100 dark:hover:bg-amber-950/40"
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
                 aria-label={`Refer back section ${fmt(r.sectionCode)} to Test Allocation`}
-                title="Refer back — removes this section from Sample Under Testing"
+                title="Refer Back"
                 onClick={() => onReferback(r)}
               >
-                <Undo2 size={14} className="shrink-0" />
-                Refer Back
+                <Undo2 size={16} className="text-amber-700 dark:text-amber-500" />
               </Button>
             </div>
           )}
@@ -295,7 +312,7 @@ export function SampleUnderTestingTable({
               <TableHead className="text-xs text-center w-[140px]">IS Code</TableHead>
               <TableHead className="text-xs text-center w-[120px]">Sample Details</TableHead>
               <TableHead className="text-xs text-center w-[180px]">Submitted Results</TableHead>
-              <TableHead className="text-xs text-right pr-4 w-[200px]">Action</TableHead>
+              <TableHead className="text-xs text-right pr-4 w-[90px]">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

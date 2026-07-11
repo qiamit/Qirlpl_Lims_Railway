@@ -127,13 +127,14 @@ export function EquipmentTable({
         <p className="px-4 py-6 text-sm text-muted-foreground">No equipment added yet.</p>
       ) : (
         <div className="[&>div]:overflow-x-auto">
-          <Table className="w-full table-fixed min-w-[1200px]">
+          <Table className="w-full table-fixed min-w-[1380px]">
             <colgroup>
               <col className="w-[44px]" />
-              <col className="w-[17%]" />
-              <col className="w-[17%]" />
-              <col className="w-[28%]" />
-              <col className="w-[34%]" />
+              <col className="w-[14%]" />
+              <col className="w-[13%]" />
+              <col className="w-[16%]" />
+              <col className="w-[20%]" />
+              <col className="w-[30%]" />
               <col className="w-[80px]" />
             </colgroup>
             <TableHeader>
@@ -151,6 +152,7 @@ export function EquipmentTable({
                 </TableHead>
                 <TableHead className="text-left text-xs">Equipment Identity</TableHead>
                 <TableHead className="text-xs text-center">Make &amp; Serial</TableHead>
+                <TableHead className="text-xs text-center">Technical Details</TableHead>
                 <TableHead className="text-xs text-center">Location &amp; Custodian</TableHead>
                 <TableHead className="text-xs text-center">Calibration &amp; Maintenance Status</TableHead>
                 <TableHead className="text-xs text-center">Action</TableHead>
@@ -185,6 +187,20 @@ export function EquipmentTable({
                       <div className="text-xs font-medium leading-snug">{r.manufacturer || '-'}</div>
                       <div className="text-xs text-muted-foreground">S/N: {r.serial_number || '-'}</div>
                       <div className="text-[11px] text-muted-foreground/80">Model: {r.model_number || '-'}</div>
+                    </TableCell>
+                    <TableCell className="align-middle text-center">
+                      <div className="text-xs leading-snug">
+                        <span className="text-muted-foreground">Range: </span>
+                        <span className="font-medium">{r.range_capacity || '-'}</span>
+                      </div>
+                      <div className="text-xs leading-snug mt-0.5">
+                        <span className="text-muted-foreground">Least Count: </span>
+                        <span className="font-medium">{r.resolution_least_count || '-'}</span>
+                      </div>
+                      <div className="text-[11px] leading-snug mt-0.5 text-muted-foreground/90 line-clamp-2">
+                        <span className="text-muted-foreground">Acceptance: </span>
+                        <span>{r.accuracy_acceptance_criteria || '-'}</span>
+                      </div>
                     </TableCell>
                     <TableCell className="align-middle text-center space-y-1">
                       <div className="text-xs font-medium">{r.current_location || '-'}</div>

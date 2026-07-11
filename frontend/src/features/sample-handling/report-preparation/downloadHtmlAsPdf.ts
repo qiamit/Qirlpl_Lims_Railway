@@ -52,6 +52,7 @@ export async function downloadHtmlAsPdf(
   filename: string,
   pageSize: PrintPageSize,
   marginsMm?: PrintPageMarginsMm,
+  pagebreakMode: Array<'css' | 'legacy' | 'avoid-all'> = ['css', 'legacy'],
 ): Promise<void> {
   const mod = await import('html2pdf.js')
   const html2pdf = (mod.default ?? mod) as Html2PdfFactory
@@ -73,7 +74,7 @@ export async function downloadHtmlAsPdf(
           format: pageSize === 'Letter' ? 'letter' : 'a4',
           orientation: 'portrait',
         },
-        pagebreak: { mode: ['css', 'legacy'] },
+        pagebreak: { mode: pagebreakMode },
       })
       .from(body)
       .save()

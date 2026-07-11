@@ -21,6 +21,10 @@ import {
   ReportSectionCodeEditDialog,
   type ReportSectionCodeEditTarget,
 } from './ReportSectionCodeEditDialog'
+import {
+  ReportSpecifiedRequirementEditDialog,
+  type ReportSpecifiedRequirementEditTarget,
+} from './ReportSpecifiedRequirementEditDialog'
 
 /** Full grid: vertical + horizontal lines; header/section rows emphasized */
 const GRID_TABLE =
@@ -42,12 +46,16 @@ function ResultDataRow({
   editable,
   onRemarkChange,
   disabled,
+  specifiedRequirementEditable,
+  onEditSpecifiedRequirement,
 }: {
   row: ReportResultRow
   showScope: boolean
   editable?: boolean
   onRemarkChange?: (rowKey: string, remark: string) => void
   disabled?: boolean
+  specifiedRequirementEditable?: boolean
+  onEditSpecifiedRequirement?: (row: ReportResultRow) => void
 }) {
   const remark = normalizeResultRemark(row.remark)
 
@@ -64,7 +72,29 @@ function ResultDataRow({
       </TableCell>
       <TableCell className={cn(GRID_CELL, 'text-center w-0 whitespace-nowrap')}>{row.unit}</TableCell>
       <TableCell className={cn(GRID_CELL, 'text-center whitespace-pre-wrap')}>
-        {row.specifiedRequirement}
+        <div className="flex items-start w-full gap-1">
+          <span className="flex-1 min-w-0 break-words whitespace-pre-wrap text-center">
+            {row.specifiedRequirement}
+          </span>
+          {specifiedRequirementEditable &&
+            onEditSpecifiedRequirement &&
+            row.parameterId?.trim() &&
+            !disabled && (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 ml-auto"
+                aria-label="Edit specified requirement"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEditSpecifiedRequirement(row)
+                }}
+              >
+                <Pencil size={14} />
+              </Button>
+            )}
+        </div>
       </TableCell>
       <TableCell className={cn(GRID_CELL, 'text-center whitespace-pre-wrap font-medium w-0')}>
         {row.observedValue}
@@ -154,6 +184,8 @@ function ResultsGroupedBody({
   disabled,
   sectionCodeEditable,
   onEditSectionCode,
+  specifiedRequirementEditable,
+  onEditSpecifiedRequirement,
 }: {
   sections: ReturnType<typeof groupReportRowsBySectionCode>
   colSpan: number
@@ -163,6 +195,8 @@ function ResultsGroupedBody({
   disabled?: boolean
   sectionCodeEditable?: boolean
   onEditSectionCode?: (target: ReportSectionCodeEditTarget) => void
+  specifiedRequirementEditable?: boolean
+  onEditSpecifiedRequirement?: (row: ReportResultRow) => void
 }) {
   if (sections.length === 0) {
     return (
@@ -220,6 +254,8 @@ function ResultsGroupedBody({
               editable={editable}
               onRemarkChange={onRemarkChange}
               disabled={disabled}
+              specifiedRequirementEditable={specifiedRequirementEditable}
+              onEditSpecifiedRequirement={onEditSpecifiedRequirement}
             />
           ))}
         </Fragment>
@@ -239,6 +275,8 @@ export function ReportResultsTable({
   sampleId = null,
   sectionCodeEditable = false,
   onSectionCodeUpdated,
+  specifiedRequirementEditable = false,
+  onSpecifiedRequirementUpdated,
 }: {
   rows: ReportResultRow[]
   showScope?: boolean
@@ -250,16 +288,30 @@ export function ReportResultsTable({
   sampleId?: string | null
   sectionCodeEditable?: boolean
   onSectionCodeUpdated?: (oldCode: string, newCode: string) => void
+  specifiedRequirementEditable?: boolean
+  onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
 }) {
   const colSpan = columnCount(showScope)
   const sections = groupBySectionCode ? groupReportRowsBySectionCode(rows) : null
   const flatRows = groupBySectionCode ? null : sortReportResultRows(rows)
   const [sectionEditTarget, setSectionEditTarget] = useState<ReportSectionCodeEditTarget | null>(null)
   const [sectionEditOpen, setSectionEditOpen] = useState(false)
+  const [specEditTarget, setSpecEditTarget] = useState<ReportSpecifiedRequirementEditTarget | null>(null)
+  const [specEditOpen, setSpecEditOpen] = useState(false)
 
   const openSectionCodeEdit = (target: ReportSectionCodeEditTarget) => {
     setSectionEditTarget(target)
     setSectionEditOpen(true)
+  }
+
+  const openSpecifiedRequirementEdit = (row: ReportResultRow) => {
+    setSpecEditTarget({
+      parameterId: row.parameterId,
+      sectionCode: row.sectionCode,
+      testName: row.testName,
+      value: row.specifiedRequirement,
+    })
+    setSpecEditOpen(true)
   }
 
   const tableShell = (children: ReactNode) => (
@@ -272,6 +324,18 @@ export function ReportResultsTable({
           sampleId={sampleId}
           target={sectionEditTarget}
           onSaved={onSectionCodeUpdated}
+        />
+      )}
+      {specifiedRequirementEditable && onSpecifiedRequirementUpdated && (
+        <ReportSpecifiedRequirementEditDialog
+          open={specEditOpen}
+          onOpenChange={setSpecEditOpen}
+          target={specEditTarget}
+          onSaved={(nextValue) => {
+            if (!specEditTarget) return
+            const rowKey = rows.find((r) => r.parameterId === specEditTarget.parameterId)?.rowKey
+            if (rowKey) onSpecifiedRequirementUpdated(rowKey, nextValue)
+          }}
         />
       )}
     </>
@@ -294,6 +358,8 @@ export function ReportResultsTable({
           disabled={disabled}
           sectionCodeEditable={sectionCodeEditable && Boolean(sampleId && onSectionCodeUpdated)}
           onEditSectionCode={openSectionCodeEdit}
+          specifiedRequirementEditable={specifiedRequirementEditable}
+          onEditSpecifiedRequirement={openSpecifiedRequirementEdit}
         />
       </>,
     )
@@ -318,6 +384,8 @@ export function ReportResultsTable({
               editable={editable}
               onRemarkChange={onRemarkChange}
               disabled={disabled}
+              specifiedRequirementEditable={specifiedRequirementEditable}
+              onEditSpecifiedRequirement={openSpecifiedRequirementEdit}
             />
           ))
         )}

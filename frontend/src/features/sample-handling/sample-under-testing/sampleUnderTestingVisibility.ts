@@ -1,30 +1,41 @@
 import { supabase } from '@/lib/supabaseClient'
-import { RESULTS_REVIEW_APPROVED_LABEL } from '../results-under-review/resultsUnderReviewPartitions'
+import {
+  isActiveReviewerName,
+  isResultsReviewStatusApproved,
+  normalizeResultsReviewStatus,
+  RESULTS_REVIEW_STATUS_APPROVED,
+  RESULTS_REVIEW_STATUS_UNDER_REVIEW,
+} from '../results-under-review/resultsUnderReviewPartitions'
+import { fetchByIdChunks } from '../shared/fetchByIdChunks'
 
 /** True when this parameter row is actively with a reviewer (not Approved / cleared). */
 export function isParameterActivelyUnderReview(row: {
   results_reviewer_id?: string | null
   results_reviewer_name?: string | null
+  results_review_status?: string | null
 }): boolean {
+  if (isResultsReviewStatusApproved(row.results_review_status, row.results_reviewer_name)) return false
   if (row.results_reviewer_id) return true
-  const name = row.results_reviewer_name?.trim()
-  if (!name || name === RESULTS_REVIEW_APPROVED_LABEL) return false
-  return true
+  return isActiveReviewerName(row.results_reviewer_name)
 }
 
 /** True when this test allocation parameter was sent to Results Under Review. */
 export function isParameterSentForReview(row: {
   results_reviewer_id?: string | null
   results_reviewer_name?: string | null
+  results_review_status?: string | null
 }): boolean {
+  const status = normalizeResultsReviewStatus(row.results_review_status)
+  if (status === RESULTS_REVIEW_STATUS_APPROVED || status === RESULTS_REVIEW_STATUS_UNDER_REVIEW) {
+    return true
+  }
   if (row.results_reviewer_id) return true
-  const name = row.results_reviewer_name?.trim()
-  if (!name) return false
-  return true
+  return isActiveReviewerName(row.results_reviewer_name)
 }
 
 /**
  * Load test_allocation ids that already have a results reviewer (sent for review).
+ * Chunked to avoid PostgREST max-rows truncating large parameter lists.
  */
 export async function fetchSentForReviewTestAllocationIds(
   testAllocationIds: string[],
@@ -32,20 +43,26 @@ export async function fetchSentForReviewTestAllocationIds(
   const ids = [...new Set(testAllocationIds.map((id) => id.trim()).filter(Boolean))]
   if (ids.length === 0) return new Set()
 
-  const { data, error } = await supabase
-    .from('test_allocation_parameters')
-    .select('test_allocation_id, results_reviewer_id, results_reviewer_name')
-    .in('test_allocation_id', ids)
-
-  if (error) throw error
+  const rows = await fetchByIdChunks(ids, 40, async (chunkIds) => {
+    const { data, error } = await supabase
+      .from('test_allocation_parameters')
+      .select('test_allocation_id, results_reviewer_id, results_reviewer_name, results_review_status')
+      .in('test_allocation_id', chunkIds)
+    if (error) throw error
+    return Array.isArray(data) ? data : []
+  })
 
   const sent = new Set<string>()
-  for (const row of Array.isArray(data) ? data : []) {
+  for (const row of rows) {
     const allocId = (row as { test_allocation_id?: string | null }).test_allocation_id
     if (!allocId) continue
     if (
       isParameterSentForReview(
-        row as { results_reviewer_id?: string | null; results_reviewer_name?: string | null },
+        row as {
+          results_reviewer_id?: string | null
+          results_reviewer_name?: string | null
+          results_review_status?: string | null
+        },
       )
     ) {
       sent.add(allocId)
@@ -91,8 +108,8 @@ export function shouldHideFromSampleUnderTesting(input: {
   /** Active in Sample Under Testing (incl. refer-back from Results Under Review). */
   sentForTesting?: boolean
 }): boolean {
-  // Sections still marked sent for testing must stay visible — including sibling sections
-  // pending results when the SRF stage is results_review but reviewers were cleared (refer-back).
+  // Keep sent_for_testing sections visible through review / report prep / issued
+  // so Testing Engineers can track status on their sections.
   if (input.sentForTesting) return false
   if (input.legacyResultsReviewSampleIds.has(input.sampleId)) return true
   return false

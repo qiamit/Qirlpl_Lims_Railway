@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
+import { clearSampleRetentionPayload } from '@/features/sample-handling/retain-disposed/sampleRetention'
 import {
   allTestAllocationIdsForSample,
   ensureTestAllocationParameterRows,
@@ -11,6 +12,7 @@ function clearIssuedTimestampsPayload(stage: string): Record<string, string | nu
     test_report_issued_at: null,
     test_report_nabl_issued_at: null,
     test_report_non_nabl_issued_at: null,
+    ...clearSampleRetentionPayload(),
   }
 }
 
@@ -63,6 +65,7 @@ export async function referbackSampleToResultsReview(
     .update({
       results_reviewer_id: reviewer.id,
       results_reviewer_name: reviewer.name,
+      results_review_status: 'under_review',
     })
     .in('test_allocation_id', taIds)
   if (paramErr) throw paramErr
@@ -142,6 +145,7 @@ export async function referbackSectionsToResultsReview(
       .update({
         results_reviewer_id: reviewer.id,
         results_reviewer_name: reviewer.name,
+        results_review_status: 'under_review',
       })
       .eq('test_allocation_id', testAllocationId)
     if (paramErr) throw paramErr

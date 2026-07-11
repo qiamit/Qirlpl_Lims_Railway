@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabaseClient'
-import { RESULTS_REVIEW_APPROVED_LABEL } from '../results-under-review/resultsUnderReviewPartitions'
+import {
+  isResultsReviewStatusApproved,
+  RESULTS_REVIEW_STATUS_APPROVED,
+} from '../results-under-review/resultsUnderReviewPartitions'
 
 type SectionApprovalOptions = {
   /** Pre–Approved-marker data: reviewer cleared and all results filled. */
@@ -13,31 +16,34 @@ type SectionApprovalState = {
   approved: boolean
 }
 
-/** Section has no pending reviewer and was approved in Results Under Review. */
+/** Section was approved in Results Under Review (status column; legacy name marker supported). */
 async function testAllocationSectionIsReviewApproved(
   testAllocationId: string,
   options?: SectionApprovalOptions,
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from('test_allocation_parameters')
-    .select('results_reviewer_id, results_reviewer_name, results')
+    .select('results_reviewer_id, results_reviewer_name, results_review_status, results')
     .eq('test_allocation_id', testAllocationId)
   if (error) throw error
 
   const rows = Array.isArray(data) ? data : []
   if (rows.length === 0) return false
 
-  const hasPendingReviewer = rows.some(
-    (p) => Boolean((p as { results_reviewer_id?: string | null }).results_reviewer_id),
+  const hasApprovedStatus = rows.some((p) =>
+    isResultsReviewStatusApproved(
+      (p as { results_review_status?: string | null }).results_review_status,
+      (p as { results_reviewer_name?: string | null }).results_reviewer_name,
+    ),
   )
-  if (hasPendingReviewer) return false
+  if (hasApprovedStatus) return true
 
-  const hasApprovedLabel = rows.some(
-    (p) =>
-      String((p as { results_reviewer_name?: string | null }).results_reviewer_name ?? '').trim() ===
-      RESULTS_REVIEW_APPROVED_LABEL,
-  )
-  if (hasApprovedLabel) return true
+  const hasPendingReviewer = rows.some((p) => {
+    const status = (p as { results_review_status?: string | null }).results_review_status
+    if (String(status ?? '').trim().toLowerCase() === RESULTS_REVIEW_STATUS_APPROVED) return false
+    return Boolean((p as { results_reviewer_id?: string | null }).results_reviewer_id)
+  })
+  if (hasPendingReviewer) return false
 
   if (options?.allowLegacyCompleteResults) {
     return rows.every((p) => String((p as { results?: string | null }).results ?? '').trim().length > 0)
@@ -176,16 +182,18 @@ export async function sampleStillHasResultsInReview(sampleId: string): Promise<b
 
   const { data: paramRows, error: paramErr } = await supabase
     .from('test_allocation_parameters')
-    .select('results_reviewer_id, results_reviewer_name')
+    .select('results_reviewer_id, results_reviewer_name, results_review_status')
     .in('test_allocation_id', taIds)
   if (paramErr) throw paramErr
 
   return (Array.isArray(paramRows) ? paramRows : []).some((p) => {
-    const row = p as { results_reviewer_id?: string | null; results_reviewer_name?: string | null }
-    if (row.results_reviewer_id) return true
-    return (
-      String(row.results_reviewer_name ?? '').trim() === RESULTS_REVIEW_APPROVED_LABEL
-    )
+    const row = p as {
+      results_reviewer_id?: string | null
+      results_reviewer_name?: string | null
+      results_review_status?: string | null
+    }
+    if (isResultsReviewStatusApproved(row.results_review_status, row.results_reviewer_name)) return true
+    return Boolean(row.results_reviewer_id)
   })
 }
 

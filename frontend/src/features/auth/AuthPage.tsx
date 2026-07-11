@@ -89,7 +89,7 @@ export default function AuthPage() {
                   Quality International Research & Laboratories Pvt. Ltd.
                 </p>
                 <h1 className="text-3xl font-bold tracking-tight">
-                  QIR&L LIMS Portal
+                  QIRLPL LIMS Portal
                 </h1>
                 <p className="text-sm text-white/60 mt-2 leading-relaxed max-w-sm">
                   Manage ISO/IEC 17025 operations in one place: samples, equipment, tests, reports, and user access.
@@ -137,7 +137,7 @@ export default function AuthPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Quality International Research & Laboratories Pvt. Ltd.
                 </p>
-                <h1 className="text-2xl font-bold tracking-tight mt-1">QIR&L LIMS Portal</h1>
+                <h1 className="text-2xl font-bold tracking-tight mt-1">QIRLPL LIMS Portal</h1>
               </div>
             </div>
 

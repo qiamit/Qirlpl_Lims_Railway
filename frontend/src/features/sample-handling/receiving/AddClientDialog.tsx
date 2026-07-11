@@ -219,14 +219,26 @@ export function AddClientDialog({
   open,
   onOpenChange,
   onSaved,
+  initialCompanyName,
+  nested = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (id: string) => void
+  initialCompanyName?: string
+  nested?: boolean
 }) {
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const state = useClientDialogState(open)
+  const { setForm } = state
+
+  useEffect(() => {
+    if (!open) return
+    const name = initialCompanyName?.trim()
+    if (!name) return
+    setForm((prev) => ({ ...prev, companyName: name }))
+  }, [open, initialCompanyName, setForm])
 
   const handleSave = async () => {
     setSaveMessage(null)
@@ -273,7 +285,11 @@ export function AddClientDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl w-[66vw] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
+      <DialogContent
+        className="max-w-2xl w-[66vw] max-h-[90vh] overflow-y-auto"
+        aria-describedby={undefined}
+        layer={nested ? 'nested' : 'default'}
+      >
         <DialogHeader>
           <DialogTitle>Add new Client (same as Client Directory form)</DialogTitle>
         </DialogHeader>

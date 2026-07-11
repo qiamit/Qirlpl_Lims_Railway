@@ -140,7 +140,7 @@ export default function TestAllocationMasterPage() {
           supabase
             .from('test_allocations')
             .select(
-              'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_start_date, results, test_end_date, sent_for_testing',
+              'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, sent_for_testing',
             )
             .order('created_at', { ascending: false }),
           supabase
@@ -245,9 +245,6 @@ export default function TestAllocationMasterPage() {
           assigned_employee_id?: string | null
           assigned_employee_name?: string | null
           test_parameter_summary?: string | null
-          test_start_date?: string | null
-          results?: string | null
-          test_end_date?: string | null
           sent_for_testing?: boolean | null
         },
       ): TestAllocationRow => {
@@ -270,9 +267,9 @@ export default function TestAllocationMasterPage() {
           assignedEmployeeName: testAlloc?.assigned_employee_name ?? null,
           referbackFromAllocation: sample?.referbackFromAllocation ?? false,
           sentForTesting: !!testAlloc?.sent_for_testing,
-          testStartDate: testAlloc?.test_start_date ?? null,
-          results: testAlloc?.results ?? null,
-          testEndDate: testAlloc?.test_end_date ?? null,
+          testStartDate: null,
+          results: null,
+          testEndDate: null,
         }
       }
 
@@ -284,9 +281,6 @@ export default function TestAllocationMasterPage() {
             assigned_employee_id?: string | null
             assigned_employee_name?: string | null
             test_parameter_summary?: string | null
-            test_start_date?: string | null
-            results?: string | null
-            test_end_date?: string | null
             sent_for_testing?: boolean | null
           }) => {
             const a = allocMap.get(t.sample_allocation_id) as
@@ -577,7 +571,7 @@ export default function TestAllocationMasterPage() {
         const { data: existingParamRows } = await supabase
           .from('test_allocation_parameters')
           .select(
-            'test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement, results_reviewer_id, results_reviewer_name, report_remark',
+            'test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement, results_reviewer_id, results_reviewer_name, results_review_status, report_remark',
           )
           .eq('test_allocation_id', allocationId)
         const existingByTpId = new Map(
@@ -594,19 +588,24 @@ export default function TestAllocationMasterPage() {
           const rowsToInsert = ids.map((id) => {
             const prev = existingByTpId.get(id)
             const sectionOverride = form.sectionSpecOverrides[id]?.trim()
+            const masterSpec = testParamOptions.find((o) => o.id === id)?.specificRequirement?.trim() || null
             return {
               test_allocation_id: allocationId,
               test_parameter_id: id,
               test_label: labelById.get(id) ?? id,
               specific_requirement:
                 sectionOverride ||
-                (typeof prev?.specific_requirement === 'string' ? prev.specific_requirement : null) ||
+                (typeof prev?.specific_requirement === 'string' && prev.specific_requirement.trim()
+                  ? prev.specific_requirement
+                  : null) ||
+                masterSpec ||
                 null,
               test_start_date: (prev?.test_start_date as string | null | undefined) ?? null,
               test_end_date: (prev?.test_end_date as string | null | undefined) ?? null,
               results: (prev?.results as string | null | undefined) ?? null,
               results_reviewer_id: (prev?.results_reviewer_id as string | null | undefined) ?? null,
               results_reviewer_name: (prev?.results_reviewer_name as string | null | undefined) ?? null,
+              results_review_status: (prev?.results_review_status as string | null | undefined) ?? null,
               report_remark: (prev?.report_remark as string | null | undefined) ?? null,
             }
           })

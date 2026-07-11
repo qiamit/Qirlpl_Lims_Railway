@@ -2,12 +2,19 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Construction } from 'lucide-react'
 import AuthPage from '@/features/auth/AuthPage'
 import {
+  DEFAULT_RESULT_VALIDATION_MODULE_SLUG,
+  resultValidationModulePath,
+} from '@/features/quality/result-validation/resultValidationModules'
+import {
   AiSettingsRoute,
   AuthenticatedShell,
   ClientsPage,
+  ConsentLetterPage,
   EquipmentPage,
   IqcPage,
   CompletedResultsMasterPage,
+  RetainDisposedMasterPage,
+  ResultValidationPage,
   DashboardPage,
   IsCodesPage,
   LabSettingsRoute,
@@ -70,10 +77,22 @@ export default function App() {
           <Route path="samples/results-review" element={<ResultsUnderReviewMasterPage />} />
           <Route path="samples/report-preparation" element={<TestReportPreparationMasterPage />} />
           <Route path="samples/completed" element={<CompletedResultsMasterPage />} />
+          <Route path="samples/retain-disposed" element={<RetainDisposedMasterPage />} />
+          <Route
+            path="samples/result-validation"
+            element={
+              <Navigate
+                to={resultValidationModulePath(DEFAULT_RESULT_VALIDATION_MODULE_SLUG)}
+                replace
+              />
+            }
+          />
+          <Route path="samples/result-validation/:moduleSlug" element={<ResultValidationPage />} />
 
           {/* Masters Management */}
           <Route path="masters/clients" element={<ClientsPage />} />
           <Route path="masters/is-codes" element={<IsCodesPage />} />
+          <Route path="masters/consent-letter" element={<ConsentLetterPage />} />
           <Route path="masters/nabl-scope" element={<ProductServicesPage />} />
           <Route path="masters/product-services" element={<Navigate to="/masters/nabl-scope" replace />} />
           <Route path="masters/test-parameter" element={<TestParameterPage />} />

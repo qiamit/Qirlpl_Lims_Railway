@@ -6,8 +6,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { TestParameterHeaderBar } from './TestParameterHeaderBar'
 import { buildTestParametersListAssistantContext } from './buildTestParameterAssistantContext'
 import { TestParameterForm } from './TestParameterForm'
-import { TestParameterTable } from './TestParameterTable'
+import {
+  TestParameterTable,
+  type TestParameterSortDir,
+  type TestParameterSortKey,
+} from './TestParameterTable'
 import { TestParameterTableFooterBar } from './TestParameterFooterBar'
+import { TestParameterUncertaintyDialog } from './TestParameterUncertaintyDialog'
+import type { UncertaintyCalculationData } from './testParameterUncertainty'
 import { IsCodesForm } from '@/features/masters/is-codes/IsCodesForm'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { emptyIsCodeForm, normalizeText as normalizeIsText, type IsCodeForm, type IsAspect } from '@/features/masters/is-codes/types'
@@ -15,7 +21,6 @@ import {
   emptyTestParameterForm,
   normalizeText,
   type AccreditationBodyRow,
-  type UnitRow,
   type TestParameterForm as TestParameterFormType,
   type TestParameterRow,
 } from './types'
@@ -147,17 +152,16 @@ export default function TestParameterMasterPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
+  const [sortKey, setSortKey] = useState<TestParameterSortKey>('isCode')
+  const [sortDir, setSortDir] = useState<TestParameterSortDir>('asc')
 
   const [form, setForm] = useState<TestParameterFormType>(() => emptyTestParameterForm())
 
   const [isCodes, setIsCodes] = useState<Array<{ id: string; displayCode: string; searchLabel: string; defaultTestMethod: string }>>([])
 
   const [accreditationBodies, setAccreditationBodies] = useState<AccreditationBodyRow[]>([])
-  const [units, setUnits] = useState<UnitRow[]>([])
   const [accreditationDialogOpen, setAccreditationDialogOpen] = useState(false)
   const [newAccreditationBody, setNewAccreditationBody] = useState('')
-  const [unitDialogOpen, setUnitDialogOpen] = useState(false)
-  const [newUnitName, setNewUnitName] = useState('')
 
   const [isCodeDialogOpen, setIsCodeDialogOpen] = useState(false)
   const [isCodeForm, setIsCodeForm] = useState<IsCodeForm>(() => emptyIsCodeForm())
@@ -173,6 +177,10 @@ export default function TestParameterMasterPage() {
   const [designationsByDepartment, setDesignationsByDepartment] = useState<Record<string, string[]>>(
     readDesignationByDepartmentFromStorage,
   )
+
+  const [uncertaintyRow, setUncertaintyRow] = useState<TestParameterRow | null>(null)
+  const [uncertaintyOpen, setUncertaintyOpen] = useState(false)
+  const [uncertaintySaving, setUncertaintySaving] = useState(false)
 
   useEffect(() => {
     if (searchParams.get('openAdd') !== '1') return
@@ -237,6 +245,7 @@ export default function TestParameterMasterPage() {
             ? (r.under_accreditation_ids as string[])
             : [],
           uncertainty_mu: (r.uncertainty_mu ? String(r.uncertainty_mu) : null) as string | null,
+          uncertainty_calculation_data: r.uncertainty_calculation_data ?? null,
           department: (r.department ? String(r.department) : null) as string | null,
           designation: (r.designation ? String(r.designation) : null) as string | null,
           acceptance_criteria: (r.acceptance_criteria ? String(r.acceptance_criteria) : null) as string | null,
@@ -286,14 +295,6 @@ export default function TestParameterMasterPage() {
 
       if (abErr) throw abErr
       setAccreditationBodies(Array.isArray(abData) ? (abData as AccreditationBodyRow[]) : [])
-
-      const { data: unitData, error: unitErr } = await supabase
-        .from('test_parameter_units')
-        .select('id, name, created_at')
-        .order('name', { ascending: true })
-
-      if (unitErr) throw unitErr
-      setUnits(Array.isArray(unitData) ? (unitData as UnitRow[]) : [])
     } catch (err) {
       setSaveMessage((prev) => prev ?? (err instanceof Error ? err.message : 'Unable to load masters'))
     }
@@ -427,12 +428,61 @@ export default function TestParameterMasterPage() {
     })
   }, [rows, search])
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const sortedRows = useMemo(() => {
+    const sortValue = (r: TestParameterRow): string => {
+      switch (sortKey) {
+        case 'isCode':
+          return (r.is_code_label ?? '').trim().toLowerCase()
+        case 'itemName':
+          return (r.item_name ?? '').trim().toLowerCase()
+        case 'testMethod':
+          return [r.test_method, r.clause_no, r.unit_value].filter(Boolean).join(' ').trim().toLowerCase()
+        case 'requirement':
+          return (r.specific_requirement ?? '').trim().toLowerCase()
+        case 'uncertainty':
+          return (r.uncertainty_mu ?? '').trim().toLowerCase()
+        case 'accreditation': {
+          if (!r.under_accreditation_ids?.length) return ''
+          return r.under_accreditation_ids
+            .map((id) => accreditationBodies.find((b) => b.id === id)?.name ?? '')
+            .filter(Boolean)
+            .join(', ')
+            .toLowerCase()
+        }
+        default:
+          return ''
+      }
+    }
+
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...filteredRows].sort((a, b) => {
+      const av = sortValue(a)
+      const bv = sortValue(b)
+      const cmp = av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true })
+      if (cmp !== 0) return cmp * dir
+      const nameCmp = (a.item_name ?? '').localeCompare(b.item_name ?? '', undefined, {
+        sensitivity: 'base',
+      })
+      return nameCmp * dir
+    })
+  }, [filteredRows, sortKey, sortDir, accreditationBodies])
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize))
 
   const pagedRows = useMemo(() => {
     const start = (page - 1) * pageSize
-    return filteredRows.slice(start, start + pageSize)
-  }, [filteredRows, page, pageSize])
+    return sortedRows.slice(start, start + pageSize)
+  }, [sortedRows, page, pageSize])
+
+  const handleSort = (key: TestParameterSortKey) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+    setPage(1)
+  }
 
   const assistantContext = useMemo(
     () => buildTestParametersListAssistantContext(filteredRows, search),
@@ -702,7 +752,7 @@ export default function TestParameterMasterPage() {
   }
 
   const handleExport = () => {
-    const exportRows = selectedRows.length > 0 ? selectedRows : filteredRows
+    const exportRows = selectedRows.length > 0 ? selectedRows : sortedRows
 
     const headers = [
       'id',
@@ -746,7 +796,7 @@ export default function TestParameterMasterPage() {
   }
 
   const handlePrintSelected = () => {
-    const exportRows = selectedRows.length > 0 ? selectedRows : filteredRows
+    const exportRows = selectedRows.length > 0 ? selectedRows : sortedRows
     if (exportRows.length === 0) return
 
     const esc = (s: string | null | undefined) => (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -927,50 +977,36 @@ export default function TestParameterMasterPage() {
     })()
   }
 
-  const handleAddUnit = () => {
-    const name = normalizeText(newUnitName)
-    if (!name) return
-
-    void (async () => {
-      setSaveMessage(null)
-      try {
-        const { data, error } = await supabase
-          .from('test_parameter_units')
-          .insert({ name })
-          .select('id, name, created_at')
-          .single()
-
-        if (error) throw error
-        const row = data as UnitRow
-        setUnits((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)))
-        setForm((prev) => ({ ...prev, unitValue: row.name }))
-      } catch (err) {
-        setSaveMessage(err instanceof Error ? err.message : 'Unable to add measurement unit')
-      } finally {
-        setNewUnitName('')
-        setUnitDialogOpen(false)
-      }
-    })()
+  const handleOpenUncertainty = (row: TestParameterRow) => {
+    setUncertaintyRow(row)
+    setUncertaintyOpen(true)
   }
 
-  const handleDeleteUnit = (id: string) => {
-    const target = units.find((unit) => unit.id === id)
-    void (async () => {
-      try {
-        const { error } = await supabase.from('test_parameter_units').delete().eq('id', id)
-        if (error) throw error
-
-        setUnits((prev) => prev.filter((unit) => unit.id !== id))
-        if (target) {
-          setForm((prev) => ({
-            ...prev,
-            unitValue: prev.unitValue === target.name ? '' : prev.unitValue,
-          }))
-        }
-      } catch (err) {
-        setSaveMessage(err instanceof Error ? err.message : 'Unable to delete measurement unit')
-      }
-    })()
+  const handleSaveUncertainty = async (
+    uncertaintyMu: string,
+    calculationData: UncertaintyCalculationData,
+  ) => {
+    if (!uncertaintyRow) return
+    setUncertaintySaving(true)
+    setSaveMessage(null)
+    try {
+      const { error } = await supabase
+        .from('test_parameters')
+        .update({
+          uncertainty_mu: normalizeText(uncertaintyMu) || null,
+          uncertainty_calculation_data: calculationData,
+        })
+        .eq('id', uncertaintyRow.id)
+      if (error) throw error
+      setSaveMessage('Uncertainty (MU) saved.')
+      setUncertaintyOpen(false)
+      setUncertaintyRow(null)
+      await loadRows()
+    } catch (err) {
+      setSaveMessage(formatSupabaseError(err))
+    } finally {
+      setUncertaintySaving(false)
+    }
   }
 
   return (
@@ -1016,13 +1052,6 @@ export default function TestParameterMasterPage() {
             setNewAccreditationBody={setNewAccreditationBody}
             onAddAccreditationBody={handleAddAccreditationBody}
             onDeleteAccreditationBody={handleDeleteAccreditationBody}
-            units={units}
-            unitDialogOpen={unitDialogOpen}
-            setUnitDialogOpen={setUnitDialogOpen}
-            newUnitName={newUnitName}
-            setNewUnitName={setNewUnitName}
-            onAddUnit={handleAddUnit}
-            onDeleteUnit={handleDeleteUnit}
             onOpenAddIsCodeForm={openAddIsCodeForm}
             departments={departments}
             designations={designations}
@@ -1067,8 +1096,23 @@ export default function TestParameterMasterPage() {
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
+        onOpenUncertainty={handleOpenUncertainty}
         accreditationBodies={accreditationBodies}
         onAssistantDataChanged={() => void loadRows()}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
+      />
+
+      <TestParameterUncertaintyDialog
+        row={uncertaintyRow}
+        open={uncertaintyOpen}
+        saving={uncertaintySaving}
+        onOpenChange={(open) => {
+          setUncertaintyOpen(open)
+          if (!open) setUncertaintyRow(null)
+        }}
+        onSave={handleSaveUncertainty}
       />
 
       <TestParameterTableFooterBar

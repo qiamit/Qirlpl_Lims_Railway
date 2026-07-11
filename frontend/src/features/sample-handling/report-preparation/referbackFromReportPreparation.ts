@@ -5,7 +5,7 @@ import {
   referbackSectionToSampleReceiving,
 } from '@/features/sample-handling/referbackFlow'
 import { ensureTestAllocationParameterRows } from '@/features/sample-handling/shared/ensureTestAllocationParameterRows'
-import { RESULTS_REVIEW_APPROVED_LABEL } from '@/features/sample-handling/results-under-review/resultsUnderReviewPartitions'
+import { isResultsReviewStatusApproved } from '@/features/sample-handling/results-under-review/resultsUnderReviewPartitions'
 import type { SampleStage } from '@/features/sample-handling/types'
 
 export type ReportPrepReferbackTarget =
@@ -71,31 +71,47 @@ async function loadSectionStates(sampleId: string): Promise<SectionState[]> {
   }
 
   const taIds = [...taByAlloc.values()].map((t) => t.id)
-  const paramsByTa = new Map<string, Array<{ results_reviewer_id?: string | null; results_reviewer_name?: string | null }>>()
+  const paramsByTa = new Map<
+    string,
+    Array<{
+      results_reviewer_id?: string | null
+      results_reviewer_name?: string | null
+      results_review_status?: string | null
+    }>
+  >()
 
   if (taIds.length > 0) {
     const { data: paramRows, error: paramErr } = await supabase
       .from('test_allocation_parameters')
-      .select('test_allocation_id, results_reviewer_id, results_reviewer_name')
+      .select('test_allocation_id, results_reviewer_id, results_reviewer_name, results_review_status')
       .in('test_allocation_id', taIds)
     if (paramErr) throw paramErr
     for (const p of Array.isArray(paramRows) ? paramRows : []) {
       const taId = String((p as { test_allocation_id?: string }).test_allocation_id ?? '').trim()
       if (!taId) continue
       if (!paramsByTa.has(taId)) paramsByTa.set(taId, [])
-      paramsByTa.get(taId)!.push(p as { results_reviewer_id?: string | null; results_reviewer_name?: string | null })
+      paramsByTa.get(taId)!.push(
+        p as {
+          results_reviewer_id?: string | null
+          results_reviewer_name?: string | null
+          results_review_status?: string | null
+        },
+      )
     }
   }
 
   return allocIds.map((allocId) => {
     const ta = taByAlloc.get(allocId)
     const params = ta ? (paramsByTa.get(ta.id) ?? []) : []
+    const isApproved = params.some((p) =>
+      isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name),
+    )
     const hasActiveReviewer = params.some((p) => {
+      if (isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name)) return false
       const id = p.results_reviewer_id?.trim()
       const name = p.results_reviewer_name?.trim()
-      return Boolean(id) || (Boolean(name) && name !== RESULTS_REVIEW_APPROVED_LABEL)
+      return Boolean(id) || Boolean(name)
     })
-    const isApproved = params.some((p) => p.results_reviewer_name?.trim() === RESULTS_REVIEW_APPROVED_LABEL)
     return {
       sampleAllocationId: allocId,
       testAllocationId: ta?.id ?? null,
@@ -182,7 +198,11 @@ async function syncSampleStageAfterReferback(sampleId: string): Promise<SampleSt
 async function clearSectionReviewMarkers(testAllocationId: string): Promise<void> {
   const { error } = await supabase
     .from('test_allocation_parameters')
-    .update({ results_reviewer_id: null, results_reviewer_name: null })
+    .update({
+      results_reviewer_id: null,
+      results_reviewer_name: null,
+      results_review_status: null,
+    })
     .eq('test_allocation_id', testAllocationId)
   if (error) throw error
 }

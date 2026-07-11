@@ -241,6 +241,22 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
   return sortReportResultRows(rows)
 }
 
+/** Save Part C specified requirement override for one section parameter row. */
+export async function saveReportSpecifiedRequirement(
+  parameterId: string,
+  specificRequirement: string | null,
+): Promise<void> {
+  const id = parameterId.trim()
+  if (!id) throw new Error('Parameter row is missing.')
+
+  const { error } = await supabase
+    .from('test_allocation_parameters')
+    .update({ specific_requirement: specificRequirement || null })
+    .eq('id', id)
+
+  if (error) throw error
+}
+
 /** Save Part C remarks edited in Test Report Preparation. */
 export async function saveReportResultRemarks(rows: ReportResultRow[]): Promise<void> {
   const updates = rows

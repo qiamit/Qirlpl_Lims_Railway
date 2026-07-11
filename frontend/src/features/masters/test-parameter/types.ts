@@ -9,6 +9,7 @@ export type TestParameterRow = {
   specific_requirement: string | null
   under_accreditation_ids: string[]
   uncertainty_mu: string | null
+  uncertainty_calculation_data: unknown | null
   department: string | null
   designation: string | null
   acceptance_criteria: string | null

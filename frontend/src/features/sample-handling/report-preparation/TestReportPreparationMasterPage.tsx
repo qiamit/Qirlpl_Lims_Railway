@@ -18,6 +18,7 @@ import { formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
 import { isSampleVisibleInReportPreparation } from './sampleReportReadiness'
+import { finalizeResultsStatusBeforeIssue } from './finalizeResultsStatusBeforeIssue'
 import { ReportResultsTable } from './ReportResultsTable'
 import { TestReportPreparationFooterBar } from './TestReportPreparationFooterBar'
 import { TestReportPreparationHeaderBar } from './TestReportPreparationHeaderBar'
@@ -55,6 +56,7 @@ import {
   saveReportResultRemarks,
   type ReportResultRow,
 } from './reportResultRows'
+import { evaluateResultConformity } from './evaluateResultConformity'
 import {
   appendReportScopeSuffix,
   REPORT_SCOPE_TITLE,
@@ -70,6 +72,7 @@ import {
 } from './nablUlrNumber'
 import { fetchNextTestReportNumber, toCanonicalReportNumber } from './formattedTestReportNumber'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
+import { buildSampleRetentionIssuePayload } from '@/features/sample-handling/retain-disposed/sampleRetention'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import {
   sortTestReportPreparationRows,
@@ -650,7 +653,16 @@ export default function TestReportPreparationMasterPage() {
     setIssueLoading(true)
     setSaveMessage(null)
     try {
+      // Results status pehle finalize — phir sample stage completed pe move
+      await finalizeResultsStatusBeforeIssue(active.id)
+
       const now = new Date().toISOString()
+      const { data: sampleMeta } = await supabase
+        .from('samples')
+        .select('sample_quantity')
+        .eq('id', active.id)
+        .maybeSingle()
+      const sampleQuantity = (sampleMeta as { sample_quantity?: string } | null)?.sample_quantity
       const partBUpdate = partBDetails ? partBDetailsToSampleUpdate(partBDetails) : {}
       const letterheadUpdate = letterheadsToSampleUpdate(letterheadsByScope, scopes)
       const issuePayload: Record<string, string | boolean | null> = {
@@ -661,6 +673,7 @@ export default function TestReportPreparationMasterPage() {
         test_report_issued_at: now,
         test_report_nabl_issued_at: scopes.includes('nabl') ? now : null,
         test_report_non_nabl_issued_at: scopes.includes('non_nabl') ? now : null,
+        ...buildSampleRetentionIssuePayload(now, sampleQuantity),
         ...partBUpdate,
         ...letterheadUpdate,
       }
@@ -888,6 +901,23 @@ export default function TestReportPreparationMasterPage() {
         sampleId={active?.id ?? null}
         sectionCodeEditable
         onSectionCodeUpdated={handlePrepareSectionCodeUpdated}
+        specifiedRequirementEditable
+        onSpecifiedRequirementUpdated={(rowKey, nextValue) => {
+          setPrepareResultRows((rows) =>
+            rows.map((r) => {
+              if (r.rowKey !== rowKey) return r
+              const display = nextValue.trim() || '—'
+              return {
+                ...r,
+                specifiedRequirement: display,
+                remark: evaluateResultConformity(
+                  r.observedValue === '—' ? '' : r.observedValue,
+                  nextValue,
+                ),
+              }
+            }),
+          )
+        }}
       />
 
       <Dialog

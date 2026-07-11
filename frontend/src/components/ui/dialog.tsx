@@ -10,9 +10,26 @@ const DialogTrigger = DialogPrimitive.Trigger
 
 const DialogClose = DialogPrimitive.Close
 
-const DialogPortal = ({ children, ...props }: DialogPrimitive.DialogPortalProps) => (
+type DialogLayer = 'default' | 'nested' | 'stacked'
+
+const dialogLayerZClass = (layer: DialogLayer) => {
+  if (layer === 'nested') return 'z-[60]'
+  if (layer === 'stacked') return 'z-[70]'
+  return 'z-50'
+}
+
+const DialogPortal = ({
+  children,
+  layer = 'default',
+  ...props
+}: DialogPrimitive.DialogPortalProps & { layer?: DialogLayer }) => (
   <DialogPrimitive.Portal {...props}>
-    <div className="fixed inset-0 z-50 flex items-start justify-center sm:items-center">
+    <div
+      className={cn(
+        'fixed inset-0 flex items-start justify-center sm:items-center',
+        dialogLayerZClass(layer),
+      )}
+    >
       {children}
     </div>
   </DialogPrimitive.Portal>
@@ -21,11 +38,15 @@ DialogPortal.displayName = DialogPrimitive.Portal.displayName
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay> & { layer?: DialogLayer }
+>(({ className, layer = 'default', ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0', className)}
+    className={cn(
+      'fixed inset-0 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      dialogLayerZClass(layer),
+      className,
+    )}
     {...props}
   />
 ))
@@ -36,31 +57,52 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     /** Keep form dialogs open when focus leaves due to tab switch */
     persistOnFocusLoss?: boolean
+    /** Render the top-right close control (default true) */
+    showCloseButton?: boolean
+    /** Raise nested dialogs above an already-open parent dialog; use stacked for a third layer */
+    layer?: DialogLayer
   }
->(({ className, children, persistOnFocusLoss, onFocusOutside, 'aria-describedby': ariaDescribedBy, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      aria-describedby={ariaDescribedBy ?? undefined}
-      onFocusOutside={(e) => {
-        if (persistOnFocusLoss) preventFormDialogFocusOutside(e)
-        onFocusOutside?.(e)
-      }}
-      className={cn(
-        'fixed z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:rounded-lg',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-))
+>(
+  (
+    {
+      className,
+      children,
+      persistOnFocusLoss,
+      showCloseButton = true,
+      layer = 'default',
+      onFocusOutside,
+      'aria-describedby': ariaDescribedBy,
+      ...props
+    },
+    ref,
+  ) => (
+    <DialogPortal layer={layer}>
+      <DialogOverlay layer={layer} />
+      <DialogPrimitive.Content
+        ref={ref}
+        aria-describedby={ariaDescribedBy ?? undefined}
+        onFocusOutside={(e) => {
+          if (persistOnFocusLoss) preventFormDialogFocusOutside(e)
+          onFocusOutside?.(e)
+        }}
+        className={cn(
+          'fixed grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:rounded-lg',
+          dialogLayerZClass(layer),
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton ? (
+          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        ) : null}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  ),
+)
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

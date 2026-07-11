@@ -41,10 +41,34 @@ export type SectionParameterEntry = {
   paramRowId: string | null
   testParameterId: string | null
   testLabel: string
+  sectionSpecOverride: string | null
   specificRequirement: string | null
   testStartDate: string | null
   testEndDate: string | null
   results: string | null
+}
+
+export function mergeSectionDraftPreservingEdits(
+  prev: SectionParameterEntry[],
+  next: SectionParameterEntry[],
+): SectionParameterEntry[] {
+  if (prev.length === 0) return next
+  return next.map((n) => {
+    const match = prev.find((p) => {
+      if (p.paramRowId && n.paramRowId && p.paramRowId === n.paramRowId) return true
+      if (p.testParameterId && n.testParameterId && p.testParameterId === n.testParameterId) {
+        return true
+      }
+      return p.testLabel.trim().toLowerCase() === n.testLabel.trim().toLowerCase()
+    })
+    if (!match) return n
+    return {
+      ...n,
+      results: match.results,
+      testStartDate: match.testStartDate,
+      testEndDate: match.testEndDate,
+    }
+  })
 }
 
 export function getSectionParametersForEntry(row: TestAllocationRow): SectionParameterEntry[] {
@@ -54,6 +78,7 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
       paramRowId: p.id && !p.id.startsWith('local-') ? p.id : null,
       testParameterId: p.testParameterId,
       testLabel: p.testLabel,
+      sectionSpecOverride: p.sectionSpecOverride ?? null,
       specificRequirement: p.specificRequirement ?? null,
       testStartDate: p.testStartDate ?? null,
       testEndDate: p.testEndDate ?? null,
@@ -68,6 +93,7 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
         paramRowId: null,
         testParameterId: null,
         testLabel: '-',
+        sectionSpecOverride: null,
         specificRequirement: null,
         testStartDate: row.testStartDate ?? null,
         testEndDate: row.testEndDate ?? null,
@@ -79,6 +105,7 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
     paramRowId: null,
     testParameterId: ids[i] ?? null,
     testLabel: label,
+    sectionSpecOverride: null,
     specificRequirement: null,
     testStartDate: row.testStartDate ?? null,
     testEndDate: row.testEndDate ?? null,

@@ -7,6 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea'
 import { Pencil, FileText, FolderOpen, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import { openAddTestParameterWindow } from '@/features/masters/test-parameter/openAddTestParameterWindow'
+import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
+import { saveSectionSpecificRequirement } from '../shared/saveSectionSpecificRequirement'
 import type { TestAllocationRow } from '../types'
 
 export type TestAllocationFormState = {
@@ -147,7 +150,11 @@ export function TestAllocationForm({
 
   const openEditSpec = (opt: TestParamOption) => {
     setEditSpecParamId(opt.id)
-    const current = form.sectionSpecOverrides[opt.id] ?? opt.specificRequirement ?? ''
+    const current =
+      resolveSectionSpecificRequirement(
+        form.sectionSpecOverrides[opt.id],
+        opt.specificRequirement,
+      ) ?? ''
     setEditSpecValue(current)
     setEditSpecError(null)
     setEditSpecOpen(true)
@@ -160,30 +167,15 @@ export function TestAllocationForm({
     const nextValue = editSpecValue.trim()
     try {
       const testAllocationId = row.testAllocationId?.trim()
-      if (testAllocationId) {
-        const label = testParamOptions.find((o) => o.id === editSpecParamId)?.label ?? editSpecParamId
-        const { data: existing } = await supabase
-          .from('test_allocation_parameters')
-          .select('id')
-          .eq('test_allocation_id', testAllocationId)
-          .eq('test_parameter_id', editSpecParamId)
-          .maybeSingle()
+      const label = testParamOptions.find((o) => o.id === editSpecParamId)?.label ?? editSpecParamId
 
-        if (existing?.id) {
-          const { error } = await supabase
-            .from('test_allocation_parameters')
-            .update({ specific_requirement: nextValue || null })
-            .eq('id', existing.id)
-          if (error) throw error
-        } else {
-          const { error } = await supabase.from('test_allocation_parameters').insert({
-            test_allocation_id: testAllocationId,
-            test_parameter_id: editSpecParamId,
-            test_label: label,
-            specific_requirement: nextValue || null,
-          })
-          if (error) throw error
-        }
+      if (testAllocationId) {
+        await saveSectionSpecificRequirement({
+          testAllocationId,
+          testParameterId: editSpecParamId,
+          testLabel: label,
+          specificRequirement: nextValue || null,
+        })
       }
 
       onChange({
@@ -247,12 +239,12 @@ export function TestAllocationForm({
   }
 
   const openAddTestParameterDirectory = () => {
-    const params = new URLSearchParams({ openAdd: '1' })
-    if (row.isCodeId) params.set('isCodeId', row.isCodeId)
-    if (row.isCodeLabel?.trim()) params.set('isCodeLabel', row.isCodeLabel.trim())
-    if (row.department?.trim()) params.set('department', row.department.trim())
-    if (form.designation?.trim()) params.set('designation', form.designation.trim())
-    window.open(`/masters/test-parameter?${params.toString()}`, '_blank', 'noopener,noreferrer')
+    openAddTestParameterWindow({
+      isCodeId: row.isCodeId,
+      isCodeLabel: row.isCodeLabel,
+      department: row.department,
+      designation: form.designation,
+    })
   }
 
   const openViewFilesWindow = async () => {
@@ -435,7 +427,15 @@ export function TestAllocationForm({
           ) : searchFilteredOptions.length === 0 ? (
             <p className="text-sm text-muted-foreground p-2 text-center">No matches for &quot;{testParamSearch.trim()}&quot;.</p>
           ) : (
-            <table className="w-max min-w-full table-auto text-sm border-collapse">
+            <table className="w-full table-fixed text-sm border-collapse">
+              <colgroup>
+                <col className="w-9" />
+                <col className="w-[22%]" />
+                <col className="w-[10%]" />
+                <col className="w-[28%]" />
+                <col className="w-[14%]" />
+                <col className="w-[20%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="w-9 shrink-0 p-2 font-medium">
@@ -449,11 +449,11 @@ export function TestAllocationForm({
                       />
                     </div>
                   </th>
-                  <th className="p-2 font-medium text-left whitespace-nowrap">Test Name</th>
-                  <th className="p-2 px-3 font-medium text-center whitespace-nowrap">Clause Number</th>
-                  <th className="p-2 font-medium text-center whitespace-nowrap">Specified Requirement</th>
-                  <th className="p-2 px-3 font-medium text-center whitespace-nowrap">Uncertainty of Measurement</th>
-                  <th className="p-2 px-3 font-medium text-center whitespace-nowrap">Under Accreditation</th>
+                  <th className="p-2 font-medium text-left align-top">Test Name</th>
+                  <th className="p-2 px-3 font-medium text-center align-top">Clause Number</th>
+                  <th className="p-2 font-medium text-center align-top">Specified Requirement</th>
+                  <th className="p-2 px-3 font-medium text-center align-top">Uncertainty of Measurement</th>
+                  <th className="p-2 px-3 font-medium text-center align-top">Under Accreditation</th>
                 </tr>
               </thead>
               <tbody>
@@ -463,7 +463,7 @@ export function TestAllocationForm({
                     className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer"
                     onClick={() => toggleTestParam(opt.id)}
                   >
-                    <td className="w-9 shrink-0 p-2">
+                    <td className="w-9 shrink-0 p-2 align-top">
                       <div className="flex justify-center">
                         <input
                           type="checkbox"
@@ -473,18 +473,22 @@ export function TestAllocationForm({
                         />
                       </div>
                     </td>
-                    <td className="p-2 text-left align-top whitespace-nowrap">{opt.label || '-'}</td>
-                    <td className="p-2 px-3 text-center align-top text-muted-foreground whitespace-nowrap">
+                    <td className="p-2 text-left align-top break-words whitespace-normal">
+                      {opt.label || '-'}
+                    </td>
+                    <td className="p-2 px-3 text-center align-top text-muted-foreground break-words whitespace-normal">
                       {opt.clauseNo?.trim() || '-'}
                     </td>
-                    <td className="p-2 text-center align-top text-muted-foreground max-w-md whitespace-normal">
-                      <div className="inline-flex items-center justify-center gap-1">
-                        <span className="break-words">{displaySpecificRequirement(opt)}</span>
+                    <td className="p-2 align-top text-muted-foreground break-words whitespace-normal">
+                      <div className="flex items-start w-full gap-1">
+                        <span className="flex-1 min-w-0 break-words whitespace-pre-wrap text-center">
+                          {displaySpecificRequirement(opt)}
+                        </span>
                         <Button
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 shrink-0"
+                          className="h-7 w-7 shrink-0 ml-auto"
                           aria-label="Edit specified requirement"
                           onClick={(e) => {
                             e.stopPropagation()
@@ -495,10 +499,12 @@ export function TestAllocationForm({
                         </Button>
                       </div>
                     </td>
-                    <td className="p-2 px-3 text-center align-top text-muted-foreground whitespace-nowrap">
+                    <td className="p-2 px-3 text-center align-top text-muted-foreground break-words whitespace-normal">
                       {opt.uncertaintyMu?.trim() || '-'}
                     </td>
-                    <td className="p-2 px-3 text-center align-top whitespace-nowrap">{opt.underAccreditation ?? '-'}</td>
+                    <td className="p-2 px-3 text-center align-top break-words whitespace-normal">
+                      {opt.underAccreditation ?? '-'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

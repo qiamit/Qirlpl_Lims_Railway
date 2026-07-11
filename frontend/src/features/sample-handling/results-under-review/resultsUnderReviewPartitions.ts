@@ -4,8 +4,36 @@ import {
   getSectionParametersForEntry,
 } from '../sample-under-testing/sectionParameterRows'
 
-/** Stored in results_reviewer_name when a section is approved (reviewer id cleared). */
+/** Legacy marker previously written into results_reviewer_name (migrated to results_review_status). */
 export const RESULTS_REVIEW_APPROVED_LABEL = 'Approved'
+
+export const RESULTS_REVIEW_STATUS_UNDER_REVIEW = 'under_review'
+export const RESULTS_REVIEW_STATUS_APPROVED = 'approved'
+
+export type ResultsReviewStatusValue =
+  | typeof RESULTS_REVIEW_STATUS_UNDER_REVIEW
+  | typeof RESULTS_REVIEW_STATUS_APPROVED
+
+export function normalizeResultsReviewStatus(
+  status: string | null | undefined,
+): ResultsReviewStatusValue | null {
+  const s = String(status ?? '')
+    .trim()
+    .toLowerCase()
+  if (s === RESULTS_REVIEW_STATUS_APPROVED) return RESULTS_REVIEW_STATUS_APPROVED
+  if (s === RESULTS_REVIEW_STATUS_UNDER_REVIEW || s === 'submitted') {
+    return RESULTS_REVIEW_STATUS_UNDER_REVIEW
+  }
+  return null
+}
+
+export function isResultsReviewStatusApproved(
+  status: string | null | undefined,
+  reviewerName?: string | null,
+): boolean {
+  if (normalizeResultsReviewStatus(status) === RESULTS_REVIEW_STATUS_APPROVED) return true
+  return reviewerName?.trim() === RESULTS_REVIEW_APPROVED_LABEL
+}
 
 export function isActiveReviewerName(name: string | null | undefined): boolean {
   const n = name?.trim()
@@ -15,8 +43,13 @@ export function isActiveReviewerName(name: string | null | undefined): boolean {
 }
 
 export function sectionHasReviewerAssignment(row: TestAllocationRow): boolean {
+  if (sectionWasApprovedForReview(row)) return false
   if (row.resultsReviewerName?.trim() && isActiveReviewerName(row.resultsReviewerName)) return true
   return (row.parameters ?? []).some((p) => {
+    const status = (p as { resultsReviewStatus?: string | null }).resultsReviewStatus
+    if (isResultsReviewStatusApproved(status, (p as { resultsReviewerName?: string | null }).resultsReviewerName)) {
+      return false
+    }
     const reviewerId = (p as { resultsReviewerId?: string | null }).resultsReviewerId
     const reviewerName = (p as { resultsReviewerName?: string | null }).resultsReviewerName
     return Boolean(reviewerId?.trim()) || isActiveReviewerName(reviewerName)
@@ -24,11 +57,12 @@ export function sectionHasReviewerAssignment(row: TestAllocationRow): boolean {
 }
 
 export function sectionWasApprovedForReview(row: TestAllocationRow): boolean {
-  if (row.resultsReviewerName?.trim() === RESULTS_REVIEW_APPROVED_LABEL) return true
-  return (row.parameters ?? []).some(
-    (p) =>
-      (p as { resultsReviewerName?: string | null }).resultsReviewerName?.trim() ===
-      RESULTS_REVIEW_APPROVED_LABEL,
+  if (isResultsReviewStatusApproved(row.resultsReviewStatus, row.resultsReviewerName)) return true
+  return (row.parameters ?? []).some((p) =>
+    isResultsReviewStatusApproved(
+      (p as { resultsReviewStatus?: string | null }).resultsReviewStatus,
+      (p as { resultsReviewerName?: string | null }).resultsReviewerName,
+    ),
   )
 }
 
@@ -39,18 +73,26 @@ function sectionHasCompleteResults(row: TestAllocationRow): boolean {
 }
 
 function isSampleInReviewWorkflowStage(stage: TestAllocationRow['sampleStage']): boolean {
-  return stage === 'results_review' || stage === 'report_preparation' || stage === 'under_testing'
+  return (
+    stage === 'results_review' ||
+    stage === 'report_preparation' ||
+    stage === 'under_testing' ||
+    stage === 'completed'
+  )
 }
 
 /**
- * Section belongs on Results Under Review — active review, approved history,
- * or sections awaiting re-review. Excludes sections referred back to Sample Under Testing.
+ * Section belongs on Results Under Review — active review, approved history
+ * (incl. issued / completed), or sections awaiting re-review.
+ * Excludes sections referred back to Sample Under Testing.
  */
 export function isSectionVisibleInResultsUnderReview(row: TestAllocationRow): boolean {
   if (row.referredBackFromReview) return false
   if (sectionHasReviewerAssignment(row)) return true
   if (sectionWasApprovedForReview(row)) return true
   if (!isSampleInReviewWorkflowStage(row.sampleStage)) return false
+
+  if (row.sampleStage === 'completed' && sectionHasCompleteResults(row)) return true
 
   if (row.sentForTesting && sectionHasCompleteResults(row)) return true
 
@@ -62,9 +104,10 @@ export function isSectionVisibleInScopedResultsUnderReview(row: TestAllocationRo
   return isSectionVisibleInResultsUnderReview(row)
 }
 
-/** Pending = in review workflow and not yet marked Approved. */
+/** Pending = in review workflow and not yet marked Approved (issued/completed stay in Reviewed). */
 export function isResultsReviewPendingRow(row: TestAllocationRow): boolean {
   if (sectionWasApprovedForReview(row)) return false
+  if (row.sampleStage === 'completed') return false
   return isSectionVisibleInResultsUnderReview(row)
 }
 
@@ -82,7 +125,7 @@ export function partitionResultsUnderReviewRows(rows: TestAllocationRow[]) {
   const pending: TestAllocationRow[] = []
   const reviewed: TestAllocationRow[] = []
   for (const row of rows) {
-    if (sectionWasApprovedForReview(row)) {
+    if (sectionWasApprovedForReview(row) || row.sampleStage === 'completed') {
       reviewed.push(row)
     } else if (isResultsReviewPendingRow(row)) {
       pending.push(row)

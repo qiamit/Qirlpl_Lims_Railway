@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState, type ElementType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
+  FileSignature,
   FlaskConical,
   Users,
   TestTube,
   ShieldCheck,
   BookOpen,
+  ClipboardCheck,
   ChevronDown,
   ChevronRight,
   PanelLeftClose,
@@ -37,6 +39,10 @@ import { supabase } from '@/lib/supabaseClient'
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import { canAccessNavItem as checkNavAccess, isRestrictedModuleRole, type UserAccessContext } from '@/lib/moduleAccess'
 import { RequireModuleAccess } from '@/components/auth/RequireModuleAccess'
+import {
+  RESULT_VALIDATION_MODULES,
+  resultValidationModulePath,
+} from '@/features/quality/result-validation/resultValidationModules'
 
 interface NavItem {
   label: string
@@ -67,18 +73,73 @@ function navItemAccessible(item: NavItem, ctx: UserAccessContext): boolean {
   return checkNavAccess(item.requiredDesignations, item.to, ctx)
 }
 
+const RESULT_VALIDATION_NAV: NavItem = {
+  label: 'Validating the Results',
+  icon: ClipboardCheck,
+  clause: '7.7',
+  children: RESULT_VALIDATION_MODULES.map((module) => ({
+    label: module.label,
+    to: resultValidationModulePath(module.slug),
+    icon: ClipboardCheck,
+    clause: module.clause,
+  })),
+}
+
 const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Process Requirements',
     clause: 'Clause 7',
     items: [
-      { label: 'Sample Receiving', to: '/samples/receiving', icon: FlaskConical, clause: '7.4', requiredDesignations: ['Laboratory Director', 'Sample Coordinator'] },
-      { label: 'Sample Allocation', to: '/samples/allocation', icon: FlaskConical, clause: '7.4', requiredDesignations: ['Laboratory Director', 'Sample Incharge'] },
-      { label: 'Test Allocation', to: '/samples/test-allocation', icon: FlaskConical, clause: '7.4', requiredDesignations: ['Laboratory Director', 'Technical Manager'] },
-      { label: 'Sample Under Testing', to: '/samples/under-testing', icon: FlaskConical, clause: '7.4' },
-      { label: 'Results Under Review', to: '/samples/results-review', icon: FlaskConical, clause: '7.4' },
-      { label: 'Test Report Preparation', to: '/samples/report-preparation', icon: FlaskConical, clause: '7.4' },
-      { label: 'Issued Test Report', to: '/samples/completed', icon: FlaskConical, clause: '7.8' },
+      {
+        label: 'Sample Handling',
+        icon: FlaskConical,
+        clause: '7.4',
+        children: [
+          {
+            label: 'Sample Receiving',
+            to: '/samples/receiving',
+            icon: FlaskConical,
+            clause: '7.4',
+            requiredDesignations: ['Laboratory Director', 'Sample Coordinator'],
+          },
+          {
+            label: 'Sample Allocation',
+            to: '/samples/allocation',
+            icon: FlaskConical,
+            clause: '7.4',
+            requiredDesignations: ['Laboratory Director', 'Sample Incharge'],
+          },
+          {
+            label: 'Test Allocation',
+            to: '/samples/test-allocation',
+            icon: FlaskConical,
+            clause: '7.4',
+            requiredDesignations: ['Laboratory Director', 'Technical Manager'],
+          },
+          { label: 'Sample Under Testing', to: '/samples/under-testing', icon: FlaskConical, clause: '7.4' },
+          { label: 'Results Under Review', to: '/samples/results-review', icon: FlaskConical, clause: '7.4' },
+          {
+            label: 'Test Report Preparation',
+            to: '/samples/report-preparation',
+            icon: FlaskConical,
+            clause: '7.4',
+          },
+          { label: 'Issued Test Report', to: '/samples/completed', icon: FlaskConical, clause: '7.8' },
+          {
+            label: 'Retain & Disposed Sample',
+            to: '/samples/retain-disposed',
+            icon: FlaskConical,
+            clause: '7.4',
+          },
+          {
+            label: 'Consent Letter',
+            to: '/masters/consent-letter',
+            icon: FileSignature,
+            clause: '7.4',
+          },
+        ],
+      },
+      RESULT_VALIDATION_NAV,
     ],
   },
   {
@@ -98,13 +159,22 @@ const NAV_SECTIONS: NavSection[] = [
 const ROUTE_LABELS: Record<string, string> = {
   '/': 'Dashboard',
   '/samples': 'Samples',
-  '/samples/receiving': 'Sample Receiving',
-  '/samples/allocation': 'Sample Allocation',
-  '/samples/test-allocation': 'Test Allocation',
-  '/samples/under-testing': 'Sample Under Testing',
-  '/samples/results-review': 'Results Under Review',
-  '/samples/report-preparation': 'Test Report Preparation',
-  '/samples/completed': 'Issued Test Report',
+  '/samples/receiving': 'Sample Handling / Sample Receiving',
+  '/samples/allocation': 'Sample Handling / Sample Allocation',
+  '/samples/test-allocation': 'Sample Handling / Test Allocation',
+  '/samples/under-testing': 'Sample Handling / Sample Under Testing',
+  '/samples/results-review': 'Sample Handling / Results Under Review',
+  '/samples/result-validation': 'Validating the Results',
+  ...Object.fromEntries(
+    RESULT_VALIDATION_MODULES.map((module) => [
+      resultValidationModulePath(module.slug),
+      module.label,
+    ]),
+  ),
+  '/samples/report-preparation': 'Sample Handling / Test Report Preparation',
+  '/samples/completed': 'Sample Handling / Issued Test Report',
+  '/samples/retain-disposed': 'Sample Handling / Retain & Disposed Sample',
+  '/masters/consent-letter': 'Sample Handling / Consent Letter',
   '/masters/clients': 'Client Master',
   '/masters/is-codes': 'IS Code Master',
   '/masters/nabl-scope': 'NABL Scope',
@@ -206,12 +276,67 @@ function NavItemGroup({ item, collapsed, access }: { item: NavItem; collapsed: b
     [children, access],
   )
   const isAnyChildActive = useMemo(() => {
-    return visibleChildren.some((c) => (c.to ? location.pathname === c.to : false))
+    return visibleChildren.some((c) => {
+      if (!c.to) return false
+      return location.pathname === c.to || location.pathname.startsWith(`${c.to}/`)
+    })
   }, [visibleChildren, location.pathname])
 
   const [open, setOpen] = useState(isAnyChildActive)
 
+  useEffect(() => {
+    if (isAnyChildActive) setOpen(true)
+  }, [isAnyChildActive])
+
   if (visibleChildren.length === 0) return null
+
+  // Collapsed rail: flyout menu so nested routes remain reachable
+  if (collapsed) {
+    return (
+      <DropdownMenu>
+        <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'group relative flex w-full items-center justify-center rounded-lg px-2 py-2.5 text-[13px] font-medium transition-all duration-200',
+                    'text-sidebar-foreground/70 hover:bg-sidebar-muted/80 hover:text-sidebar-foreground',
+                    isAnyChildActive && 'sidebar-nav-active',
+                  )}
+                  aria-label={formatNavLabel(item.label)}
+                >
+                  <Icon size={16} className="shrink-0 opacity-70" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              {formatNavLabel(item.label)}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <DropdownMenuContent side="right" align="start" sideOffset={10} className="min-w-[12rem]">
+          <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            {formatNavLabel(item.label)}
+          </div>
+          <DropdownMenuSeparator />
+          {visibleChildren.map((c) => {
+            if (!c.to) return null
+            const ChildIcon = c.icon
+            return (
+              <DropdownMenuItem key={c.to} asChild>
+                <NavLink to={c.to} className="flex cursor-pointer items-center gap-2">
+                  <ChildIcon size={14} className="opacity-70" />
+                  <span>{formatNavLabel(c.label)}</span>
+                </NavLink>
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
 
   return (
     <div>
@@ -222,24 +347,17 @@ function NavItemGroup({ item, collapsed, access }: { item: NavItem; collapsed: b
           'group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-[13px] font-medium transition-all duration-200',
           'text-sidebar-foreground/70 hover:bg-sidebar-muted/80 hover:text-sidebar-foreground',
           isAnyChildActive && 'sidebar-nav-active',
-          collapsed && 'justify-center px-2',
         )}
         aria-expanded={open}
-        aria-label={collapsed ? formatNavLabel(item.label) : undefined}
       >
         <Icon size={16} className="shrink-0 opacity-70" />
-        {!collapsed && (
-          <>
-            <span className="flex-1 truncate text-left">{formatNavLabel(item.label)}</span>
-            {item.clause && <span className="text-[10px] opacity-40">{item.clause}</span>}
-            <span className="opacity-50">
-              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </span>
-          </>
-        )}
+        <span className="flex-1 truncate text-left">{formatNavLabel(item.label)}</span>
+        <span className="opacity-50">
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
       </button>
 
-      {open && !collapsed && (
+      {open && (
         <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-sidebar-border/30 pl-2.5">
           {visibleChildren.map((c) => (
             <li key={c.to ?? c.label}>
@@ -275,7 +393,6 @@ function NavItemLink({ item, collapsed, access }: { item: NavItem; collapsed: bo
       {!collapsed && (
         <>
           <span className="flex-1 truncate">{formatNavLabel(item.label)}</span>
-          {item.clause && <span className="text-[10px] opacity-40">{item.clause}</span>}
         </>
       )}
     </NavLink>
@@ -306,7 +423,10 @@ export default function GlobalLayout() {
     [designation, departmentName],
   )
   const restrictedRole = isRestrictedModuleRole(access)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('app.sidebarCollapsed') === '1'
+  })
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [labName, setLabName] = useState(() => {
     if (typeof window === 'undefined') return ''
@@ -384,35 +504,68 @@ export default function GlobalLayout() {
     return 'U'
   }, [profileName])
 
-  const renderSidebar = (collapsed: boolean) => (
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((v) => {
+      const next = !v
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('app.sidebarCollapsed', next ? '1' : '0')
+      }
+      return next
+    })
+  }
+
+  const renderSidebar = (collapsed: boolean, options?: { showCollapseToggle?: boolean }) => {
+    const showCollapseToggle = options?.showCollapseToggle ?? false
+    return (
     <>
       <div
         className={cn(
-          'relative flex h-14 shrink-0 items-center gap-3 border-b border-sidebar-border/60 px-3',
+          'relative flex shrink-0 items-center gap-2.5 border-b border-sidebar-border/60 px-3 py-2.5',
           'bg-gradient-to-r from-lab-900 via-lab-800 to-lab-700',
-          collapsed && 'justify-center px-2',
+          collapsed ? 'min-h-14 flex-col justify-center gap-1.5 px-1.5' : 'min-h-[4.5rem]',
         )}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white shadow-lg ring-1 ring-white/20 backdrop-blur-sm">
-          <FlaskConical size={16} />
+        <div
+          className={cn(
+            'flex shrink-0 items-center justify-center rounded-lg bg-white/15 text-white shadow-lg ring-1 ring-white/20 backdrop-blur-sm',
+            collapsed ? 'h-8 w-8' : 'h-10 w-10',
+          )}
+        >
+          <FlaskConical size={collapsed ? 14 : 16} />
         </div>
+
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold leading-tight text-white">QIRLPL</p>
-            <p className="truncate text-[10px] font-medium leading-tight text-blue-100/70">
-              ISO 17025:2017 LIMS
-            </p>
+            <p className="truncate text-sm font-bold leading-tight tracking-wide text-white">QIRLPL</p>
+            <p className="truncate text-[10px] font-medium leading-tight text-blue-100/75">ISO 17025:2017</p>
+            <p className="truncate text-[10px] font-semibold leading-tight text-blue-50/90">LIMS</p>
           </div>
         )}
-        {!collapsed && (
+
+        {showCollapseToggle ? (
           <button
             type="button"
-            className="md:hidden rounded-md p-1.5 text-white/80 hover:bg-white/10"
-            onClick={() => setMobileNavOpen(false)}
-            aria-label="Close navigation menu"
+            onClick={toggleSidebarCollapsed}
+            className={cn(
+              'rounded-md p-1.5 text-white/85 transition-colors hover:bg-white/10 hover:text-white',
+              collapsed && 'mt-0.5',
+            )}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <X size={18} />
+            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
+        ) : (
+          !collapsed && (
+            <button
+              type="button"
+              className="md:hidden rounded-md p-1.5 text-white/80 hover:bg-white/10"
+              onClick={() => setMobileNavOpen(false)}
+              aria-label="Close navigation menu"
+            >
+              <X size={18} />
+            </button>
+          )
         )}
       </div>
 
@@ -438,28 +591,9 @@ export default function GlobalLayout() {
           ))}
         </nav>
       </ScrollArea>
-
-      <div
-        className={cn(
-          'hidden shrink-0 border-t border-sidebar-border/60 px-2 py-2 md:block',
-          collapsed && 'px-1',
-        )}
-      >
-        <button
-          onClick={() => setSidebarCollapsed((v) => !v)}
-          className={cn(
-            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-[13px] font-medium transition-all duration-200',
-            'text-sidebar-foreground/60 hover:bg-sidebar-muted/80 hover:text-sidebar-foreground',
-            collapsed && 'justify-center px-2',
-          )}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-          {!collapsed && <span className="flex-1 truncate text-left">Collapse</span>}
-        </button>
-      </div>
     </>
-  )
+    )
+  }
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
@@ -480,17 +614,17 @@ export default function GlobalLayout() {
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {renderSidebar(false)}
+        {renderSidebar(false, { showCollapseToggle: false })}
       </aside>
 
       <aside
         className={cn(
           'hidden flex-col border-r border-sidebar-border bg-gradient-to-b from-sidebar via-sidebar to-lab-950',
-          'shadow-lg shadow-blue-950/10 transition-all duration-300 ease-in-out md:flex',
-          sidebarCollapsed ? 'w-[60px]' : 'w-[268px]',
+          'shadow-lg shadow-blue-950/10 transition-[width] duration-300 ease-in-out md:flex',
+          sidebarCollapsed ? 'w-[68px]' : 'w-[268px]',
         )}
       >
-        {renderSidebar(sidebarCollapsed)}
+        {renderSidebar(sidebarCollapsed, { showCollapseToggle: true })}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
