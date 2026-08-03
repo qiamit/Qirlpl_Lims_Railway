@@ -14,8 +14,14 @@ backend/node_modules/
 frontend/dist/
 dist/
 dist-ssr/
+build/
+out/
 *.tsbuildinfo
 coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.local
 
 # ── Tooling caches ────────────────────────────────────────────────────
 .vite/
@@ -24,6 +30,8 @@ frontend/.vite/
 .turbo/
 .cache/
 *.tgz
+.parcel-cache/
+.sass-cache/
 
 # ── Environment & secrets (never commit) ──────────────────────────────
 .env
@@ -33,6 +41,9 @@ frontend/.vite/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 backend/supabase-secrets.env
 backend/supabase/.env
 backend/supabase/.env.*
@@ -42,14 +53,17 @@ credentials.json
 *.key
 *.p12
 *.pfx
+*.secret
 
 # ── Supabase local / CLI ──────────────────────────────────────────────
 backend/supabase/.temp/
 backend/supabase/.branches/
+**/.supabase/
 
-# ── Vercel ────────────────────────────────────────────────────────────
+# ── Vercel / Netlify ──────────────────────────────────────────────────
 .vercel/
 frontend/.vercel/
+.netlify/
 
 # ── OS ────────────────────────────────────────────────────────────────
 .DS_Store
@@ -73,7 +87,7 @@ $RECYCLE.BIN/
 .cursor/*
 !.cursor/mcp.json
 
-# Cursor one-off deploy / MCP scratch files at repo root
+# Cursor / agent one-off deploy & scratch files
 .deploy-*
 .invoke-*
 .mcp-*
@@ -86,6 +100,9 @@ backend/.stdout-deploy-args.json
 backend/.invoke-*
 backend/.deploy-*
 backend/.tmp-*
+
+# Local DB dump scratch (use versioned migrations instead)
+backend/supabase/baseline_from_*.sql
 
 # Windows / editor swap
 *.stackdump

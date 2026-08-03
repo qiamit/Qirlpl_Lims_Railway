@@ -582,6 +582,7 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
             id="address"
             placeholder="Enter Complete Address"
             rows={3}
+            className="!h-auto !min-h-[88px] resize-y rounded-md border border-slate-300 bg-white focus-visible:ring-teal-600/30"
             value={props.address}
             onChange={(e) => props.setAddress(e.target.value)}
           />

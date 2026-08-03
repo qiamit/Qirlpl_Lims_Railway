@@ -4,11 +4,29 @@ export const AI_PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'google', label: 'Google Gemini' },
+  { value: 'deepseek', label: 'DeepSeek' },
   { value: 'openrouter', label: 'OpenRouter' },
   { value: 'custom', label: 'Custom (OpenAI-compatible)' },
 ] as const
 
 export type AiProvider = (typeof AI_PROVIDERS)[number]['value']
+
+/** Suggested model IDs shown as placeholders per provider. */
+export const AI_PROVIDER_MODEL_HINTS: Record<AiProvider, string> = {
+  openai: 'gpt-4o',
+  anthropic: 'claude-sonnet-4-20250514',
+  google: 'gemini-2.0-flash',
+  deepseek: 'deepseek-chat',
+  openrouter: 'openai/gpt-4o',
+  custom: 'model-id',
+}
+
+export const DEEPSEEK_MODEL_OPTIONS = [
+  { id: 'deepseek-chat', label: 'DeepSeek Chat (V3)' },
+  { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner (R1)' },
+] as const
+
+export const DEEPSEEK_API_BASE = 'https://api.deepseek.com'
 
 export type AiModelRow = {
   id: string

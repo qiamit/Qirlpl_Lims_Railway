@@ -6,6 +6,7 @@ export type LabMasterOptionCategory =
   | 'laboratory_scale'
   | 'designation'
   | 'department'
+  | 'division'
   | 'state'
   | 'country'
   | 'country_code'
@@ -18,6 +19,7 @@ export const LAB_MASTER_OPTION_CATEGORIES: LabMasterOptionCategory[] = [
   'laboratory_scale',
   'designation',
   'department',
+  'division',
   'state',
   'country',
   'country_code',
@@ -50,6 +52,11 @@ export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionI
     { value: 'chemical', label: 'Chemical' },
     { value: 'sample-cell', label: 'Sample Cell' },
     { value: 'quality-assurance', label: 'Quality Assurance' },
+  ],
+  division: [
+    { value: 'calibration-division', label: 'Calibration Division' },
+    { value: 'testing-division', label: 'Testing Division' },
+    { value: 'pt-division', label: 'PT Division' },
   ],
   state: [
     { value: 'chhattisgarh', label: 'Chhattisgarh' },
@@ -89,6 +96,7 @@ export function emptyOptionsByCategory(): Record<LabMasterOptionCategory, Option
     laboratory_scale: [],
     designation: [],
     department: [],
+    division: [],
     state: [],
     country: [],
     country_code: [],
@@ -167,9 +175,9 @@ export async function deleteLabMasterOption(
   if (error) throw error
 }
 
-/** Insert designation/department label if not already in lab_master_options */
+/** Insert designation/department/division label if not already in lab_master_options */
 export async function ensureLabMasterOptionByLabel(
-  category: 'designation' | 'department',
+  category: 'designation' | 'department' | 'division',
   label: string,
 ): Promise<void> {
   const trimmed = label.trim()
@@ -195,10 +203,12 @@ export async function ensureLabMasterOptionByLabel(
 export async function fetchDesignationAndDepartmentLabels(): Promise<{
   designations: string[]
   departments: string[]
+  divisions: string[]
 }> {
   const grouped = await fetchLabMasterOptionsGrouped()
   return {
     designations: grouped.designation.map((o) => o.label),
     departments: grouped.department.map((o) => o.label),
+    divisions: grouped.division.map((o) => o.label),
   }
 }

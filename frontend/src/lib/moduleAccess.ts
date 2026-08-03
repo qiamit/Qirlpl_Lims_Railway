@@ -40,6 +40,10 @@ export const SAMPLE_INCHARGE_ALLOWED_PATHS = [
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/calibration/equipments',
+  '/calibration/handling',
+  '/calibration/handling/service-request',
+  '/calibration/equipment-for-calibration',
 ] as const
 
 /** Routes Mechanical Technical Manager may open (nav + direct URL). */
@@ -55,6 +59,8 @@ export const MECHANICAL_TECHNICAL_MANAGER_ALLOWED_PATHS = [
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/calibration/equipments',
+  '/calibration/handling',
 ] as const
 
 /** Routes Chemical Technical Manager may open (nav + direct URL). */
@@ -70,6 +76,8 @@ export const CHEMICAL_TECHNICAL_MANAGER_ALLOWED_PATHS = [
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/calibration/equipments',
+  '/calibration/handling',
 ] as const
 
 /** Routes Chemical Testing Engineer may open (nav + direct URL). */
@@ -82,6 +90,8 @@ export const CHEMICAL_TESTING_ENGINEER_ALLOWED_PATHS = [
   '/masters/product-services',
   '/masters/equipment',
   '/masters/iqc',
+  '/calibration/equipments',
+  '/calibration/handling',
 ] as const
 
 /** Routes Mechanical Testing Engineer may open (nav + direct URL). */
@@ -93,6 +103,8 @@ export const MECHANICAL_TESTING_ENGINEER_ALLOWED_PATHS = [
   '/masters/nabl-scope',
   '/masters/equipment',
   '/masters/iqc',
+  '/calibration/equipments',
+  '/calibration/handling',
 ] as const
 
 /** Routes Quality Assurance Quality Manager may open (nav + direct URL). */
@@ -109,6 +121,8 @@ export const QUALITY_ASSURANCE_QUALITY_MANAGER_ALLOWED_PATHS = [
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/calibration/equipments',
+  '/calibration/handling',
 ] as const
 
 function norm(value: string | null | undefined): string {
@@ -216,6 +230,12 @@ function isEquipmentIqcOrResultValidationPath(pathname: string | undefined): boo
   return (
     path === '/masters/equipment' ||
     path.startsWith('/masters/equipment/') ||
+    path === '/calibration/equipments' ||
+    path.startsWith('/calibration/equipments/') ||
+    path === '/calibration/handling' ||
+    path.startsWith('/calibration/handling/') ||
+    path === '/calibration/equipment-for-calibration' ||
+    path.startsWith('/calibration/equipment-for-calibration/') ||
     path === '/masters/iqc' ||
     path.startsWith('/masters/iqc/') ||
     path === '/samples/result-validation' ||

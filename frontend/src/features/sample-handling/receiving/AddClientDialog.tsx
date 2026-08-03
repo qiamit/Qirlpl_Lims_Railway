@@ -301,7 +301,6 @@ export function AddClientDialog({
             canSave={canSave}
             saveLoading={saveLoading}
             onSave={handleSave}
-            onClear={() => state.setForm(emptyClientForm())}
             states={state.states}
             countries={state.countries}
             districts={state.districts}

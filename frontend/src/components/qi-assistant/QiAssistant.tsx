@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, FileUp, Loader2, Send, Sparkles, X } from 'lucide-react'
+import { FileUp, Loader2, Send, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { IsCodeSearchPicker } from './IsCodeSearchPicker'
@@ -14,6 +14,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabaseClient'
 import { AI_SETTINGS_SINGLETON_ID } from '@/features/settings/ai-settings/types'
+import { useShowAiAssistant } from '@/hooks/useShowAiAssistant'
 import {
   sendQiAssistantMessage,
   validateAssistantPdfFile,
@@ -73,6 +74,7 @@ export function QiAssistant({
   /** Label for PDF attach button, e.g. "test request PDF" */
   pdfAttachHint?: string
 }) {
+  const showAssistant = useShowAiAssistant()
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -318,6 +320,8 @@ export function QiAssistant({
     }
   }
 
+  if (!showAssistant) return null
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -326,9 +330,10 @@ export function QiAssistant({
             type="button"
             variant="outline"
             size="sm"
+            className="border-slate-300 hover:bg-teal-50"
             aria-label={`Ask AI Assistant about ${pageTitle}`}
           >
-            <Sparkles size={14} className="text-primary" />
+            <Sparkles size={14} className="text-teal-600" />
           </Button>
         ) : (
           <Button type="button" variant="outline" className="gap-2" aria-label="Open QI Assistant">
@@ -337,42 +342,61 @@ export function QiAssistant({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 p-0 sm:max-w-lg">
-        <DialogHeader className="border-b border-border px-5 py-4">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Bot size={20} className="text-primary" />
-            {assistantDialogTitle(activeRecordTable, effectiveIsCodeId, page)}
-          </DialogTitle>
-          <DialogDescription>
-            {page === 'samples/receiving' && enablePdfImport
-              ? `${pageTitle} — attach Test Request PDF, then ask to register the sample`
-              : showIsCodePicker
-              ? `${pageTitle} — select IS Code, ! for skills, then ask to import test parameters from PDF`
-              : activeRecordTable === 'test_parameters'
-                ? `${pageTitle} — type ! to activate a skill; Q&A and edits`
-                : effectiveIsCodeId
-                  ? `${pageTitle} — type ! to activate a skill; PDF Q&A and edits`
-                  : `${pageTitle} — type ! for skills; Q&A and data changes`}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        className="flex max-h-[88vh] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:max-w-xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+      >
+        <div className="relative bg-slate-900 px-5 py-4 text-white">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.12]"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+            }}
+          />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <DialogHeader className="relative space-y-1.5 pr-8 text-left">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">AI · Lab Assistant</p>
+            <DialogTitle className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
+              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-teal-400/20 ring-1 ring-teal-400/30">
+                <Sparkles size={16} className="text-teal-200" />
+              </span>
+              {assistantDialogTitle(activeRecordTable, effectiveIsCodeId, page)}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-300">
+              {page === 'samples/receiving' && enablePdfImport
+                ? `${pageTitle} — attach Test Request PDF, then ask to register the sample`
+                : showIsCodePicker
+                  ? `${pageTitle} — select IS Code, ! for skills, then ask to import test parameters from PDF`
+                  : activeRecordTable === 'test_parameters'
+                    ? `${pageTitle} — type ! to activate a skill; Q&A and edits`
+                    : effectiveIsCodeId
+                      ? `${pageTitle} — type ! to activate a skill; PDF Q&A and edits`
+                      : `${pageTitle} — type ! for skills; Q&A and data changes`}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4 min-h-[280px] max-h-[50vh]">
+        <div
+          ref={scrollRef}
+          className="min-h-[260px] max-h-[46vh] flex-1 space-y-3 overflow-y-auto bg-[#fafbfc] px-5 py-4"
+        >
           {messages.map((m) => (
             <div
               key={m.id}
               className={cn(
-                'rounded-lg px-3 py-2 text-sm leading-relaxed',
+                'max-w-[92%] px-3.5 py-2.5 text-sm leading-relaxed shadow-sm',
                 m.role === 'user'
-                  ? 'ml-8 bg-primary text-primary-foreground'
-                  : 'mr-4 bg-muted text-foreground',
+                  ? 'ml-auto rounded-2xl rounded-br-md bg-teal-600 text-white'
+                  : 'mr-auto rounded-2xl rounded-bl-md border border-slate-200 bg-white text-slate-800',
               )}
             >
               <p className="whitespace-pre-wrap">{m.content}</p>
             </div>
           ))}
           {loading && (
-            <div className="mr-4 flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" />
+            <div className="mr-auto flex max-w-[92%] items-center gap-2 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-500">
+              <Loader2 size={14} className="animate-spin text-teal-600" />
               {effectiveIsCodeId && page !== 'samples/receiving'
                 ? 'Reading IS PDFs and thinking…'
                 : attachedPdf
@@ -383,27 +407,32 @@ export function QiAssistant({
         </div>
 
         {messages.length <= 1 && (
-          <div className="flex flex-wrap gap-2 border-t border-border px-5 py-3">
-            {prompts.map((q) => (
-              <button
-                key={q}
-                type="button"
-                className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                onClick={() => void sendMessage(q)}
-                disabled={loading}
-              >
-                {q}
-              </button>
-            ))}
+          <div className="space-y-2 border-t border-slate-200 bg-white px-5 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Try asking</p>
+            <div className="flex flex-col gap-1.5">
+              {prompts.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="rounded-md border border-slate-200 bg-[#fafbfc] px-3 py-2 text-left text-xs text-slate-700 transition-colors hover:border-teal-500/40 hover:bg-teal-50/60 hover:text-teal-900"
+                  onClick={() => void sendMessage(q)}
+                  disabled={loading}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {error && <p className="px-5 text-xs text-destructive">{error}</p>}
+        {error && (
+          <p className="border-t border-destructive/20 bg-destructive/5 px-5 py-2 text-xs text-destructive">{error}</p>
+        )}
 
-        <div className="relative border-t border-border">
+        <div className="relative border-t border-slate-200 bg-white">
           {skillPickerOpen && (
             <div
-              className="absolute bottom-full left-3 right-3 z-10 mb-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-md"
+              className="absolute bottom-full left-3 right-3 z-10 mb-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
               role="listbox"
               aria-label="Select AI skill"
             >
@@ -420,14 +449,14 @@ export function QiAssistant({
                     aria-selected={idx === skillHighlight}
                     className={cn(
                       'flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm transition-colors',
-                      idx === skillHighlight ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/80',
+                      idx === skillHighlight ? 'bg-teal-50 text-teal-950' : 'hover:bg-slate-50',
                     )}
                     onMouseEnter={() => setSkillHighlight(idx)}
                     onClick={() => applySkillSelection(skill, skillTrigger)}
                   >
                     <span className="font-medium">{skill.name}</span>
                     {skill.description && (
-                      <span className="text-xs text-muted-foreground line-clamp-1">{skill.description}</span>
+                      <span className="line-clamp-1 text-xs text-muted-foreground">{skill.description}</span>
                     )}
                   </button>
                 ))
@@ -438,11 +467,11 @@ export function QiAssistant({
           {(selectedSkill || attachedPdf || (showIsCodePicker && selectedIsCodeId)) && (
             <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
               {showIsCodePicker && selectedIsCodeId && selectedIsCodeLabel && (
-                <Badge variant="outline" className="gap-1 pr-1 font-normal max-w-full">
+                <Badge variant="outline" className="max-w-full gap-1 border-slate-300 pr-1 font-normal">
                   <span className="truncate">IS: {selectedIsCodeLabel}</span>
                   <button
                     type="button"
-                    className="rounded-full p-0.5 hover:bg-muted shrink-0"
+                    className="shrink-0 rounded-full p-0.5 hover:bg-muted"
                     aria-label="Clear selected IS code"
                     onClick={() => {
                       setSelectedIsCodeId('')
@@ -453,11 +482,11 @@ export function QiAssistant({
                 </Badge>
               )}
               {selectedSkill && (
-                <Badge variant="secondary" className="gap-1 pr-1 font-normal">
+                <Badge className="gap-1 bg-teal-100 pr-1 font-normal text-teal-900 hover:bg-teal-100">
                   Skill: {selectedSkill.name}
                   <button
                     type="button"
-                    className="rounded-full p-0.5 hover:bg-muted"
+                    className="rounded-full p-0.5 hover:bg-teal-200/60"
                     aria-label="Clear selected skill"
                     onClick={() => setSelectedSkill(null)}
                   >
@@ -466,7 +495,7 @@ export function QiAssistant({
                 </Badge>
               )}
               {attachedPdf && (
-                <Badge variant="outline" className="gap-1 pr-1 font-normal">
+                <Badge variant="outline" className="gap-1 border-slate-300 pr-1 font-normal">
                   PDF: {attachedPdf.name}
                   <button
                     type="button"
@@ -478,7 +507,7 @@ export function QiAssistant({
                   </button>
                 </Badge>
               )}
-              <span className="text-xs text-muted-foreground w-full sm:w-auto">
+              <span className="w-full text-xs text-slate-500 sm:w-auto">
                 {attachedPdf ? 'Type a command below, then Send' : 'Active for next message'}
               </span>
             </div>
@@ -494,12 +523,12 @@ export function QiAssistant({
             </div>
           )}
 
-          <div className="flex gap-2 p-4">
+          <div className="flex items-end gap-2 p-4">
             <Button
               type="button"
               variant="outline"
               size="icon"
-              className="shrink-0 self-end font-semibold"
+              className="h-10 w-10 shrink-0 border-slate-300 font-semibold text-teal-700 hover:bg-teal-50 hover:text-teal-900"
               aria-label="Pick AI skill"
               disabled={loading}
               title="Pick skill (!)"
@@ -525,7 +554,7 @@ export function QiAssistant({
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="shrink-0 self-end"
+                  className="h-10 w-10 shrink-0 border-slate-300"
                   aria-label={`Upload ${pdfAttachHint} to process with AI`}
                   disabled={loading}
                   title={`Attach ${pdfAttachHint} — then type a command and Send`}
@@ -555,7 +584,7 @@ export function QiAssistant({
                       ? 'Attach Test Request PDF, then ask to add sample…'
                       : 'Ask QI Assistant… (type ! for skills)'
               }
-              className="min-h-[44px] max-h-28 resize-none"
+              className="min-h-10 max-h-28 flex-1 resize-none rounded-md border-slate-300 bg-[#fafbfc] shadow-none focus-visible:border-teal-600 focus-visible:ring-teal-600/20"
               rows={1}
               onKeyDown={handleInputKeyDown}
               disabled={loading}
@@ -566,7 +595,7 @@ export function QiAssistant({
             <Button
               type="button"
               size="icon"
-              className="shrink-0 self-end"
+              className="h-10 w-10 shrink-0 bg-teal-600 text-white hover:bg-teal-500"
               aria-label="Send message"
               disabled={loading || !input.trim()}
               onClick={() => void sendMessage(input)}

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -21,6 +21,13 @@ type DropdownPosition = {
   bottom?: number
 }
 
+/** Portaled list — Dialog must ignore pointer/focus outside for this. */
+export const FILTER_COMBOBOX_DROPDOWN_ATTR = 'data-filter-combobox-dropdown'
+
+export function isFilterComboboxDropdownTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(`[${FILTER_COMBOBOX_DROPDOWN_ATTR}]`))
+}
+
 export function FilterCombobox({
   value,
   onValueChange,
@@ -32,6 +39,7 @@ export function FilterCombobox({
   extraActions = [],
   className,
   inputClassName,
+  inputId,
   listId,
   disabled,
   dropdownPlacement = 'auto',
@@ -47,12 +55,15 @@ export function FilterCombobox({
   extraActions?: FilterComboboxExtraAction[]
   className?: string
   inputClassName?: string
+  /** Lets a sibling <Label htmlFor> point at the inner input. */
+  inputId?: string
   listId?: string
   disabled?: boolean
   dropdownPlacement?: DropdownPlacement
   onInputFocus?: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const selectingRef = useRef(false)
   const [highlightIndex, setHighlightIndex] = useState(-1)
   const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null)
   const optionListId = listId ?? 'filter-combobox-list'
@@ -122,20 +133,34 @@ export function FilterCombobox({
 
   const selectIndex = (index: number) => {
     if (index < 0) return
-    if (index < options.length) {
-      const selected = options[index]
-      onValueChange(selected.label)
-      onSelectOption(selected)
-      onOpenChange(false)
-      setHighlightIndex(-1)
-      return
+    selectingRef.current = true
+    try {
+      if (index < options.length) {
+        const selected = options[index]
+        onValueChange(selected.label)
+        onSelectOption(selected)
+        onOpenChange(false)
+        setHighlightIndex(-1)
+        return
+      }
+      const extra = extraActions[index - options.length]
+      if (extra) {
+        extra.onSelect()
+        onOpenChange(false)
+        setHighlightIndex(-1)
+      }
+    } finally {
+      window.setTimeout(() => {
+        selectingRef.current = false
+      }, 0)
     }
-    const extra = extraActions[index - options.length]
-    if (extra) {
-      extra.onSelect()
-      onOpenChange(false)
-      setHighlightIndex(-1)
-    }
+  }
+
+  const handleOptionPointerDown = (index: number) => (e: PointerEvent) => {
+    // Prevent input blur + stop Dialog/DismissableLayer from treating portal click as "outside"
+    e.preventDefault()
+    e.stopPropagation()
+    selectIndex(index)
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -171,6 +196,7 @@ export function FilterCombobox({
 
   const dropdownList = showList && dropdownPosition ? (
     <div
+      {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
       className="fixed z-[200] rounded-md border border-border bg-popover shadow-lg"
       style={{
         left: dropdownPosition.left,
@@ -178,6 +204,8 @@ export function FilterCombobox({
         top: dropdownPosition.top,
         bottom: dropdownPosition.bottom,
       }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <ul id={optionListId} role="listbox" className="max-h-48 overflow-auto text-sm">
         {showOptions ? (
@@ -188,15 +216,13 @@ export function FilterCombobox({
                   id={`${optionListId}-option-${index}`}
                   type="button"
                   role="option"
+                  tabIndex={-1}
                   aria-selected={highlightIndex === index}
                   className={cn(
                     'w-full px-3 py-2 text-left',
                     highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
                   )}
-                  onMouseDown={(e) => {
-                    e.preventDefault()
-                    selectIndex(index)
-                  }}
+                  onPointerDown={handleOptionPointerDown(index)}
                   onMouseEnter={() => setHighlightIndex(index)}
                 >
                   {opt.label}
@@ -211,16 +237,14 @@ export function FilterCombobox({
                     id={`${optionListId}-option-${index}`}
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={highlightIndex === index}
                     className={cn(
                       'w-full px-3 py-2 text-left text-primary',
                       highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
                       action.className,
                     )}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      selectIndex(index)
-                    }}
+                    onPointerDown={handleOptionPointerDown(index)}
                     onMouseEnter={() => setHighlightIndex(index)}
                   >
                     {action.label}
@@ -240,6 +264,7 @@ export function FilterCombobox({
     <div className={cn('relative', className)}>
       <Input
         ref={inputRef}
+        id={inputId}
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -251,7 +276,12 @@ export function FilterCombobox({
           onInputFocus?.()
           onOpenChange(true)
         }}
-        onBlur={() => setTimeout(() => onOpenChange(false), 200)}
+        onBlur={() => {
+          window.setTimeout(() => {
+            if (selectingRef.current) return
+            onOpenChange(false)
+          }, 150)
+        }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className={inputClassName}

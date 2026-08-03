@@ -30,6 +30,8 @@ type QiAssistantBody = {
   activeSkillId?: string
   action?: 'chat' | 'import_is_code_pdf'
   importPdf?: { fileName: string; pdfBase64: string }
+  /** Multiple chat-attached PDFs (text extracted into context). */
+  importPdfs?: Array<{ fileName: string; pdfBase64: string }>
 }
 
 const MAX_IMPORT_PDF_BYTES = 5 * 1024 * 1024
@@ -44,6 +46,8 @@ function resolveApiBase(provider: string, apiBaseUrl: string | null): string {
   if (apiBaseUrl?.trim()) return apiBaseUrl.trim().replace(/\/$/, '')
   if (provider === 'openrouter') return 'https://openrouter.ai/api/v1'
   if (provider === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai'
+  // DeepSeek is OpenAI-compatible; /v1 is appended by chat completions path
+  if (provider === 'deepseek') return 'https://api.deepseek.com/v1'
   return 'https://api.openai.com/v1'
 }
 
@@ -268,13 +272,8 @@ Deno.serve(async (req) => {
 
   const { data: settings } = await admin.from('ai_settings').select('*').eq('id', AI_SETTINGS_ID).maybeSingle()
 
-  if (settings && settings.ai_enabled === false) {
-    return new Response(JSON.stringify({ error: 'AI is disabled in AI Settings → General' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
+  // AI is always available when models are configured; Show/Hide is UI-only (frontend).
+  // `ai_enabled` in ai_settings controls button visibility, not API access.
   let modelQuery = admin.from('ai_models').select('*').eq('is_active', true)
   if (settings?.default_model_id) {
     modelQuery = modelQuery.eq('id', settings.default_model_id)
@@ -312,7 +311,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         error:
-          'Provider "anthropic" is not yet supported in QI Assistant. Use Google Gemini, OpenAI, OpenRouter, or Custom with an OpenAI-compatible base URL.',
+          'Provider "anthropic" is not yet supported in QI Assistant. Use Google Gemini, OpenAI, DeepSeek, OpenRouter, or Custom with an OpenAI-compatible base URL.',
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
@@ -521,28 +520,63 @@ Deno.serve(async (req) => {
 
   let attachedPdfBytes: Uint8Array | null = null
   let attachedPdfFileName = ''
-  if (body.importPdf?.pdfBase64?.trim() && body.message?.trim()) {
-    try {
-      attachedPdfBytes = decodeBase64Pdf(body.importPdf.pdfBase64)
-      if (attachedPdfBytes.length > MAX_IMPORT_PDF_BYTES) {
-        return new Response(JSON.stringify({ error: 'PDF must be 5 MB or smaller' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+
+  const pdfAttachments: Array<{ fileName: string; pdfBase64: string }> = []
+  if (Array.isArray(body.importPdfs)) {
+    for (const item of body.importPdfs) {
+      if (item?.pdfBase64?.trim()) {
+        pdfAttachments.push({
+          fileName: String(item.fileName || 'attached.pdf'),
+          pdfBase64: item.pdfBase64,
         })
       }
-      attachedPdfFileName = String(body.importPdf.fileName || 'attached.pdf')
-      let pdfText = ''
-      try {
-        pdfText = (await extractPdfText(attachedPdfBytes)).trim().slice(0, MAX_CHARS_PER_PDF)
-      } catch {
-        pdfText = '(Could not extract text from attached PDF.)'
+    }
+  }
+  if (pdfAttachments.length === 0 && body.importPdf?.pdfBase64?.trim()) {
+    pdfAttachments.push({
+      fileName: String(body.importPdf.fileName || 'attached.pdf'),
+      pdfBase64: body.importPdf.pdfBase64,
+    })
+  }
+
+  if (pdfAttachments.length > 0 && body.message?.trim()) {
+    const attachBlocks: string[] = []
+    try {
+      for (let i = 0; i < pdfAttachments.length; i++) {
+        const item = pdfAttachments[i]!
+        const bytes = decodeBase64Pdf(item.pdfBase64)
+        if (bytes.length > MAX_IMPORT_PDF_BYTES) {
+          return new Response(
+            JSON.stringify({ error: `PDF "${item.fileName}" must be 5 MB or smaller` }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            },
+          )
+        }
+        if (i === 0) {
+          attachedPdfBytes = bytes
+          attachedPdfFileName = item.fileName
+        }
+        let pdfText = ''
+        try {
+          pdfText = (await extractPdfText(bytes)).trim().slice(0, MAX_CHARS_PER_PDF)
+        } catch {
+          pdfText = '(Could not extract text from attached PDF.)'
+        }
+        attachBlocks.push(
+          [
+            `=== USER-ATTACHED PDF ${i + 1}/${pdfAttachments.length} ===`,
+            `File: ${item.fileName}`,
+            pdfText,
+          ].join('\n'),
+        )
       }
       const attachBlock = [
-        '=== USER-ATTACHED PDF (wait for user command in this message) ===',
-        `File: ${attachedPdfFileName}`,
-        pdfText,
-        'Follow the user message below. Only create/update/delete or attach this file when their command asks for it.',
-      ].join('\n')
+        ...attachBlocks,
+        'Follow the user message below. Use attached PDF text as reference only when asked.',
+        'Do not invent content that contradicts the PDFs.',
+      ].join('\n\n')
       const ctx = body.context?.trim() ?? ''
       body.context = ctx ? `${ctx}\n\n${attachBlock}` : attachBlock
     } catch {

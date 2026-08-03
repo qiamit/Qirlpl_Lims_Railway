@@ -1,6 +1,5 @@
 import React from 'react'
-import { Save, Plus, Trash2 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -14,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { PrefixItem } from './types'
+import { LabSettingsPanel } from './labSettingsUi'
 
 type PrefixesTabProps = {
   saveMessage: string | null
@@ -38,28 +38,9 @@ type PrefixesTabProps = {
 
 export function PrefixesTab(props: PrefixesTabProps) {
   return (
-    <Card>
-      <CardContent className="space-y-6">
-        <div className="flex items-center justify-end gap-3 pt-4">
-          {props.saveMessage && (
-            <p
-              className={
-                props.saveMessage.toLowerCase().includes('saved')
-                  ? 'text-sm text-emerald-700'
-                  : 'text-sm text-destructive'
-              }
-            >
-              {props.saveMessage}
-            </p>
-          )}
-          <Button className="gap-2" onClick={props.onSave} disabled={props.saveLoading}>
-            <Save size={16} />
-            {props.saveLoading ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between mt-4">
-          <h3 className="text-sm font-semibold text-foreground">Prefix's</h3>
+    <LabSettingsPanel eyebrow="Lab Registry · Numbering" title="Prefix's">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-800">Prefix&apos;s</h3>
           <Dialog open={props.prefixDialogOpen} onOpenChange={props.setPrefixDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-2">
@@ -169,7 +150,6 @@ export function PrefixesTab(props: PrefixesTabProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </LabSettingsPanel>
   )
 }

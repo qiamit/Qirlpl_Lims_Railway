@@ -44,12 +44,12 @@
     --radius: 0.625rem;
 
     --sidebar: 222 47% 11%;
-    --sidebar-foreground: 214 32% 92%;
-    --sidebar-border: 217 33% 20%;
-    --sidebar-accent: 217 91% 45%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-border: 215 28% 22%;
+    --sidebar-accent: 173 58% 39%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-muted: 217 33% 18%;
-    --sidebar-ring: 217 91% 55%;
+    --sidebar-muted: 217 28% 16%;
+    --sidebar-ring: 173 58% 45%;
   }
 
   .dark {
@@ -82,12 +82,12 @@
     --ring: 217 91% 55%;
 
     --sidebar: 222 47% 6%;
-    --sidebar-foreground: 214 32% 88%;
-    --sidebar-border: 217 33% 14%;
-    --sidebar-accent: 217 91% 50%;
+    --sidebar-foreground: 210 40% 92%;
+    --sidebar-border: 217 28% 14%;
+    --sidebar-accent: 173 55% 42%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-muted: 217 33% 12%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-muted: 217 28% 11%;
+    --sidebar-ring: 173 55% 48%;
   }
 }
 
@@ -133,12 +133,21 @@
   }
 
   .sidebar-nav-active {
-    @apply relative bg-sidebar-accent text-sidebar-accent-foreground shadow-md shadow-blue-900/25;
+    @apply relative bg-sidebar-accent/90 text-sidebar-accent-foreground shadow-sm shadow-teal-950/30;
   }
 
   .sidebar-nav-active::before {
     content: "";
-    @apply absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-white/90;
+    @apply absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-teal-200;
+  }
+
+  .sidebar-nav-item {
+    @apply relative flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2 py-2 text-[13px] font-medium transition-all duration-200;
+    @apply text-sidebar-foreground/65 hover:bg-white/[0.06] hover:text-sidebar-foreground;
+  }
+
+  .sidebar-section-panel {
+    @apply min-w-0 max-w-full overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] p-1 shadow-sm shadow-black/10;
   }
 }
 

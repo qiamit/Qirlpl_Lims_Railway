@@ -1,6 +1,5 @@
 import React from 'react'
-import { Save, Plus, Trash2 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -17,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FileUpload } from '@/components/ui/file-upload'
 import type { FileTemplate, TermsTemplate, WatermarkTemplate } from './types'
+import { LabSettingsPanel } from './labSettingsUi'
 
 type LetterheadTabProps = {
   saveMessage: string | null
@@ -72,28 +72,9 @@ type LetterheadTabProps = {
 
 export function LetterheadTab(props: LetterheadTabProps) {
   return (
-    <Card>
-      <CardContent className="space-y-6">
-        <div className="flex items-center justify-end gap-3 pt-4">
-          {props.saveMessage && (
-            <p
-              className={
-                props.saveMessage.toLowerCase().includes('saved')
-                  ? 'text-sm text-emerald-700'
-                  : 'text-sm text-destructive'
-              }
-            >
-              {props.saveMessage}
-            </p>
-          )}
-          <Button className="gap-2" onClick={props.onSave} disabled={props.saveLoading}>
-            <Save size={16} />
-            {props.saveLoading ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-
+    <LabSettingsPanel eyebrow="Lab Registry · Documents" title="Letter Head Templates">
         <div className="space-y-8">
-          <section className="space-y-3 mt-4">
+          <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <Label className="mb-1 block">Header Templates</Label>
@@ -330,6 +311,7 @@ export function LetterheadTab(props: LetterheadTabProps) {
                     <Textarea
                       id={`terms-${template.id}`}
                       rows={4}
+                      className="!h-auto !min-h-[88px] resize-y rounded-md border border-slate-300 bg-white focus-visible:ring-teal-600/30"
                       placeholder="Enter terms and conditions"
                       value={template.text}
                       onChange={(e) =>
@@ -447,6 +429,7 @@ export function LetterheadTab(props: LetterheadTabProps) {
                       <Textarea
                         id={`watermark-${wm.id}`}
                         rows={4}
+                        className="!h-auto !min-h-[88px] resize-y rounded-md border border-slate-300 bg-white focus-visible:ring-teal-600/30"
                         placeholder="Enter watermark text"
                         value={wm.text ?? ''}
                         onChange={(e) =>
@@ -542,7 +525,6 @@ export function LetterheadTab(props: LetterheadTabProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </LabSettingsPanel>
   )
 }

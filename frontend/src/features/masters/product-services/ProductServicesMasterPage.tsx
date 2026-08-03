@@ -119,6 +119,15 @@ export default function ProductServicesMasterPage() {
   const [jumpTo, setJumpTo] = useState('')
   const [form, setForm] = useState<NablScopeForm>(() => emptyNablScopeForm())
 
+  const copy = {
+    pageTitle: 'NABL Scope',
+    addButtonLabel: 'Add Scope Entry',
+    dialogAddTitle: 'Add Scope Entry',
+    dialogEditTitle: 'Edit Scope Entry',
+    dialogDescription: 'NABL accreditation scope entry (ISO/IEC 17025:2017 annexure).',
+    qiPage: 'nabl-scope',
+  } as const
+
   const canSave =
     !saveLoading &&
     form.sNo.trim().length > 0 &&
@@ -519,13 +528,18 @@ export default function ProductServicesMasterPage() {
         onNew={handleNew}
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadItems()}
+        pageTitle={copy.pageTitle}
+        addButtonLabel={copy.addButtonLabel}
+        qiPage={copy.qiPage}
       />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent persistOnFocusLoss className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Scope Entry' : 'Add Scope Entry'}</DialogTitle>
-            <DialogDescription>NABL accreditation scope entry (ISO/IEC 17025:2017 annexure).</DialogDescription>
+            <DialogTitle>
+              {editingId ? copy.dialogEditTitle : copy.dialogAddTitle}
+            </DialogTitle>
+            <DialogDescription>{copy.dialogDescription}</DialogDescription>
           </DialogHeader>
           {saveMessage && <div className="text-sm text-destructive">{saveMessage}</div>}
           <ProductServicesForm

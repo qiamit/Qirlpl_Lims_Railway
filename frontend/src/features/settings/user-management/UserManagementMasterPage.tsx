@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -7,6 +7,7 @@ import {
 } from '@/features/settings/lab-settings/labMasterOptions'
 import { UserManagementHeaderBar } from './UserManagementHeaderBar'
 import { UserManagementTable } from './UserManagementTable'
+import { UserManagementFooterBar } from './UserManagementFooterBar'
 import { UserManagementForm } from './UserManagementForm'
 import type { UserAccount, UserForm } from './types'
 
@@ -17,6 +18,9 @@ async function syncUserOptionsToLabMaster(users: UserAccount[]) {
     }
     if (u.departmentName.trim()) {
       await ensureLabMasterOptionByLabel('department', u.departmentName)
+    }
+    if (u.division.trim()) {
+      await ensureLabMasterOptionByLabel('division', u.division)
     }
   }
 }
@@ -36,20 +40,28 @@ export default function UserManagementMasterPage() {
   const [userUpdateLoadingId, setUserUpdateLoadingId] = useState<string | null>(null)
   const [userUpdateError, setUserUpdateError] = useState<string | null>(null)
   const [userDialogOpen, setUserDialogOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [jumpTo, setJumpTo] = useState('')
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<UserAccount | null>(null)
   const [userDeleteTarget, setUserDeleteTarget] = useState<UserAccount | null>(null)
 
   const [designations, setDesignations] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
+  const [divisions, setDivisions] = useState<string[]>([])
 
   const refreshLabOptions = useCallback(async () => {
-    const { designations: des, departments: dept } = await fetchDesignationAndDepartmentLabels()
+    const { designations: des, departments: dept, divisions: divs } =
+      await fetchDesignationAndDepartmentLabels()
     setDesignations(des)
     setDepartments(dept)
+    setDivisions(divs)
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('userManagement.designations', JSON.stringify(des))
       window.localStorage.setItem('userManagement.departments', JSON.stringify(dept))
+      window.localStorage.setItem('userManagement.divisions', JSON.stringify(divs))
     }
   }, [])
 
@@ -118,6 +130,7 @@ export default function UserManagementMasterPage() {
           password: '',
           designation: String(row.designation ?? ''),
           departmentName: String((row as { department_name?: unknown }).department_name ?? ''),
+          division: String((row as { division?: unknown }).division ?? ''),
           status: (String(row.status ?? 'Active') as 'Active' | 'Inactive') ?? 'Active',
         }))
         .filter((u) => u.id)
@@ -212,6 +225,7 @@ export default function UserManagementMasterPage() {
         password: '',
         designation: String(row.designation ?? ''),
         departmentName: String((row as { department_name?: unknown }).department_name ?? ''),
+        division: String((row as { division?: unknown }).division ?? ''),
         status: (String(row.status ?? 'Active') as 'Active' | 'Inactive') ?? 'Active',
       }))
       .filter((u) => u.id)
@@ -244,79 +258,6 @@ export default function UserManagementMasterPage() {
     }
   }
 
-  const updateUser = async (
-    userId: string,
-    patch: { status?: 'Active' | 'Inactive'; designation?: string; departmentName?: string },
-  ) => {
-    setUserUpdateError(null)
-    setUserUpdateLoadingId(userId)
-
-    setUsers((prev) =>
-      prev.map((user) =>
-        user.id !== userId
-          ? user
-          : {
-              ...user,
-              ...(patch.status !== undefined ? { status: patch.status } : {}),
-              ...(patch.designation !== undefined ? { designation: patch.designation } : {}),
-              ...(patch.departmentName !== undefined ? { departmentName: patch.departmentName } : {}),
-            },
-      ),
-    )
-
-    try {
-      const {
-        data: { session: latestSession },
-      } = await supabase.auth.getSession()
-
-      const accessToken = latestSession?.access_token ?? session?.access_token
-      if (!accessToken) {
-        throw new Error('Session expired. Please log in again.')
-      }
-
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user`
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${anonKey}`,
-          'x-user-jwt': accessToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          ...(patch.status !== undefined ? { status: patch.status } : {}),
-          ...(patch.designation !== undefined ? { designation: patch.designation } : {}),
-          ...(patch.departmentName !== undefined ? { department_name: patch.departmentName } : {}),
-        }),
-      })
-
-      const payload = (await response.json().catch(() => null)) as unknown
-      if (!response.ok) {
-        const message =
-          typeof payload === 'object' && payload && 'error' in payload
-            ? String((payload as { error?: unknown }).error)
-            : `Update failed (${response.status})`
-        throw new Error(message)
-      }
-
-      if (patch.designation) {
-        await ensureLabMasterOptionByLabel('designation', patch.designation)
-      }
-      if (patch.departmentName) {
-        await ensureLabMasterOptionByLabel('department', patch.departmentName)
-      }
-      await refreshLabOptions()
-      await reloadUsers()
-    } catch (err) {
-      setUserUpdateError(err instanceof Error ? err.message : 'Unable to update user')
-    } finally {
-      setUserUpdateLoadingId(null)
-    }
-  }
-
   const persistUserLabOptions = async (formData: UserForm) => {
     if (formData.designation.trim()) {
       await ensureLabMasterOptionByLabel('designation', formData.designation)
@@ -324,29 +265,136 @@ export default function UserManagementMasterPage() {
     if (formData.department.trim()) {
       await ensureLabMasterOptionByLabel('department', formData.department)
     }
+    if (formData.division.trim()) {
+      await ensureLabMasterOptionByLabel('division', formData.division)
+    }
     await refreshLabOptions()
   }
+
+  const filteredUsers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return users
+
+    return users.filter((user) => {
+      const haystack = [
+        user.name,
+        user.email,
+        user.mobile,
+        user.designation,
+        user.departmentName,
+        user.division,
+        user.status,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [users, searchQuery])
+
+  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
+
+  useEffect(() => {
+    setPage(1)
+    setJumpTo('')
+  }, [searchQuery, pageSize])
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+
+  const pagedUsers = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filteredUsers.slice(start, start + pageSize)
+  }, [filteredUsers, page, pageSize])
 
   return (
     <div className="p-6 space-y-5">
       <UserManagementHeaderBar
-        userDialogOpen={userDialogOpen}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
         setUserDialogOpen={setUserDialogOpen}
       />
 
       {usersLoadError && <p className="text-sm text-destructive">{usersLoadError}</p>}
       {userUpdateError && <p className="text-sm text-destructive">{userUpdateError}</p>}
       <UserManagementTable
-        users={users}
-        designations={designations}
-        departments={departments}
+        users={pagedUsers}
+        searchActive={searchQuery.trim().length > 0}
         userUpdateLoadingId={userUpdateLoadingId}
-        updateUser={updateUser}
         onEdit={(user: UserAccount) => {
           setEditTarget(user)
           setEditDialogOpen(true)
         }}
         onDelete={(user: UserAccount) => setUserDeleteTarget(user)}
+        onStatusChange={async (user, status) => {
+          if (user.status === status) return
+
+          setUserUpdateError(null)
+          setUserUpdateLoadingId(user.id)
+
+          try {
+            const {
+              data: { session: latestSession },
+            } = await supabase.auth.getSession()
+
+            const accessToken = latestSession?.access_token ?? session?.access_token
+            if (!accessToken) {
+              throw new Error('Session expired. Please log in again.')
+            }
+
+            const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user`
+            const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
+            const response = await fetch(functionUrl, {
+              method: 'POST',
+              headers: {
+                apikey: anonKey,
+                Authorization: `Bearer ${anonKey}`,
+                'x-user-jwt': accessToken,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                user_id: user.id,
+                status,
+              }),
+            })
+
+            const payload = (await response.json().catch(() => null)) as unknown
+            if (!response.ok) {
+              const message =
+                typeof payload === 'object' && payload && 'error' in payload
+                  ? String((payload as { error?: unknown }).error)
+                  : `Status update failed (${response.status})`
+              throw new Error(message)
+            }
+
+            setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, status } : u)))
+          } catch (err) {
+            setUserUpdateError(err instanceof Error ? err.message : 'Unable to update status')
+          } finally {
+            setUserUpdateLoadingId(null)
+          }
+        }}
+      />
+
+      <UserManagementFooterBar
+        totalCount={filteredUsers.length}
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        jumpTo={jumpTo}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
+        onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
+        onJumpToChange={setJumpTo}
+        onJumpToGo={() => {
+          const n = Number(jumpTo)
+          if (!Number.isFinite(n) || n < 1) return
+          setPage(Math.min(pageCount, Math.max(1, Math.floor(n))))
+        }}
       />
 
       <UserManagementForm
@@ -357,6 +405,8 @@ export default function UserManagementMasterPage() {
         setDesignations={setDesignations}
         departments={departments}
         setDepartments={setDepartments}
+        divisions={divisions}
+        setDivisions={setDivisions}
         onSave={async (formData: UserForm, countryCode?: string) => {
           await persistUserLabOptions(formData)
 
@@ -389,7 +439,8 @@ export default function UserManagementMasterPage() {
               mobile: mobileFormatted,
               designation: formData.designation,
               department_name: formData.department,
-              status: formData.status,
+              division: formData.division,
+              status: 'Active',
             }),
           })
 
@@ -422,6 +473,8 @@ export default function UserManagementMasterPage() {
         setDesignations={setDesignations}
         departments={departments}
         setDepartments={setDepartments}
+        divisions={divisions}
+        setDivisions={setDivisions}
         onSave={async (formData: UserForm, countryCode?: string) => {
           if (!editTarget) return
 
@@ -460,7 +513,7 @@ export default function UserManagementMasterPage() {
                 mobile: mobileFormatted,
                 designation: formData.designation,
                 department_name: formData.department,
-                status: formData.status,
+                division: formData.division,
               }),
             })
 
@@ -504,6 +557,8 @@ export default function UserManagementMasterPage() {
           setDesignations={setDesignations}
           departments={departments}
           setDepartments={setDepartments}
+          divisions={divisions}
+          setDivisions={setDivisions}
           onSave={async () => {
             if (!userDeleteTarget) return
 

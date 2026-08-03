@@ -13,6 +13,7 @@ type CreateUserBody = {
   mobile: string
   designation: string
   department_name?: string
+  division?: string
   status: string
 }
 
@@ -75,6 +76,7 @@ Deno.serve(async (req) => {
       mobile: mobileRaw,
       designation: body.designation ?? '',
       department_name: body.department_name ?? '',
+      division: body.division ?? '',
       status: body.status ?? 'Active',
       created_by: callerData.user.id,
     },
@@ -98,6 +100,7 @@ Deno.serve(async (req) => {
           mobile: mobileRaw,
           designation: body.designation ?? '',
           department_name: body.department_name ?? '',
+          division: body.division ?? '',
           status: body.status ?? 'Active',
         },
         { onConflict: 'id' },

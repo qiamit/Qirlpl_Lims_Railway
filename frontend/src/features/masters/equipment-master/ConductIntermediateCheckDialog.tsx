@@ -17,6 +17,7 @@ export function ConductIntermediateCheckDialog({
   children,
   onComplete,
   completeDisabled,
+  layer = 'default',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -25,10 +26,11 @@ export function ConductIntermediateCheckDialog({
   children: ReactNode
   onComplete?: () => boolean
   completeDisabled?: boolean
+  layer?: 'default' | 'nested' | 'stacked'
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent layer={layer} className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Activity className="h-4 w-4" />

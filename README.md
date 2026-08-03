@@ -59,23 +59,23 @@ Qirlpl_Lims/
 
 ## Supabase (Backend)
 
-**Connected project:** `Qirlpl_Lims`  
-**Project ref:** `tzbgywlwfcdsgrumstpu`  
-**API URL:** `https://tzbgywlwfcdsgrumstpu.supabase.co`  
-**Region:** `ap-south-1`
+**Connected project:** `qirlpl-lims-demo`  
+**Project ref:** `wsxdaimsfcgecbwjyszq`  
+**API URL:** `https://wsxdaimsfcgecbwjyszq.supabase.co`  
+**Region:** `ap-northeast-2`
 
-- Client is configured in `frontend/src/lib/supabaseClient.ts`.
+- Client is configured in `frontend/src/lib/supabaseClient.ts` via `frontend/.env`.
 - Supabase CLI config: `backend/supabase/config.toml`
 - Migrations: `backend/supabase/migrations`
 - Edge functions: `backend/supabase/functions`
 - Cursor MCP: configured in `.cursor/mcp.json`
 
-Link the CLI (from `backend/`):
+Link the CLI (from `backend/`) — use the Supabase account that **owns** this project:
 
 ```bash
 cd backend
 npx supabase login
-npx supabase link --project-ref tzbgywlwfcdsgrumstpu
+npx supabase link --project-ref wsxdaimsfcgecbwjyszq
 npm run db:push
 ```
 

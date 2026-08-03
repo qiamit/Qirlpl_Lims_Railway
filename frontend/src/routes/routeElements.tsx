@@ -20,6 +20,23 @@ import ProductServicesPage from '@/features/masters/ProductServicesPage'
 import TestParameterPage from '@/features/masters/TestParameterPage'
 import EquipmentPage from '@/features/masters/EquipmentPage'
 import IqcPage from '@/features/masters/IqcPage'
+import ManagementDocumentsMasterPage from '@/features/management-docs/ManagementDocumentsMasterPage'
+import CalibrationEquipmentsPage from '@/features/calibration/equipments/CalibrationEquipmentsPage'
+import CalibrationHandlingPage from '@/features/calibration/handling/CalibrationHandlingPage'
+import CalibrationServiceRequestPage from '@/features/calibration/handling/CalibrationServiceRequestPage'
+import EquipmentForCalibrationPage from '@/features/calibration/equipment-for-calibration/EquipmentForCalibrationPage'
+import JobAllocationPage from '@/features/calibration/handling/job-allocation/JobAllocationPage'
+import CalibrationConductPage from '@/features/calibration/handling/calibration-conduct/CalibrationConductPage'
+import CalibrationConductInsidePage from '@/features/calibration/handling/calibration-conduct-inside/CalibrationConductInsidePage'
+import CalibrationConductOutsidePage from '@/features/calibration/handling/calibration-conduct-outside/CalibrationConductOutsidePage'
+import ReviewDataPage from '@/features/calibration/handling/review-data/ReviewDataPage'
+import CertificatePreparationPage from '@/features/calibration/handling/certificate-preparation/CertificatePreparationPage'
+import CalibrationCertificatesPage from '@/features/calibration/handling/certificates/CalibrationCertificatesPage'
+import QuotationPage from '@/features/finance/sale/quotation/QuotationPage'
+import ProformaInvoicePage from '@/features/finance/sale/proforma-invoice/ProformaInvoicePage'
+import InvoicePage from '@/features/finance/sale/invoice/InvoicePage'
+import CreditNotePage from '@/features/finance/sale/credit-note/CreditNotePage'
+import PaymentReceiptPage from '@/features/finance/sale/payment-receipt/PaymentReceiptPage'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { RequireLaboratoryDirector } from '@/components/auth/RequireLaboratoryDirector'
 import { RequireSampleReceivingAccess } from '@/components/auth/RequireSampleReceivingAccess'
@@ -83,6 +100,86 @@ export function AiSettingsRoute() {
   )
 }
 
+export function ManagementDocsLevel1Route() {
+  return <ManagementDocumentsMasterPage level={1} />
+}
+
+export function ManagementDocsLevel2Route() {
+  return <ManagementDocumentsMasterPage level={2} />
+}
+
+export function ManagementDocsLevel3Route() {
+  return <ManagementDocumentsMasterPage level={3} />
+}
+
+export function ManagementDocsLevel4Route() {
+  return <ManagementDocumentsMasterPage level={4} />
+}
+
+export function CalibrationEquipmentsRoute() {
+  return <CalibrationEquipmentsPage />
+}
+
+export function CalibrationHandlingRoute() {
+  return <CalibrationHandlingPage />
+}
+
+export function CalibrationServiceRequestRoute() {
+  return <CalibrationServiceRequestPage />
+}
+
+export function JobAllocationRoute() {
+  return <JobAllocationPage />
+}
+
+export function CalibrationConductRoute() {
+  return <CalibrationConductPage />
+}
+
+export function CalibrationConductInsideRoute() {
+  return <CalibrationConductInsidePage />
+}
+
+export function CalibrationConductOutsideRoute() {
+  return <CalibrationConductOutsidePage />
+}
+
+export function ReviewDataRoute() {
+  return <ReviewDataPage />
+}
+
+export function CertificatePreparationRoute() {
+  return <CertificatePreparationPage />
+}
+
+export function CalibrationCertificatesRoute() {
+  return <CalibrationCertificatesPage />
+}
+
+export function EquipmentForCalibrationRoute() {
+  return <EquipmentForCalibrationPage />
+}
+
+export function SaleQuotationRoute() {
+  return <QuotationPage />
+}
+
+export function SaleProformaInvoiceRoute() {
+  return <ProformaInvoicePage />
+}
+
+export function SaleInvoiceRoute() {
+  return <InvoicePage />
+}
+
+export function SaleCreditNoteRoute() {
+  return <CreditNotePage />
+}
+
+export function SalePaymentReceiptRoute() {
+  return <PaymentReceiptPage />
+}
+
 export {
   DashboardPage,
   SamplesPage,
@@ -99,5 +196,9 @@ export {
   TestParameterPage,
   EquipmentPage,
   IqcPage,
+  CalibrationEquipmentsPage,
+  CalibrationHandlingPage,
+  CalibrationServiceRequestPage,
+  EquipmentForCalibrationPage,
 }
 

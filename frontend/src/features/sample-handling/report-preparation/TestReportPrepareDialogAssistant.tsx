@@ -9,6 +9,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useShowAiAssistant } from '@/hooks/useShowAiAssistant'
 import { QiAssistantChatPanel } from '@/components/qi-assistant/QiAssistantChatPanel'
 import type { TestReportCoverDetails } from './fetchTestReportCoverDetails'
 import {
@@ -44,6 +45,7 @@ export function TestReportPrepareDialogAssistant({
   /** Parent prepare dialog open — resets chat when reopened */
   prepareDialogOpen: boolean
 }) {
+  const showAssistant = useShowAiAssistant()
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<AssistantTab>('full_review')
   const [fullReviewSession, setFullReviewSession] = useState(0)
@@ -84,6 +86,8 @@ export function TestReportPrepareDialogAssistant({
   }, [row, assistantInput])
 
   const isCodeId = row?.isCodeId?.trim() || undefined
+
+  if (!showAssistant) return null
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

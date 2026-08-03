@@ -1,6 +1,5 @@
 import React from 'react'
-import { Save, Plus, Trash2 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FileUpload } from '@/components/ui/file-upload'
 import type { AccreditationCard } from './types'
+import { LabSettingsPanel } from './labSettingsUi'
 
 type RegistrationDocumentsTabProps = {
   saveMessage: string | null
@@ -37,29 +37,10 @@ type RegistrationDocumentsTabProps = {
 
 export function RegistrationDocumentsTab(props: RegistrationDocumentsTabProps) {
   return (
-    <Card>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-end gap-3 pt-4">
-          {props.saveMessage && (
-            <p
-              className={
-                props.saveMessage.toLowerCase().includes('saved')
-                  ? 'text-sm text-emerald-700'
-                  : 'text-sm text-destructive'
-              }
-            >
-              {props.saveMessage}
-            </p>
-          )}
-          <Button className="gap-2" onClick={props.onSave} disabled={props.saveLoading}>
-            <Save size={16} />
-            {props.saveLoading ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-
+    <LabSettingsPanel eyebrow="Lab Registry · Accreditation" title="Registration Documents">
         <div className="space-y-4">
-          <div className="flex items-center justify-between mt-4">
-            <h3 className="text-sm font-semibold text-foreground">Accreditation Certificate Numbers</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">Accreditation Certificate Numbers</h3>
             <Dialog open={props.accreditationDialogOpen} onOpenChange={props.setAccreditationDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-2">
@@ -250,7 +231,6 @@ export function RegistrationDocumentsTab(props: RegistrationDocumentsTabProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </LabSettingsPanel>
   )
 }

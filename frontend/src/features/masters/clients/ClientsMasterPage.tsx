@@ -441,11 +441,6 @@ export default function ClientsMasterPage() {
     })()
   }
 
-  const handleClear = () => {
-    setSaveMessage(null)
-    setForm(emptyClientForm())
-  }
-
   const handleNew = () => {
     setSaveMessage(null)
     setForm(emptyClientForm())
@@ -775,31 +770,48 @@ export default function ClientsMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:space-y-5 sm:p-4 md:p-6">
       <ClientsHeaderBar
         search={search}
         onSearchChange={setSearch}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onNew={handleNew}
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadClients()}
       />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
-        <DialogContent persistOnFocusLoss className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add New Client</DialogTitle>
-          </DialogHeader>
-          {saveMessage && (
-            <div className="text-sm text-destructive">
-              {saveMessage}
-            </div>
-          )}
-          <ClientsForm
+        <DialogContent
+          persistOnFocusLoss
+          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+          aria-describedby={undefined}
+        >
+          <div className="relative bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.12]"
+              style={{
+                backgroundImage:
+                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
+                backgroundSize: '24px 24px',
+              }}
+            />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <DialogHeader className="relative pr-8 text-left">
+              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
+                {editingId ? 'Client Registry · Edit Entry' : 'Client Registry · New Entry'}
+              </p>
+              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                {editingId ? 'Edit Client' : 'Add New Client'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+            {saveMessage ? (
+              <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {saveMessage}
+              </p>
+            ) : null}
+            <ClientsForm
             form={form}
             onChange={setForm}
             states={states}
@@ -883,8 +895,8 @@ export default function ClientsMasterPage() {
             canSave={canSave}
             saveLoading={saveLoading}
             onSave={handleSave}
-            onClear={handleClear}
           />
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -892,6 +904,7 @@ export default function ClientsMasterPage() {
         rows={pagedRows}
         loading={listLoading}
         error={listError}
+        searchActive={search.trim().length > 0}
         selectedIds={selectedIds}
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
@@ -903,12 +916,18 @@ export default function ClientsMasterPage() {
         message={saveMessage}
         loading={saveLoading}
         selectedCount={selectedIds.size}
+        totalCount={filteredRows.length}
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onImport={handleImport}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}
         onDeleteSelected={handleDeleteSelected}
-        page={page}
-        pageCount={pageCount}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

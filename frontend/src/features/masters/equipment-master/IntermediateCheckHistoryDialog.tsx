@@ -33,6 +33,7 @@ export function IntermediateCheckHistoryDialog({
   currentMasters,
   currentNextDueDate,
   acceptanceCriteria,
+  layer = 'default',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -49,6 +50,7 @@ export function IntermediateCheckHistoryDialog({
   currentMasters?: IntermediateCheckMasterSnapshot[]
   currentNextDueDate?: string
   acceptanceCriteria?: string
+  layer?: 'default' | 'nested' | 'stacked'
 }) {
   const visibleCount = useMemo(() => {
     const historyCount = filterIntermediateCheckHistoryLastYears(
@@ -61,7 +63,7 @@ export function IntermediateCheckHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent layer={layer} className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <History className="h-4 w-4" />

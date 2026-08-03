@@ -13,6 +13,7 @@ type ListUsersResponseItem = {
   mobile: string
   designation: string
   department_name: string
+  division: string
   status: string
 }
 
@@ -137,6 +138,10 @@ Deno.serve(async (req) => {
         typeof metadata.department_name === 'string' ? String(metadata.department_name).trim() : ''
       const departmentName = profileDepartmentName || metadataDepartmentName || ''
 
+      const profileDivision = String((profile as { division?: unknown }).division ?? '').trim()
+      const metadataDivision = typeof metadata.division === 'string' ? String(metadata.division).trim() : ''
+      const division = profileDivision || metadataDivision || ''
+
       const profileStatus = String((profile as { status?: unknown }).status ?? '').trim()
       const metadataStatus = typeof metadata.status === 'string' ? String(metadata.status).trim() : ''
       const status = profileStatus || metadataStatus || 'Active'
@@ -148,6 +153,7 @@ Deno.serve(async (req) => {
         mobile,
         designation,
         department_name: departmentName,
+        division,
         status,
       })
     }

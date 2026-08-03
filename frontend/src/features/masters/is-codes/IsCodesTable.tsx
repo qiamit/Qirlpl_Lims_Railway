@@ -5,10 +5,17 @@ import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 import { buildIsCodeAssistantContext, formatIsCodeLabel } from './buildIsCodeAssistantContext'
 import type { IsCodeRow } from './types'
 
+const GRID_TABLE =
+  'w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+
+const checkboxClass =
+  'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
 export function IsCodesTable({
   rows,
   loading,
   error,
+  searchActive,
   selectedIds,
   onToggle,
   onToggleAll,
@@ -19,6 +26,7 @@ export function IsCodesTable({
   rows: IsCodeRow[]
   loading: boolean
   error: string | null
+  searchActive?: boolean
   selectedIds: Set<string>
   onToggle: (id: string) => void
   onToggleAll: () => void
@@ -27,83 +35,109 @@ export function IsCodesTable({
   onAssistantDataChanged?: () => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
+  const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-      {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      {error ? <p className="px-5 pt-4 text-sm text-destructive">{error}</p> : null}
+
       {loading ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-5 py-8 text-center text-sm text-muted-foreground">Loading…</p>
+      ) : rows.length === 0 ? (
+        <div className="m-4 rounded-lg border border-dashed border-border p-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            {searchActive ? 'No IS codes match your search.' : 'No IS codes added yet.'}
+          </p>
+          {!searchActive ? (
+            <p className="mt-1 text-xs text-muted-foreground">Use &quot;Add New IS Code&quot; to create your first record.</p>
+          ) : null}
+        </div>
       ) : (
-        <Table>
+        <Table className={GRID_TABLE}>
           <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="text-xs w-10 text-center">
-                <input type="checkbox" aria-label="Select all" checked={allChecked} onChange={onToggleAll} />
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableHead className="w-14 text-center text-xs">
+                <input
+                  type="checkbox"
+                  className={checkboxClass}
+                  aria-label="Select all"
+                  checked={allChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = !allChecked && someChecked
+                  }}
+                  onChange={onToggleAll}
+                />
               </TableHead>
-              <TableHead className="text-xs" style={{ width: '15%' }}>IS Details</TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '35%' }}>IS Title</TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '20%' }}>Reaffirmation / Amendment</TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '20%' }}>Aspect &amp; Charges</TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '10%' }}>Action</TableHead>
+              <TableHead className="text-left text-xs">IS Details</TableHead>
+              <TableHead className="text-center text-xs">IS Title</TableHead>
+              <TableHead className="text-center text-xs">Reaffirmation / Amendment</TableHead>
+              <TableHead className="text-center text-xs">Aspect &amp; Charges</TableHead>
+              <TableHead className="text-center text-xs">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
-                  No records.
-                </TableCell>
-              </TableRow>
-            )}
-
             {rows.map((r) => {
               const checked = selectedIds.has(r.id)
               return (
-                <TableRow key={r.id}>
-                  <TableCell className="text-center">
+                <TableRow key={r.id} data-state={checked ? 'selected' : undefined}>
+                  <TableCell className="text-center align-middle">
                     <input
                       type="checkbox"
+                      className={checkboxClass}
                       aria-label={`Select ${r.is_number}`}
                       checked={checked}
                       onChange={() => onToggle(r.id)}
                     />
                   </TableCell>
 
-                  <TableCell>
-                    <div className="font-medium">
-                      {r.is_number}
-                      {r.revision_year ? ` : ${r.revision_year}` : ''}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onViewFiles(r)}
-                      className="mt-1 text-xs text-primary hover:underline inline-flex items-center gap-1"
-                    >
-                      View Files
-                      <ExternalLink size={12} />
-                    </button>
-                  </TableCell>
-
-                  <TableCell className="text-center">
-                    <div className="font-medium">{r.title}</div>
-                  </TableCell>
-
-                  <TableCell className="text-center">
-                    <div className="text-xs">{r.reaffirmation_year || '-'}</div>
-                    <div className="text-xs text-muted-foreground">Amendment: {r.amendment_number || '-'}</div>
-                  </TableCell>
-
-                  <TableCell className="text-center">
-                    <div className="text-xs">{r.aspect}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Testing Charges: Rs {Number(r.testing_charges ?? 0).toFixed(2)}
+                  <TableCell className="align-middle text-left">
+                    <div className="min-w-[120px] space-y-0.5">
+                      <p className="font-medium text-foreground">
+                        {r.is_number}
+                        {r.revision_year ? ` : ${r.revision_year}` : ''}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-xs"
+                        onClick={() => onViewFiles(r)}
+                        aria-label={`View files for ${r.is_number}`}
+                      >
+                        View Files
+                        <ExternalLink size={12} />
+                      </Button>
                     </div>
                   </TableCell>
 
-                  <TableCell>
-                    <div className="flex items-center justify-center gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => onEdit(r)} aria-label="Edit">
-                        <Pencil size={14} />
+                  <TableCell className="align-middle text-center">
+                    <p className="font-medium text-foreground">{r.title}</p>
+                  </TableCell>
+
+                  <TableCell className="align-middle text-center">
+                    <div className="space-y-0.5">
+                      <p className="text-sm text-foreground">
+                        {r.reaffirmation_year
+                          ? r.reaffirmation_year.replace(/^RA(?=\d)/i, 'RA ')
+                          : '—'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Amendment: {r.amendment_number || '—'}</p>
+                    </div>
+                  </TableCell>
+
+                  <TableCell className="align-middle text-center">
+                    <div className="space-y-0.5">
+                      <p className="text-sm text-foreground">{r.aspect}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Testing Charges: Rs {Number(r.testing_charges ?? 0).toFixed(2)}
+                      </p>
+                    </div>
+                  </TableCell>
+
+                  <TableCell className="align-middle text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(r)} aria-label="Edit">
+                        <Pencil size={16} />
                       </Button>
                       <QiAssistant
                         page="is-codes"

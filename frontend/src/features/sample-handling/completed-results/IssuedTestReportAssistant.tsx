@@ -10,6 +10,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useShowAiAssistant } from '@/hooks/useShowAiAssistant'
 import { QiAssistantChatPanel } from '@/components/qi-assistant/QiAssistantChatPanel'
 import {
   buildIssuedSrfReportAssistantContext,
@@ -26,6 +27,7 @@ export function IssuedTestReportAssistant({
   rows: IssuedTestReportListRow[]
   search: string
 }) {
+  const showAssistant = useShowAiAssistant()
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('srf')
   const [dialogSession, setDialogSession] = useState(0)
@@ -71,6 +73,8 @@ export function IssuedTestReportAssistant({
     },
     [listContext, rows, srfNumbers],
   )
+
+  if (!showAssistant) return null
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

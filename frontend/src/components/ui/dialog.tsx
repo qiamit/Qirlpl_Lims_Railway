@@ -3,6 +3,15 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { preventFormDialogFocusOutside } from '@/lib/formDialogOpenChange'
+import { isFilterComboboxDropdownTarget } from '@/features/sample-handling/receiving/FilterCombobox'
+
+function isRadixSelectPortalTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return Boolean(
+    target.closest('[data-radix-select-content]') ||
+      target.closest('[data-radix-popper-content-wrapper]'),
+  )
+}
 
 const Dialog = DialogPrimitive.Root
 
@@ -52,6 +61,19 @@ const DialogOverlay = React.forwardRef<
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
+function preventOutsideIfComboboxDropdown(
+  e: {
+    preventDefault: () => void
+    target: EventTarget | null
+    detail?: { originalEvent?: Event }
+  },
+) {
+  const target = e.detail?.originalEvent?.target ?? e.target
+  if (isFilterComboboxDropdownTarget(target) || isRadixSelectPortalTarget(target)) {
+    e.preventDefault()
+  }
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
@@ -71,6 +93,8 @@ const DialogContent = React.forwardRef<
       showCloseButton = true,
       layer = 'default',
       onFocusOutside,
+      onPointerDownOutside,
+      onInteractOutside,
       'aria-describedby': ariaDescribedBy,
       ...props
     },
@@ -83,7 +107,16 @@ const DialogContent = React.forwardRef<
         aria-describedby={ariaDescribedBy ?? undefined}
         onFocusOutside={(e) => {
           if (persistOnFocusLoss) preventFormDialogFocusOutside(e)
+          preventOutsideIfComboboxDropdown(e)
           onFocusOutside?.(e)
+        }}
+        onPointerDownOutside={(e) => {
+          preventOutsideIfComboboxDropdown(e)
+          onPointerDownOutside?.(e)
+        }}
+        onInteractOutside={(e) => {
+          preventOutsideIfComboboxDropdown(e)
+          onInteractOutside?.(e)
         }}
         className={cn(
           'fixed grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:rounded-lg',
@@ -94,8 +127,11 @@ const DialogContent = React.forwardRef<
       >
         {children}
         {showCloseButton ? (
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
-            <X className="h-4 w-4" />
+          <DialogPrimitive.Close
+            className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-md border border-border/70 bg-background/95 text-foreground shadow-sm ring-offset-background transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+            aria-label="Close"
+          >
+            <X className="h-6 w-6" strokeWidth={2.75} aria-hidden />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         ) : null}

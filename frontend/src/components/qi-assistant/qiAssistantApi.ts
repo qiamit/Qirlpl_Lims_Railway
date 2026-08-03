@@ -107,6 +107,8 @@ export async function sendQiAssistantMessage(input: {
   activeSkillId?: string
   /** PDF attached in chat — processed only when user sends a message */
   attachedPdf?: File
+  /** Multiple PDFs (preferred for document AI). Falls back to attachedPdf. */
+  attachedPdfs?: File[]
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 }): Promise<QiAssistantResponse> {
   const body: Record<string, unknown> = {
@@ -120,12 +122,30 @@ export async function sendQiAssistantMessage(input: {
     history: input.history,
   }
 
-  if (input.attachedPdf) {
-    validateAssistantPdfFile(input.attachedPdf)
-    body.importPdf = {
-      fileName: input.attachedPdf.name,
-      pdfBase64: await fileToBase64(input.attachedPdf),
+  const pdfs: File[] = []
+  if (input.attachedPdfs?.length) {
+    for (const f of input.attachedPdfs) {
+      validateAssistantPdfFile(f)
+      pdfs.push(f)
     }
+  } else if (input.attachedPdf) {
+    validateAssistantPdfFile(input.attachedPdf)
+    pdfs.push(input.attachedPdf)
+  }
+
+  if (pdfs.length === 1) {
+    const f = pdfs[0]!
+    body.importPdf = {
+      fileName: f.name,
+      pdfBase64: await fileToBase64(f),
+    }
+  } else if (pdfs.length > 1) {
+    body.importPdfs = await Promise.all(
+      pdfs.map(async (f) => ({
+        fileName: f.name,
+        pdfBase64: await fileToBase64(f),
+      })),
+    )
   }
 
   return postQiAssistant(body)

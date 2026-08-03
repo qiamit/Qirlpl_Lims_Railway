@@ -28,6 +28,25 @@ import {
   TestParameterPage,
   TestReportPreparationMasterPage,
   UserManagementRoute,
+  ManagementDocsLevel1Route,
+  ManagementDocsLevel2Route,
+  ManagementDocsLevel3Route,
+  ManagementDocsLevel4Route,
+  CalibrationEquipmentsRoute,
+  CalibrationServiceRequestRoute,
+  EquipmentForCalibrationRoute,
+  JobAllocationRoute,
+  CalibrationConductRoute,
+  CalibrationConductInsideRoute,
+  CalibrationConductOutsideRoute,
+  ReviewDataRoute,
+  CertificatePreparationRoute,
+  CalibrationCertificatesRoute,
+  SaleQuotationRoute,
+  SaleProformaInvoiceRoute,
+  SaleInvoiceRoute,
+  SaleCreditNoteRoute,
+  SalePaymentReceiptRoute,
 } from '@/routes/routeElements'
 
 function PlaceholderPage({ title, clause }: { title: string; clause: string }) {
@@ -94,10 +113,73 @@ export default function App() {
           <Route path="masters/is-codes" element={<IsCodesPage />} />
           <Route path="masters/consent-letter" element={<ConsentLetterPage />} />
           <Route path="masters/nabl-scope" element={<ProductServicesPage />} />
-          <Route path="masters/product-services" element={<Navigate to="/masters/nabl-scope" replace />} />
+          <Route path="masters/product-services" element={<ProductServicesPage />} />
           <Route path="masters/test-parameter" element={<TestParameterPage />} />
           <Route path="masters/equipment" element={<EquipmentPage />} />
           <Route path="masters/iqc" element={<IqcPage />} />
+
+          {/* Management Documentation */}
+          <Route path="management-docs/level-1" element={<ManagementDocsLevel1Route />} />
+          <Route path="management-docs/level-2" element={<ManagementDocsLevel2Route />} />
+          <Route path="management-docs/level-3" element={<ManagementDocsLevel3Route />} />
+          <Route path="management-docs/level-4" element={<ManagementDocsLevel4Route />} />
+
+          {/* Calibration LIMS */}
+          <Route
+            path="calibration/handling"
+            element={<Navigate to="/calibration/handling/service-request" replace />}
+          />
+          <Route
+            path="calibration/handling/service-request"
+            element={<CalibrationServiceRequestRoute />}
+          />
+          <Route
+            path="calibration/handling/job-allocation"
+            element={<JobAllocationRoute />}
+          />
+          <Route
+            path="calibration/handling/calibration-conduct"
+            element={<CalibrationConductRoute />}
+          />
+          <Route
+            path="calibration/handling/calibration-conduct-inside"
+            element={<CalibrationConductInsideRoute />}
+          />
+          <Route
+            path="calibration/handling/calibration-conduct-outside"
+            element={<CalibrationConductOutsideRoute />}
+          />
+          <Route path="calibration/handling/review-data" element={<ReviewDataRoute />} />
+          <Route
+            path="calibration/handling/certificate-preparation"
+            element={<CertificatePreparationRoute />}
+          />
+          <Route
+            path="calibration/handling/certificates"
+            element={<CalibrationCertificatesRoute />}
+          />
+          <Route path="calibration/equipments" element={<CalibrationEquipmentsRoute />} />
+          <Route
+            path="calibration/equipment-for-calibration"
+            element={<EquipmentForCalibrationRoute />}
+          />
+
+          {/* Finance Management · Sale */}
+          <Route
+            path="finance/sale"
+            element={<Navigate to="/finance/sale/quotation" replace />}
+          />
+          <Route path="finance/sale/quotation" element={<SaleQuotationRoute />} />
+          <Route
+            path="finance/sale/proforma-invoice"
+            element={<SaleProformaInvoiceRoute />}
+          />
+          <Route path="finance/sale/invoice" element={<SaleInvoiceRoute />} />
+          <Route path="finance/sale/credit-note" element={<SaleCreditNoteRoute />} />
+          <Route
+            path="finance/sale/payment-receipt"
+            element={<SalePaymentReceiptRoute />}
+          />
 
           {/* Top Bar Pages */}
           <Route path="lab-settings" element={<LabSettingsRoute />} />

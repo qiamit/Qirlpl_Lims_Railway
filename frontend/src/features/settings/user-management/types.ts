@@ -6,6 +6,7 @@ export type UserAccount = {
   password: string
   designation: string
   departmentName: string
+  division: string
   status: 'Active' | 'Inactive'
 }
 
@@ -16,6 +17,7 @@ export type UserForm = {
   password: string
   designation: string
   department: string
+  division: string
   status: 'Active' | 'Inactive'
 }
 
@@ -26,5 +28,6 @@ export const emptyUserForm: UserForm = {
   password: '',
   designation: '',
   department: '',
+  division: '',
   status: 'Active',
 }

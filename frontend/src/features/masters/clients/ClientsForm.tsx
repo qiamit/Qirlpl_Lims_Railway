@@ -1,6 +1,6 @@
+import { useMemo, useState } from 'react'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { FilterCombobox } from '@/features/sample-handling/receiving/FilterCombobox'
+import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
 import {
   BALANCE_TYPES,
   isValidEmail,
@@ -33,7 +35,6 @@ export function ClientsForm({
   canSave,
   saveLoading,
   onSave,
-  onClear,
   states,
   countries,
   districts,
@@ -97,7 +98,6 @@ export function ClientsForm({
   canSave: boolean
   saveLoading: boolean
   onSave: () => void
-  onClear: () => void
   states: Array<{ id: string; label: string }>
   countries: Array<{ id: string; label: string }>
   districts: Array<{ id: string; label: string }>
@@ -156,33 +156,42 @@ export function ClientsForm({
   onAddPaymentTerm: () => void
   onDeletePaymentTerm: (id: string) => void
 }) {
+  const [pinOpen, setPinOpen] = useState(false)
   const gstError = isValidGst(form.gstNumber) ? null : 'Invalid GST Number'
   const mobileError = isValidMobile(form.mobile) ? null : 'Mobile number must be 10 digits'
   const emailError = isValidEmail(form.email) ? null : 'Invalid email address'
   const pinError = isValidIndianPin(form.pinCode) ? null : 'Invalid PIN code'
 
+  const pinOptions = useMemo(() => {
+    const all = Array.from(
+      new Set(pinCodes.map((x) => x.label).filter((v) => String(v ?? '').trim().length > 0)),
+    )
+    const q = form.pinCode.trim()
+    const filtered = q ? all.filter((p) => p.includes(q)) : all
+    return filtered.map((p) => ({ id: p, label: p }))
+  }, [pinCodes, form.pinCode])
+
   const applyPinAutoFill = (pin: string) => {
     const key = pin.trim()
     const hit = key ? pinAutoFill.get(key) : undefined
-    if (!hit) return
     onChange({
       ...form,
       pinCode: key,
-      district: hit.district ?? form.district,
-      state: hit.state ?? form.state,
-      country: hit.country ?? form.country,
+      district: hit?.district ?? form.district,
+      state: hit?.state ?? form.state,
+      country: hit?.country ?? form.country,
     })
   }
 
   return (
-    <Card className="shadow-sm">
-      <CardContent className="space-y-6 pt-5">
+    <div className={labRegistryFormClass}>
+      <div className="space-y-6">
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 md:col-span-4 space-y-2">
             <div className="flex items-center justify-between gap-2 h-5">
               <Label htmlFor="gst">GST Number</Label>
               <a
-                className="text-xs font-medium text-primary hover:underline inline-flex items-center gap-1"
+                className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline"
                 href="https://services.gst.gov.in/services/searchtp"
                 target="_blank"
                 rel="noreferrer"
@@ -193,7 +202,7 @@ export function ClientsForm({
             </div>
             <Input
               id="gst"
-              placeholder="22AAAAA0000A1Z5"
+              placeholder="22AAAFQ8256C1ZK"
               value={form.gstNumber}
               onChange={(e) => onChange({ ...form, gstNumber: e.target.value })}
             />
@@ -328,7 +337,7 @@ export function ClientsForm({
             <Label htmlFor="company-name" className="text-xs">Name of the Company</Label>
             <Input
               id="company-name"
-              placeholder="Enter company name"
+              placeholder="Enter Company Name"
               value={form.companyName}
               onChange={(e) => onChange({ ...form, companyName: e.target.value })}
             />
@@ -338,9 +347,11 @@ export function ClientsForm({
             <Label htmlFor="address" className="text-xs">Address of the Company</Label>
             <Textarea
               id="address"
-              placeholder="Enter address"
+              rows={1}
+              placeholder="Enter Company Address"
               value={form.address}
               onChange={(e) => onChange({ ...form, address: e.target.value })}
+              className="!h-10 !min-h-10 resize-none rounded-none border-0 border-b border-slate-300 bg-transparent px-2.5 py-2 shadow-none focus-visible:border-teal-600 focus-visible:ring-0 focus-visible:ring-offset-0"
             />
           </div>
 
@@ -393,24 +404,24 @@ export function ClientsForm({
                 </DialogContent>
               </Dialog>
             </div>
-            <Select
+            <FilterCombobox
               value={form.pinCode}
               onValueChange={(v) => {
                 const pin = v.replace(/[^0-9]/g, '').slice(0, 6)
-                applyPinAutoFill(pin)
+                if (pin.length === 6) {
+                  applyPinAutoFill(pin)
+                } else {
+                  onChange({ ...form, pinCode: pin })
+                }
               }}
-            >
-              <SelectTrigger id="pin">
-                <SelectValue placeholder="Select PIN" />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from(new Set([form.pinCode, ...pinCodes.map((x) => x.label)].filter((v) => String(v ?? '').trim().length > 0))).map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={pinOptions}
+              onSelectOption={(opt) => applyPinAutoFill(opt.label)}
+              open={pinOpen}
+              onOpenChange={setPinOpen}
+              placeholder="Type or select PIN"
+              listId="client-pin-combobox"
+              inputClassName="h-10"
+            />
             {pinError && <p className="text-xs text-destructive">{pinError}</p>}
           </div>
 
@@ -604,7 +615,7 @@ export function ClientsForm({
             <Label htmlFor="contact-person" className="text-xs">Name of the Contact Person</Label>
             <Input
               id="contact-person"
-              placeholder="Enter contact person"
+              placeholder="Enter Contact Person Name"
               value={form.contactPersonName}
               onChange={(e) => onChange({ ...form, contactPersonName: e.target.value })}
             />
@@ -675,7 +686,7 @@ export function ClientsForm({
               </div>
               <Input
                 inputMode="numeric"
-                placeholder="10 digit mobile"
+                placeholder="10 Digit Mobile Number"
                 value={form.mobile}
                 onChange={(e) =>
                   onChange({
@@ -690,7 +701,7 @@ export function ClientsForm({
 
           <div className="col-span-12 md:col-span-4 space-y-2">
             <Label htmlFor="email">Email ID</Label>
-            <Input id="email" type="email" placeholder="name@company.com" value={form.email} onChange={(e) => onChange({ ...form, email: e.target.value })} />
+            <Input id="email" type="email" placeholder="Enter Email ID" value={form.email} onChange={(e) => onChange({ ...form, email: e.target.value })} />
             {emailError && <p className="text-xs text-destructive">{emailError}</p>}
           </div>
 
@@ -787,21 +798,23 @@ export function ClientsForm({
             <Label htmlFor="remark" className="text-xs">Remark</Label>
             <Input
               id="remark"
-              placeholder="Enter remark"
+              placeholder="Enter Remark"
               value={form.remark}
               onChange={(e) => onChange({ ...form, remark: e.target.value })}
             />
           </div>
         </div>
-      </CardContent>
-      <CardFooter className="flex items-center justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onClear} disabled={saveLoading} className="w-28">
-          Clear
+      </div>
+      <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+        <Button
+          type="button"
+          className="bg-teal-600 text-white hover:bg-teal-500"
+          onClick={onSave}
+          disabled={!canSave || saveLoading}
+        >
+          {saveLoading ? 'Saving…' : 'Save & Close'}
         </Button>
-        <Button type="button" onClick={onSave} disabled={!canSave} className="w-28">
-          {saveLoading ? 'Saving…' : 'Save'}
-        </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   )
 }

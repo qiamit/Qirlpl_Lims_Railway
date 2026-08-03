@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IsCodesHeaderBar } from './IsCodesHeaderBar'
 import { IsCodesForm } from './IsCodesForm'
 import { IsCodesTable } from './IsCodesTable'
@@ -930,11 +930,6 @@ export default function IsCodesMasterPage() {
       <IsCodesHeaderBar
         search={search}
         onSearchChange={setSearch}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onNew={handleNew}
         onOpenBIS={() => window.open('https://standards.bis.gov.in', '_blank', 'noreferrer')}
         assistantContext={assistantContext}
@@ -942,38 +937,64 @@ export default function IsCodesMasterPage() {
       />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
-        <DialogContent persistOnFocusLoss className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add New IS Code</DialogTitle>
-            <DialogDescription>Enter IS code details and save.</DialogDescription>
-          </DialogHeader>
-          {saveMessage && <div className="text-sm text-destructive">{saveMessage}</div>}
-          <IsCodesForm
-            form={form}
-            onChange={setForm}
-            canSave={canSave}
-            saveLoading={saveLoading}
-            onSave={handleSave}
-            onClear={handleClear}
-            onPickFiles={handlePickFiles}
-            aspectOptions={aspects}
-            aspectDialogOpen={aspectDialogOpen}
-            setAspectDialogOpen={setAspectDialogOpen}
-            newAspect={newAspect}
-            setNewAspect={setNewAspect}
-            onAddAspect={handleAddAspect}
-            onDeleteAspect={handleDeleteAspect}
-            onOpenFiles={() => {
-              const id = editingId
-              if (!id) {
-                setSaveMessage('Please save the IS Code first, then upload and view files.')
-                return
-              }
-              const row = rows.find((r) => r.id === id)
-              if (!row) return
-              void openFilesPopup(row)
-            }}
-          />
+        <DialogContent
+          persistOnFocusLoss
+          className="max-h-[92vh] max-w-5xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+          aria-describedby={undefined}
+        >
+          <div className="relative bg-slate-900 px-6 py-5 text-white">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.12]"
+              style={{
+                backgroundImage:
+                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
+                backgroundSize: '24px 24px',
+              }}
+            />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <DialogHeader className="relative pr-8 text-left">
+              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
+                {editingId ? 'IS Registry · Edit Entry' : 'IS Registry · New Entry'}
+              </p>
+              <DialogTitle className="text-2xl font-semibold tracking-tight text-white">
+                {editingId ? 'Edit IS Code' : 'Add New IS Code'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="max-h-[min(72vh,720px)] overflow-y-auto bg-[#fafbfc] px-6 py-5">
+            {saveMessage ? (
+              <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {saveMessage}
+              </p>
+            ) : null}
+            <IsCodesForm
+              form={form}
+              onChange={setForm}
+              canSave={canSave}
+              saveLoading={saveLoading}
+              onSave={handleSave}
+              onClear={handleClear}
+              onPickFiles={handlePickFiles}
+              aspectOptions={aspects}
+              aspectDialogOpen={aspectDialogOpen}
+              setAspectDialogOpen={setAspectDialogOpen}
+              newAspect={newAspect}
+              setNewAspect={setNewAspect}
+              onAddAspect={handleAddAspect}
+              onDeleteAspect={handleDeleteAspect}
+              onOpenFiles={() => {
+                const id = editingId
+                if (!id) {
+                  setSaveMessage('Please save the IS Code first, then upload and view files.')
+                  return
+                }
+                const row = rows.find((r) => r.id === id)
+                if (!row) return
+                void openFilesPopup(row)
+              }}
+            />
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -981,6 +1002,7 @@ export default function IsCodesMasterPage() {
         rows={pagedRows}
         loading={listLoading}
         error={listError}
+        searchActive={search.trim().length > 0}
         selectedIds={selectedIds}
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
@@ -995,12 +1017,18 @@ export default function IsCodesMasterPage() {
         message={saveMessage}
         loading={saveLoading}
         selectedCount={selectedIds.size}
+        totalCount={filteredRows.length}
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onImport={handleImport}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}
         onDeleteSelected={handleDeleteSelected}
-        page={page}
-        pageCount={pageCount}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

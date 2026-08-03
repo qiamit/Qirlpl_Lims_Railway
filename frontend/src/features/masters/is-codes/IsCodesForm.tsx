@@ -1,10 +1,10 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
 import type { IsAspect, IsCodeForm } from './types'
 import { isValidAmendment2, isValidYear4 } from './types'
 
@@ -46,8 +46,8 @@ export function IsCodesForm({
   const amendError = isValidAmendment2(form.amendmentNumber) ? null : 'Up to 2 digits'
 
   return (
-    <Card className="shadow-sm">
-      <CardContent className="space-y-6 pt-5">
+    <div className={labRegistryFormClass}>
+      <div className="space-y-6">
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 md:col-span-3 space-y-2">
             <Label className="text-xs">IS Number</Label>
@@ -211,16 +211,21 @@ export function IsCodesForm({
             </Button>
           </div>
         </div>
-      </CardContent>
+      </div>
 
-      <CardFooter className="flex items-center justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onClear} disabled={saveLoading} className="w-28">
+      <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+        <Button type="button" variant="secondary" onClick={onClear} disabled={saveLoading} className="w-28">
           Clear
         </Button>
-        <Button type="button" onClick={onSave} disabled={!canSave} className="w-28">
+        <Button
+          type="button"
+          className="w-28 bg-teal-600 text-white hover:bg-teal-500"
+          onClick={onSave}
+          disabled={!canSave || saveLoading}
+        >
           {saveLoading ? 'Saving…' : 'Save'}
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   )
 }

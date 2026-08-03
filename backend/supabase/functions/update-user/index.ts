@@ -12,6 +12,7 @@ type UpdateUserBody = {
   mobile?: string
   designation?: string
   department_name?: string
+  division?: string
   status?: string
 }
 
@@ -85,6 +86,7 @@ Deno.serve(async (req) => {
   if (typeof body.mobile === 'string') profilePayload.mobile = body.mobile
   if (typeof body.designation === 'string') profilePayload.designation = body.designation
   if (typeof body.department_name === 'string') profilePayload.department_name = body.department_name
+  if (typeof body.division === 'string') profilePayload.division = body.division
   if (typeof body.status === 'string') profilePayload.status = body.status
 
   if (Object.keys(profilePayload).length > 0) {
@@ -118,6 +120,7 @@ Deno.serve(async (req) => {
     if (typeof body.full_name === 'string') authMetadataPayload.full_name = body.full_name
     if (typeof body.designation === 'string') authMetadataPayload.designation = body.designation
     if (typeof body.department_name === 'string') authMetadataPayload.department_name = body.department_name
+    if (typeof body.division === 'string') authMetadataPayload.division = body.division
     if (typeof body.status === 'string') authMetadataPayload.status = body.status
     authMetadataPayload.updated_by = callerData.user.id
 

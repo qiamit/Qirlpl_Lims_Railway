@@ -1,46 +1,53 @@
-import { useState } from 'react'
-import { Bot } from 'lucide-react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AiModelsPanel } from './AiModelsPanel'
-import { AiSkillsPanel } from './AiSkillsPanel'
-import { AiGeneralPanel } from './AiGeneralPanel'
+import { useRef, useState } from 'react'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { AiSettingsHeaderBar, type AiSettingsTab } from './AiSettingsHeaderBar'
+import { AiModelsPanel, type AiModelsPanelHandle } from './AiModelsPanel'
+import { AiSkillsPanel, type AiSkillsPanelHandle } from './AiSkillsPanel'
+import { AiGeneralPanel, type AiGeneralPanelHandle } from './AiGeneralPanel'
 
 export default function AiSettingsMasterPage() {
-  const [activeTab, setActiveTab] = useState('models')
+  const [activeTab, setActiveTab] = useState<AiSettingsTab>('models')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [generalSaving, setGeneralSaving] = useState(false)
+
+  const modelsRef = useRef<AiModelsPanelHandle>(null)
+  const skillsRef = useRef<AiSkillsPanelHandle>(null)
+  const generalRef = useRef<AiGeneralPanelHandle>(null)
+
+  const handlePrimaryAction = () => {
+    if (activeTab === 'models') modelsRef.current?.openCreate()
+    else if (activeTab === 'skills') skillsRef.current?.openCreate()
+    else generalRef.current?.save()
+  }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="rounded-xl border border-border bg-card px-5 py-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Bot size={22} />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">AI Settings</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Manage AI models, API keys, skills, and lab-wide AI preferences
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="p-6 space-y-5">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as AiSettingsTab)
+          setSearchQuery('')
+        }}
+        className="space-y-5"
+      >
+        <AiSettingsHeaderBar
+          activeTab={activeTab}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onPrimaryAction={handlePrimaryAction}
+          saving={generalSaving}
+        />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full max-w-xl grid-cols-3">
-          <TabsTrigger value="models">AI Models</TabsTrigger>
-          <TabsTrigger value="skills">Skills</TabsTrigger>
-          <TabsTrigger value="general">General</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="models" className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <AiModelsPanel />
+        <TabsContent value="models" className="mt-0 space-y-5 focus-visible:outline-none">
+          <AiModelsPanel ref={modelsRef} searchQuery={searchQuery} />
         </TabsContent>
 
-        <TabsContent value="skills" className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <AiSkillsPanel />
+        <TabsContent value="skills" className="mt-0 space-y-5 focus-visible:outline-none">
+          <AiSkillsPanel ref={skillsRef} searchQuery={searchQuery} />
         </TabsContent>
 
-        <TabsContent value="general" className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <AiGeneralPanel />
+        <TabsContent value="general" className="mt-0 focus-visible:outline-none">
+          <AiGeneralPanel ref={generalRef} onSavingChange={setGeneralSaving} />
         </TabsContent>
       </Tabs>
     </div>

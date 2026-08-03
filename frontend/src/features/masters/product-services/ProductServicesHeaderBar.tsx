@@ -12,6 +12,9 @@ export function ProductServicesHeaderBar({
   onNew,
   assistantContext,
   onAssistantDataChanged,
+  pageTitle = 'NABL Scope',
+  addButtonLabel = 'Add Scope Entry',
+  qiPage = 'nabl-scope',
 }: {
   search: string
   onSearchChange: (value: string) => void
@@ -20,11 +23,16 @@ export function ProductServicesHeaderBar({
   onNew: () => void
   assistantContext: string
   onAssistantDataChanged?: () => void
+  pageTitle?: string
+  addButtonLabel?: string
+  qiPage?: string
 }) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-xl border border-border bg-card px-5 py-4 shadow-sm">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground whitespace-nowrap">NABL Scope</h1>
+        <h1 className="text-lg font-semibold tracking-tight text-foreground whitespace-nowrap">
+          {pageTitle}
+        </h1>
         <div className="md:w-[40%]">
           <Input
             placeholder="Search discipline, material, parameter, method…"
@@ -50,21 +58,21 @@ export function ProductServicesHeaderBar({
       <div className="flex items-center justify-end">
         <div className="flex flex-wrap items-center justify-end gap-2">
           <QiAssistant
-            page="nabl-scope"
-            pageTitle="NABL Scope"
+            page={qiPage}
+            pageTitle={pageTitle}
             contextSummary={assistantContext}
             suggestedQuestions={[
               'Summarize scope entries by discipline group',
-              'Add a new scope entry for chemical testing on steel samples',
+              'Add a new product / service entry for chemical testing on steel samples',
               'Which test methods are listed for mechanical testing?',
               'Update the test method for scope entry S.No 5',
             ]}
-            welcomeMessage="Ask me about **NABL accreditation scope** — search, summarize, add, update or delete scope entries. I can also explain ISO/IEC 17025 scope requirements."
+            welcomeMessage={`Ask me about **${pageTitle}** — search, summarize, add, update or delete entries. I can also explain ISO/IEC 17025 scope requirements.`}
             onDataChanged={onAssistantDataChanged}
           />
-          <Button type="button" className="gap-2" onClick={onNew}>
+          <Button type="button" className="gap-2" onClick={onNew} aria-label={addButtonLabel}>
             <Plus size={16} />
-            Add Scope Entry
+            {addButtonLabel}
           </Button>
         </div>
       </div>

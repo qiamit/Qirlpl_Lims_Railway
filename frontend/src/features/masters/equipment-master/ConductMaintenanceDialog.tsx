@@ -65,6 +65,7 @@ export function ConductMaintenanceDialog({
   maintenanceScheduleFrequency,
   onSaveChecklist,
   onCompleteMaintenance,
+  layer = 'default',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -87,6 +88,8 @@ export function ConductMaintenanceDialog({
     lastMaintenanceDate: string
     nextMaintenanceDate: string
   }) => void
+  /** Raise above an already-open parent dialog (e.g. nested Maintenance form). */
+  layer?: 'default' | 'nested' | 'stacked'
 }) {
   const [rows, setRows] = useState<MaintenanceCheckpointRow[]>([])
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -204,7 +207,7 @@ export function ConductMaintenanceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent layer={layer} className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-4 w-4" />

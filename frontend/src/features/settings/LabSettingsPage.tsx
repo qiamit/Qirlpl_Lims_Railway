@@ -1,7 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
-import { Save, Plus, Trash2 } from 'lucide-react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Plus, Trash2 } from 'lucide-react'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +13,9 @@ import { LegalDocumentsTab } from './lab-settings/LegalDocumentsTab'
 import { RegistrationDocumentsTab } from './lab-settings/RegistrationDocumentsTab'
 import { PrefixesTab } from './lab-settings/PrefixesTab'
 import { LetterheadTab } from './lab-settings/LetterheadTab'
+import { LabSettingsHeaderBar } from './lab-settings/LabSettingsHeaderBar'
+import { LabSettingsPanel, labAddLinkClass } from './lab-settings/labSettingsUi'
+import { persistLabNameLocal } from './lab-settings/brandMark'
 import {
   Dialog,
   DialogContent,
@@ -1032,7 +1034,7 @@ export default function LabSettingsPage() {
           }),
         )
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem('labSettings.labName', labName)
+          persistLabNameLocal(labName)
         }
         setSaveMessage('Saved successfully.')
       } catch (err) {
@@ -1090,58 +1092,37 @@ export default function LabSettingsPage() {
     })()
   }
 
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Lab Setting</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Configure Laboratory Information, Documents, & System Preferences
-          </p>
-        </div>
-      </div>
+  const handleHeaderSave = () => {
+    if (activeTab === 'laboratory-details') handleSaveLaboratoryDetails()
+    else if (activeTab === 'bank-details') handleSaveBankDetails()
+    else if (activeTab === 'legal-documents') handleSaveLegalDocuments()
+    else if (activeTab === 'logos-signatures') handleSaveAccreditations()
+    else if (activeTab === 'prefixes') handleSavePrefixes()
+    else if (activeTab === 'letterhead') handleSaveLetterheads()
+    else if (activeTab === 'settings') handleSaveSystemSettings()
+  }
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-1 gap-2 overflow-x-auto sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-          <TabsTrigger value="laboratory-details" className="w-full text-xs font-semibold sm:text-sm">
-            Laboratory Details
-          </TabsTrigger>
-          <TabsTrigger value="bank-details" className="w-full text-xs font-semibold sm:text-sm">
-            Bank Details
-          </TabsTrigger>
-          <TabsTrigger value="legal-documents" className="w-full text-xs font-semibold sm:text-sm">
-            Legal Documents
-          </TabsTrigger>
-          <TabsTrigger value="logos-signatures" className="w-full text-xs font-semibold sm:text-sm">
-            Registration Documents
-          </TabsTrigger>
-          <TabsTrigger value="prefixes" className="w-full text-xs font-semibold sm:text-sm">
-            Prefix's
-          </TabsTrigger>
-          <TabsTrigger value="letterhead" className="w-full text-xs font-semibold sm:text-sm">
-            Letter Head Templates
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="w-full text-xs font-semibold sm:text-sm">
-            Setting
-          </TabsTrigger>
-        </TabsList>
+  return (
+    <div className="p-6 space-y-5">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v)
+          setSaveMessage(null)
+        }}
+        className="space-y-5"
+      >
+        <LabSettingsHeaderBar
+          labName={labName}
+          saveLoading={saveLoading}
+          saveMessage={saveMessage}
+          onSave={handleHeaderSave}
+        />
 
         {/* Tab 1: Laboratory Details */}
-        <TabsContent value="laboratory-details">
-          <Card>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-end gap-3 pt-4">
-                {saveMessage && (
-                  <p className={saveMessage.toLowerCase().includes('saved') ? 'text-sm text-emerald-700' : 'text-sm text-destructive'}>
-                    {saveMessage}
-                  </p>
-                )}
-                <Button className="gap-2" onClick={handleSaveLaboratoryDetails} disabled={saveLoading}>
-                  <Save size={16} />
-                  {saveLoading ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end mt-4">
+        <TabsContent value="laboratory-details" className="mt-0 focus-visible:outline-none">
+          <LabSettingsPanel eyebrow="Lab Registry · Profile" title="Laboratory Details">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
                 <div className="min-w-0 space-y-2 xl:col-span-2">
                   <div className="flex items-center min-h-[20px]">
                     <Label htmlFor="lab-name">Name of the Laboratory</Label>
@@ -1151,7 +1132,11 @@ export default function LabSettingsPage() {
                     className="w-full"
                     placeholder="Enter Laboratory Name"
                     value={labName}
-                    onChange={(e) => setLabName(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setLabName(next)
+                      persistLabNameLocal(next)
+                    }}
                   />
                 </div>
 
@@ -1160,7 +1145,7 @@ export default function LabSettingsPage() {
                     <Label htmlFor="lab-type" className="shrink-0">Laboratory Type</Label>
                     <Dialog open={labTypeDialogOpen} onOpenChange={setLabTypeDialogOpen}>
                       <DialogTrigger asChild>
-                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                        <button type="button" className={labAddLinkClass}>
                           <Plus size={12} />
                           Add New Type
                         </button>
@@ -1239,7 +1224,7 @@ export default function LabSettingsPage() {
                     <Label htmlFor="lab-scale" className="shrink-0">Laboratory Scale</Label>
                     <Dialog open={labScaleDialogOpen} onOpenChange={setLabScaleDialogOpen}>
                       <DialogTrigger asChild>
-                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                        <button type="button" className={labAddLinkClass}>
                           <Plus size={12} />
                           Add New Scale
                         </button>
@@ -1334,7 +1319,7 @@ export default function LabSettingsPage() {
                       <Label htmlFor="contact-designation" className="shrink-0">Designation</Label>
                       <Dialog open={designationDialogOpen} onOpenChange={setDesignationDialogOpen}>
                         <DialogTrigger asChild>
-                          <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                          <button type="button" className={labAddLinkClass}>
                             <Plus size={12} />
                             Add New Designation
                           </button>
@@ -1413,7 +1398,7 @@ export default function LabSettingsPage() {
                       <Label htmlFor="mobile" className="shrink-0">Mobile Number</Label>
                       <Dialog open={countryCodeDialogOpen} onOpenChange={setCountryCodeDialogOpen}>
                         <DialogTrigger asChild>
-                          <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                          <button type="button" className={labAddLinkClass}>
                             <Plus size={12} />
                             Manage Codes
                           </button>
@@ -1527,6 +1512,7 @@ export default function LabSettingsPage() {
                   id="address"
                   placeholder="Enter Complete Address"
                   rows={3}
+                  className="!h-auto !min-h-[88px] resize-y rounded-md border border-slate-300 bg-white focus-visible:ring-teal-600/30"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                 />
@@ -1566,7 +1552,7 @@ export default function LabSettingsPage() {
                     <Label htmlFor="state" className="shrink-0">State</Label>
                     <Dialog open={stateDialogOpen} onOpenChange={setStateDialogOpen}>
                       <DialogTrigger asChild>
-                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                        <button type="button" className={labAddLinkClass}>
                           <Plus size={12} />
                           Add New State
                         </button>
@@ -1645,7 +1631,7 @@ export default function LabSettingsPage() {
                     <Label htmlFor="country" className="shrink-0">Country</Label>
                     <Dialog open={countryDialogOpen} onOpenChange={setCountryDialogOpen}>
                       <DialogTrigger asChild>
-                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                        <button type="button" className={labAddLinkClass}>
                           <Plus size={12} />
                           Add New Country
                         </button>
@@ -1738,26 +1724,13 @@ export default function LabSettingsPage() {
                   onChange={(_file, storagePath) => setSealSignPath(storagePath)}
                 />
               </div>
-            </CardContent>
-          </Card>
+          </LabSettingsPanel>
         </TabsContent>
 
         {/* Tab 2: Bank Details */}
-        <TabsContent value="bank-details">
-          <Card>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-end gap-3 pt-4">
-                {saveMessage && (
-                  <p className={saveMessage.toLowerCase().includes('saved') ? 'text-sm text-emerald-700' : 'text-sm text-destructive'}>
-                    {saveMessage}
-                  </p>
-                )}
-                <Button className="gap-2" onClick={handleSaveBankDetails} disabled={saveLoading}>
-                  <Save size={16} />
-                  {saveLoading ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+        <TabsContent value="bank-details" className="mt-0 focus-visible:outline-none">
+          <LabSettingsPanel eyebrow="Lab Registry · Banking" title="Bank Details">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="bank-name">Bank Name</Label>
                   <Input
@@ -1832,12 +1805,11 @@ export default function LabSettingsPage() {
                   />
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </LabSettingsPanel>
         </TabsContent>
 
         {/* Tab 3: Legal Documents */}
-        <TabsContent value="legal-documents">
+        <TabsContent value="legal-documents" className="mt-0 focus-visible:outline-none">
           <LegalDocumentsTab
             saveMessage={saveMessage}
             saveLoading={saveLoading}
@@ -1856,7 +1828,7 @@ export default function LabSettingsPage() {
         </TabsContent>
 
         {/* Tab 4: Registration Documents */}
-        <TabsContent value="logos-signatures">
+        <TabsContent value="logos-signatures" className="mt-0 focus-visible:outline-none">
           <RegistrationDocumentsTab
             saveMessage={saveMessage}
             saveLoading={saveLoading}
@@ -1874,7 +1846,7 @@ export default function LabSettingsPage() {
           />
         </TabsContent>
 
-        <TabsContent value="prefixes">
+        <TabsContent value="prefixes" className="mt-0 focus-visible:outline-none">
           <PrefixesTab
             saveMessage={saveMessage}
             saveLoading={saveLoading}
@@ -1894,7 +1866,7 @@ export default function LabSettingsPage() {
           />
         </TabsContent>
         {/* Tab 5: Letter Head Templates */}
-        <TabsContent value="letterhead">
+        <TabsContent value="letterhead" className="mt-0 focus-visible:outline-none">
           <LetterheadTab
             saveMessage={saveMessage}
             saveLoading={saveLoading}
@@ -1945,37 +1917,15 @@ export default function LabSettingsPage() {
         </TabsContent>
 
         {/* Tab 7: Settings */}
-        <TabsContent value="settings">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Settings</CardTitle>
-              <CardDescription>Configure system preferences</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-end gap-3 pt-1">
-                {saveMessage && (
-                  <p
-                    className={
-                      saveMessage.toLowerCase().includes('saved')
-                        ? 'text-sm text-emerald-700'
-                        : 'text-sm text-destructive'
-                    }
-                  >
-                    {saveMessage}
-                  </p>
-                )}
-                <Button className="gap-2" onClick={handleSaveSystemSettings} disabled={saveLoading}>
-                  <Save size={16} />
-                  {saveLoading ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
+        <TabsContent value="settings" className="mt-0 focus-visible:outline-none">
+          <LabSettingsPanel eyebrow="Lab Registry · Preferences" title="System Setting">
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
                 <div className="min-w-0 space-y-2">
                   <div className="flex items-center justify-between gap-2 min-h-[20px]">
                     <Label htmlFor="currency" className="shrink-0">Currency Setting</Label>
                     <Dialog open={currencyDialogOpen} onOpenChange={setCurrencyDialogOpen}>
                       <DialogTrigger asChild>
-                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                        <button type="button" className={labAddLinkClass}>
                           <Plus size={12} />
                           Add New Currency
                         </button>
@@ -2056,7 +2006,7 @@ export default function LabSettingsPage() {
                     <Label htmlFor="date-format" className="shrink-0">Date Setting</Label>
                     <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
                       <DialogTrigger asChild>
-                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                        <button type="button" className={labAddLinkClass}>
                           <Plus size={12} />
                           Add New Format
                         </button>
@@ -2137,7 +2087,7 @@ export default function LabSettingsPage() {
                     <Label htmlFor="time-format" className="shrink-0">Time Setting</Label>
                     <Dialog open={timeDialogOpen} onOpenChange={setTimeDialogOpen}>
                       <DialogTrigger asChild>
-                        <button type="button" className="shrink-0 text-xs font-medium text-primary flex items-center gap-1 hover:underline whitespace-nowrap">
+                        <button type="button" className={labAddLinkClass}>
                           <Plus size={12} />
                           Add New Format
                         </button>
@@ -2229,8 +2179,7 @@ export default function LabSettingsPage() {
                   </Select>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </LabSettingsPanel>
         </TabsContent>
 
       </Tabs>

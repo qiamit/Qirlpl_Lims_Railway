@@ -12,11 +12,17 @@ export function IqcMasterSearchSelect({
   selectedMasterIds,
   onSelectedMasterIdsChange,
   disabled,
+  emptyPlaceholder = 'No IQC Masters found',
+  searchPlaceholder = 'Type to search IQC master…',
+  listId = 'iqc-master-search-list',
 }: {
   iqcMasters: IqcMasterOption[]
   selectedMasterIds: string[]
   onSelectedMasterIdsChange: (ids: string[]) => void
   disabled?: boolean
+  emptyPlaceholder?: string
+  searchPlaceholder?: string
+  listId?: string
 }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -54,12 +60,10 @@ export function IqcMasterSearchSelect({
       }}
       open={open}
       onOpenChange={setOpen}
-      placeholder={
-        iqcMasters.length === 0 ? 'No IQC Masters found' : 'Type to search IQC master…'
-      }
+      placeholder={iqcMasters.length === 0 ? emptyPlaceholder : searchPlaceholder}
       disabled={disabled || iqcMasters.length === 0}
       inputClassName="h-9 text-xs"
-      listId="iqc-master-search-list"
+      listId={listId}
       onInputFocus={() => setOpen(true)}
     />
   )
