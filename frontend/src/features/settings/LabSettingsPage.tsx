@@ -67,6 +67,7 @@ export default function LabSettingsPage() {
   const [contactPersonName, setContactPersonName] = useState('')
   const [mobile, setMobile] = useState('')
   const [email, setEmail] = useState('')
+  const [website, setWebsite] = useState('')
   const [address, setAddress] = useState('')
   const [pinCode, setPinCode] = useState('')
   const [district, setDistrict] = useState('Raipur')
@@ -835,6 +836,7 @@ export default function LabSettingsPage() {
       setContactPersonName(parsed.contactPersonName)
       setMobile(parsed.mobile)
       setEmail(parsed.email)
+      setWebsite(parsed.website)
       setAddress(parsed.address)
       setPinCode(parsed.pinCode)
       setDistrict(parsed.district)
@@ -1021,6 +1023,7 @@ export default function LabSettingsPage() {
             address,
             mobile,
             email,
+            website,
             labType: selectedLabType,
             labScale: selectedLabScale,
             contactPersonName,
@@ -1505,6 +1508,19 @@ export default function LabSettingsPage() {
                     />
                   </div>
                 </div>
+
+              <div className="min-w-0 max-w-xl space-y-2">
+                <Label htmlFor="website">Website</Label>
+                <Input
+                  id="website"
+                  className="w-full"
+                  type="url"
+                  placeholder="Enter Website URL"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  title="Enter company website"
+                />
+              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="address">Current Address</Label>

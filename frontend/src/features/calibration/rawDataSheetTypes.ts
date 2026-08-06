@@ -1404,6 +1404,30 @@ function expressionUsesTextConcat(body: string): boolean {
   return /&/.test(body) || /"(?:\\.|[^"\\])*"/.test(body)
 }
 
+/**
+ * Formula pad ± often inserts ASCII `-`, and older sheet snapshots store
+ * `&"-"&` instead of `&"±"&`. Treat lone dash / +/- join text as ±.
+ */
+function normalizeUncertaintyJoinText(text: string): string {
+  const t = text.trim()
+  if (!t) return text
+  if (t === '±') return '±'
+  if (/^(?:[-−–—]|\+\/[-−])$/.test(t)) return '±'
+  return text
+}
+
+/**
+ * Display helper: `0.09-0.09` / `-0.04-0.04` → `0.09±0.09` / `-0.04±0.04`.
+ * Only rewrites a single hyphen/minus between two numeric tokens.
+ */
+export function formatPlusMinusPairDisplay(value: string): string {
+  const t = value.trim()
+  if (!t || t.includes('±')) return value
+  const m = /^(-?\d+(?:\.\d+)?)\s*[-−–—]\s*(-?\d+(?:\.\d+)?)$/.exec(t)
+  if (!m) return value
+  return `${m[1]}±${m[2]}`
+}
+
 function runValidatedMathExpression(body: string): number | null {
   const validationError = validateExpressionBody(body)
   if (validationError) throw new Error(validationError)
@@ -1624,7 +1648,7 @@ export function evaluateColumnFormulaExpression(
     const parts: string[] = []
     for (const seg of segments) {
       if (seg.type === 'text') {
-        parts.push(seg.value)
+        parts.push(normalizeUncertaintyJoinText(seg.value))
         continue
       }
       const mathBody = replaceRefs(seg.value)
@@ -1632,7 +1656,7 @@ export function evaluateColumnFormulaExpression(
       if (n == null) throw new Error('incomplete')
       parts.push(String(n))
     }
-    return parts.join('')
+    return formatPlusMinusPairDisplay(parts.join(''))
   }
 
   body = replaceRefs(body)
@@ -2118,6 +2142,8 @@ const CALC_STEPS_DISPLAY_DP = 2
 function formatStepDisplayValue(raw: string): string {
   const t = raw.trim()
   if (!t) return '—'
+  const withPm = formatPlusMinusPairDisplay(t)
+  if (withPm !== t) return withPm
   const n = Number(t)
   if (!Number.isFinite(n)) return t
   return formatStepNumber(n, CALC_STEPS_DISPLAY_DP)

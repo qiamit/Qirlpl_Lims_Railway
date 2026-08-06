@@ -51,12 +51,14 @@ import {
   type SavedColumnFormula,
 } from '@/features/calibration/equipments/savedColumnFormulas'
 import {
-  MU_CALIBRATION_POINT_COLUMN,
   MU_CALIBRATION_POINT_FIELD_KEY,
   emptyMuSheetColumn,
   emptyMuSheetTable,
   flattenMuSectionColumns,
+  isMuEquipmentRangeFieldKey,
+  muBuiltInExternalColumns,
   type MuCalculationTemplate,
+  type MuFormulaSourceColumn,
   type MuSheetSection,
   type MuSheetTable,
 } from './muCalculationTypes'
@@ -156,7 +158,31 @@ function renderFormulaWithErrorHighlight(value: string, errorToken: string | nul
   return <>{parts}</>
 }
 
-type FormulaRefKind = 'sheet' | 'rds' | 'point'
+type FormulaRefKind = 'sheet' | 'rds' | 'point' | 'typeA' | 'typeB' | 'calc' | 'range'
+
+function formulaSuggestionContextLabel(
+  col: MuFormulaSourceColumn,
+  kind: FormulaRefKind,
+): string {
+  const component = col.componentLabel?.trim()
+  if (component) return component
+  switch (kind) {
+    case 'rds':
+      return 'RDS'
+    case 'point':
+      return 'Point'
+    case 'range':
+      return 'Range'
+    case 'typeA':
+      return 'Type A'
+    case 'typeB':
+      return 'Type B'
+    case 'calc':
+      return 'Calc'
+    default:
+      return ''
+  }
+}
 
 function MuColumnFormulaInput({
   id,
@@ -169,7 +195,7 @@ function MuColumnFormulaInput({
   id: string
   value: string
   onChange: (next: string) => void
-  sourceColumns: RawDataSheetColumn[]
+  sourceColumns: MuFormulaSourceColumn[]
   refKindOf: (key: string) => FormulaRefKind
   errorToken?: string | null
 }) {
@@ -201,7 +227,8 @@ function MuColumnFormulaInput({
     return sourceColumns.filter((c) => {
       const label = (c.label || 'Untitled column').toLowerCase()
       const key = c.key.toLowerCase()
-      return !q || label.includes(q) || key.includes(q)
+      const component = (c.componentLabel ?? '').toLowerCase()
+      return !q || label.includes(q) || key.includes(q) || component.includes(q)
     })
   }, [sourceColumns, token])
 
@@ -210,7 +237,7 @@ function MuColumnFormulaInput({
     setHighlight(0)
   }, [token, suggestions.length])
 
-  const insertColumn = (col: RawDataSheetColumn) => {
+  const insertColumn = (col: MuFormulaSourceColumn) => {
     if (!token) return
     const insert = bracketLabel(col.label || col.key)
     const start = token.start
@@ -466,6 +493,7 @@ function MuColumnFormulaInput({
         >
           {suggestions.map((col, i) => {
             const kind = refKindOf(col.key)
+            const contextLabel = formulaSuggestionContextLabel(col, kind)
             return (
               <li key={col.key}>
                 <button
@@ -473,7 +501,7 @@ function MuColumnFormulaInput({
                   role="option"
                   aria-selected={i === highlight}
                   className={cn(
-                    'flex w-full items-center justify-between px-3 py-1.5 text-left text-sm',
+                    'flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm',
                     i === highlight
                       ? 'bg-indigo-50 text-indigo-900'
                       : 'text-slate-700 hover:bg-slate-50',
@@ -498,10 +526,35 @@ function MuColumnFormulaInput({
                         Point
                       </span>
                     ) : null}
+                    {kind === 'range' ? (
+                      <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-800">
+                        Range
+                      </span>
+                    ) : null}
+                    {kind === 'typeA' ? (
+                      <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-800">
+                        Type A
+                      </span>
+                    ) : null}
+                    {kind === 'typeB' ? (
+                      <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
+                        Type B
+                      </span>
+                    ) : null}
+                    {kind === 'calc' ? (
+                      <span className="shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-800">
+                        Calc
+                      </span>
+                    ) : null}
                   </span>
-                  <span className="ml-2 shrink-0 font-mono text-[10px] text-slate-400">
-                    {bracketLabel(col.label || col.key)}
-                  </span>
+                  {contextLabel ? (
+                    <span
+                      className="ml-auto max-w-[40%] shrink-0 truncate text-right text-[10px] font-medium text-slate-500"
+                      title={contextLabel}
+                    >
+                      {contextLabel}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             )
@@ -519,13 +572,17 @@ function MuColumnCalculationDialog({
   sectionColumns,
   externalColumns,
   onUpdateFormula,
+  externalRefKindOf,
+  hintText,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   column: RawDataSheetColumn | null
-  sectionColumns: RawDataSheetColumn[]
-  externalColumns: RawDataSheetColumn[]
+  sectionColumns: MuFormulaSourceColumn[]
+  externalColumns: MuFormulaSourceColumn[]
   onUpdateFormula: (col: RawDataSheetColumn, patch: Partial<RawDataColumnFormula>) => void
+  externalRefKindOf?: (key: string) => FormulaRefKind
+  hintText?: string
 }) {
   const formula = column?.formula ?? emptyColumnFormula()
   const columnIndex = column
@@ -556,7 +613,12 @@ function MuColumnCalculationDialog({
   }
 
   const refKindOf = (key: string): FormulaRefKind => {
+    if (externalRefKindOf) {
+      const kind = externalRefKindOf(key)
+      if (kind !== 'sheet' || !sectionColumns.some((c) => c.key === key)) return kind
+    }
     if (key === MU_CALIBRATION_POINT_FIELD_KEY) return 'point'
+    if (isMuEquipmentRangeFieldKey(key)) return 'range'
     if (externalKeySet.has(key) && key !== MU_CALIBRATION_POINT_FIELD_KEY) return 'rds'
     return 'sheet'
   }
@@ -669,8 +731,8 @@ function MuColumnCalculationDialog({
           </div>
 
           <p className="text-xs text-slate-600">
-            Autocomplete includes this Type&apos;s columns, equipment Raw Data Sheet columns (RDS),
-            and Calibration Point.
+            {hintText ??
+              "Autocomplete includes this Type's columns, Range Min/Max, Least Count, Accuracy, Raw Data Sheet columns (RDS), and Calibration Point."}
           </p>
 
           {sourceOptions.length === 0 ? (
@@ -763,6 +825,8 @@ function MuSheetTableEditor({
   onRemove,
   formulaSourceColumns,
   externalColumns,
+  externalRefKindOf,
+  formulaHintText,
 }: {
   table: MuSheetTable
   tableIndex: number
@@ -770,8 +834,10 @@ function MuSheetTableEditor({
   onChange: (next: MuSheetTable) => void
   onRemove: () => void
   /** Other columns in this Type section (same + sibling tables) for formulas. */
-  formulaSourceColumns: RawDataSheetColumn[]
-  externalColumns: RawDataSheetColumn[]
+  formulaSourceColumns: MuFormulaSourceColumn[]
+  externalColumns: MuFormulaSourceColumn[]
+  externalRefKindOf?: (key: string) => FormulaRefKind
+  formulaHintText?: string
 }) {
   const [calculationColumnKey, setCalculationColumnKey] = useState<string | null>(null)
 
@@ -1040,6 +1106,8 @@ function MuSheetTableEditor({
         sectionColumns={formulaSourceColumns}
         externalColumns={externalColumns}
         onUpdateFormula={updateFormula}
+        externalRefKindOf={externalRefKindOf}
+        hintText={formulaHintText}
       />
     </div>
   )
@@ -1050,11 +1118,15 @@ function MuSheetSectionEditor({
   section,
   onChange,
   externalColumns,
+  externalRefKindOf,
+  formulaHintText,
 }: {
   title: string
   section: MuSheetSection
   onChange: (next: MuSheetSection) => void
-  externalColumns: RawDataSheetColumn[]
+  externalColumns: MuFormulaSourceColumn[]
+  externalRefKindOf?: (key: string) => FormulaRefKind
+  formulaHintText?: string
 }) {
   const tables =
     section.tables.length > 0 ? section.tables : [emptyMuSheetTable('Component 1')]
@@ -1119,6 +1191,8 @@ function MuSheetSectionEditor({
             onRemove={() => removeTable(table.id)}
             formulaSourceColumns={sectionColumns}
             externalColumns={externalColumns}
+            externalRefKindOf={externalRefKindOf}
+            formulaHintText={formulaHintText}
           />
         ))}
       </div>
@@ -1148,9 +1222,11 @@ export function MuCalculationSheetEditor({
   /** Columns from equipment Raw Data Sheet Format (formula refs). */
   rawDataSheetColumns?: Array<{ key: string; label: string; type?: string }>
 }) {
-  const externalColumns = useMemo((): RawDataSheetColumn[] => {
-    const rds: RawDataSheetColumn[] = rawDataSheetColumns
-      .filter((c) => c.key.trim())
+  const baseExternalColumns = useMemo((): MuFormulaSourceColumn[] => {
+    const builtIn = muBuiltInExternalColumns()
+    const builtInKeys = new Set(builtIn.map((c) => c.key))
+    const rds: MuFormulaSourceColumn[] = rawDataSheetColumns
+      .filter((c) => c.key.trim() && !builtInKeys.has(c.key))
       .map((c) => ({
         key: c.key,
         label: c.label.trim() || c.key,
@@ -1158,34 +1234,93 @@ export function MuCalculationSheetEditor({
           c.type === 'formula' ? 'formula' : c.type === 'text' ? 'text' : 'number',
         required: false,
       }))
-    const withoutPoint = rds.filter((c) => c.key !== MU_CALIBRATION_POINT_FIELD_KEY)
-    return [...withoutPoint, MU_CALIBRATION_POINT_COLUMN]
+    return [...rds, ...builtIn]
   }, [rawDataSheetColumns])
 
-  const patch = (partial: Partial<MuCalculationTemplate>) => {
-    onChange({ ...value, ...partial })
+  const typeAColumns = useMemo(
+    () => flattenMuSectionColumns(value.typeA),
+    [value.typeA],
+  )
+  const typeBColumns = useMemo(
+    () => flattenMuSectionColumns(value.typeB),
+    [value.typeB],
+  )
+
+  /** Calculation can reference Type A + Type B + RDS + built-in range/point fields. */
+  const calculationExternalColumns = useMemo((): MuFormulaSourceColumn[] => {
+    const seen = new Set<string>()
+    const merged: MuFormulaSourceColumn[] = []
+    for (const col of [...typeAColumns, ...typeBColumns, ...baseExternalColumns]) {
+      if (seen.has(col.key)) continue
+      seen.add(col.key)
+      merged.push(col)
+    }
+    return merged
+  }, [typeAColumns, typeBColumns, baseExternalColumns])
+
+  const calculationRefKindOf = (key: string): FormulaRefKind => {
+    if (key === MU_CALIBRATION_POINT_FIELD_KEY) return 'point'
+    if (isMuEquipmentRangeFieldKey(key)) return 'range'
+    if (typeAColumns.some((c) => c.key === key)) return 'typeA'
+    if (typeBColumns.some((c) => c.key === key)) return 'typeB'
+    if (
+      baseExternalColumns.some((c) => c.key === key) &&
+      key !== MU_CALIBRATION_POINT_FIELD_KEY &&
+      !isMuEquipmentRangeFieldKey(key)
+    ) {
+      return 'rds'
+    }
+    return 'sheet'
   }
+
+  const patch = (partial: Partial<MuCalculationTemplate>) => {
+    onChange({
+      ...value,
+      calculation: value.calculation ?? {
+        enabled: true,
+        label: 'Calculation',
+        tables: [emptyMuSheetTable('Component 1')],
+      },
+      // Preserve sheet field in template JSON even though UI editor is removed.
+      uncertaintyBudgetSheet: value.uncertaintyBudgetSheet ?? {
+        enabled: true,
+        label: 'Uncertainty Budget',
+        tables: [emptyMuSheetTable('Component 1')],
+      },
+      ...partial,
+    })
+  }
+
+  const calculationSection =
+    value.calculation ?? {
+      enabled: true,
+      label: 'Calculation',
+      tables: [emptyMuSheetTable('Component 1')],
+    }
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-slate-600">
-        Build Type A and Type B like Raw Data Sheet Format — add multiple components (tables),
-        columns, types (text / number / calculated), and formulas. Formulas can reference
-        columns in this Type, Raw Data Sheet columns, and Calibration Point.
-      </p>
-
       <MuSheetSectionEditor
         title="Type A"
         section={value.typeA}
         onChange={(typeA) => patch({ typeA })}
-        externalColumns={externalColumns}
+        externalColumns={baseExternalColumns}
       />
 
       <MuSheetSectionEditor
         title="Type B"
         section={value.typeB}
         onChange={(typeB) => patch({ typeB })}
-        externalColumns={externalColumns}
+        externalColumns={baseExternalColumns}
+      />
+
+      <MuSheetSectionEditor
+        title="Calculation"
+        section={calculationSection}
+        onChange={(calculation) => patch({ calculation })}
+        externalColumns={calculationExternalColumns}
+        externalRefKindOf={calculationRefKindOf}
+        formulaHintText="Autocomplete includes Calculation columns, Type A, Type B, Range Min/Max, Least Count, Accuracy, Raw Data Sheet columns (RDS), and Calibration Point."
       />
     </div>
   )

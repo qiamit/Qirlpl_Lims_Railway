@@ -3,98 +3,172 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type {
   RawDataSheetColumn,
   RawDataSheetPayloadRow,
+  RawDataSheetRowValues,
 } from '@/features/calibration/rawDataSheetTypes'
+import {
+  flattenMuSectionColumns,
+  muBuiltInExternalColumns,
+  muCalculationTemplateFromRaw,
+  type MuCalculationTemplate,
+  type MuSheetSection,
+  type MuSheetTable,
+} from '@/features/calibration/equipments/muCalculationTypes'
+import {
+  buildMuBuiltinValues,
+  emptyValuesForMuTable,
+  evaluateMuTableValues,
+  flattenSectionTableValues,
+  importRdsValuesIntoMuTable,
+  muTemplateHasUsableSections,
+  pickExpandedUncertaintyDisplay,
+  sectionHasConfiguredColumns,
+  sectionRequiredFieldsFilled,
+  type MuEquipmentRangeContext,
+} from '@/features/calibration/equipments/muCalcEngine'
 
-type TypeBRow = {
-  id: string
-  name: string
-  value: string
-  /** Divisor for rectangular (√3), triangular (√6), or normal (k). */
-  distribution: 'rectangular' | 'triangular' | 'normal'
-  /** Used when distribution = normal (coverage factor of the source). */
-  sourceK: string
+type WizardStepKind = 'typeA' | 'typeB' | 'calculation'
+
+type WizardStep = {
+  kind: WizardStepKind
+  title: string
 }
 
-const STEPS = [
-  { id: 1, title: 'Type A — Repeatability' },
-  { id: 2, title: 'Type B — Contributions' },
-  { id: 3, title: 'Coverage Factor' },
-  { id: 4, title: 'Result' },
-] as const
+/** Per RDS row → per MU component table → cell values. */
+type MuByRdsRow = Record<string, Record<string, RawDataSheetRowValues>>
 
-function newId(prefix: string): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
+/** Evaluated MU sections for one RDS row — feeds View Budget dialog. */
+type RowBudgetBreakdown = {
+  point: string
+  baseExternalValues: RawDataSheetRowValues
+  calcExternalValues: RawDataSheetRowValues
+  typeAFlat: RawDataSheetRowValues
+  typeBFlat: RawDataSheetRowValues
+  calcFlat: RawDataSheetRowValues
+  budgetSheetFlat: RawDataSheetRowValues
+  typeATableValues: Record<string, RawDataSheetRowValues>
+  typeBTableValues: Record<string, RawDataSheetRowValues>
+  calcTableValues: Record<string, RawDataSheetRowValues>
+  budgetSheetTableValues: Record<string, RawDataSheetRowValues>
+}
+
+type RowKeyOutput = {
+  rowId: string
+  rowIndex: number
+  point: string
+  expandedLabel: string
+  expandedValue: string
+  combinedLabel: string
+  combinedValue: string
+}
+
+function stepTitleForSection(kind: WizardStepKind, section: MuSheetSection): string {
+  const label = section.label.trim()
+  if (label) return label
+  if (kind === 'typeA') return 'Type A — Repeatability'
+  if (kind === 'typeB') return 'Type B — Contributions'
+  return 'Calculation'
+}
+
+function buildWizardSteps(template: MuCalculationTemplate): WizardStep[] {
+  const steps: WizardStep[] = []
+  if (sectionHasConfiguredColumns(template.typeA)) {
+    steps.push({ kind: 'typeA', title: stepTitleForSection('typeA', template.typeA) })
   }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  if (sectionHasConfiguredColumns(template.typeB)) {
+    steps.push({ kind: 'typeB', title: stepTitleForSection('typeB', template.typeB) })
+  }
+  if (sectionHasConfiguredColumns(template.calculation)) {
+    steps.push({
+      kind: 'calculation',
+      title: stepTitleForSection('calculation', template.calculation),
+    })
+  }
+  return steps
 }
 
-function parseNum(raw: string): number | null {
-  const t = String(raw).trim()
-  // Number('') === 0 in JS — blank cells must not count toward n / Type A.
+function initSectionTableValues(section: MuSheetSection): Record<string, RawDataSheetRowValues> {
+  const out: Record<string, RawDataSheetRowValues> = {}
+  for (const table of section.tables) {
+    out[table.id] = emptyValuesForMuTable(table)
+  }
+  return out
+}
+
+function importRdsIntoSection(
+  section: MuSheetSection,
+  current: Record<string, RawDataSheetRowValues>,
+  rdsColumns: RawDataSheetColumn[],
+  rdsValues: RawDataSheetRowValues,
+): Record<string, RawDataSheetRowValues> {
+  const next = { ...current }
+  for (const table of section.tables) {
+    next[table.id] = importRdsValuesIntoMuTable(
+      table,
+      current[table.id] ?? emptyValuesForMuTable(table),
+      rdsColumns,
+      rdsValues,
+    )
+  }
+  return next
+}
+
+/** Build MU section values for every Raw Data Sheet row (fill number cols from RDS). */
+function initSectionForAllRows(
+  section: MuSheetSection,
+  rdsColumns: RawDataSheetColumn[],
+  rdsRows: RawDataSheetPayloadRow[],
+): MuByRdsRow {
+  const out: MuByRdsRow = {}
+  for (const row of rdsRows) {
+    out[row.id] = importRdsIntoSection(
+      section,
+      initSectionTableValues(section),
+      rdsColumns,
+      row.values,
+    )
+  }
+  return out
+}
+
+function rowPointLabel(
+  row: RawDataSheetPayloadRow,
+  columns: RawDataSheetColumn[],
+): string {
+  if (row.pointValue?.trim()) return row.pointValue.trim()
+  const key = columns.find((c) => /nominal|point|load/i.test(c.label))?.key
+  if (!key) return ''
+  return String(row.values[key] ?? '').trim()
+}
+
+/** Numeric parse for Point labels (e.g. "100", "10.5"); null if non-numeric. */
+function parsePointNumeric(label: string): number | null {
+  const t = label.trim().replace(/,/g, '')
   if (!t) return null
   const n = Number(t)
   return Number.isFinite(n) ? n : null
 }
 
-function fmt(n: number, dp: number): string {
-  if (!Number.isFinite(n)) return '—'
-  return n.toFixed(dp)
+/** Ascending by numeric Point; non-numeric / empty last, then string compare. */
+function comparePointLabels(a: string, b: string): number {
+  const na = parsePointNumeric(a)
+  const nb = parsePointNumeric(b)
+  if (na != null && nb != null) return na - nb
+  if (na != null) return -1
+  if (nb != null) return 1
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 }
 
-function sampleStdDev(values: number[]): number | null {
-  if (values.length < 2) return null
-  const mean = values.reduce((a, b) => a + b, 0) / values.length
-  const variance = values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (values.length - 1)
-  return Math.sqrt(variance)
-}
-
-function typeBStandardUncertainty(row: TypeBRow): number | null {
-  const v = parseNum(row.value)
-  if (v == null || v < 0) return null
-  if (row.distribution === 'rectangular') return v / Math.sqrt(3)
-  if (row.distribution === 'triangular') return v / Math.sqrt(6)
-  const k = parseNum(row.sourceK) ?? 2
-  if (k <= 0) return null
-  return v / k
-}
-
-function emptyTypeBRows(): TypeBRow[] {
-  return [
-    {
-      id: newId('tb'),
-      name: 'Resolution (half digit)',
-      value: '',
-      distribution: 'rectangular',
-      sourceK: '2',
-    },
-    {
-      id: newId('tb'),
-      name: 'Reference / Master uncertainty',
-      value: '',
-      distribution: 'normal',
-      sourceK: '2',
-    },
-    {
-      id: newId('tb'),
-      name: 'Other (optional)',
-      value: '',
-      distribution: 'rectangular',
-      sourceK: '2',
-    },
-  ]
+function sortRdsRowsByPoint(
+  rdsRows: RawDataSheetPayloadRow[],
+  columns: RawDataSheetColumn[],
+): RawDataSheetPayloadRow[] {
+  return [...rdsRows].sort((ra, rb) =>
+    comparePointLabels(rowPointLabel(ra, columns), rowPointLabel(rb, columns)),
+  )
 }
 
 export function UncertaintyStepByStepDialog({
@@ -103,6 +177,8 @@ export function UncertaintyStepByStepDialog({
   columns,
   rows,
   decimalPlaces,
+  muCalculationTemplate,
+  equipmentRange,
   onApplyUncertainty,
 }: {
   open: boolean
@@ -110,110 +186,436 @@ export function UncertaintyStepByStepDialog({
   columns: RawDataSheetColumn[]
   rows: RawDataSheetPayloadRow[]
   decimalPlaces: number
+  /** Equipment MU Calculation Sheet template (drive_from_mu). */
+  muCalculationTemplate?: MuCalculationTemplate | Record<string, unknown> | null
+  /** Matched measurement range fields for built-in MU formula refs. */
+  equipmentRange?: MuEquipmentRangeContext | null
   /** Optional: push expanded U into Generate Report uncertainty field. */
   onApplyUncertainty?: (expandedU: string) => void
 }) {
-  const [step, setStep] = useState(1)
+  const template = useMemo(
+    () => muCalculationTemplateFromRaw(muCalculationTemplate ?? null),
+    [muCalculationTemplate],
+  )
+  const hasTemplate = muTemplateHasUsableSections(template)
+  const wizardSteps = useMemo(
+    () => (hasTemplate ? buildWizardSteps(template) : []),
+    [hasTemplate, template],
+  )
+
+  const [stepIndex, setStepIndex] = useState(0)
+  /** Selected RDS row feeds Apply / highlighted USE. */
   const [rowId, setRowId] = useState('')
-  const [readingKeys, setReadingKeys] = useState<string[]>([])
-  const [typeBRows, setTypeBRows] = useState<TypeBRow[]>(() => emptyTypeBRows())
-  const [coverageK, setCoverageK] = useState('2')
+  const [budgetViewRowId, setBudgetViewRowId] = useState<string | null>(null)
+  const [typeAByRdsRow, setTypeAByRdsRow] = useState<MuByRdsRow>({})
+  const [typeBByRdsRow, setTypeBByRdsRow] = useState<MuByRdsRow>({})
+  const [calcByRdsRow, setCalcByRdsRow] = useState<MuByRdsRow>({})
 
-  const inputColumns = useMemo(
-    () => columns.filter((c) => c.type !== 'formula'),
-    [columns],
+  const dp = Math.max(
+    0,
+    Math.min(6, Number.isFinite(template.decimalPlaces) ? template.decimalPlaces : decimalPlaces),
   )
 
-  const readingCandidateColumns = useMemo(
-    () =>
-      inputColumns.filter((c) =>
-        /reading|indicator|obs|observed|as\s*found|as\s*left/i.test(c.label),
-      ),
-    [inputColumns],
-  )
+  const selectedRow = rows.find((r) => r.id === rowId) ?? rows[0] ?? null
+
+  const baseExternalColumns = useMemo((): RawDataSheetColumn[] => {
+    const builtIn = muBuiltInExternalColumns()
+    const builtInKeys = new Set(builtIn.map((c) => c.key))
+    const rds = columns.filter((c) => c.key.trim() && !builtInKeys.has(c.key))
+    return [...rds, ...builtIn]
+  }, [columns])
+
+  const calcExternalColumns = useMemo((): RawDataSheetColumn[] => {
+    const seen = new Set<string>()
+    const merged: RawDataSheetColumn[] = []
+    for (const col of [
+      ...flattenMuSectionColumns(template.typeA),
+      ...flattenMuSectionColumns(template.typeB),
+      ...baseExternalColumns,
+    ]) {
+      if (seen.has(col.key)) continue
+      seen.add(col.key)
+      merged.push(col)
+    }
+    return merged
+  }, [template.typeA, template.typeB, baseExternalColumns])
 
   useEffect(() => {
     if (!open) return
     const firstRow = rows[0]
-    const guessKeys = (
-      readingCandidateColumns.length > 0 ? readingCandidateColumns : inputColumns.slice(1)
-    ).map((c) => c.key)
-    setStep(1)
+    setStepIndex(0)
     setRowId(firstRow?.id ?? '')
-    setReadingKeys(guessKeys)
-    setTypeBRows(emptyTypeBRows())
-    setCoverageK('2')
-  }, [open, rows, readingCandidateColumns, inputColumns])
+    setBudgetViewRowId(null)
+    setTypeAByRdsRow(initSectionForAllRows(template.typeA, columns, rows))
+    setTypeBByRdsRow(initSectionForAllRows(template.typeB, columns, rows))
+    setCalcByRdsRow(initSectionForAllRows(template.calculation, columns, rows))
+  }, [open, rows, template, columns])
 
-  const typeAByRow = useMemo(() => {
-    const map = new Map<
-      string,
-      { n: number; s: number | null; mean: number | null; uA: number | null; values: number[] }
-    >()
-    for (const row of rows) {
-      const values = readingKeys
-        .map((key) => parseNum(String(row.values[key] ?? '')))
-        .filter((n): n is number => n != null)
-      const n = values.length
-      const s = sampleStdDev(values)
-      const mean = n > 0 ? values.reduce((a, b) => a + b, 0) / n : null
-      const uA = s != null && n > 0 ? s / Math.sqrt(n) : null
-      map.set(row.id, { n, s, mean, uA, values })
+  /** Per-RDS-row Calculation flat values (Type A / Type B / RDS / builtins as externals). */
+  const buildCalcContextForRow = (
+    rdsRow: RawDataSheetPayloadRow,
+  ): {
+    baseExternalValues: RawDataSheetRowValues
+    typeAFlat: RawDataSheetRowValues
+    typeBFlat: RawDataSheetRowValues
+    calcExternalValues: RawDataSheetRowValues
+    calcFlat: RawDataSheetRowValues
+  } => {
+    const point = rowPointLabel(rdsRow, columns)
+    const baseExternalValues: RawDataSheetRowValues = {
+      ...rdsRow.values,
+      ...buildMuBuiltinValues(point, equipmentRange),
+    }
+    const typeATables =
+      typeAByRdsRow[rdsRow.id] ?? initSectionTableValues(template.typeA)
+    const typeBTables =
+      typeBByRdsRow[rdsRow.id] ?? initSectionTableValues(template.typeB)
+    const calcTables =
+      calcByRdsRow[rdsRow.id] ?? initSectionTableValues(template.calculation)
+    const typeAFlat = flattenSectionTableValues(
+      template.typeA,
+      typeATables,
+      dp,
+      baseExternalColumns,
+      baseExternalValues,
+    )
+    const typeBFlat = flattenSectionTableValues(
+      template.typeB,
+      typeBTables,
+      dp,
+      baseExternalColumns,
+      baseExternalValues,
+    )
+    const calcExternalValues: RawDataSheetRowValues = {
+      ...baseExternalValues,
+      ...typeAFlat,
+      ...typeBFlat,
+    }
+    const calcFlat = flattenSectionTableValues(
+      template.calculation,
+      calcTables,
+      dp,
+      calcExternalColumns,
+      calcExternalValues,
+    )
+    return { baseExternalValues, typeAFlat, typeBFlat, calcExternalValues, calcFlat }
+  }
+
+  const selectedTypeAValues = useMemo((): Record<string, RawDataSheetRowValues> => {
+    if (!selectedRow) return initSectionTableValues(template.typeA)
+    return typeAByRdsRow[selectedRow.id] ?? initSectionTableValues(template.typeA)
+  }, [selectedRow, typeAByRdsRow, template.typeA])
+
+  const selectedTypeBValues = useMemo((): Record<string, RawDataSheetRowValues> => {
+    if (!selectedRow) return initSectionTableValues(template.typeB)
+    return typeBByRdsRow[selectedRow.id] ?? initSectionTableValues(template.typeB)
+  }, [selectedRow, typeBByRdsRow, template.typeB])
+
+  const selectedCalcValues = useMemo((): Record<string, RawDataSheetRowValues> => {
+    if (!selectedRow) return initSectionTableValues(template.calculation)
+    return calcByRdsRow[selectedRow.id] ?? initSectionTableValues(template.calculation)
+  }, [selectedRow, calcByRdsRow, template.calculation])
+
+  const selectedContext = useMemo(() => {
+    if (!selectedRow) {
+      return {
+        typeAFlat: {} as RawDataSheetRowValues,
+        typeBFlat: {} as RawDataSheetRowValues,
+        calcFlat: {} as RawDataSheetRowValues,
+      }
+    }
+    return buildCalcContextForRow(selectedRow)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuild when row/section inputs change
+  }, [
+    selectedRow,
+    typeAByRdsRow,
+    typeBByRdsRow,
+    calcByRdsRow,
+    template,
+    columns,
+    equipmentRange,
+    dp,
+    baseExternalColumns,
+    calcExternalColumns,
+  ])
+
+  const calcFlat = selectedContext.calcFlat
+
+  const expandedPick = useMemo(
+    () =>
+      pickExpandedUncertaintyDisplay(
+        template.calculation,
+        calcFlat,
+        template.coverageFactorK,
+      ),
+    [template.calculation, calcFlat, template.coverageFactorK],
+  )
+
+  const allRowKeyOutputs = useMemo((): RowKeyOutput[] => {
+    const mapped = rows.map((rdsRow, index) => {
+      const { calcFlat: rowCalcFlat } = buildCalcContextForRow(rdsRow)
+      const pick = pickExpandedUncertaintyDisplay(
+        template.calculation,
+        rowCalcFlat,
+        template.coverageFactorK,
+      )
+      const combined = pickCombinedUncertaintyDisplay(template.calculation, rowCalcFlat)
+      return {
+        rowId: rdsRow.id,
+        rowIndex: index,
+        point: rowPointLabel(rdsRow, columns),
+        expandedLabel: pick?.label ?? 'Expanded U',
+        expandedValue: pick?.value ?? '',
+        combinedLabel: combined?.label ?? 'Combined U',
+        combinedValue: combined?.value ?? '',
+      }
+    })
+    return mapped.sort((a, b) => comparePointLabels(a.point, b.point))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    rows,
+    typeAByRdsRow,
+    typeBByRdsRow,
+    calcByRdsRow,
+    template,
+    columns,
+    equipmentRange,
+    dp,
+    baseExternalColumns,
+    calcExternalColumns,
+  ])
+
+  const keyOutputByRowId = useMemo(() => {
+    const map: Record<string, RowKeyOutput> = {}
+    for (const row of allRowKeyOutputs) map[row.rowId] = row
+    return map
+  }, [allRowKeyOutputs])
+
+  const rowBudgetById = useMemo(() => {
+    const map: Record<string, RowBudgetBreakdown> = {}
+    for (const rdsRow of rows) {
+      const point = rowPointLabel(rdsRow, columns)
+      const ctx = buildCalcContextForRow(rdsRow)
+      const budgetSheetTableValues = initSectionTableValues(template.uncertaintyBudgetSheet)
+      const budgetSheetFlat = sectionHasConfiguredColumns(template.uncertaintyBudgetSheet)
+        ? flattenSectionTableValues(
+            template.uncertaintyBudgetSheet,
+            budgetSheetTableValues,
+            dp,
+            calcExternalColumns,
+            ctx.calcExternalValues,
+          )
+        : {}
+      map[rdsRow.id] = {
+        point,
+        baseExternalValues: ctx.baseExternalValues,
+        calcExternalValues: ctx.calcExternalValues,
+        typeAFlat: ctx.typeAFlat,
+        typeBFlat: ctx.typeBFlat,
+        calcFlat: ctx.calcFlat,
+        budgetSheetFlat,
+        typeATableValues:
+          typeAByRdsRow[rdsRow.id] ?? initSectionTableValues(template.typeA),
+        typeBTableValues:
+          typeBByRdsRow[rdsRow.id] ?? initSectionTableValues(template.typeB),
+        calcTableValues:
+          calcByRdsRow[rdsRow.id] ?? initSectionTableValues(template.calculation),
+        budgetSheetTableValues,
+      }
     }
     return map
-  }, [rows, readingKeys])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    rows,
+    typeAByRdsRow,
+    typeBByRdsRow,
+    calcByRdsRow,
+    template,
+    columns,
+    equipmentRange,
+    dp,
+    baseExternalColumns,
+    calcExternalColumns,
+  ])
 
-  const selectedRow = rows.find((r) => r.id === rowId) ?? rows[0] ?? null
-  const typeA = selectedRow
-    ? (typeAByRow.get(selectedRow.id) ?? { n: 0, s: null, mean: null, uA: null, values: [] })
-    : { n: 0, s: null, mean: null, uA: null, values: [] }
-  const readingValues = typeA.values
+  const currentStep = wizardSteps[stepIndex] ?? null
 
-  const typeBComputed = useMemo(() => {
-    return typeBRows.map((row) => ({
-      ...row,
-      u: typeBStandardUncertainty(row),
-    }))
-  }, [typeBRows])
+  const budgetViewRow = budgetViewRowId ? keyOutputByRowId[budgetViewRowId] : undefined
+  const budgetViewBreakdown = budgetViewRowId ? rowBudgetById[budgetViewRowId] : undefined
 
-  const combined = useMemo(() => {
-    const parts: number[] = []
-    if (typeA.uA != null) parts.push(typeA.uA)
-    for (const row of typeBComputed) {
-      if (row.u != null && row.u > 0) parts.push(row.u)
+  const patchTypeACell = (rdsRowId: string, tableId: string, key: string, value: string) => {
+    setTypeAByRdsRow((prev) => {
+      const rowTables = prev[rdsRowId] ?? initSectionTableValues(template.typeA)
+      return {
+        ...prev,
+        [rdsRowId]: {
+          ...rowTables,
+          [tableId]: { ...(rowTables[tableId] ?? {}), [key]: value },
+        },
+      }
+    })
+  }
+
+  const patchTypeBCell = (rdsRowId: string, tableId: string, key: string, value: string) => {
+    setTypeBByRdsRow((prev) => {
+      const rowTables = prev[rdsRowId] ?? initSectionTableValues(template.typeB)
+      return {
+        ...prev,
+        [rdsRowId]: {
+          ...rowTables,
+          [tableId]: { ...(rowTables[tableId] ?? {}), [key]: value },
+        },
+      }
+    })
+  }
+
+  const patchCalcCell = (rdsRowId: string, tableId: string, key: string, value: string) => {
+    setCalcByRdsRow((prev) => {
+      const rowTables = prev[rdsRowId] ?? initSectionTableValues(template.calculation)
+      return {
+        ...prev,
+        [rdsRowId]: {
+          ...rowTables,
+          [tableId]: { ...(rowTables[tableId] ?? {}), [key]: value },
+        },
+      }
+    })
+  }
+
+  /** Select which RDS row feeds Apply / highlighted USE. */
+  const onSelectRdsRow = (id: string) => {
+    setRowId(id)
+  }
+
+  const canNext = (() => {
+    if (!hasTemplate || !currentStep) return false
+    if (currentStep.kind === 'typeA') {
+      if (!selectedRow) return false
+      return sectionRequiredFieldsFilled(template.typeA, selectedTypeAValues)
     }
-    const uc = parts.length > 0 ? Math.sqrt(parts.reduce((a, b) => a + b * b, 0)) : null
-    const k = parseNum(coverageK) ?? 2
-    const U = uc != null && k > 0 ? k * uc : null
-    return { uc, k, U, parts }
-  }, [typeA.uA, typeBComputed, coverageK])
+    if (currentStep.kind === 'typeB') {
+      if (!selectedRow) return false
+      return sectionRequiredFieldsFilled(template.typeB, selectedTypeBValues)
+    }
+    if (currentStep.kind === 'calculation') {
+      if (!selectedRow) return false
+      return sectionRequiredFieldsFilled(template.calculation, selectedCalcValues)
+    }
+    return true
+  })()
 
-  const dp = Math.max(2, decimalPlaces)
+  const goNext = () => {
+    if (stepIndex < wizardSteps.length - 1 && canNext) setStepIndex((s) => s + 1)
+  }
+  const goBack = () => {
+    if (stepIndex > 0) setStepIndex((s) => s - 1)
+  }
 
-  const toggleReadingKey = (key: string) => {
-    setReadingKeys((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+  const renderTypeAStep = () => {
+    const tables = template.typeA.tables.filter((t) => t.columns.length > 0)
+    return (
+      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+        {rows.length === 0 ? (
+          <p className="text-sm text-slate-500">No Raw Data Sheet rows available.</p>
+        ) : tables.length === 0 ? (
+          <p className="text-sm text-slate-500">No components configured for this section.</p>
+        ) : (
+          tables.map((table, tableIndex) => (
+            <MuSectionMultiRowEditor
+              key={table.id || `tbl-${tableIndex}`}
+              table={table}
+              tableIndex={tableIndex}
+              rdsRows={rows}
+              rdsColumns={columns}
+              valuesByRdsRow={typeAByRdsRow}
+              selectedRowId={selectedRow?.id ?? ''}
+              useRadioName="uncertainty-type-a-use"
+              decimalPlaces={dp}
+              equipmentRange={equipmentRange}
+              baseExternalColumns={baseExternalColumns}
+              onSelectRow={onSelectRdsRow}
+              onChangeCell={(rdsRowId, key, value) =>
+                patchTypeACell(rdsRowId, table.id, key, value)
+              }
+            />
+          ))
+        )}
+      </div>
     )
   }
 
-  const patchTypeB = (id: string, patch: Partial<TypeBRow>) => {
-    setTypeBRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  const renderTypeBStep = () => {
+    const tables = template.typeB.tables.filter((t) => t.columns.length > 0)
+    return (
+      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+        {rows.length === 0 ? (
+          <p className="text-sm text-slate-500">No Raw Data Sheet rows available.</p>
+        ) : tables.length === 0 ? (
+          <p className="text-sm text-slate-500">No components configured for this section.</p>
+        ) : (
+          tables.map((table, tableIndex) => (
+            <MuSectionMultiRowEditor
+              key={table.id || `tbl-${tableIndex}`}
+              table={table}
+              tableIndex={tableIndex}
+              rdsRows={rows}
+              rdsColumns={columns}
+              valuesByRdsRow={typeBByRdsRow}
+              selectedRowId={selectedRow?.id ?? ''}
+              useRadioName="uncertainty-type-b-use"
+              decimalPlaces={dp}
+              equipmentRange={equipmentRange}
+              baseExternalColumns={baseExternalColumns}
+              onSelectRow={onSelectRdsRow}
+              onChangeCell={(rdsRowId, key, value) =>
+                patchTypeBCell(rdsRowId, table.id, key, value)
+              }
+            />
+          ))
+        )}
+      </div>
+    )
   }
 
-  const canNext =
-    step === 1
-      ? readingValues.length >= 2
-      : step === 2
-        ? true
-        : step === 3
-          ? (parseNum(coverageK) ?? 0) > 0
-          : true
-
-  const goNext = () => {
-    if (step < 4 && canNext) setStep((s) => s + 1)
-  }
-  const goBack = () => {
-    if (step > 1) setStep((s) => s - 1)
+  const renderCalculationStep = () => {
+    const tables = template.calculation.tables.filter((t) => t.columns.length > 0)
+    const budgetTableIndex = tables.length > 0 ? tables.length - 1 : -1
+    return (
+      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+        {rows.length === 0 ? (
+          <p className="text-sm text-slate-500">No Raw Data Sheet rows available.</p>
+        ) : tables.length === 0 ? (
+          <p className="text-sm text-slate-500">No components configured for this section.</p>
+        ) : (
+          tables.map((table, tableIndex) => (
+            <MuSectionMultiRowEditor
+              key={table.id || `tbl-${tableIndex}`}
+              table={table}
+              tableIndex={tableIndex}
+              rdsRows={rows}
+              rdsColumns={columns}
+              valuesByRdsRow={calcByRdsRow}
+              selectedRowId={selectedRow?.id ?? ''}
+              useRadioName="uncertainty-calc-use"
+              decimalPlaces={dp}
+              equipmentRange={equipmentRange}
+              baseExternalColumns={calcExternalColumns}
+              buildExternalValues={(rdsRow) =>
+                buildCalcContextForRow(rdsRow).calcExternalValues
+              }
+              onSelectRow={onSelectRdsRow}
+              onChangeCell={(rdsRowId, key, value) =>
+                patchCalcCell(rdsRowId, table.id, key, value)
+              }
+              showBudgetColumn={tableIndex === budgetTableIndex}
+              keyOutputByRowId={keyOutputByRowId}
+              rowBudgetById={rowBudgetById}
+              onViewBudget={setBudgetViewRowId}
+            />
+          ))
+        )}
+      </div>
+    )
   }
 
   return (
@@ -226,9 +628,6 @@ export function UncertaintyStepByStepDialog({
         <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
           <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
           <DialogHeader className="relative pr-12 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              ISO / IEC 17025 · GUM
-            </p>
             <DialogTitle className="text-xl font-semibold tracking-tight text-white">
               Uncertainty Calculation — Step by Step
             </DialogTitle>
@@ -236,362 +635,47 @@ export function UncertaintyStepByStepDialog({
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
-          <ol className="flex flex-wrap gap-1.5">
-            {STEPS.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  className={cn(
-                    'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
-                    step === s.id
-                      ? 'border-teal-600 bg-teal-50 text-teal-900'
-                      : step > s.id
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-slate-50 text-slate-400',
-                  )}
-                  onClick={() => {
-                    if (s.id <= step) setStep(s.id)
-                  }}
-                >
-                  {s.id}. {s.title}
-                </button>
-              </li>
-            ))}
-          </ol>
-
-          {step === 1 ? (
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <p className="text-xs text-slate-600">
-                  Type A from repeated readings at each load point: u<sub>A</sub> = s / √n. Tick
-                  column headers to include as repeat readings; select a row for the budget.
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <StatChip label="n" value={String(typeA.n)} />
-                  <StatChip label="Mean" value={typeA.mean != null ? fmt(typeA.mean, dp) : '—'} />
-                  <StatChip label="s (sample)" value={typeA.s != null ? fmt(typeA.s, dp) : '—'} />
-                  <StatChip
-                    label="uA"
-                    value={typeA.uA != null ? fmt(typeA.uA, dp) : '—'}
-                    emphasize
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto rounded-md border border-slate-200">
-                <table className="w-full min-w-[720px] border-collapse text-sm">
-                  <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="w-14 border border-slate-200 px-2 py-2 text-center">Use</th>
-                      <th className="w-12 border border-slate-200 px-2 py-2 text-center">#</th>
-                      {inputColumns.map((col) => {
-                        const included = readingKeys.includes(col.key)
-                        return (
-                          <th
-                            key={col.key}
-                            className={cn(
-                              'min-w-[110px] border border-slate-200 px-2 py-2 text-center',
-                              included && 'bg-teal-50/80 text-teal-900',
-                            )}
-                          >
-                            <label className="inline-flex cursor-pointer flex-col items-center gap-1">
-                              <input
-                                type="checkbox"
-                                className="h-3.5 w-3.5 accent-teal-600"
-                                checked={included}
-                                onChange={() => toggleReadingKey(col.key)}
-                                aria-label={`Include ${col.label} in Type A`}
-                              />
-                              <span className="normal-case tracking-normal">{col.label}</span>
-                            </label>
-                          </th>
-                        )
-                      })}
-                      <th className="min-w-[56px] border border-slate-200 px-2 py-2 text-center">
-                        n
-                      </th>
-                      <th className="min-w-[80px] border border-slate-200 px-2 py-2 text-center">
-                        Mean
-                      </th>
-                      <th className="min-w-[80px] border border-slate-200 px-2 py-2 text-center">
-                        s
-                      </th>
-                      <th className="min-w-[80px] border border-slate-200 bg-teal-50/60 px-2 py-2 text-center text-teal-900">
-                        u<sub>A</sub>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={inputColumns.length + 6}
-                          className="border border-slate-200 px-3 py-8 text-center text-sm text-slate-500"
-                        >
-                          No raw data rows available.
-                        </td>
-                      </tr>
-                    ) : (
-                      rows.map((row, index) => {
-                        const stats = typeAByRow.get(row.id)
-                        const selected = (selectedRow?.id ?? '') === row.id
-                        return (
-                          <tr
-                            key={row.id}
-                            className={cn(
-                              'cursor-pointer transition-colors',
-                              selected ? 'bg-teal-50/70' : 'hover:bg-slate-50/80',
-                            )}
-                            onClick={() => setRowId(row.id)}
-                          >
-                            <td className="border border-slate-200 px-2 py-1.5 text-center">
-                              <input
-                                type="radio"
-                                name="type-a-row"
-                                className="h-4 w-4 accent-teal-600"
-                                checked={selected}
-                                onChange={() => setRowId(row.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                aria-label={`Use row ${index + 1} for Type A`}
-                              />
-                            </td>
-                            <td className="border border-slate-200 px-2 py-1.5 text-center font-mono text-xs text-slate-500">
-                              {index + 1}
-                            </td>
-                            {inputColumns.map((col) => {
-                              const included = readingKeys.includes(col.key)
-                              const raw = String(row.values[col.key] ?? '').trim()
-                              return (
-                                <td
-                                  key={col.key}
-                                  className={cn(
-                                    'border border-slate-200 px-2 py-1.5 text-center font-mono text-xs',
-                                    included ? 'bg-teal-50/40 text-slate-900' : 'text-slate-600',
-                                  )}
-                                >
-                                  {raw || '—'}
-                                </td>
-                              )
-                            })}
-                            <td className="border border-slate-200 px-2 py-1.5 text-center font-mono text-xs">
-                              {stats?.n ?? 0}
-                            </td>
-                            <td className="border border-slate-200 px-2 py-1.5 text-center font-mono text-xs">
-                              {stats?.mean != null ? fmt(stats.mean, dp) : '—'}
-                            </td>
-                            <td className="border border-slate-200 px-2 py-1.5 text-center font-mono text-xs">
-                              {stats?.s != null ? fmt(stats.s, dp) : '—'}
-                            </td>
-                            <td
-                              className={cn(
-                                'border border-slate-200 px-2 py-1.5 text-center font-mono text-xs font-semibold',
-                                selected ? 'bg-teal-100/80 text-teal-900' : 'bg-teal-50/40 text-teal-800',
-                              )}
-                            >
-                              {stats?.uA != null ? fmt(stats.uA, dp) : '—'}
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {readingKeys.length < 2 ? (
-                <p className="text-[11px] text-amber-700">
-                  Tick at least 2 column headers to use as repeat readings.
-                </p>
-              ) : readingValues.length < 2 ? (
-                <p className="text-[11px] text-amber-700">
-                  Selected row needs at least 2 numeric values in the ticked reading columns.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {step === 2 ? (
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-600">
-                Type B: enter half-width (or expanded U for normal). Standard uncertainty u<sub>i</sub>{' '}
-                uses the selected distribution.
+          {!hasTemplate ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-950">
+              <p className="font-medium">MU Calculation Sheet is not configured</p>
+              <p className="mt-2 text-xs leading-relaxed text-amber-900/90">
+                Open Calibration Equipments → edit this equipment → configure Type A, Type B, and
+                Calculation columns on the MU Calculation Sheet. Required fields and calculated
+                (Auto) columns defined there will appear in this wizard.
               </p>
-              <div className="space-y-3">
-                {typeBComputed.map((row) => (
-                  <div
-                    key={row.id}
-                    className="grid grid-cols-1 gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2.5 sm:grid-cols-12"
-                  >
-                    <div className="space-y-1 sm:col-span-4">
-                      <Label className="text-[10px]">Component</Label>
-                      <Input
-                        value={row.name}
-                        onChange={(e) => patchTypeB(row.id, { name: e.target.value })}
-                        className="h-9 bg-white"
-                      />
-                    </div>
-                    <div className="space-y-1 sm:col-span-2">
-                      <Label className="text-[10px]">Value</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="any"
-                        value={row.value}
-                        onChange={(e) => patchTypeB(row.id, { value: e.target.value })}
-                        className="h-9 bg-white"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div className="space-y-1 sm:col-span-3">
-                      <Label className="text-[10px]">Distribution</Label>
-                      <Select
-                        value={row.distribution}
-                        onValueChange={(v) =>
-                          patchTypeB(row.id, {
-                            distribution: v as TypeBRow['distribution'],
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-9 bg-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="rectangular">Rectangular (÷√3)</SelectItem>
-                          <SelectItem value="triangular">Triangular (÷√6)</SelectItem>
-                          <SelectItem value="normal">Normal (÷k)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1 sm:col-span-1">
-                      <Label className="text-[10px]">k</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="any"
-                        disabled={row.distribution !== 'normal'}
-                        value={row.sourceK}
-                        onChange={(e) => patchTypeB(row.id, { sourceK: e.target.value })}
-                        className="h-9 bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col justify-end sm:col-span-2">
-                      <p className="text-[10px] uppercase text-slate-500">uᵢ</p>
-                      <p className="font-mono text-sm font-semibold text-teal-800">
-                        {row.u != null ? fmt(row.u, dp) : '—'}
-                      </p>
-                    </div>
-                  </div>
+            </div>
+          ) : (
+            <>
+              <ol className="flex flex-wrap gap-1.5">
+                {wizardSteps.map((s, index) => (
+                  <li key={`${s.kind}-${index}`}>
+                    <button
+                      type="button"
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                        stepIndex === index
+                          ? 'border-teal-600 bg-teal-50 text-teal-900'
+                          : stepIndex > index
+                            ? 'border-slate-300 bg-white text-slate-700'
+                            : 'border-slate-200 bg-slate-50 text-slate-400',
+                      )}
+                      onClick={() => {
+                        if (index <= stepIndex) setStepIndex(index)
+                      }}
+                    >
+                      {index + 1}. {s.title}
+                    </button>
+                  </li>
                 ))}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() =>
-                  setTypeBRows((prev) => [
-                    ...prev,
-                    {
-                      id: newId('tb'),
-                      name: 'Additional component',
-                      value: '',
-                      distribution: 'rectangular',
-                      sourceK: '2',
-                    },
-                  ])
-                }
-              >
-                Add Type B component
-              </Button>
-            </div>
-          ) : null}
+              </ol>
 
-          {step === 3 ? (
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-600">
-                Expanded uncertainty U = k · u<sub>c</sub>. For ~95% confidence, k = 2 is usual.
-              </p>
-              <div className="max-w-xs space-y-2">
-                <Label htmlFor="unc-k">Coverage factor (k)</Label>
-                <Input
-                  id="unc-k"
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={coverageK}
-                  onChange={(e) => setCoverageK(e.target.value)}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <StatChip
-                  label="uc (combined)"
-                  value={combined.uc != null ? fmt(combined.uc, dp) : '—'}
-                />
-                <StatChip label="k" value={String(combined.k)} />
-                <StatChip
-                  label="U (expanded)"
-                  value={combined.U != null ? fmt(combined.U, dp) : '—'}
-                  emphasize
-                />
-              </div>
-            </div>
-          ) : null}
+              {currentStep?.kind === 'typeA' ? renderTypeAStep() : null}
 
-          {step === 4 ? (
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs font-medium text-slate-700">Uncertainty budget</p>
-              <div className="overflow-x-auto rounded-md border border-slate-200">
-                <table className="w-full min-w-[420px] text-left text-xs">
-                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
-                    <tr>
-                      <th className="px-2 py-1.5">Source</th>
-                      <th className="px-2 py-1.5 text-right">uᵢ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-t border-slate-100">
-                      <td className="px-2 py-1.5">
-                        Type A (repeatability)
-                        {selectedRow ? (
-                          <span className="ml-1 font-normal text-slate-400">
-                            · row {rows.findIndex((r) => r.id === selectedRow.id) + 1}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-2 py-1.5 text-right font-mono">
-                        {typeA.uA != null ? fmt(typeA.uA, dp) : '—'}
-                      </td>
-                    </tr>
-                    {typeBComputed.map((row) => (
-                      <tr key={row.id} className="border-t border-slate-100">
-                        <td className="px-2 py-1.5">{row.name || '—'}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">
-                          {row.u != null && row.u > 0 ? fmt(row.u, dp) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-slate-200 bg-slate-50 font-semibold">
-                      <td className="px-2 py-1.5">Combined u<sub>c</sub></td>
-                      <td className="px-2 py-1.5 text-right font-mono">
-                        {combined.uc != null ? fmt(combined.uc, dp) : '—'}
-                      </td>
-                    </tr>
-                    <tr className="border-t border-teal-200 bg-teal-50 font-semibold text-teal-900">
-                      <td className="px-2 py-1.5">
-                        Expanded U (k = {combined.k})
-                      </td>
-                      <td className="px-2 py-1.5 text-right font-mono">
-                        {combined.U != null ? fmt(combined.U, dp) : '—'}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Formula: u<sub>c</sub> = √(Σ uᵢ²), U = k · u<sub>c</sub>
-              </p>
-            </div>
-          ) : null}
+              {currentStep?.kind === 'typeB' ? renderTypeBStep() : null}
+
+              {currentStep?.kind === 'calculation' ? renderCalculationStep() : null}
+            </>
+          )}
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
@@ -600,28 +684,28 @@ export function UncertaintyStepByStepDialog({
             variant="outline"
             size="sm"
             className="h-9 gap-1"
-            disabled={step <= 1}
+            disabled={stepIndex <= 0 || !hasTemplate}
             onClick={goBack}
           >
             <ChevronLeft size={14} />
             Back
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            {step === 4 && combined.U != null && onApplyUncertainty ? (
+            {currentStep?.kind === 'calculation' && expandedPick && onApplyUncertainty ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="h-9 border-teal-600/40 text-teal-800"
                 onClick={() => {
-                  onApplyUncertainty(fmt(combined.U!, dp))
+                  onApplyUncertainty(expandedPick.value)
                   onOpenChange(false)
                 }}
               >
-                Use U in Generate Report
+                Use {expandedPick.label} in Generate Report
               </Button>
             ) : null}
-            {step < 4 ? (
+            {hasTemplate && stepIndex < wizardSteps.length - 1 ? (
               <Button
                 type="button"
                 size="sm"
@@ -644,36 +728,502 @@ export function UncertaintyStepByStepDialog({
             )}
           </div>
         </div>
+
+        {budgetViewRow && budgetViewBreakdown ? (
+          <PointUncertaintyBudgetDialog
+            open={budgetViewRowId !== null}
+            onOpenChange={(next) => {
+              if (!next) setBudgetViewRowId(null)
+            }}
+            template={template}
+            breakdown={budgetViewBreakdown}
+            combinedLabel={budgetViewRow.combinedLabel}
+            combinedValue={budgetViewRow.combinedValue}
+            expandedLabel={budgetViewRow.expandedLabel}
+            expandedValue={budgetViewRow.expandedValue}
+            decimalPlaces={dp}
+            baseExternalColumns={baseExternalColumns}
+            calcExternalColumns={calcExternalColumns}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   )
 }
 
-function StatChip({
-  label,
-  value,
-  emphasize,
+/** One MU component table with one data row per Raw Data Sheet row (Type A / Type B / Calculation). */
+function MuSectionMultiRowEditor({
+  table,
+  tableIndex,
+  rdsRows,
+  rdsColumns,
+  valuesByRdsRow,
+  selectedRowId,
+  useRadioName,
+  decimalPlaces,
+  equipmentRange,
+  baseExternalColumns,
+  buildExternalValues,
+  onSelectRow,
+  onChangeCell,
+  showBudgetColumn = false,
+  keyOutputByRowId,
+  rowBudgetById,
+  onViewBudget,
 }: {
-  label: string
-  value: string
-  emphasize?: boolean
+  table: MuSheetTable
+  tableIndex: number
+  rdsRows: RawDataSheetPayloadRow[]
+  rdsColumns: RawDataSheetColumn[]
+  valuesByRdsRow: MuByRdsRow
+  selectedRowId: string
+  useRadioName: string
+  decimalPlaces: number
+  equipmentRange?: MuEquipmentRangeContext | null
+  baseExternalColumns: RawDataSheetColumn[]
+  /** Override per-row external formula inputs (e.g. Calculation merges Type A / Type B). */
+  buildExternalValues?: (rdsRow: RawDataSheetPayloadRow) => RawDataSheetRowValues
+  onSelectRow: (rdsRowId: string) => void
+  onChangeCell: (rdsRowId: string, key: string, value: string) => void
+  /** Calculation step: show View Budget column (one row per point). */
+  showBudgetColumn?: boolean
+  keyOutputByRowId?: Record<string, RowKeyOutput>
+  rowBudgetById?: Record<string, RowBudgetBreakdown>
+  onViewBudget?: (rdsRowId: string) => void
 }) {
+  const label = table.label.trim() || `Component ${tableIndex + 1}`
+  const sortedRdsRows = useMemo(
+    () => sortRdsRowsByPoint(rdsRows, rdsColumns),
+    [rdsRows, rdsColumns],
+  )
+
   return (
-    <div
-      className={cn(
-        'rounded-md border px-2.5 py-2',
-        emphasize ? 'border-teal-200 bg-teal-50' : 'border-slate-200 bg-slate-50',
-      )}
-    >
-      <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p
-        className={cn(
-          'mt-0.5 font-mono text-sm font-semibold',
-          emphasize ? 'text-teal-900' : 'text-slate-800',
-        )}
-      >
-        {value}
-      </p>
+    <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50/40 p-2.5">
+      <p className="text-xs font-semibold text-slate-800">{label}</p>
+      <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+        <table className="w-full table-auto border-collapse text-center text-sm">
+          <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="whitespace-nowrap border border-slate-200 px-2 py-2 text-center">
+                USE
+              </th>
+              <th className="whitespace-nowrap border border-slate-200 px-2 py-2 text-center">
+                <span className="normal-case tracking-normal">Point</span>
+              </th>
+              {table.columns.map((col) => (
+                <th
+                  key={col.key}
+                  className={cn(
+                    'whitespace-nowrap border border-slate-200 px-2 py-2 text-center',
+                    col.type === 'formula' && 'bg-teal-50/60 text-teal-900',
+                  )}
+                >
+                  <span className="normal-case tracking-normal">
+                    {col.label || col.key}
+                    {col.required && col.type !== 'formula' ? (
+                      <span className="ml-0.5 text-red-500">*</span>
+                    ) : null}
+                  </span>
+                </th>
+              ))}
+              {showBudgetColumn ? (
+                <th className="whitespace-nowrap border border-slate-200 px-2 py-2 text-center">
+                  Uncertainty Budget
+                </th>
+              ) : null}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRdsRows.map((rdsRow, rowIndex) => {
+              const rawValues =
+                valuesByRdsRow[rdsRow.id]?.[table.id] ?? emptyValuesForMuTable(table)
+              const point = rowPointLabel(rdsRow, rdsColumns)
+              const externalValues: RawDataSheetRowValues = buildExternalValues
+                ? buildExternalValues(rdsRow)
+                : {
+                    ...rdsRow.values,
+                    ...buildMuBuiltinValues(point, equipmentRange),
+                  }
+              const evaluated = evaluateMuTableValues(
+                table,
+                rawValues,
+                decimalPlaces,
+                baseExternalColumns,
+                externalValues,
+              )
+              const isSelected = selectedRowId === rdsRow.id
+              const keyOut = keyOutputByRowId?.[rdsRow.id]
+              const breakdown = rowBudgetById?.[rdsRow.id]
+              const canViewBudget =
+                showBudgetColumn &&
+                rowHasComputableBudget(
+                  keyOut?.point ?? point,
+                  keyOut?.combinedValue ?? '',
+                  keyOut?.expandedValue ?? '',
+                  breakdown,
+                )
+              return (
+                <tr
+                  key={rdsRow.id}
+                  className={cn(isSelected && 'bg-teal-50/30')}
+                >
+                  <td className="whitespace-nowrap border border-slate-200 px-1.5 py-1.5 text-center">
+                    <input
+                      type="radio"
+                      name={useRadioName}
+                      checked={isSelected}
+                      onChange={() => onSelectRow(rdsRow.id)}
+                      aria-label={`Select row ${rowIndex + 1}`}
+                      className="h-4 w-4 accent-teal-600"
+                    />
+                  </td>
+                  <td className="whitespace-nowrap border border-slate-200 px-2 py-1.5 text-center font-mono text-xs text-slate-700">
+                    {point || '—'}
+                  </td>
+                  {table.columns.map((col) => {
+                    const isFormula = col.type === 'formula'
+                    const display = evaluated[col.key] ?? ''
+                    const missingRequired =
+                      !isFormula && col.required && !String(rawValues[col.key] ?? '').trim()
+                    return (
+                      <td
+                        key={col.key}
+                        className={cn(
+                          'whitespace-nowrap border border-slate-200 px-1.5 py-1.5 text-center',
+                          isFormula && 'bg-teal-50/40',
+                          missingRequired && 'bg-amber-50/50',
+                        )}
+                      >
+                        {isFormula ? (
+                          <p className="px-1 text-center font-mono text-xs font-semibold text-teal-900">
+                            {display.trim() || '—'}
+                          </p>
+                        ) : (
+                          <Input
+                            type={col.type === 'number' ? 'number' : 'text'}
+                            step="any"
+                            value={rawValues[col.key] ?? ''}
+                            onChange={(e) => onChangeCell(rdsRow.id, col.key, e.target.value)}
+                            className={cn(
+                              'mx-auto h-8 bg-white text-center font-mono text-xs',
+                              missingRequired && 'border-amber-400',
+                            )}
+                            aria-label={`${col.label || col.key} row ${rowIndex + 1}`}
+                            aria-required={col.required}
+                            placeholder={col.required ? 'Required' : ''}
+                          />
+                        )}
+                      </td>
+                    )
+                  })}
+                  {showBudgetColumn ? (
+                    <td className="whitespace-nowrap border border-slate-200 px-1.5 py-1.5 text-center">
+                      {canViewBudget ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 border-teal-600/40 px-2 text-[11px] text-teal-800 hover:bg-teal-50"
+                          onClick={() => onViewBudget?.(rdsRow.id)}
+                          aria-label={`View uncertainty budget for point ${point || rowIndex + 1}`}
+                        >
+                          View Budget
+                        </Button>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                  ) : null}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
+
+function pickCombinedUncertaintyDisplay(
+  calculation: MuSheetSection | null | undefined,
+  calcValues: RawDataSheetRowValues,
+): { label: string; value: string } | null {
+  if (!calculation) return null
+  const cols = flattenMuSectionColumns(calculation)
+  const formulaCols = cols.filter((c) => c.type === 'formula')
+  const ucCol =
+    formulaCols.find((c) => /combined/i.test(c.label)) ??
+    formulaCols.find((c) => /u\s*c\b|uc\b|standard\s*uncertainty/i.test(c.label)) ??
+    null
+  if (!ucCol) return null
+  const v = String(calcValues[ucCol.key] ?? '').trim()
+  if (!v) return null
+  return { label: ucCol.label || 'Combined U', value: v }
+}
+
+function rowHasComputableBudget(
+  point: string,
+  combinedValue: string,
+  expandedValue: string,
+  breakdown: RowBudgetBreakdown | undefined,
+): boolean {
+  if (!point.trim()) return false
+  if (combinedValue.trim() || expandedValue.trim()) return true
+  if (!breakdown) return false
+  const hasData = (flat: RawDataSheetRowValues) =>
+    Object.values(flat).some((v) => String(v ?? '').trim() !== '')
+  return (
+    hasData(breakdown.typeAFlat) ||
+    hasData(breakdown.typeBFlat) ||
+    hasData(breakdown.calcFlat) ||
+    hasData(breakdown.budgetSheetFlat)
+  )
+}
+
+function muColumnFormulaHint(col: { type: string; formula?: { expression?: string | null } }): string {
+  if (col.type !== 'formula') return 'Input'
+  const expr = String(col.formula?.expression ?? '').trim()
+  return expr || 'Calculated'
+}
+
+/** Read-only component tables for one RDS row inside View Budget dialog. */
+function SingleRowMuSectionBreakdown({
+  section,
+  subtitle,
+  tableValues,
+  decimalPlaces,
+  externalColumns,
+  externalValues,
+}: {
+  section: MuSheetSection
+  subtitle: string
+  tableValues: Record<string, RawDataSheetRowValues>
+  decimalPlaces: number
+  externalColumns: RawDataSheetColumn[]
+  externalValues: RawDataSheetRowValues
+}) {
+  const tables = section.tables.filter((t) => t.columns.length > 0)
+  if (tables.length === 0) return null
+
+  const evaluatedByTableId: Record<string, RawDataSheetRowValues> = {}
+  const chain: RawDataSheetRowValues = { ...externalValues }
+  for (const table of tables) {
+    const rawValues = tableValues[table.id] ?? emptyValuesForMuTable(table)
+    const evaluated = evaluateMuTableValues(
+      table,
+      rawValues,
+      decimalPlaces,
+      externalColumns,
+      chain,
+    )
+    evaluatedByTableId[table.id] = evaluated
+    Object.assign(chain, evaluated)
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">{subtitle}</p>
+      {tables.map((table, tableIndex) => {
+        const rawValues = tableValues[table.id] ?? emptyValuesForMuTable(table)
+        const evaluated = evaluatedByTableId[table.id] ?? rawValues
+        return (
+          <div
+            key={table.id || `tbl-${tableIndex}`}
+            className="overflow-x-auto rounded-md border border-slate-200"
+          >
+            {tables.length > 1 ? (
+              <p className="border-b border-slate-100 bg-slate-50 px-2 py-1.5 text-center text-[11px] font-medium text-slate-600">
+                {table.label.trim() || `Component ${tableIndex + 1}`}
+              </p>
+            ) : null}
+            <table className="w-full table-auto border-collapse text-center text-xs">
+              <thead className="bg-white text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="border border-slate-200 px-2 py-1.5 text-left">Field</th>
+                  <th className="border border-slate-200 px-2 py-1.5 text-center">Type</th>
+                  <th className="border border-slate-200 px-2 py-1.5 text-center">Formula</th>
+                  <th className="border border-slate-200 px-2 py-1.5 text-center">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {table.columns.map((col) => {
+                  const isFormula = col.type === 'formula'
+                  const display = isFormula
+                    ? String(evaluated[col.key] ?? '').trim()
+                    : String(rawValues[col.key] ?? '').trim()
+                  return (
+                    <tr key={col.key} className="border-t border-slate-100">
+                      <td className="border border-slate-200 px-2 py-1.5 text-left text-slate-700">
+                        {col.label || col.key}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-1.5 text-center text-slate-500">
+                        {isFormula ? 'Calculated' : 'Input'}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-1.5 text-left font-mono text-[10px] text-slate-500">
+                        {muColumnFormulaHint(col)}
+                      </td>
+                      <td
+                        className={cn(
+                          'border border-slate-200 px-2 py-1.5 text-center font-mono',
+                          isFormula && 'bg-teal-50/40 font-semibold text-teal-900',
+                        )}
+                      >
+                        {display || '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function PointUncertaintyBudgetDialog({
+  open,
+  onOpenChange,
+  template,
+  breakdown,
+  combinedLabel,
+  combinedValue,
+  expandedLabel,
+  expandedValue,
+  decimalPlaces,
+  baseExternalColumns,
+  calcExternalColumns,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  template: MuCalculationTemplate
+  breakdown: RowBudgetBreakdown
+  combinedLabel: string
+  combinedValue: string
+  expandedLabel: string
+  expandedValue: string
+  decimalPlaces: number
+  baseExternalColumns: RawDataSheetColumn[]
+  calcExternalColumns: RawDataSheetColumn[]
+}) {
+  const coverageK = Number.isFinite(template.coverageFactorK)
+    ? String(template.coverageFactorK)
+    : ''
+  const point = breakdown.point.trim() || '—'
+  const typeAExternalValues = breakdown.baseExternalValues
+  const typeBExternalValues = breakdown.baseExternalValues
+  const calcExternalValues = breakdown.calcExternalValues
+
+  const showTypeA = sectionHasConfiguredColumns(template.typeA)
+  const showTypeB = sectionHasConfiguredColumns(template.typeB)
+  const showCalculation = sectionHasConfiguredColumns(template.calculation)
+  const showBudgetSheet = sectionHasConfiguredColumns(template.uncertaintyBudgetSheet)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[min(90dvh,720px)] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+        layer="nested"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-3 text-left sm:px-5">
+          <DialogTitle className="text-base font-semibold text-slate-900">
+            Uncertainty Budget — Point {point}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-4 sm:px-5">
+          <dl className="grid gap-2 rounded-md border border-teal-200 bg-teal-50/30 px-3 py-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-[10px] uppercase tracking-wide text-slate-500">Point</dt>
+              <dd className="mt-0.5 font-mono text-sm text-slate-800">{point}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-wide text-slate-500">
+                {combinedLabel || 'Combined Uncertainty'}
+              </dt>
+              <dd className="mt-0.5 font-mono text-sm text-slate-800">
+                {combinedValue.trim() || '—'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-wide text-slate-500">
+                Coverage Factor
+              </dt>
+              <dd className="mt-0.5 font-mono text-sm text-slate-800">
+                {coverageK ? `k = ${coverageK}` : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] uppercase tracking-wide text-slate-500">
+                {expandedLabel || 'Expanded Uncertainty'}
+              </dt>
+              <dd className="mt-0.5 font-mono text-sm font-semibold text-teal-900">
+                {expandedValue.trim() || '—'}
+              </dd>
+            </div>
+          </dl>
+
+          {showTypeA ? (
+            <SingleRowMuSectionBreakdown
+              section={template.typeA}
+              subtitle={template.typeA.label.trim() || 'Type A'}
+              tableValues={breakdown.typeATableValues}
+              decimalPlaces={decimalPlaces}
+              externalColumns={baseExternalColumns}
+              externalValues={typeAExternalValues}
+            />
+          ) : null}
+
+          {showTypeB ? (
+            <SingleRowMuSectionBreakdown
+              section={template.typeB}
+              subtitle={template.typeB.label.trim() || 'Type B'}
+              tableValues={breakdown.typeBTableValues}
+              decimalPlaces={decimalPlaces}
+              externalColumns={baseExternalColumns}
+              externalValues={typeBExternalValues}
+            />
+          ) : null}
+
+          {showCalculation ? (
+            <SingleRowMuSectionBreakdown
+              section={template.calculation}
+              subtitle={template.calculation.label.trim() || 'Calculation'}
+              tableValues={breakdown.calcTableValues}
+              decimalPlaces={decimalPlaces}
+              externalColumns={calcExternalColumns}
+              externalValues={calcExternalValues}
+            />
+          ) : null}
+
+          {showBudgetSheet ? (
+            <SingleRowMuSectionBreakdown
+              section={template.uncertaintyBudgetSheet}
+              subtitle={
+                template.uncertaintyBudgetSheet.label.trim() || 'Uncertainty Budget Sheet'
+              }
+              tableValues={breakdown.budgetSheetTableValues}
+              decimalPlaces={decimalPlaces}
+              externalColumns={calcExternalColumns}
+              externalValues={calcExternalValues}
+            />
+          ) : null}
+
+          <p className="text-[11px] text-slate-500">
+            Decimal places: {decimalPlaces}. Calculated fields are evaluated from wizard inputs and
+            linked Raw Data Sheet values.
+          </p>
+        </div>
+
+        <div className="flex shrink-0 justify-end border-t border-slate-200 px-4 py-3 sm:px-5">
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+

@@ -1,9 +1,16 @@
 import { useMemo, useState } from 'react'
-import { FileSpreadsheet, Settings2 } from 'lucide-react'
+import { ClipboardList, FileSpreadsheet, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { CalibrationJobRow } from '../types'
+import { ConductOutsideChecklistDialog } from './ConductOutsideChecklistDialog'
+import {
+  isChecklistCompleted,
+  parseConductOutsideChecklist,
+  type ConductOutsideChecklistKind,
+  type ConductOutsideChecklistPayload,
+} from './conductOutsideChecklist'
 import { RawDataSheetDialog } from './RawDataSheetDialog'
 
 const GRID_TABLE =
@@ -115,6 +122,36 @@ function JobDetailsDialog({
   )
 }
 
+function ChecklistColumnCell({
+  completed,
+  onOpen,
+  ariaLabel,
+}: {
+  completed: boolean
+  onOpen: () => void
+  ariaLabel: string
+}) {
+  const statusClass = completed
+    ? 'border-teal-600/45 bg-teal-50 text-teal-800 hover:bg-teal-100 hover:text-teal-900'
+    : 'border-amber-500/55 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900'
+
+  return (
+    <div className="flex items-center justify-center">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={`h-8 gap-1 px-2 text-xs ${statusClass}`}
+        onClick={onOpen}
+        aria-label={ariaLabel}
+      >
+        <ClipboardList size={14} aria-hidden />
+        {completed ? 'View' : 'Fill Checklist'}
+      </Button>
+    </div>
+  )
+}
+
 export function CalibrationConductTable({
   rows,
   loading,
@@ -125,9 +162,11 @@ export function CalibrationConductTable({
   onToggleAll,
   onForward,
   onReferback,
+  onChecklistSaved,
   actionLoading = false,
   scopedToEngineer = false,
   locationFilterLabel,
+  showOutsideChecklists = false,
 }: {
   rows: CalibrationJobRow[]
   loading: boolean
@@ -138,12 +177,21 @@ export function CalibrationConductTable({
   onToggleAll: (checked: boolean) => void
   onForward: (job: CalibrationJobRow) => void
   onReferback: (job: CalibrationJobRow) => void
+  onChecklistSaved?: (
+    jobId: string,
+    kind: ConductOutsideChecklistKind,
+    payload: ConductOutsideChecklistPayload,
+  ) => void
   actionLoading?: boolean
   scopedToEngineer?: boolean
   locationFilterLabel?: string
+  /** Outside Conduct only — Outgoing / Inward checklist columns + gating. */
+  showOutsideChecklists?: boolean
 }) {
   const [detailsJob, setDetailsJob] = useState<CalibrationJobRow | null>(null)
   const [workSheetJob, setWorkSheetJob] = useState<CalibrationJobRow | null>(null)
+  const [checklistJob, setChecklistJob] = useState<CalibrationJobRow | null>(null)
+  const [checklistKind, setChecklistKind] = useState<ConductOutsideChecklistKind>('outgoing')
 
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -182,6 +230,11 @@ export function CalibrationConductTable({
     )
   }
 
+  const openChecklist = (job: CalibrationJobRow, kind: ConductOutsideChecklistKind) => {
+    setChecklistKind(kind)
+    setChecklistJob(job)
+  }
+
   return (
     <>
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -204,7 +257,17 @@ export function CalibrationConductTable({
                 <TableHead className="min-w-[160px] text-left text-xs">Equipment Name</TableHead>
                 <TableHead className="min-w-[120px] text-center text-xs">Range</TableHead>
                 <TableHead className="min-w-[100px] text-center text-xs">Details</TableHead>
+                {showOutsideChecklists ? (
+                  <TableHead className="min-w-[140px] text-center text-xs">
+                    Outgoing Checklist
+                  </TableHead>
+                ) : null}
                 <TableHead className="min-w-[140px] text-center text-xs">Raw Data Sheet</TableHead>
+                {showOutsideChecklists ? (
+                  <TableHead className="min-w-[140px] text-center text-xs">
+                    Inward Checklist
+                  </TableHead>
+                ) : null}
                 <TableHead className="min-w-[120px] text-center text-xs">Action</TableHead>
               </TableRow>
             </TableHeader>
@@ -212,6 +275,23 @@ export function CalibrationConductTable({
               {rows.map((job) => {
                 const fields = parseConductEquipmentFields(job)
                 const selected = selectedIds.has(job.id)
+                const outgoingDone = showOutsideChecklists
+                  ? isChecklistCompleted(
+                      parseConductOutsideChecklist(job.outgoing_checklist, 'outgoing'),
+                    )
+                  : true
+                const inwardDone = showOutsideChecklists
+                  ? isChecklistCompleted(
+                      parseConductOutsideChecklist(job.inward_checklist, 'inward'),
+                    )
+                  : true
+                const sheetBlockedTitle = showOutsideChecklists && !outgoingDone
+                  ? 'Complete Outgoing Checklist before opening Raw Data Sheet'
+                  : 'Open Raw Data Sheet'
+                const forwardBlockedTitle = showOutsideChecklists && !inwardDone
+                  ? 'Complete Inward Checklist before Forward'
+                  : 'Forward to Review Data'
+
                 return (
                   <TableRow key={job.id} data-state={selected ? 'selected' : undefined}>
                     <TableCell className="text-center align-middle">
@@ -242,12 +322,23 @@ export function CalibrationConductTable({
                         Details
                       </Button>
                     </TableCell>
+                    {showOutsideChecklists ? (
+                      <TableCell className="text-center align-middle">
+                        <ChecklistColumnCell
+                          completed={outgoingDone}
+                          onOpen={() => openChecklist(job, 'outgoing')}
+                          ariaLabel={`Outgoing checklist for ${job.equipment_label}`}
+                        />
+                      </TableCell>
+                    ) : null}
                     <TableCell className="text-center align-middle">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1 border-teal-600/40 px-2 text-xs text-teal-800 hover:bg-teal-50"
+                        className="h-8 gap-1 border-teal-600/40 px-2 text-xs text-teal-800 hover:bg-teal-50 disabled:opacity-40"
+                        disabled={showOutsideChecklists && !outgoingDone}
+                        title={sheetBlockedTitle}
                         onClick={() => setWorkSheetJob(job)}
                         aria-label={`Open raw data sheet for ${job.equipment_label}`}
                       >
@@ -255,6 +346,15 @@ export function CalibrationConductTable({
                         Open Sheet
                       </Button>
                     </TableCell>
+                    {showOutsideChecklists ? (
+                      <TableCell className="text-center align-middle">
+                        <ChecklistColumnCell
+                          completed={inwardDone}
+                          onOpen={() => openChecklist(job, 'inward')}
+                          ariaLabel={`Inward checklist for ${job.equipment_label}`}
+                        />
+                      </TableCell>
+                    ) : null}
                     <TableCell className="text-center align-middle">
                       <div className="flex flex-wrap items-center justify-center gap-1">
                         <Button
@@ -262,10 +362,10 @@ export function CalibrationConductTable({
                           size="icon"
                           variant="ghost"
                           className="h-9 w-9 text-lg leading-none hover:bg-teal-50 disabled:opacity-40"
-                          disabled={actionLoading}
+                          disabled={actionLoading || (showOutsideChecklists && !inwardDone)}
                           onClick={() => onForward(job)}
                           aria-label={`Forward ${job.equipment_label}`}
-                          title="Forward to Review Data"
+                          title={forwardBlockedTitle}
                         >
                           <span aria-hidden>➡️</span>
                         </Button>
@@ -305,6 +405,19 @@ export function CalibrationConductTable({
           if (!open) setWorkSheetJob(null)
         }}
       />
+      {showOutsideChecklists ? (
+        <ConductOutsideChecklistDialog
+          job={checklistJob}
+          kind={checklistKind}
+          open={Boolean(checklistJob)}
+          onOpenChange={(open) => {
+            if (!open) setChecklistJob(null)
+          }}
+          onSaved={(jobId, kind, payload) => {
+            onChecklistSaved?.(jobId, kind, payload)
+          }}
+        />
+      ) : null}
     </>
   )
 }

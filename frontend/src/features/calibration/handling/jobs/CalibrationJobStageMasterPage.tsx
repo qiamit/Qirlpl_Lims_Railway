@@ -27,6 +27,12 @@ import {
 } from './CalibrationJobStageTable'
 import { CalibrationConductTable } from './CalibrationConductTable'
 import { CalibrationJobStageFooterBar } from './CalibrationJobStageFooterBar'
+import {
+  isChecklistCompleted,
+  parseConductOutsideChecklist,
+  type ConductOutsideChecklistKind,
+  type ConductOutsideChecklistPayload,
+} from './conductOutsideChecklist'
 
 function formatError(err: unknown) {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -80,8 +86,20 @@ export function CalibrationJobStageMasterPage({
   const [jumpTo, setJumpTo] = useState('')
 
   const isConduct = stage === 'calibration_conduct'
+  const isReviewData = stage === 'review_data'
+  const isCertificatePrep = stage === 'certificate_preparation'
+  /** Review Data + Certificate Prep list one row per DUC (not SRF-grouped). */
+  const isPerJobStage = isReviewData || isCertificatePrep
+  const isOutsideConduct = isConduct && locationFilter === 'On Site'
   const scopeConductToEngineer =
     isConduct && !canViewAllCalibrationConductJobs(designation)
+
+  /** Review Data keeps forwarded jobs visible until Cert Prep referback (or further forward). */
+  const listStages = useMemo(
+    (): CalibrationJobStage | CalibrationJobStage[] =>
+      stage === 'review_data' ? ['review_data', 'certificate_preparation'] : stage,
+    [stage],
+  )
 
   const loadRows = useCallback(async () => {
     setListLoading(true)
@@ -92,7 +110,7 @@ export function CalibrationJobStageMasterPage({
         return
       }
 
-      const data = await fetchCalibrationJobsByStage(stage, {
+      const data = await fetchCalibrationJobsByStage(listStages, {
         ...(scopeConductToEngineer && user?.id
           ? { allocatedEngineerId: user.id }
           : {}),
@@ -104,7 +122,7 @@ export function CalibrationJobStageMasterPage({
         if (byId.length > 0) {
           setRows(byId)
         } else {
-          const allInStage = await fetchCalibrationJobsByStage(stage, {
+          const allInStage = await fetchCalibrationJobsByStage(listStages, {
             ...(locationFilter ? { calibrationLocation: locationFilter } : {}),
           })
           setRows(allInStage.filter((j) => jobAssignedToCurrentUser(j, user.id, profileName)))
@@ -118,7 +136,15 @@ export function CalibrationJobStageMasterPage({
     } finally {
       setListLoading(false)
     }
-  }, [stage, scopeConductToEngineer, user?.id, profileName, profileReady, locationFilter])
+  }, [
+    stage,
+    listStages,
+    scopeConductToEngineer,
+    user?.id,
+    profileName,
+    profileReady,
+    locationFilter,
+  ])
 
   useEffect(() => {
     void loadRows()
@@ -165,7 +191,7 @@ export function CalibrationJobStageMasterPage({
     [filteredRows],
   )
 
-  const listTotal = isConduct ? filteredRows.length : filteredGroups.length
+  const listTotal = isConduct || isPerJobStage ? filteredRows.length : filteredGroups.length
   const pageCount = Math.max(1, Math.ceil(listTotal / pageSize))
   const safePage = Math.min(page, pageCount)
 
@@ -178,6 +204,12 @@ export function CalibrationJobStageMasterPage({
     const start = (safePage - 1) * pageSize
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, safePage, pageSize])
+
+  /** Per-job stages list one row per DUC; still pass SRF groups built from the job page. */
+  const pagedPerJobGroups = useMemo(
+    () => (isPerJobStage ? groupCalibrationJobsBySrf(pagedJobs) : pagedGroups),
+    [isPerJobStage, pagedJobs, pagedGroups],
+  )
 
   const nextStage = nextCalibrationJobStage(stage)
   const nextStageLabel = nextStage ? CALIBRATION_JOB_STAGE_LABELS[nextStage] : null
@@ -202,10 +234,11 @@ export function CalibrationJobStageMasterPage({
   }
 
   const toggleAllSrfOnPage = (checked: boolean) => {
+    const pageGroups = isPerJobStage ? pagedPerJobGroups : pagedGroups
     setSelectedSrfIds((prev) => {
       const next = new Set(prev)
-      if (!checked) pagedGroups.forEach((g) => next.delete(g.serviceRequestId))
-      else pagedGroups.forEach((g) => next.add(g.serviceRequestId))
+      if (!checked) pageGroups.forEach((g) => next.delete(g.serviceRequestId))
+      else pageGroups.forEach((g) => next.add(g.serviceRequestId))
       return next
     })
   }
@@ -236,9 +269,33 @@ export function CalibrationJobStageMasterPage({
     return `Assign an Engineer to all DUCs before Forward (${missing.length} missing). Open View (DUC) and select engineer.`
   }
 
+  const assertInwardChecklistForOutsideForward = (jobIds: string[]): string | null => {
+    if (!isOutsideConduct) return null
+    const jobs = rows.filter((r) => jobIds.includes(r.id))
+    const incomplete = jobs.filter(
+      (j) => !isChecklistCompleted(parseConductOutsideChecklist(j.inward_checklist, 'inward')),
+    )
+    if (incomplete.length === 0) return null
+    return `Complete Inward Checklist before Forward (${incomplete.length} job(s) pending).`
+  }
+
   const moveJobsForward = async (jobIds: string[]) => {
     if (jobIds.length === 0 || !nextStage) return
-    const blockMsg = assertEngineersAssignedForForward(jobIds)
+    // Review: only move jobs still at review_data (already-forwarded stay listed, Forward disabled)
+    const idsToMove = isReviewData
+      ? jobIds.filter((id) => rows.find((r) => r.id === id)?.stage === 'review_data')
+      : jobIds
+    if (idsToMove.length === 0) {
+      setActionMessage(
+        isReviewData
+          ? 'Selected job(s) are already forwarded to Certificate Preparation.'
+          : 'Nothing forwarded.',
+      )
+      return
+    }
+    const blockMsg =
+      assertEngineersAssignedForForward(idsToMove) ??
+      assertInwardChecklistForOutsideForward(idsToMove)
     if (blockMsg) {
       setActionMessage(blockMsg)
       return
@@ -246,10 +303,14 @@ export function CalibrationJobStageMasterPage({
     setActionLoading(true)
     setActionMessage(null)
     try {
-      const { moved, skippedTerminal } = await moveCalibrationJobsToNextStage(jobIds)
+      const { moved, skippedTerminal } = await moveCalibrationJobsToNextStage(idsToMove)
       setActionMessage(
         moved > 0
-          ? `Forwarded ${moved} DUC job(s) to ${CALIBRATION_JOB_STAGE_LABELS[nextStage]}. Assigned engineers can open Calibration Conduct.`
+          ? `Forwarded ${moved} DUC job(s) to ${CALIBRATION_JOB_STAGE_LABELS[nextStage]}.${
+              stage === 'job_allocation'
+                ? ' Assigned engineers can open Calibration Conduct.'
+                : ''
+            }`
           : skippedTerminal > 0
             ? 'Selected jobs are already at the final stage.'
             : 'Nothing forwarded.',
@@ -331,6 +392,29 @@ export function CalibrationJobStageMasterPage({
     void moveJobsReferback([job.id])
   }
 
+  const handleChecklistSaved = (
+    jobId: string,
+    kind: ConductOutsideChecklistKind,
+    payload: ConductOutsideChecklistPayload,
+  ) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== jobId) return r
+        if (kind === 'outgoing') return { ...r, outgoing_checklist: payload }
+        return { ...r, inward_checklist: payload }
+      }),
+    )
+    setActionMessage(
+      kind === 'outgoing'
+        ? payload.completed
+          ? 'Outgoing Checklist completed. Raw Data Sheet is now available.'
+          : 'Outgoing Checklist draft saved.'
+        : payload.completed
+          ? 'Inward Checklist completed. Forward is now available.'
+          : 'Inward Checklist draft saved.',
+    )
+  }
+
   const handleBulkForward = async () => {
     if (isConduct) {
       await moveJobsForward([...selectedJobIds])
@@ -339,6 +423,14 @@ export function CalibrationJobStageMasterPage({
     const ids = [...selectedSrfIds].flatMap((srfId) => jobIdsForSrf(srfId))
     await moveJobsForward(ids)
   }
+
+  const selectedJobsReadyForOutsideForward =
+    !isOutsideConduct ||
+    [...selectedJobIds].every((id) => {
+      const job = rows.find((r) => r.id === id)
+      if (!job) return false
+      return isChecklistCompleted(parseConductOutsideChecklist(job.inward_checklist, 'inward'))
+    })
 
   const handleBulkReferback = async () => {
     if (isConduct) {
@@ -407,8 +499,10 @@ export function CalibrationJobStageMasterPage({
           onToggleAll={toggleAllJobsOnPage}
           onForward={handleForwardJob}
           onReferback={handleReferbackJob}
+          onChecklistSaved={isOutsideConduct ? handleChecklistSaved : undefined}
           actionLoading={actionLoading}
           scopedToEngineer={scopeConductToEngineer}
+          showOutsideChecklists={isOutsideConduct}
           locationFilterLabel={
             locationFilter === 'In Lab'
               ? 'Inside'
@@ -420,7 +514,7 @@ export function CalibrationJobStageMasterPage({
       ) : (
         <CalibrationJobStageTable
           stage={stage}
-          groups={pagedGroups}
+          groups={isPerJobStage ? pagedPerJobGroups : pagedGroups}
           loading={listLoading}
           error={listError}
           searchActive={search.trim().length > 0}
@@ -449,17 +543,21 @@ export function CalibrationJobStageMasterPage({
           setPage(1)
         }}
         canMoveNext={
-          (isConduct ? selectedJobIds.size > 0 : selectedSrfIds.size > 0) && Boolean(nextStage)
+          (isConduct ? selectedJobIds.size > 0 : selectedSrfIds.size > 0) &&
+          Boolean(nextStage) &&
+          selectedJobsReadyForOutsideForward
         }
         nextStageLabel={nextStageLabel}
         onMoveNext={() => void handleBulkForward()}
-        showBulkMove={Boolean(nextStage)}
+        showBulkMove={!isPerJobStage && Boolean(nextStage)}
+        showBulkActions={!isPerJobStage}
         canReferbackBulk={
+          !isPerJobStage &&
           (isConduct ? selectedJobIds.size > 0 : selectedSrfIds.size > 0) &&
           Boolean(prevStageLabel)
         }
-        previousStageLabel={prevStageLabel}
-        onReferbackBulk={() => void handleBulkReferback()}
+        previousStageLabel={isPerJobStage ? null : prevStageLabel}
+        onReferbackBulk={isPerJobStage ? undefined : () => void handleBulkReferback()}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

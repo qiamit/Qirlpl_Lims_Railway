@@ -47,6 +47,12 @@ import {
   SaleInvoiceRoute,
   SaleCreditNoteRoute,
   SalePaymentReceiptRoute,
+  AuditPlanRoute,
+  AuditChecklistRoute,
+  AuditSummaryRoute,
+  NonConformitiesRoute,
+  MrmAgendaRoute,
+  ManagementReviewMeetingRoute,
 } from '@/routes/routeElements'
 
 function PlaceholderPage({ title, clause }: { title: string; clause: string }) {
@@ -123,6 +129,21 @@ export default function App() {
           <Route path="management-docs/level-2" element={<ManagementDocsLevel2Route />} />
           <Route path="management-docs/level-3" element={<ManagementDocsLevel3Route />} />
           <Route path="management-docs/level-4" element={<ManagementDocsLevel4Route />} />
+
+          {/* Audit & MRM Management */}
+          <Route
+            path="audit-mrm"
+            element={<Navigate to="/audit-mrm/audit-plan" replace />}
+          />
+          <Route path="audit-mrm/audit-plan" element={<AuditPlanRoute />} />
+          <Route path="audit-mrm/audit-checklist" element={<AuditChecklistRoute />} />
+          <Route path="audit-mrm/audit-summary" element={<AuditSummaryRoute />} />
+          <Route path="audit-mrm/non-conformities" element={<NonConformitiesRoute />} />
+          <Route path="audit-mrm/mrm-agenda" element={<MrmAgendaRoute />} />
+          <Route
+            path="audit-mrm/management-review-meeting"
+            element={<ManagementReviewMeetingRoute />}
+          />
 
           {/* Calibration LIMS */}
           <Route

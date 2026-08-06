@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, type ElementType } from 'react'
+import { useEffect, useMemo, useState, type ElementType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FileSignature,
@@ -29,6 +29,7 @@ import {
   Package,
   Receipt,
   ShoppingCart,
+  FileSearch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -82,39 +83,10 @@ function navItemAccessible(item: NavItem, ctx: UserAccessContext): boolean {
   return checkNavAccess(item.requiredDesignations, item.to, ctx)
 }
 
-const NAV_AUTO_HIDE_MS = 30_000
-
-/** Expandable nav: starts closed; after open, auto-collapses in 30s */
-function useAutoHideOpen(initialOpen = false) {
+/** Expandable nav: starts closed; stays open until user collapses manually */
+function useNavSectionOpen(initialOpen = false) {
   const [open, setOpen] = useState(initialOpen)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!open) {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-        timerRef.current = null
-      }
-      return
-    }
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setOpen(false), NAV_AUTO_HIDE_MS)
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-        timerRef.current = null
-      }
-    }
-  }, [open])
-
   const toggleOpen = () => setOpen((v) => !v)
-
   return { open, setOpen, toggleOpen }
 }
 
@@ -159,6 +131,49 @@ const NAV_SECTIONS: NavSection[] = [
         to: '/management-docs/level-4',
         icon: FileText,
         clause: 'Level 4',
+      },
+    ],
+  },
+  {
+    title: 'Audit & MRM Management',
+    clause: 'audit-mrm-management',
+    icon: FileSearch,
+    items: [
+      {
+        label: 'Audit Plan',
+        to: '/audit-mrm/audit-plan',
+        icon: ClipboardList,
+        clause: 'audit',
+      },
+      {
+        label: 'Audit Checklist',
+        to: '/audit-mrm/audit-checklist',
+        icon: ClipboardCheck,
+        clause: 'audit',
+      },
+      {
+        label: 'Audit Summary',
+        to: '/audit-mrm/audit-summary',
+        icon: FileText,
+        clause: 'audit',
+      },
+      {
+        label: 'Non Conformities',
+        to: '/audit-mrm/non-conformities',
+        icon: ShieldCheck,
+        clause: 'audit',
+      },
+      {
+        label: 'MRM Agenda',
+        to: '/audit-mrm/mrm-agenda',
+        icon: BookOpen,
+        clause: 'mrm',
+      },
+      {
+        label: 'Management Review Meeting',
+        to: '/audit-mrm/management-review-meeting',
+        icon: Users,
+        clause: 'mrm',
       },
     ],
   },
@@ -401,6 +416,13 @@ const ROUTE_LABELS: Record<string, string> = {
   '/management-docs/level-2': 'Management Documentation / Level 2 Documents',
   '/management-docs/level-3': 'Management Documentation / Level 3 Documents',
   '/management-docs/level-4': 'Management Documentation / Level 4 Documents',
+  '/audit-mrm/audit-plan': 'Audit & MRM Management / Audit Plan',
+  '/audit-mrm/audit-checklist': 'Audit & MRM Management / Audit Checklist',
+  '/audit-mrm/audit-summary': 'Audit & MRM Management / Audit Summary',
+  '/audit-mrm/non-conformities': 'Audit & MRM Management / Non Conformities',
+  '/audit-mrm/mrm-agenda': 'Audit & MRM Management / MRM Agenda',
+  '/audit-mrm/management-review-meeting':
+    'Audit & MRM Management / Management Review Meeting',
   '/lab-settings': 'Lab Settings',
   '/lab-settings/user-management': 'User Management',
   '/lab-settings/ai-settings': 'AI Settings',
@@ -434,7 +456,7 @@ function NavSectionGroup({
   collapsed: boolean
   access: UserAccessContext
 }) {
-  const { open, toggleOpen } = useAutoHideOpen(false)
+  const { open, toggleOpen } = useNavSectionOpen(false)
   const SectionIcon = section.icon
 
   const visibleItems = useMemo(
@@ -526,7 +548,7 @@ function NavItemGroup({ item, collapsed, access }: { item: NavItem; collapsed: b
     })
   }, [visibleChildren, location.pathname])
 
-  const { open, toggleOpen } = useAutoHideOpen(false)
+  const { open, toggleOpen } = useNavSectionOpen(false)
 
   if (visibleChildren.length === 0) return null
 

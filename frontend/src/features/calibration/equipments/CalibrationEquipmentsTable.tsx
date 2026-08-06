@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils'
 import {
   rangesFromRow,
+  splitRangeCapacityToMinMax,
   type CalibrationEquipmentRow,
   type EquipmentRangeEntry,
 } from './types'
@@ -57,24 +58,31 @@ function MeasurementRangesDialog({
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="pb-2 pr-3 font-semibold">#</th>
-                <th className="pb-2 pr-3 font-semibold">Range</th>
+                <th className="pb-2 pr-3 font-semibold">Range Min</th>
+                <th className="pb-2 pr-3 font-semibold">Range Max</th>
                 <th className="pb-2 pr-3 font-semibold">Least Count</th>
                 <th className="pb-2 font-semibold">Unit</th>
               </tr>
             </thead>
             <tbody>
-              {ranges.map((rng, i) => (
+              {ranges.map((rng, i) => {
+                const split = splitRangeCapacityToMinMax(rng.rangeCapacity ?? '')
+                return (
                 <tr key={rng.id} className="border-b border-border/70 last:border-0">
                   <td className="py-2 pr-3 align-top text-muted-foreground">{i + 1}</td>
                   <td className="py-2 pr-3 align-top text-foreground">
-                    {cellText(rng.rangeCapacity)}
+                    {cellText(rng.rangeMin || split.rangeMin)}
+                  </td>
+                  <td className="py-2 pr-3 align-top text-foreground">
+                    {cellText(rng.rangeMax || split.rangeMax)}
                   </td>
                   <td className="py-2 pr-3 align-top text-foreground">
                     {cellText(rng.resolutionLeastCount)}
                   </td>
                   <td className="py-2 align-top text-foreground">{cellText(rng.unit)}</td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

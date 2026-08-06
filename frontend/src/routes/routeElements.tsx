@@ -37,6 +37,12 @@ import ProformaInvoicePage from '@/features/finance/sale/proforma-invoice/Profor
 import InvoicePage from '@/features/finance/sale/invoice/InvoicePage'
 import CreditNotePage from '@/features/finance/sale/credit-note/CreditNotePage'
 import PaymentReceiptPage from '@/features/finance/sale/payment-receipt/PaymentReceiptPage'
+import AuditPlanPage from '@/features/audit-mrm/audit-plan/AuditPlanPage'
+import AuditChecklistPage from '@/features/audit-mrm/audit-checklist/AuditChecklistPage'
+import AuditSummaryPage from '@/features/audit-mrm/audit-summary/AuditSummaryPage'
+import NonConformitiesPage from '@/features/audit-mrm/non-conformities/NonConformitiesPage'
+import MrmAgendaPage from '@/features/audit-mrm/mrm-agenda/MrmAgendaPage'
+import ManagementReviewMeetingPage from '@/features/audit-mrm/management-review-meeting/ManagementReviewMeetingPage'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { RequireLaboratoryDirector } from '@/components/auth/RequireLaboratoryDirector'
 import { RequireSampleReceivingAccess } from '@/components/auth/RequireSampleReceivingAccess'
@@ -178,6 +184,30 @@ export function SaleCreditNoteRoute() {
 
 export function SalePaymentReceiptRoute() {
   return <PaymentReceiptPage />
+}
+
+export function AuditPlanRoute() {
+  return <AuditPlanPage />
+}
+
+export function AuditChecklistRoute() {
+  return <AuditChecklistPage />
+}
+
+export function AuditSummaryRoute() {
+  return <AuditSummaryPage />
+}
+
+export function NonConformitiesRoute() {
+  return <NonConformitiesPage />
+}
+
+export function MrmAgendaRoute() {
+  return <MrmAgendaPage />
+}
+
+export function ManagementReviewMeetingRoute() {
+  return <ManagementReviewMeetingPage />
 }
 
 export {

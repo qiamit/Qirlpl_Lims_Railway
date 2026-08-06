@@ -26,6 +26,8 @@ type LaboratoryDetailsTabProps = {
   setMobile: (value: string) => void
   email: string
   setEmail: (value: string) => void
+  website: string
+  setWebsite: (value: string) => void
   address: string
   setAddress: (value: string) => void
   pinCode: string
@@ -575,6 +577,19 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               />
             </div>
           </div>
+
+        <div className="min-w-0 max-w-xl space-y-2">
+          <Label htmlFor="website">Website</Label>
+          <Input
+            id="website"
+            className="w-full"
+            type="url"
+            placeholder="Enter Website URL"
+            value={props.website}
+            onChange={(e) => props.setWebsite(e.target.value)}
+            title="Enter company website"
+          />
+        </div>
 
         <div className="space-y-2">
           <Label htmlFor="address">Current Address</Label>

@@ -11,19 +11,20 @@ import {
 } from '../types'
 
 const JOB_SELECT =
-  'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, created_at, updated_at'
+  'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, outgoing_checklist, inward_checklist, certificate_draft, created_at, updated_at'
 
 export async function fetchCalibrationJobsByStage(
-  stage: CalibrationJobStage,
+  stage: CalibrationJobStage | CalibrationJobStage[],
   opts?: {
     allocatedEngineerId?: string | null
     calibrationLocation?: CalibrationJobLocation | null
   },
 ): Promise<CalibrationJobRow[]> {
+  const stages = Array.isArray(stage) ? stage : [stage]
   let query = supabase
     .from('calibration_jobs')
     .select(JOB_SELECT)
-    .eq('stage', stage)
+    .in('stage', stages)
     .order('stage_entered_at', { ascending: false })
 
   if (opts?.allocatedEngineerId) {
@@ -59,6 +60,19 @@ export async function updateCalibrationJobEngineer(
       allocated_engineer_id: engineer.id,
       allocated_engineer_name: engineer.name,
     })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function updateCalibrationJobOutsideChecklist(
+  id: string,
+  kind: 'outgoing' | 'inward',
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const column = kind === 'outgoing' ? 'outgoing_checklist' : 'inward_checklist'
+  const { error } = await supabase
+    .from('calibration_jobs')
+    .update({ [column]: payload })
     .eq('id', id)
   if (error) throw error
 }
@@ -344,6 +358,12 @@ export type EquipmentMasterForSheet = {
   range_capacity: string | null
   resolution_least_count: string | null
   raw_data_sheet_template: unknown
+  /** Measurement Uncertainty (MU) calculation sheet template. */
+  mu_calculation_template?: unknown
+  /** Generate Report button visibility + defaults. */
+  generate_report_config?: unknown
+  /** Per-equipment Calibration Certificate template. */
+  certificate_template_config?: unknown
   calibration_method_label: string | null
   master_equipment_id?: string | null
 }
@@ -354,7 +374,7 @@ export async function fetchEquipmentMasterForSheet(
   const { data, error } = await supabase
     .from('equipment_master')
     .select(
-      'id, equipment_name, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, calibration_method_label, master_equipment_id',
+      'id, equipment_name, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, calibration_method_label, master_equipment_id',
     )
     .eq('id', equipmentMasterId)
     .maybeSingle()
@@ -377,6 +397,9 @@ export type MasterEquipmentForSheet = {
   last_calibration_date: string | null
   next_calibration_due: string | null
   calibration_certificate_number: string | null
+  calibration_certificate_uncertainty: string | null
+  calibration_uncertainty_unit: string | null
+  calibration_coverage_factor: string | null
   current_location: string | null
 }
 
@@ -389,7 +412,7 @@ export async function fetchMasterEquipmentsByIds(
   const { data, error } = await supabase
     .from('equipment_for_calibration')
     .select(
-      'id, asset_code, equipment_name, manufacturer, model_number, serial_number, equipment_status, range_capacity, resolution_least_count, accuracy_acceptance_criteria, calibration_frequency, last_calibration_date, next_calibration_due, calibration_certificate_number, current_location',
+      'id, asset_code, equipment_name, manufacturer, model_number, serial_number, equipment_status, range_capacity, resolution_least_count, accuracy_acceptance_criteria, calibration_frequency, last_calibration_date, next_calibration_due, calibration_certificate_number, calibration_certificate_uncertainty, calibration_uncertainty_unit, calibration_coverage_factor, current_location',
     )
     .in('id', unique)
   if (error) throw error
@@ -402,7 +425,7 @@ export async function fetchMasterEquipmentsByIds(
 }
 
 const SHEET_EQ_SELECT =
-  'id, equipment_name, serial_number, equipment_status, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, calibration_method_label, master_equipment_id'
+  'id, equipment_name, serial_number, equipment_status, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, calibration_method_label, master_equipment_id'
 
 type EquipmentMasterResolveRow = EquipmentMasterForSheet & {
   serial_number: string | null
@@ -501,7 +524,11 @@ export async function resolveEquipmentMasterForJob(job: {
     range_capacity: chosen.range_capacity,
     resolution_least_count: chosen.resolution_least_count,
     raw_data_sheet_template: chosen.raw_data_sheet_template,
+    mu_calculation_template: chosen.mu_calculation_template,
+    generate_report_config: chosen.generate_report_config,
+    certificate_template_config: chosen.certificate_template_config,
     calibration_method_label: chosen.calibration_method_label ?? null,
+    master_equipment_id: chosen.master_equipment_id ?? null,
   }
 }
 
@@ -664,4 +691,112 @@ function applyClientContactFallback(
   }
 
   row.customer_address = formatCustomerAddress(client)
+}
+
+export async function fetchCertificateDraftByJobId(
+  jobId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase
+    .from('calibration_jobs')
+    .select('certificate_draft')
+    .eq('id', jobId)
+    .maybeSingle()
+  if (error) throw error
+  const draft = (data as { certificate_draft?: unknown } | null)?.certificate_draft
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return null
+  return draft as Record<string, unknown>
+}
+
+export async function updateCalibrationJobCertificateDraft(
+  jobId: string,
+  draft: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('calibration_jobs')
+    .update({ certificate_draft: draft })
+    .eq('id', jobId)
+  if (error) throw error
+}
+
+/** Suggest next certificate number from Lab Settings prefixes + existing drafts. */
+export async function suggestCalibrationCertificateNumber(): Promise<string> {
+  const FALLBACK_PREFIX = 'QI/CC'
+  const { data: prefixes, error: prefixErr } = await supabase
+    .from('lab_prefixes')
+    .select('name, prefix')
+    .order('name', { ascending: true })
+  if (prefixErr) {
+    console.warn('[suggestCalibrationCertificateNumber]', prefixErr.message)
+  }
+
+  const rows = (Array.isArray(prefixes) ? prefixes : []) as Array<{
+    name: string
+    prefix: string
+  }>
+  const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+  const byName = new Map(
+    rows
+      .map((r) => ({ name: String(r.name ?? '').trim(), prefix: String(r.prefix ?? '').trim() }))
+      .filter((r) => r.name && r.prefix)
+      .map((r) => [normalize(r.name), r.prefix] as const),
+  )
+
+  const preferred = [
+    'Calibration Certificate',
+    'Certificate Number',
+    'Calibration Cert',
+    'CC',
+  ]
+  let prefix = ''
+  for (const name of preferred) {
+    const hit = byName.get(normalize(name))
+    if (hit) {
+      prefix = hit
+      break
+    }
+  }
+  if (!prefix) {
+    const fuzzy = rows.find((r) => {
+      const n = normalize(String(r.name ?? ''))
+      return n.includes('calibration') && n.includes('cert')
+    })
+    prefix = String(fuzzy?.prefix ?? '').trim()
+  }
+  if (!prefix) prefix = FALLBACK_PREFIX
+
+  const year = new Date().getFullYear()
+  const yearToken = String(year)
+  const { data: jobs, error: jobsErr } = await supabase
+    .from('calibration_jobs')
+    .select('certificate_draft')
+    .neq('certificate_draft', '{}')
+    .limit(500)
+  if (jobsErr) {
+    console.warn('[suggestCalibrationCertificateNumber]', jobsErr.message)
+    return `${prefix}/${yearToken}/0001`
+  }
+
+  let maxSerial = 0
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`^${escaped}[/\\-]?${yearToken}[/\\-]?(\\d{1,6})$`, 'i')
+  // Also accept bare serial after year when drafts used QI/CC/YYYY/NNNN
+  const looseRe = new RegExp(
+    `(?:^|[\\/\\-])${yearToken}[\\/\\-](\\d{1,6})$`,
+    'i',
+  )
+  for (const row of jobs ?? []) {
+    const draft = (row as { certificate_draft?: unknown }).certificate_draft
+    if (!draft || typeof draft !== 'object') continue
+    const num = String(
+      (draft as Record<string, unknown>).certificateNumber ??
+        (draft as Record<string, unknown>).certificate_number ??
+        '',
+    ).trim()
+    if (!num) continue
+    const m = num.match(re) ?? (num.toUpperCase().includes(prefix.toUpperCase()) ? num.match(looseRe) : null)
+    if (m?.[1]) maxSerial = Math.max(maxSerial, Number.parseInt(m[1], 10) || 0)
+  }
+
+  const next = String(maxSerial + 1).padStart(4, '0')
+  return `${prefix}/${yearToken}/${next}`
 }

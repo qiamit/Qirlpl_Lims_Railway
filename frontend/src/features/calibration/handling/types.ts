@@ -55,6 +55,14 @@ export function previousCalibrationJobStage(stage: CalibrationJobStage): Calibra
   return CALIBRATION_JOB_STAGES[idx - 1] ?? null
 }
 
+/** Outside Conduct checklist payload stored on calibration_jobs jsonb columns. */
+export type CalibrationJobOutsideChecklist = {
+  completed: boolean
+  completedAt: string | null
+  remarks: string
+  items: Array<{ id: string; label: string; checked: boolean }>
+}
+
 export type CalibrationJobRow = {
   id: string
   service_request_id: string
@@ -71,6 +79,12 @@ export type CalibrationJobRow = {
   remarks: string | null
   allocated_engineer_id: string | null
   allocated_engineer_name: string | null
+  /** Outside Conduct — pre-cal outgoing checklist (jsonb). */
+  outgoing_checklist?: CalibrationJobOutsideChecklist | Record<string, unknown> | null
+  /** Outside Conduct — post-cal inward checklist (jsonb). */
+  inward_checklist?: CalibrationJobOutsideChecklist | Record<string, unknown> | null
+  /** Certificate Preparation draft (jsonb) — header fields + notes. */
+  certificate_draft?: Record<string, unknown> | null
   created_at?: string
   updated_at?: string
 }

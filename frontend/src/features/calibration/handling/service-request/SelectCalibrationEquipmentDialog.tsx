@@ -23,6 +23,8 @@ import {
   newMasterPointsTabId,
   parseMeasurementRanges,
   primaryCalibrationPointsTable,
+  calibrationPointsTableForViewFactor,
+  rangePointsFromTable,
   type CalibrationPointsStored,
   type EquipmentRangeEntry,
   type MasterPointsTab,
@@ -221,12 +223,23 @@ function getRangeOptions(eq: SelectableCalibrationEquipment): RangeOption[] {
       tableHasValues(calibrationPointsTable) ||
       masterPointsTabs.some((t) => tableHasValues(t.calibrationPointsTable))
     if (!leastCount && !range && !r.accuracy && !hasPoints) return
+    // Prefer richest table (View Factor source) over sparse legacy / first-tab list.
+    const richest = calibrationPointsTableForViewFactor({
+      ...r,
+      calibrationPointsTable,
+      masterPointsTabs,
+    })
+    const richestText = rangePointsFromTable(richest)
+      .map((p) => p.pointValue)
+      .filter(Boolean)
+      .join(', ')
     options.push({
       index,
       leastCount: leastCount || '—',
       range: range || '—',
       accuracy: (r.accuracy || '').trim(),
       calibrationPoints:
+        richestText ||
         r.calibrationPoints.map((p) => p.pointValue).join(', ') ||
         pointsTextFromTabs(masterPointsTabs),
       calibrationPointsTable: clonePointsTable(calibrationPointsTable),

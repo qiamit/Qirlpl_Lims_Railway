@@ -38,6 +38,7 @@ export function parseLabSettingsRow(row: LabSettingsRow) {
     contactPersonName: String(row.contact_person ?? row.contact_person_name ?? ''),
     mobile: String(row.phone ?? row.lab_phone ?? ''),
     email: String(row.email ?? row.lab_email ?? ''),
+    website: String(row.website ?? row.lab_website ?? ''),
     address: String(row.address ?? row.lab_address ?? ''),
     pinCode: String(row.pin_code ?? ''),
     district: String(row.district ?? 'Raipur'),
@@ -67,6 +68,7 @@ export function labDetailsPayload(input: {
   address: string
   mobile: string
   email: string
+  website: string
   labType: string
   labScale: string
   contactPersonName: string
@@ -84,6 +86,7 @@ export function labDetailsPayload(input: {
     address: input.address,
     phone: input.mobile,
     email: input.email,
+    website: input.website,
     lab_type: input.labType,
     lab_scale: input.labScale,
     contact_person: input.contactPersonName,

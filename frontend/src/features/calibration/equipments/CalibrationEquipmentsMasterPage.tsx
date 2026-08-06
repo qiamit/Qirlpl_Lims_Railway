@@ -10,6 +10,7 @@ import { CalibrationEquipmentsForm } from './CalibrationEquipmentsForm'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
 import {
   emptyCalibrationEquipmentForm,
+  equipmentTemplatesFromRanges,
   legacyRangeColumnsFromRanges,
   nextCalibrationAssetCode,
   normalizeText,
@@ -18,8 +19,12 @@ import {
   rangesFromRow,
   rawDataSheetTemplateFromRow,
   muCalculationTemplateFromRow,
+  generateReportConfigFromRow,
+  certificateTemplateFromRow,
   serializeEquipmentRawDataSheetTemplate,
   serializeEquipmentMuCalculationTemplate,
+  serializeEquipmentGenerateReportConfig,
+  serializeEquipmentCertificateTemplate,
   serializeMeasurementRanges,
   type CalibrationEquipmentForm,
   type CalibrationEquipmentRow,
@@ -301,14 +306,10 @@ export default function CalibrationEquipmentsMasterPage() {
         ? (data as Array<{ id: string; asset_code: string | null; equipment_name: string | null }>)
         : []
       setMasterEquipmentOptions(
-        list.map((r) => {
-          const name = (r.equipment_name ?? '').trim() || '—'
-          const code = (r.asset_code ?? '').trim()
-          return {
-            id: r.id,
-            label: code ? `${name} (${code})` : name,
-          }
-        }),
+        list.map((r) => ({
+          id: r.id,
+          label: (r.equipment_name ?? '').trim() || '—',
+        })),
       )
     } catch {
       setMasterEquipmentOptions([])
@@ -331,7 +332,7 @@ export default function CalibrationEquipmentsMasterPage() {
       const { data, error } = await supabase
         .from('equipment_master')
         .select(
-          'id, asset_code, equipment_name, serial_number, equipment_status, range_capacity, resolution_least_count, measurement_ranges, calibration_method_is_code_id, calibration_method_label, master_equipment_id, raw_data_sheet_template, mu_calculation_template, created_at, updated_at',
+          'id, asset_code, equipment_name, serial_number, equipment_status, range_capacity, resolution_least_count, measurement_ranges, calibration_method_is_code_id, calibration_method_label, master_equipment_id, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, created_at, updated_at',
         )
         .order('asset_code', { ascending: true })
       if (error) throw error
@@ -435,6 +436,8 @@ export default function CalibrationEquipmentsMasterPage() {
     calibrationMethodLabel: row.calibration_method_label ?? '',
     rawDataSheetTemplate: rawDataSheetTemplateFromRow(row),
     muCalculationTemplate: muCalculationTemplateFromRow(row),
+    generateReportConfig: generateReportConfigFromRow(row),
+    certificateTemplate: certificateTemplateFromRow(row),
   })
 
   const openNew = () => {
@@ -469,6 +472,12 @@ export default function CalibrationEquipmentsMasterPage() {
     setSaveMessage(null)
     try {
       const legacy = legacyRangeColumnsFromRanges(form.ranges)
+      const syncedTemplates = equipmentTemplatesFromRanges(form.ranges, {
+        rawDataSheetTemplate: form.rawDataSheetTemplate,
+        muCalculationTemplate: form.muCalculationTemplate,
+        generateReportConfig: form.generateReportConfig,
+        certificateTemplate: form.certificateTemplate,
+      })
       // Do not write manufacturer/model_number — Equipment Master still owns those columns
       // on the shared equipment_master table.
       const payload = {
@@ -482,9 +491,17 @@ export default function CalibrationEquipmentsMasterPage() {
         calibration_method_is_code_id: form.calibrationMethodIsCodeId.trim() || null,
         calibration_method_label: normalizeText(form.calibrationMethodLabel) || null,
         master_equipment_id: primaryMasterEquipmentIdFromRanges(form.ranges),
-        raw_data_sheet_template: serializeEquipmentRawDataSheetTemplate(form.rawDataSheetTemplate),
+        raw_data_sheet_template: serializeEquipmentRawDataSheetTemplate(
+          syncedTemplates.rawDataSheetTemplate,
+        ),
         mu_calculation_template: serializeEquipmentMuCalculationTemplate(
-          form.muCalculationTemplate,
+          syncedTemplates.muCalculationTemplate,
+        ),
+        generate_report_config: serializeEquipmentGenerateReportConfig(
+          syncedTemplates.generateReportConfig,
+        ),
+        certificate_template_config: serializeEquipmentCertificateTemplate(
+          syncedTemplates.certificateTemplate,
         ),
       }
 

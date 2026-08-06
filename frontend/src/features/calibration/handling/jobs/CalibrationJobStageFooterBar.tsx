@@ -22,6 +22,8 @@ export function CalibrationJobStageFooterBar({
   nextStageLabel,
   onMoveNext,
   showBulkMove = true,
+  /** When false, hides Forward / Referback / selection summary (e.g. Review Data). */
+  showBulkActions = true,
   canReferbackBulk = false,
   previousStageLabel = null,
   onReferbackBulk,
@@ -43,6 +45,7 @@ export function CalibrationJobStageFooterBar({
   nextStageLabel: string | null
   onMoveNext: () => void
   showBulkMove?: boolean
+  showBulkActions?: boolean
   canReferbackBulk?: boolean
   previousStageLabel?: string | null
   onReferbackBulk?: () => void
@@ -57,39 +60,43 @@ export function CalibrationJobStageFooterBar({
       {message ? (
         <p className="text-xs text-muted-foreground sm:text-sm">{message}</p>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {showBulkMove ? (
-            <Button
-              type="button"
-              size="sm"
-              className="gap-1.5 bg-teal-600 text-white hover:bg-teal-500"
-              disabled={!canMoveNext || loading || !nextStageLabel}
-              onClick={onMoveNext}
-              aria-label={nextStageLabel ? `Forward to ${nextStageLabel}` : 'Forward'}
-            >
-              <ArrowRight size={14} />
-              {nextStageLabel ? `Forward (${selectedCount})` : 'Forward'}
-            </Button>
-          ) : null}
-          {onReferbackBulk && previousStageLabel ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="gap-1.5 border-amber-600/40 text-amber-900 hover:bg-amber-50"
-              disabled={!canReferbackBulk || loading}
-              onClick={onReferbackBulk}
-              aria-label={`Referback to ${previousStageLabel}`}
-            >
-              <ArrowLeft size={14} />
-              Referback ({selectedCount})
-            </Button>
-          ) : null}
-          <span className="text-xs text-muted-foreground">
-            {selectedCount} selected · {totalCount} total
-          </span>
-        </div>
+      <div
+        className={`flex flex-wrap items-center gap-2 ${showBulkActions ? 'justify-between' : 'justify-end'}`}
+      >
+        {showBulkActions ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {showBulkMove ? (
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5 bg-teal-600 text-white hover:bg-teal-500"
+                disabled={!canMoveNext || loading || !nextStageLabel}
+                onClick={onMoveNext}
+                aria-label={nextStageLabel ? `Forward to ${nextStageLabel}` : 'Forward'}
+              >
+                <ArrowRight size={14} />
+                {nextStageLabel ? `Forward (${selectedCount})` : 'Forward'}
+              </Button>
+            ) : null}
+            {onReferbackBulk && previousStageLabel ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5 border-amber-600/40 text-amber-900 hover:bg-amber-50"
+                disabled={!canReferbackBulk || loading}
+                onClick={onReferbackBulk}
+                aria-label={`Referback to ${previousStageLabel}`}
+              >
+                <ArrowLeft size={14} />
+                Referback ({selectedCount})
+              </Button>
+            ) : null}
+            <span className="text-xs text-muted-foreground">
+              {selectedCount} selected · {totalCount} total
+            </span>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
           <Select
