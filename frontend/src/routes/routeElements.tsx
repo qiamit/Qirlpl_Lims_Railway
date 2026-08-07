@@ -43,6 +43,14 @@ import AuditSummaryPage from '@/features/audit-mrm/audit-summary/AuditSummaryPag
 import NonConformitiesPage from '@/features/audit-mrm/non-conformities/NonConformitiesPage'
 import MrmAgendaPage from '@/features/audit-mrm/mrm-agenda/MrmAgendaPage'
 import ManagementReviewMeetingPage from '@/features/audit-mrm/management-review-meeting/ManagementReviewMeetingPage'
+import CompetencyMatrixPage from '@/features/training/competency-matrix/CompetencyMatrixPage'
+import TrainingNeedIdentificationPage from '@/features/training/need-identification/TrainingNeedIdentificationPage'
+import TrainingPlanPage from '@/features/training/plan/TrainingPlanPage'
+import TrainingCalendarPage from '@/features/training/calendar/TrainingCalendarPage'
+import TrainingRegisterPage from '@/features/training/register/TrainingRegisterPage'
+import TrainingEvaluationPage from '@/features/training/evaluation/TrainingEvaluationPage'
+import InductionTrainingPage from '@/features/training/induction/InductionTrainingPage'
+import EffectivenessReviewPage from '@/features/training/effectiveness-review/EffectivenessReviewPage'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { RequireLaboratoryDirector } from '@/components/auth/RequireLaboratoryDirector'
 import { RequireSampleReceivingAccess } from '@/components/auth/RequireSampleReceivingAccess'
@@ -208,6 +216,38 @@ export function MrmAgendaRoute() {
 
 export function ManagementReviewMeetingRoute() {
   return <ManagementReviewMeetingPage />
+}
+
+export function CompetencyMatrixRoute() {
+  return <CompetencyMatrixPage />
+}
+
+export function TrainingNeedIdentificationRoute() {
+  return <TrainingNeedIdentificationPage />
+}
+
+export function TrainingPlanRoute() {
+  return <TrainingPlanPage />
+}
+
+export function TrainingCalendarRoute() {
+  return <TrainingCalendarPage />
+}
+
+export function TrainingRegisterRoute() {
+  return <TrainingRegisterPage />
+}
+
+export function TrainingEvaluationRoute() {
+  return <TrainingEvaluationPage />
+}
+
+export function InductionTrainingRoute() {
+  return <InductionTrainingPage />
+}
+
+export function EffectivenessReviewRoute() {
+  return <EffectivenessReviewPage />
 }
 
 export {

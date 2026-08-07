@@ -85,6 +85,12 @@ export type MeasurementRangeStored = {
   generate_report_config?: GenerateReportConfig | Record<string, unknown> | null
   /** Per-range Calibration Certificate template (preferred over equipment-level). */
   certificate_template_config?: CalibrationCertificateTemplate | Record<string, unknown> | null
+  /** Manual Mode of Calibration for certificate (preferred over equipment-level). */
+  mode_of_calibration?: string | null
+  modeOfCalibration?: string | null
+  /** Manual Method Used for certificate (preferred over equipment-level). */
+  method_used?: string | null
+  methodUsed?: string | null
 }
 
 export type RangeCalibrationPoint = {
@@ -129,6 +135,10 @@ export type EquipmentRangeEntry = {
   generateReportConfig?: GenerateReportConfig
   /** Per-range Calibration Certificate template (optional — equipment-level is fallback). */
   certificateTemplate?: CalibrationCertificateTemplate
+  /** Manual Mode of Calibration for certificate (e.g. Tension / Compression). */
+  modeOfCalibration?: string
+  /** Manual Method Used for certificate. */
+  methodUsed?: string
 }
 
 /** Equipment-level templates used as fallback when a range has none. */
@@ -137,6 +147,8 @@ export type EquipmentTemplateFallback = {
   muCalculationTemplate?: MuCalculationTemplate | null
   generateReportConfig?: GenerateReportConfig | null
   certificateTemplate?: CalibrationCertificateTemplate | null
+  modeOfCalibration?: string | null
+  methodUsed?: string | null
 }
 
 export type CalibrationEquipmentRow = {
@@ -1248,6 +1260,10 @@ export type CalibrationEquipmentForm = {
   generateReportConfig: GenerateReportConfig
   /** Per-equipment Calibration Certificate template (UTM default). */
   certificateTemplate: CalibrationCertificateTemplate
+  /** Default Mode of Calibration for certificate (manual; ranges may override). */
+  modeOfCalibration: string
+  /** Default Method Used for certificate (manual; ranges may override). */
+  methodUsed: string
 }
 
 const RANGE_JOIN = ' | '
@@ -1539,6 +1555,8 @@ export function emptyCalibrationEquipmentForm(): CalibrationEquipmentForm {
       rows: DEFAULT_GENERATE_REPORT_CONFIG.rows.map((r) => ({ ...r, id: newGenerateReportRowId() })),
     },
     certificateTemplate: defaultCalibrationCertificateTemplate(),
+    modeOfCalibration: '',
+    methodUsed: '',
   }
 }
 
@@ -1726,6 +1744,48 @@ export function resolveRangeCertificateTemplate(
   return equipmentFallback ?? defaultCalibrationCertificateTemplate()
 }
 
+export function resolveRangeModeOfCalibration(
+  range: EquipmentRangeEntry | null | undefined,
+  equipmentFallback: string | null | undefined,
+): string {
+  const fromRange = (range?.modeOfCalibration ?? '').trim()
+  if (fromRange) return fromRange
+  return (equipmentFallback ?? '').trim()
+}
+
+/** First non-empty Mode of Calibration across ranges, else equipment fallback. */
+export function resolveEquipmentModeOfCalibration(
+  ranges: EquipmentRangeEntry[] | null | undefined,
+  equipmentFallback: string | null | undefined = '',
+): string {
+  for (const range of ranges ?? []) {
+    const v = (range.modeOfCalibration ?? '').trim()
+    if (v) return v
+  }
+  return (equipmentFallback ?? '').trim()
+}
+
+export function resolveRangeMethodUsed(
+  range: EquipmentRangeEntry | null | undefined,
+  equipmentFallback: string | null | undefined,
+): string {
+  const fromRange = (range?.methodUsed ?? '').trim()
+  if (fromRange) return fromRange
+  return (equipmentFallback ?? '').trim()
+}
+
+/** First non-empty Method Used across ranges, else equipment fallback. */
+export function resolveEquipmentMethodUsed(
+  ranges: EquipmentRangeEntry[] | null | undefined,
+  equipmentFallback: string | null | undefined = '',
+): string {
+  for (const range of ranges ?? []) {
+    const v = (range.methodUsed ?? '').trim()
+    if (v) return v
+  }
+  return (equipmentFallback ?? '').trim()
+}
+
 /** Lazy seed: copy equipment-level templates onto a range that has none yet. */
 export function seedRangeTemplatesFromEquipment(
   range: EquipmentRangeEntry,
@@ -1743,6 +1803,15 @@ export function seedRangeTemplatesFromEquipment(
   }
   if (!range.certificateTemplate && equipment.certificateTemplate) {
     patch.certificateTemplate = equipment.certificateTemplate
+  }
+  if (
+    !(range.modeOfCalibration ?? '').trim() &&
+    (equipment.modeOfCalibration ?? '').trim()
+  ) {
+    patch.modeOfCalibration = (equipment.modeOfCalibration ?? '').trim()
+  }
+  if (!(range.methodUsed ?? '').trim() && (equipment.methodUsed ?? '').trim()) {
+    patch.methodUsed = (equipment.methodUsed ?? '').trim()
   }
   return Object.keys(patch).length > 0 ? { ...range, ...patch } : range
 }
@@ -1989,6 +2058,10 @@ export function parseMeasurementRanges(
           row.generate_report_config != null || row.generateReportConfig != null
         const hasCertificateTemplate =
           row.certificate_template_config != null || row.certificateTemplate != null
+        const modeOfCalibrationRaw = String(
+          row.mode_of_calibration ?? row.modeOfCalibration ?? '',
+        ).trim()
+        const methodUsedRaw = String(row.method_used ?? row.methodUsed ?? '').trim()
         const parsedRawSheet = hasRawSheet
           ? parseRawDataSheetTemplate(
               row.raw_data_sheet_template ?? row.rawDataSheetTemplate,
@@ -2027,6 +2100,8 @@ export function parseMeasurementRanges(
           ...(parsedCertificateTemplate
             ? { certificateTemplate: parsedCertificateTemplate }
             : {}),
+          ...(modeOfCalibrationRaw ? { modeOfCalibration: modeOfCalibrationRaw } : {}),
+          ...(methodUsedRaw ? { methodUsed: methodUsedRaw } : {}),
         } satisfies EquipmentRangeEntry
       })
       .filter((x): x is EquipmentRangeEntry => x != null)
@@ -2151,6 +2226,12 @@ export function serializeMeasurementRanges(
         stored.certificate_template_config = serializeEquipmentCertificateTemplate(
           r.certificateTemplate,
         )
+      }
+      if ((r.modeOfCalibration ?? '').trim()) {
+        stored.mode_of_calibration = (r.modeOfCalibration ?? '').trim()
+      }
+      if ((r.methodUsed ?? '').trim()) {
+        stored.method_used = (r.methodUsed ?? '').trim()
       }
       return stored
     })

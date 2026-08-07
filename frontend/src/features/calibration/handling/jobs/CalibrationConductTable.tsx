@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ClipboardList, FileSpreadsheet, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { CalibrationJobRow } from '../types'
 import { ConductOutsideChecklistDialog } from './ConductOutsideChecklistDialog'
@@ -11,10 +12,11 @@ import {
   type ConductOutsideChecklistKind,
   type ConductOutsideChecklistPayload,
 } from './conductOutsideChecklist'
+import { updateCalibrationJobLocationOfCalibration } from './calibrationJobApi'
 import { RawDataSheetDialog } from './RawDataSheetDialog'
 
 const GRID_TABLE =
-  'min-w-[900px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'min-w-[980px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -85,6 +87,7 @@ function JobDetailsDialog({
       label: 'Inside / Outside',
       value: job.calibration_location === 'On Site' ? 'Outside (On Site)' : 'Inside (In Lab)',
     },
+    { label: 'Location of Calibration', value: job.location_of_calibration ?? '' },
     { label: 'Engineer', value: job.allocated_engineer_name ?? '' },
   ]
 
@@ -163,6 +166,7 @@ export function CalibrationConductTable({
   onForward,
   onReferback,
   onChecklistSaved,
+  onLocationOfCalibrationSaved,
   actionLoading = false,
   scopedToEngineer = false,
   locationFilterLabel,
@@ -182,6 +186,7 @@ export function CalibrationConductTable({
     kind: ConductOutsideChecklistKind,
     payload: ConductOutsideChecklistPayload,
   ) => void
+  onLocationOfCalibrationSaved?: (jobId: string, locationOfCalibration: string) => void
   actionLoading?: boolean
   scopedToEngineer?: boolean
   locationFilterLabel?: string
@@ -192,6 +197,21 @@ export function CalibrationConductTable({
   const [workSheetJob, setWorkSheetJob] = useState<CalibrationJobRow | null>(null)
   const [checklistJob, setChecklistJob] = useState<CalibrationJobRow | null>(null)
   const [checklistKind, setChecklistKind] = useState<ConductOutsideChecklistKind>('outgoing')
+  const [locationDrafts, setLocationDrafts] = useState<Record<string, string>>({})
+  const [openingSheetId, setOpeningSheetId] = useState<string | null>(null)
+  const [sheetOpenError, setSheetOpenError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLocationDrafts((prev) => {
+      const next = { ...prev }
+      for (const job of rows) {
+        if (next[job.id] === undefined) {
+          next[job.id] = (job.location_of_calibration ?? '').trim()
+        }
+      }
+      return next
+    })
+  }, [rows])
 
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -235,8 +255,37 @@ export function CalibrationConductTable({
     setChecklistJob(job)
   }
 
+  const locationValue = (job: CalibrationJobRow) =>
+    (locationDrafts[job.id] ?? job.location_of_calibration ?? '').trim()
+
+  const handleOpenSheet = async (job: CalibrationJobRow) => {
+    const location = locationValue(job)
+    if (!location) {
+      setSheetOpenError('Enter Location of Calibration before opening the Raw Data Sheet.')
+      return
+    }
+    setSheetOpenError(null)
+    setOpeningSheetId(job.id)
+    try {
+      await updateCalibrationJobLocationOfCalibration(job.id, location)
+      onLocationOfCalibrationSaved?.(job.id, location)
+      setWorkSheetJob({ ...job, location_of_calibration: location })
+    } catch (e) {
+      setSheetOpenError(
+        e instanceof Error ? e.message : 'Unable to save Location of Calibration.',
+      )
+    } finally {
+      setOpeningSheetId(null)
+    }
+  }
+
   return (
     <>
+      {sheetOpenError ? (
+        <p className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {sheetOpenError}
+        </p>
+      ) : null}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="overflow-x-auto">
           <Table className={GRID_TABLE}>
@@ -256,6 +305,9 @@ export function CalibrationConductTable({
                 </TableHead>
                 <TableHead className="min-w-[160px] text-left text-xs">Equipment Name</TableHead>
                 <TableHead className="min-w-[120px] text-center text-xs">Range</TableHead>
+                <TableHead className="min-w-[180px] text-center text-xs">
+                  Location of Calibration
+                </TableHead>
                 <TableHead className="min-w-[100px] text-center text-xs">Details</TableHead>
                 {showOutsideChecklists ? (
                   <TableHead className="min-w-[140px] text-center text-xs">
@@ -275,6 +327,7 @@ export function CalibrationConductTable({
               {rows.map((job) => {
                 const fields = parseConductEquipmentFields(job)
                 const selected = selectedIds.has(job.id)
+                const locationFilled = locationValue(job).length > 0
                 const outgoingDone = showOutsideChecklists
                   ? isChecklistCompleted(
                       parseConductOutsideChecklist(job.outgoing_checklist, 'outgoing'),
@@ -285,9 +338,17 @@ export function CalibrationConductTable({
                       parseConductOutsideChecklist(job.inward_checklist, 'inward'),
                     )
                   : true
-                const sheetBlockedTitle = showOutsideChecklists && !outgoingDone
-                  ? 'Complete Outgoing Checklist before opening Raw Data Sheet'
-                  : 'Open Raw Data Sheet'
+                const sheetDisabled =
+                  !locationFilled ||
+                  (showOutsideChecklists && !outgoingDone) ||
+                  openingSheetId === job.id
+                const sheetBlockedTitle = !locationFilled
+                  ? 'Enter Location of Calibration before opening Raw Data Sheet'
+                  : showOutsideChecklists && !outgoingDone
+                    ? 'Complete Outgoing Checklist before opening Raw Data Sheet'
+                    : openingSheetId === job.id
+                      ? 'Saving location…'
+                      : 'Open Raw Data Sheet'
                 const forwardBlockedTitle = showOutsideChecklists && !inwardDone
                   ? 'Complete Inward Checklist before Forward'
                   : 'Forward to Review Data'
@@ -308,6 +369,19 @@ export function CalibrationConductTable({
                     </TableCell>
                     <TableCell className="text-center align-middle text-sm">
                       {cellText(fields.range)}
+                    </TableCell>
+                    <TableCell className="align-middle">
+                      <Input
+                        value={locationDrafts[job.id] ?? ''}
+                        onChange={(e) => {
+                          const next = e.target.value
+                          setLocationDrafts((prev) => ({ ...prev, [job.id]: next }))
+                          setSheetOpenError(null)
+                        }}
+                        placeholder="e.g. Customer site / Lab bay"
+                        aria-label={`Location of Calibration for ${job.equipment_label}`}
+                        className="mx-auto h-8 max-w-[220px] text-xs"
+                      />
                     </TableCell>
                     <TableCell className="text-center align-middle">
                       <Button
@@ -337,13 +411,13 @@ export function CalibrationConductTable({
                         variant="outline"
                         size="sm"
                         className="h-8 gap-1 border-teal-600/40 px-2 text-xs text-teal-800 hover:bg-teal-50 disabled:opacity-40"
-                        disabled={showOutsideChecklists && !outgoingDone}
+                        disabled={sheetDisabled}
                         title={sheetBlockedTitle}
-                        onClick={() => setWorkSheetJob(job)}
+                        onClick={() => void handleOpenSheet(job)}
                         aria-label={`Open raw data sheet for ${job.equipment_label}`}
                       >
                         <FileSpreadsheet size={14} aria-hidden />
-                        Open Sheet
+                        {openingSheetId === job.id ? 'Saving…' : 'Open Sheet'}
                       </Button>
                     </TableCell>
                     {showOutsideChecklists ? (

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
+import { useAuth } from '@/hooks/useAuth'
 import {
   Briefcase,
   Calculator,
+  CalendarClock,
+  Check,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   Eye,
@@ -15,10 +19,26 @@ import {
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabaseClient'
+import { fetchGenerateReportFeatureEnabled } from '@/features/settings/lab-settings/labSettingsDb'
 import {
   emptyCalibrationPointsTable,
   masterEquipmentIdsFromTabs,
@@ -39,10 +59,15 @@ import {
 } from '@/features/calibration/equipments/types'
 import {
   calculateNextDueDate,
+  FREQUENCIES,
+  formatManualDaysFrequency,
+  frequencySelectValue,
   isPresetFrequency,
+  parseManualIntervalDays,
   parseStoredFrequency,
   type Frequency,
 } from '@/features/calibration/equipment-for-calibration/types'
+import { resolveThermalExpansionAlphaString } from '@/features/calibration/equipment-for-calibration/thermalExpansion'
 import {
   applyFormulaColumns,
   buildInitialRawDataSheetPayload,
@@ -63,6 +88,7 @@ import {
   parseRawDataSheetTemplate,
   parseTableSettings,
   resolveEnvParameterColumns,
+  DEFAULT_TEMP_CORRECTION,
   type FormulaCalculationExplanation,
   type RawDataEnvironmentConditions,
   type RawDataEnvironmentReadingRow,
@@ -79,11 +105,16 @@ import {
   fetchRawDataSheetByJobId,
   fetchSrfSummaryForSheet,
   resolveEquipmentMasterForJob,
+  updateCalibrationJobEquipmentDetail,
   updateRawDataSheetPayload,
   type EquipmentMasterForSheet,
   type MasterEquipmentForSheet,
   type SrfSummaryForSheet,
 } from './calibrationJobApi'
+import {
+  masterEquipmentFormulaRefColumns,
+  masterEquipmentFormulaRefValues,
+} from '@/features/calibration/masterEquipmentFormulaRefs'
 import { UncertaintyStepByStepDialog } from './UncertaintyStepByStepDialog'
 import { muCalculationTemplateFromRaw } from '@/features/calibration/equipments/muCalculationTypes'
 import { type CalibrationJobRow } from '../types'
@@ -113,12 +144,13 @@ function liveRowCalculationValues(
   decimalPlaces: number,
   env: RawDataEnvironmentConditions | null | undefined,
   reportSettings?: RawDataReportGenerationSettings | null,
+  master?: MasterEquipmentForSheet | null,
 ): RawDataSheetRowValues {
   const base: RawDataSheetRowValues = { ...rowValues }
   for (const col of columns) {
     if (col.type === 'formula') base[col.key] = ''
   }
-  let values = applyFormulaColumns(columns, base, decimalPlaces, env)
+  let values = applyFormulaColumns(columns, base, decimalPlaces, env, master)
   const preserved = new Set<string>()
   for (const key of reportSettings?.readingCols ?? []) {
     const generated = rowValues[key]
@@ -127,11 +159,29 @@ function liveRowCalculationValues(
       preserved.add(key)
     }
   }
+  const masterCols = masterEquipmentFormulaRefColumns()
+  const withMaster: RawDataSheetRowValues = {
+    ...values,
+    ...masterEquipmentFormulaRefValues(master),
+  }
+  const allCols = [...columns, ...masterCols]
   for (const col of columns) {
     if (col.type !== 'formula' || preserved.has(col.key)) continue
-    values[col.key] = computeFormulaValue(col, values, decimalPlaces, columns, env)
+    values[col.key] = computeFormulaValue(col, withMaster, decimalPlaces, allCols, env)
   }
   return values
+}
+
+function resolveMasterForSheetRow(
+  row: { masterEquipmentId?: string | null },
+  masters: MasterEquipmentForSheet[],
+): MasterEquipmentForSheet | null {
+  const id = (row.masterEquipmentId ?? '').trim()
+  if (id) {
+    const hit = masters.find((m) => m.id === id)
+    if (hit) return hit
+  }
+  return masters[0] ?? null
 }
 
 /**
@@ -406,6 +456,39 @@ function parseJobSelectedRangeFields(job: CalibrationJobRow): {
 } {
   const f = parseJobEquipmentFields(job)
   return { range: f.range, leastCount: f.leastCount }
+}
+
+/** Read `Freq …` token from job equipment_detail; default Yearly. */
+function getCalibrationFrequencyFromDetail(detail: string | null | undefined): string {
+  const text = String(detail ?? '').trim()
+  if (!text) return 'Yearly'
+  const parts = text.split('·').map((p) => p.trim()).filter(Boolean)
+  const hit = parts.find((p) => /^freq\s+/i.test(p))
+  if (!hit) return 'Yearly'
+  const raw = hit.replace(/^freq\s+/i, '').trim()
+  const parsed = parseStoredFrequency(raw)
+  return parsed || 'Yearly'
+}
+
+/** Upsert `Freq …` token in equipment_detail (keeps certificate due-date source in sync). */
+function withCalibrationFrequencyInDetail(
+  detail: string | null | undefined,
+  frequency: string,
+): string {
+  const freq = frequency.trim() || 'Yearly'
+  const token = `Freq ${freq}`
+  const text = String(detail ?? '').trim()
+  if (!text) return token
+  const parts = text.split('·').map((p) => p.trim()).filter(Boolean)
+  const idx = parts.findIndex((p) => /^freq\s+/i.test(p))
+  if (idx >= 0) {
+    parts[idx] = token
+  } else {
+    const qtyIdx = parts.findIndex((p) => /^qty\s+/i.test(p))
+    if (qtyIdx >= 0) parts.splice(qtyIdx, 0, token)
+    else parts.push(token)
+  }
+  return parts.join(' · ')
 }
 
 function formatNumberInput(value: string, decimalPlaces: number): string {
@@ -1812,6 +1895,25 @@ export function RawDataSheetDialog({
     'srf' | 'customer' | 'job' | 'master' | 'verification' | null
   >(null)
   const [masterDetailsLoading, setMasterDetailsLoading] = useState(false)
+  const [calibrationFrequency, setCalibrationFrequency] = useState<string>('Yearly')
+  const [equipmentDetailLocal, setEquipmentDetailLocal] = useState('')
+  const [manualFreqOpen, setManualFreqOpen] = useState(false)
+  const [manualDaysText, setManualDaysText] = useState('')
+  const [manualDaysError, setManualDaysError] = useState<string | null>(null)
+  const [freqSaving, setFreqSaving] = useState(false)
+  const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
+  const { user, profileName, designation } = useAuth()
+
+  useEffect(() => {
+    if (!open) return
+    let canceled = false
+    void fetchGenerateReportFeatureEnabled(supabase).then((enabled) => {
+      if (!canceled) setCompanyGenerateReportEnabled(enabled)
+    })
+    return () => {
+      canceled = true
+    }
+  }, [open])
 
   const loadSheet = useCallback(async (activeJob: CalibrationJobRow) => {
     setLoading(true)
@@ -2030,6 +2132,16 @@ export function RawDataSheetDialog({
       }
       if (existing?.temperatureCorrection) {
         initial.temperatureCorrection = existing.temperatureCorrection
+      } else {
+        const cteStored = masters
+          .map((m) => m.coefficient_of_thermal_expansion?.trim())
+          .find((v) => !!v)
+        if (cteStored) {
+          initial.temperatureCorrection = {
+            ...DEFAULT_TEMP_CORRECTION,
+            alpha: resolveThermalExpansionAlphaString(cteStored),
+          }
+        }
       }
       await updateRawDataSheetPayload(sheet.id, initial as unknown as Record<string, unknown>)
       setPayload(initial)
@@ -2048,6 +2160,60 @@ export function RawDataSheetDialog({
     if (!open || !job) return
     void loadSheet(job)
   }, [open, job, loadSheet])
+
+  useEffect(() => {
+    if (!open || !job) return
+    const detail = job.equipment_detail || job.equipment_label || ''
+    setEquipmentDetailLocal(detail)
+    setCalibrationFrequency(getCalibrationFrequencyFromDetail(detail))
+    setManualFreqOpen(false)
+    setManualDaysError(null)
+  }, [open, job?.id, job?.equipment_detail, job?.equipment_label])
+
+  const applyCalibrationFrequency = useCallback(
+    async (nextFrequency: string) => {
+      if (!job || readOnly || forceReadOnly) return
+      const freq = nextFrequency.trim() || 'Yearly'
+      const nextDetail = withCalibrationFrequencyInDetail(
+        equipmentDetailLocal || job.equipment_detail || job.equipment_label || '',
+        freq,
+      )
+      setFreqSaving(true)
+      setError(null)
+      try {
+        await updateCalibrationJobEquipmentDetail(job.id, nextDetail)
+        setEquipmentDetailLocal(nextDetail)
+        setCalibrationFrequency(freq)
+      } catch (err) {
+        const msg =
+          err && typeof err === 'object' && 'message' in err
+            ? String((err as { message?: string }).message)
+            : 'Failed to update calibration frequency'
+        setError(msg)
+      } finally {
+        setFreqSaving(false)
+      }
+    },
+    [job, readOnly, forceReadOnly, equipmentDetailLocal],
+  )
+
+  const openManualFrequencyDialog = useCallback(() => {
+    const days = parseManualIntervalDays(calibrationFrequency)
+    setManualDaysText(days != null ? String(days) : '')
+    setManualDaysError(null)
+    setManualFreqOpen(true)
+  }, [calibrationFrequency])
+
+  const confirmManualFrequency = useCallback(() => {
+    const n = Number.parseInt(manualDaysText.trim(), 10)
+    if (!Number.isFinite(n) || n < 1) {
+      setManualDaysError('Enter a whole number of days (1 or more).')
+      return
+    }
+    const freq = formatManualDaysFrequency(n)
+    setManualFreqOpen(false)
+    void applyCalibrationFrequency(freq)
+  }, [manualDaysText, applyCalibrationFrequency])
 
   const equipmentRawDataFallback = useMemo(
     () =>
@@ -2158,9 +2324,23 @@ export function RawDataSheetDialog({
         }
       }
 
+      const entryBy = user?.id
+        ? {
+            userId: user.id,
+            name: profileName.trim() || user.email || user.id,
+            designation: designation.trim(),
+          }
+        : payload.entryBy
+
+      const nextPayload: RawDataSheetPayload = {
+        ...payload,
+        ...(entryBy ? { entryBy } : {}),
+      }
+      setPayload(nextPayload)
+
       await updateRawDataSheetPayload(
         sheetId,
-        payload as unknown as Record<string, unknown>,
+        nextPayload as unknown as Record<string, unknown>,
         asComplete ? 'under_review' : 'draft',
       )
       if (asComplete) setReadOnly(false)
@@ -2181,6 +2361,13 @@ export function RawDataSheetDialog({
   const verifiedCount = verificationItems.filter((item) =>
     Boolean(payload?.verificationAnswers[item.id]),
   ).length
+  const freqSelectValue = frequencySelectValue(calibrationFrequency) ?? 'Yearly'
+  const freqButtonLabel =
+    freqSelectValue === 'Manual'
+      ? parseManualIntervalDays(calibrationFrequency) != null
+        ? `${parseManualIntervalDays(calibrationFrequency)} Days`
+        : 'Manual'
+      : freqSelectValue || 'Yearly'
   const verificationComplete =
     verificationItems.length > 0 && verifiedCount === verificationItems.length
   const eqFields = parseJobEquipmentFields(job)
@@ -2193,7 +2380,7 @@ export function RawDataSheetDialog({
       '',
   )
   const tableSettings = parseTableSettings(payload?.tableSettings)
-  const showGenerateReport = generateReportConfig.enabled
+  const showGenerateReport = companyGenerateReportEnabled && generateReportConfig.enabled
   const jobSelectedRangeFields = parseJobSelectedRangeFields(job)
   const jobRangeSplit = splitRangeCapacityToMinMax(jobSelectedRangeFields.range)
   const muEquipmentRange = matchedEquipmentRange
@@ -2333,7 +2520,13 @@ export function RawDataSheetDialog({
         }
         return {
           ...r,
-          values: applyFormulaColumns(mergedTemplate.columns, values, dp, syncedEnv),
+          values: applyFormulaColumns(
+            mergedTemplate.columns,
+            values,
+            dp,
+            syncedEnv,
+            resolveMasterForSheetRow(r, masterEquipments),
+          ),
         }
       }),
     }
@@ -2362,6 +2555,7 @@ export function RawDataSheetDialog({
             r.values,
             dp,
             syncedEnv,
+            resolveMasterForSheetRow(r, masterEquipments),
           ),
         })),
       }
@@ -2449,6 +2643,7 @@ export function RawDataSheetDialog({
           tableSettings.decimalPlaces,
           environment,
           payload.reportGenerationSettings,
+          resolveMasterForSheetRow(calculationsRow, masterEquipments),
         )
       : null
   const calculationExplanations: FormulaCalculationExplanation[] =
@@ -2476,6 +2671,10 @@ export function RawDataSheetDialog({
     }
     if (readOnly) {
       setError('Sheet is approved (read-only). Generate Report settings cannot be applied.')
+      return
+    }
+    if (!companyGenerateReportEnabled) {
+      setError('Generate Report is disabled in Company Setting (System Setting).')
       return
     }
     if (!generateReportConfig.enabled) {
@@ -3416,6 +3615,72 @@ export function RawDataSheetDialog({
                       <Sigma size={14} className="mr-1" />
                       Uncertainty Step by Step
                     </Button>
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 border-violet-600/40 text-violet-900 hover:bg-violet-50"
+                          disabled={readOnly || forceReadOnly || freqSaving}
+                          aria-label="Calibration Frequency"
+                          title="Calibration Frequency (certificate due date)"
+                        >
+                          <CalendarClock size={14} className="mr-1 shrink-0" aria-hidden />
+                          <span className="max-w-[9rem] truncate">
+                            Frequency: {freqButtonLabel}
+                          </span>
+                          <ChevronDown
+                            size={12}
+                            className="ml-1 shrink-0 opacity-70"
+                            aria-hidden
+                          />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        className="z-[90] w-52"
+                        onCloseAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <DropdownMenuLabel>Calibration Frequency</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {FREQUENCIES.map((freq) => {
+                          const selected =
+                            freq === 'Manual'
+                              ? freqSelectValue === 'Manual'
+                              : calibrationFrequency === freq
+                          return (
+                            <DropdownMenuItem
+                              key={freq}
+                              disabled={freqSaving}
+                              className="cursor-pointer"
+                              onSelect={(e) => {
+                                if (freq === 'Manual') {
+                                  e.preventDefault()
+                                  openManualFrequencyDialog()
+                                  return
+                                }
+                                void applyCalibrationFrequency(freq)
+                              }}
+                            >
+                              <Check
+                                size={14}
+                                className={cn(
+                                  'mr-2 shrink-0',
+                                  selected ? 'opacity-100' : 'opacity-0',
+                                )}
+                                aria-hidden
+                              />
+                              {freq}
+                              {freq === 'Manual' &&
+                              parseManualIntervalDays(calibrationFrequency) != null
+                                ? ` (${parseManualIntervalDays(calibrationFrequency)}d)`
+                                : ''}
+                            </DropdownMenuItem>
+                          )
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     {showGenerateReport ? (
                       <Button
                         type="button"
@@ -3491,6 +3756,7 @@ export function RawDataSheetDialog({
                           tableSettings.decimalPlaces,
                           environment,
                           payload.reportGenerationSettings,
+                          resolveMasterForSheetRow(row, masterEquipments),
                         )
                         const prevMaster = index > 0 ? payload.rows[index - 1]?.masterEquipmentId : null
                         const showMasterHeader =
@@ -4026,6 +4292,57 @@ export function RawDataSheetDialog({
                       Close
                     </Button>
                   </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={manualFreqOpen} onOpenChange={setManualFreqOpen}>
+                <DialogContent layer="stacked" className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>Manual Frequency — Days</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-600">
+                      Enter how many days after the calibration date the next due should fall.
+                    </p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="rds-manual-freq-days">Interval (days)</Label>
+                      <Input
+                        id="rds-manual-freq-days"
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        placeholder="e.g. 90"
+                        value={manualDaysText}
+                        onChange={(e) => {
+                          setManualDaysText(e.target.value)
+                          setManualDaysError(null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            confirmManualFrequency()
+                          }
+                        }}
+                        autoFocus
+                      />
+                      {manualDaysError ? (
+                        <p className="text-[11px] text-rose-600">{manualDaysError}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setManualFreqOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="button" onClick={confirmManualFrequency}>
+                      Apply
+                    </Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
 

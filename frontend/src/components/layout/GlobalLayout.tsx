@@ -30,6 +30,13 @@ import {
   Receipt,
   ShoppingCart,
   FileSearch,
+  GraduationCap,
+  Target,
+  CalendarDays,
+  ClipboardPen,
+  UserRoundCheck,
+  ListChecks,
+  Award,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -51,7 +58,7 @@ import {
   RESULT_VALIDATION_MODULES,
   resultValidationModulePath,
 } from '@/features/quality/result-validation/resultValidationModules'
-import { getBrandShortName, getCompanyInitials, LAB_NAME_CHANGED_EVENT, LAB_NAME_STORAGE_KEY } from '@/features/settings/lab-settings/brandMark'
+import { getBrandShortName, LAB_NAME_CHANGED_EVENT, LAB_NAME_STORAGE_KEY } from '@/features/settings/lab-settings/brandMark'
 
 interface NavItem {
   label: string
@@ -174,6 +181,61 @@ const NAV_SECTIONS: NavSection[] = [
         to: '/audit-mrm/management-review-meeting',
         icon: Users,
         clause: 'mrm',
+      },
+    ],
+  },
+  {
+    title: 'Training Management',
+    clause: 'training-management',
+    icon: GraduationCap,
+    items: [
+      {
+        label: 'Competency Matrix',
+        to: '/training/competency-matrix',
+        icon: ListChecks,
+        clause: '6.2',
+      },
+      {
+        label: 'Training Need Identification',
+        to: '/training/need-identification',
+        icon: Target,
+        clause: '6.2',
+      },
+      {
+        label: 'Training Plan',
+        to: '/training/plan',
+        icon: ClipboardList,
+        clause: '6.2',
+      },
+      {
+        label: 'Training Calendar',
+        to: '/training/calendar',
+        icon: CalendarDays,
+        clause: '6.2',
+      },
+      {
+        label: 'Training Register',
+        to: '/training/register',
+        icon: BookOpen,
+        clause: '6.2',
+      },
+      {
+        label: 'Training Evaluation',
+        to: '/training/evaluation',
+        icon: ClipboardPen,
+        clause: '6.2',
+      },
+      {
+        label: 'Induction Training',
+        to: '/training/induction',
+        icon: UserRoundCheck,
+        clause: '6.2',
+      },
+      {
+        label: 'Effectiveness Review',
+        to: '/training/effectiveness-review',
+        icon: Award,
+        clause: '6.2',
       },
     ],
   },
@@ -423,6 +485,14 @@ const ROUTE_LABELS: Record<string, string> = {
   '/audit-mrm/mrm-agenda': 'Audit & MRM Management / MRM Agenda',
   '/audit-mrm/management-review-meeting':
     'Audit & MRM Management / Management Review Meeting',
+  '/training/competency-matrix': 'Training Management / Competency Matrix',
+  '/training/need-identification': 'Training Management / Training Need Identification',
+  '/training/plan': 'Training Management / Training Plan',
+  '/training/calendar': 'Training Management / Training Calendar',
+  '/training/register': 'Training Management / Training Register',
+  '/training/evaluation': 'Training Management / Training Evaluation',
+  '/training/induction': 'Training Management / Induction Training',
+  '/training/effectiveness-review': 'Training Management / Effectiveness Review',
   '/lab-settings': 'Lab Settings',
   '/lab-settings/user-management': 'User Management',
   '/lab-settings/ai-settings': 'AI Settings',
@@ -801,7 +871,6 @@ export default function GlobalLayout() {
     })
   }
 
-  const brandInitials = useMemo(() => getCompanyInitials(labName), [labName])
   const brandShortName = useMemo(() => getBrandShortName(labName), [labName])
 
   const renderSidebar = (collapsed: boolean, options?: { showCollapseToggle?: boolean }) => {
@@ -810,33 +879,28 @@ export default function GlobalLayout() {
     <>
       <div
         className={cn(
-          'relative flex shrink-0 items-center gap-2.5 border-b border-sidebar-border/60 px-3 py-2.5',
+          'relative flex shrink-0 items-center justify-center border-b border-sidebar-border/60 px-3 py-3',
           'bg-gradient-to-r from-slate-950 via-slate-900 to-teal-950/80',
-          'min-h-[4.5rem]',
+          'min-h-[5.5rem]',
         )}
       >
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-teal-400/25 to-cyan-600/15 text-xs font-bold tracking-wide text-teal-100 shadow-lg ring-1 ring-teal-400/35 backdrop-blur-sm"
-          aria-hidden
+          className="flex h-14 w-[11.5rem] items-center justify-center overflow-hidden rounded-xl bg-white px-2 py-1 shadow-lg ring-1 ring-teal-400/35"
           title={labName || brandShortName}
         >
-          {brandInitials}
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col items-center justify-center text-center">
-          <p className="max-w-full truncate text-center text-sm font-bold leading-tight tracking-wide text-white">
-            {brandInitials}
-          </p>
-          <p className="max-w-full truncate text-center text-[10px] font-semibold leading-tight text-teal-50/85">
-            LIMS
-          </p>
+          <img
+            src="/brand/qi-logo.png"
+            alt=""
+            className="h-full w-full object-contain"
+            draggable={false}
+          />
         </div>
 
         {showCollapseToggle ? (
           <button
             type="button"
             onClick={toggleSidebarCollapsed}
-            className="rounded-md p-1.5 text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-white/85 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Hide sidebar"
             title="Hide sidebar"
           >
@@ -845,7 +909,7 @@ export default function GlobalLayout() {
         ) : (
           <button
             type="button"
-            className="md:hidden rounded-md p-1.5 text-white/80 hover:bg-white/10"
+            className="absolute right-3 top-1/2 -translate-y-1/2 md:hidden rounded-md p-1.5 text-white/80 hover:bg-white/10"
             onClick={() => setMobileNavOpen(false)}
             aria-label="Close navigation menu"
           >

@@ -32,6 +32,7 @@ frontend/.vite/
 *.tgz
 .parcel-cache/
 .sass-cache/
+.pnpm-store/
 
 # ── Environment & secrets (never commit) ──────────────────────────────
 .env
@@ -65,6 +66,15 @@ backend/supabase/.branches/
 frontend/.vercel/
 .netlify/
 
+# ── Python (scripts/) ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+
 # ── OS ────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
@@ -86,6 +96,8 @@ $RECYCLE.BIN/
 # ── Cursor: agent/deploy temp (keep shared MCP config) ────────────────
 .cursor/*
 !.cursor/mcp.json
+!.cursor/rules/
+!.cursorrules
 
 # Cursor / agent one-off deploy & scratch files
 .deploy-*
@@ -103,7 +115,15 @@ backend/.tmp-*
 
 # Local DB dump scratch (use versioned migrations instead)
 backend/supabase/baseline_from_*.sql
+*.sql.bak
+*.dump
+*.backup
 
-# Windows / editor swap
+# Windows / editor swap / temp
 *.stackdump
 *~
+*.bak
+*.tmp
+*.temp
+*.orig
+)

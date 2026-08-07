@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, FileCheck, FileSpreadsheet, Package, Reply, Sigma } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowRight, Download, FileCheck, FileSpreadsheet, Package, Printer, Reply, Search, Sigma } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { supabase } from '@/lib/supabaseClient'
 import { cn } from '@/lib/utils'
@@ -28,12 +29,13 @@ import {
 } from './calibrationJobApi'
 import { RawDataSheetDialog } from './RawDataSheetDialog'
 import { CertificateDraftDialog } from '../certificate-preparation/CertificateDraftDialog'
+import { parseCertificateDraft } from '../certificate-preparation/certificateDraftTypes'
 
 const GRID_TABLE =
   'min-w-[760px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
 const DUC_GRID =
-  'min-w-[980px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'min-w-[900px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -678,6 +680,293 @@ function DucAllocationDialog({
   )
 }
 
+function SrfCertificatesListDialog({
+  open,
+  onOpenChange,
+  group,
+  onViewDetails,
+  onViewCertificate,
+  onPrintCertificate,
+  onDownloadCertificate,
+  onPrintSelected,
+  onDownloadSelected,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  group: CalibrationSrfGroup | null
+  onViewDetails: (job: CalibrationJobRow) => void
+  onViewCertificate: (job: CalibrationJobRow) => void
+  onPrintCertificate: (job: CalibrationJobRow) => void
+  onDownloadCertificate: (job: CalibrationJobRow) => void
+  onPrintSelected: (jobs: CalibrationJobRow[]) => void
+  onDownloadSelected: (jobs: CalibrationJobRow[]) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+
+  useEffect(() => {
+    if (!open) {
+      setSearch('')
+      setSelectedIds(new Set())
+    }
+  }, [open])
+
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [group?.serviceRequestId])
+
+  const jobs = group?.jobs ?? []
+
+  const filteredJobs = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return jobs
+    return jobs.filter((job) => {
+      const fields = parseJobEquipmentFields(job)
+      const draft = parseCertificateDraft(job.certificate_draft)
+      const hay = [
+        job.equipment_label,
+        fields.range,
+        fields.leastCount,
+        fields.make,
+        fields.serial,
+        fields.customerId,
+        draft.certificateNumber,
+        draft.ulrNumber,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return hay.includes(q)
+    })
+  }, [jobs, search])
+
+  const allFilteredChecked =
+    filteredJobs.length > 0 && filteredJobs.every((j) => selectedIds.has(j.id))
+  const someFilteredChecked = filteredJobs.some((j) => selectedIds.has(j.id))
+
+  const selectedJobs = useMemo(
+    () => jobs.filter((j) => selectedIds.has(j.id)),
+    [jobs, selectedIds],
+  )
+
+  if (!group) return null
+
+  const toggleAllFiltered = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const j of filteredJobs) {
+        if (checked) next.add(j.id)
+        else next.delete(j.id)
+      }
+      return next
+    })
+  }
+
+  const toggleOne = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+        layer="nested"
+        aria-describedby={undefined}
+      >
+        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <DialogHeader className="relative pr-12 text-left">
+            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
+              Certificates · Equipment
+            </p>
+            <DialogTitle className="text-xl font-semibold tracking-tight text-white">
+              Certificates — {group.srfNumber}
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="relative min-w-0 flex-1 sm:max-w-sm">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search equipment, certificate no, ULR…"
+                className="h-9 pl-9"
+                aria-label="Search certificates list"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {selectedJobs.length} selected
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
+                disabled={selectedJobs.length === 0}
+                onClick={() => onPrintSelected(selectedJobs)}
+                aria-label="Print selected certificates"
+              >
+                <Printer size={14} aria-hidden />
+                Selected Print
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 border-blue-600/40 text-blue-800 hover:bg-blue-50"
+                disabled={selectedJobs.length === 0}
+                onClick={() => onDownloadSelected(selectedJobs)}
+                aria-label="Download selected certificates"
+              >
+                <Download size={14} aria-hidden />
+                Selected Download
+              </Button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+            <Table className={DUC_GRID}>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="w-10 text-center">
+                    <input
+                      type="checkbox"
+                      className={checkboxClass}
+                      checked={allFilteredChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someFilteredChecked && !allFilteredChecked
+                      }}
+                      onChange={(e) => toggleAllFiltered(e.target.checked)}
+                      aria-label="Select all visible certificates"
+                    />
+                  </TableHead>
+                  <TableHead className="min-w-[130px] text-center text-xs">Certificate No</TableHead>
+                  <TableHead className="min-w-[150px] text-center text-xs">ULR Number</TableHead>
+                  <TableHead className="min-w-[180px] text-center text-xs">Equipment Name</TableHead>
+                  <TableHead className="min-w-[100px] text-center text-xs">Least Count</TableHead>
+                  <TableHead className="min-w-[110px] text-center text-xs">Range</TableHead>
+                  <TableHead className="min-w-[160px] text-center text-xs">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredJobs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                      {search.trim()
+                        ? 'No equipment match your search.'
+                        : 'No equipment found for this SRF.'}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredJobs.map((job) => {
+                    const fields = parseJobEquipmentFields(job)
+                    const draft = parseCertificateDraft(job.certificate_draft)
+                    const checked = selectedIds.has(job.id)
+                    return (
+                      <TableRow key={job.id} data-state={checked ? 'selected' : undefined}>
+                        <TableCell className="text-center align-middle">
+                          <input
+                            type="checkbox"
+                            className={checkboxClass}
+                            checked={checked}
+                            onChange={(e) => toggleOne(job.id, e.target.checked)}
+                            aria-label={`Select ${job.equipment_label}`}
+                          />
+                        </TableCell>
+                        <TableCell className="align-middle text-left text-sm font-medium">
+                          {cellText(draft.certificateNumber)}
+                        </TableCell>
+                        <TableCell className="text-center align-middle font-mono text-xs">
+                          {cellText(draft.ulrNumber)}
+                        </TableCell>
+                        <TableCell className="text-center align-middle text-sm">
+                          <button
+                            type="button"
+                            className="mx-auto max-w-full text-center text-sm font-medium text-teal-700 underline decoration-teal-600/50 underline-offset-2 transition-colors hover:text-teal-900 hover:decoration-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+                            onClick={() => onViewDetails(job)}
+                            aria-label={`View equipment details for ${job.equipment_label}`}
+                            title="View Equipment Details"
+                          >
+                            {cellText(job.equipment_label)}
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-center align-middle text-sm">
+                          {cellText(fields.leastCount)}
+                        </TableCell>
+                        <TableCell className="text-center align-middle text-sm">
+                          {cellText(fields.range)}
+                        </TableCell>
+                        <TableCell className="text-center align-middle">
+                          <div className="flex flex-wrap items-center justify-center gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 border-slate-300 px-0 text-base leading-none"
+                              onClick={() => onViewDetails(job)}
+                              aria-label={`Equipment details for ${job.equipment_label}`}
+                              title="Details"
+                            >
+                              <span aria-hidden>👁️</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 border-teal-600/40 px-0 text-base leading-none hover:bg-teal-50"
+                              onClick={() => onViewCertificate(job)}
+                              aria-label={`View certificate for ${job.equipment_label}`}
+                              title="View Cert"
+                            >
+                              <span aria-hidden>📜</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 w-8 bg-blue-600 px-0 text-base leading-none text-white hover:bg-blue-700"
+                              onClick={() => onPrintCertificate(job)}
+                              aria-label={`Print certificate for ${job.equipment_label}`}
+                              title="Print"
+                            >
+                              <span aria-hidden>🖨️</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 w-8 border-blue-600/40 px-0 text-base leading-none text-blue-800 hover:bg-blue-50"
+                              onClick={() => onDownloadCertificate(job)}
+                              aria-label={`Download certificate for ${job.equipment_label}`}
+                              title="Download"
+                            >
+                              <span aria-hidden>⬇️</span>
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function CalibrationJobStageTable({
   stage,
   groups,
@@ -712,13 +1001,40 @@ export function CalibrationJobStageTable({
   scopedToEngineer?: boolean
 }) {
   const [ducGroup, setDucGroup] = useState<CalibrationSrfGroup | null>(null)
+  const [certListGroup, setCertListGroup] = useState<CalibrationSrfGroup | null>(null)
   const [reviewSheetJob, setReviewSheetJob] = useState<CalibrationJobRow | null>(null)
   const [reviewOpenUncertainty, setReviewOpenUncertainty] = useState(false)
   const [reviewDetailsJob, setReviewDetailsJob] = useState<CalibrationJobRow | null>(null)
   const [certificateDraftJob, setCertificateDraftJob] = useState<CalibrationJobRow | null>(null)
+  const [certificateAutoPrint, setCertificateAutoPrint] = useState(false)
+  const [certificateAutoDownload, setCertificateAutoDownload] = useState(false)
+  const [certificateQueue, setCertificateQueue] = useState<{
+    jobs: CalibrationJobRow[]
+    mode: 'print' | 'download'
+    index: number
+  } | null>(null)
+  const certificateQueueRef = useRef(certificateQueue)
+  certificateQueueRef.current = certificateQueue
+
+  const openCertificateJob = (
+    job: CalibrationJobRow,
+    mode: 'view' | 'print' | 'download',
+    queue?: { jobs: CalibrationJobRow[]; mode: 'print' | 'download'; index: number } | null,
+  ) => {
+    setCertificateQueue(queue ?? null)
+    setCertificateAutoPrint(mode === 'print')
+    setCertificateAutoDownload(mode === 'download')
+    setCertificateDraftJob(job)
+  }
+
+  const startCertificateQueue = (jobs: CalibrationJobRow[], mode: 'print' | 'download') => {
+    if (jobs.length === 0) return
+    openCertificateJob(jobs[0]!, mode, { jobs, mode, index: 0 })
+  }
   const title = CALIBRATION_JOB_STAGE_LABELS[stage]
   const isReviewData = stage === 'review_data'
   const isCertificatePrep = stage === 'certificate_preparation'
+  const isCertificates = stage === 'certificates'
   const isPerJobTable = isReviewData || isCertificatePrep
   const canEditAllocation = stage === 'job_allocation'
   const canReferback = true
@@ -1075,7 +1391,9 @@ export function CalibrationJobStageTable({
                   {selectAllHeader}
                   <TableHead className="min-w-[120px] text-center text-xs">SRF Number</TableHead>
                   <TableHead className="min-w-[200px] text-left text-xs">Client</TableHead>
-                  <TableHead className="min-w-[140px] text-center text-xs">Equipment (DUC)</TableHead>
+                  <TableHead className="min-w-[140px] text-center text-xs">
+                    {stage === 'certificates' ? 'View Certificates' : 'Equipment (DUC)'}
+                  </TableHead>
                   <TableHead className="min-w-[200px] text-center text-xs">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1108,8 +1426,14 @@ export function CalibrationJobStageTable({
                           variant="outline"
                           size="sm"
                           className="h-9 gap-1.5 border-teal-600/40 px-2.5 text-xs font-medium text-teal-800 hover:bg-teal-50"
-                          onClick={() => setDucGroup(group)}
-                          aria-label={`View DUC list for ${group.srfNumber}`}
+                          onClick={() =>
+                            isCertificates ? setCertListGroup(group) : setDucGroup(group)
+                          }
+                          aria-label={
+                            isCertificates
+                              ? `View certificates for ${group.srfNumber}`
+                              : `View DUC list for ${group.srfNumber}`
+                          }
                         >
                           <Package size={14} aria-hidden />
                           View ({group.jobs.length})
@@ -1117,18 +1441,20 @@ export function CalibrationJobStageTable({
                       </TableCell>
                       <TableCell className="text-center align-middle">
                         <div className="flex flex-wrap items-center justify-center gap-1.5">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className={forwardIconBtnClass}
-                            disabled={!canForward || actionLoading}
-                            onClick={() => onForward(group)}
-                            aria-label={`Forward ${group.srfNumber}`}
-                            title="Forward"
-                          >
-                            <ArrowRight size={16} aria-hidden />
-                          </Button>
+                          {canForward ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className={forwardIconBtnClass}
+                              disabled={actionLoading}
+                              onClick={() => onForward(group)}
+                              aria-label={`Forward ${group.srfNumber}`}
+                              title="Forward"
+                            >
+                              <ArrowRight size={16} aria-hidden />
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             size="icon"
@@ -1140,7 +1466,9 @@ export function CalibrationJobStageTable({
                             title={
                               stage === 'job_allocation'
                                 ? 'Referback to Service Request'
-                                : 'Referback'
+                                : stage === 'certificates'
+                                  ? 'Referback to Certificate Preparation'
+                                  : 'Referback'
                             }
                           >
                             <Reply size={16} aria-hidden />
@@ -1157,7 +1485,7 @@ export function CalibrationJobStageTable({
       </div>
 
       <DucAllocationDialog
-        open={Boolean(liveDucGroup)}
+        open={Boolean(liveDucGroup) && !isCertificates}
         onOpenChange={(open) => {
           if (!open) setDucGroup(null)
         }}
@@ -1167,6 +1495,55 @@ export function CalibrationJobStageTable({
         onLocationChange={onLocationChange}
         onEngineerChange={onEngineerChange}
       />
+
+      {isCertificates ? (
+        <>
+          <SrfCertificatesListDialog
+            open={Boolean(certListGroup)}
+            onOpenChange={(open) => {
+              if (!open) setCertListGroup(null)
+            }}
+            group={certListGroup}
+            onViewDetails={(job) => setReviewDetailsJob(job)}
+            onViewCertificate={(job) => openCertificateJob(job, 'view')}
+            onPrintCertificate={(job) => openCertificateJob(job, 'print')}
+            onDownloadCertificate={(job) => openCertificateJob(job, 'download')}
+            onPrintSelected={(jobs) => startCertificateQueue(jobs, 'print')}
+            onDownloadSelected={(jobs) => startCertificateQueue(jobs, 'download')}
+          />
+          <DucEquipmentDetailsDialog
+            job={reviewDetailsJob}
+            open={Boolean(reviewDetailsJob)}
+            onOpenChange={(open) => {
+              if (!open) setReviewDetailsJob(null)
+            }}
+            contextLabel="Certificates"
+          />
+          <CertificateDraftDialog
+            job={certificateDraftJob}
+            open={Boolean(certificateDraftJob)}
+            autoPrint={certificateAutoPrint}
+            autoDownload={certificateAutoDownload}
+            onOpenChange={(open) => {
+              if (open) return
+              setCertificateDraftJob(null)
+              setCertificateAutoPrint(false)
+              setCertificateAutoDownload(false)
+              const q = certificateQueueRef.current
+              if (!q) return
+              const nextIndex = q.index + 1
+              if (nextIndex >= q.jobs.length) {
+                setCertificateQueue(null)
+                return
+              }
+              const nextJob = q.jobs[nextIndex]!
+              window.setTimeout(() => {
+                openCertificateJob(nextJob, q.mode, { ...q, index: nextIndex })
+              }, 350)
+            }}
+          />
+        </>
+      ) : null}
 
       {isPerJobTable ? (
         <>

@@ -11,6 +11,14 @@ import {
   type IntermediateCheckHistoryRecord,
 } from '@/features/masters/equipment-master/intermediateCheckHistory'
 import { companyTwoWordInitials } from '@/features/calibration/equipments/types'
+import type {
+  RawDataColumnFormula,
+  RawDataColumnType,
+} from '@/features/calibration/rawDataSheetTypes'
+import {
+  emptyColumnFormula,
+  parseColumnFormula,
+} from '@/features/calibration/rawDataSheetTypes'
 
 export type EquipmentStatus = 'Active' | 'In Repair' | 'Idle'
 export const EQUIPMENT_STATUSES: EquipmentStatus[] = ['Active', 'In Repair', 'Idle']
@@ -82,9 +90,17 @@ export function parseStoredFrequency(raw: string | null | undefined): Frequency 
   return 'Manual'
 }
 
+/** Same column kinds as Raw Data Sheet (Number / Text / Calculated). */
+export type CalibrationPointsColumnType = RawDataColumnType
+
 export type CalibrationPointsColumn = {
   id: string
   header: string
+  /** Defaults to `number` for legacy rows that only stored header. */
+  type?: CalibrationPointsColumnType
+  required?: boolean
+  /** Present when type = `formula` — same engine as Raw Data calculated columns. */
+  formula?: RawDataColumnFormula
 }
 
 export type CalibrationPointRow = {
@@ -135,6 +151,10 @@ export type EquipmentForCalibrationRow = {
   external_calibration_agency_name: string | null
   mode_of_calibration?: string | null
   class_of_instrument?: string | null
+  calibration_temperature?: string | null
+  calibration_humidity?: string | null
+  /** Canonical scientific text, e.g. 11.5e-6 (/°C implied). */
+  coefficient_of_thermal_expansion?: string | null
   intermediate_check_frequency: string | null
   last_intermediate_check_date: string | null
   next_intermediate_check_date: string | null
@@ -174,6 +194,10 @@ export type EquipmentForCalibrationForm = {
   externalCalibrationAgencyName: string
   modeOfCalibration: string
   classOfInstrument: string
+  calibrationTemperature: string
+  calibrationHumidity: string
+  /** Stored as 11.5e-6; UI shows 11.5 × 10⁻⁶/°C. */
+  coefficientOfThermalExpansion: string
   intermediateCheckFrequency: Frequency
   lastIntermediateCheckDate: string
   nextIntermediateCheckDate: string
@@ -217,7 +241,42 @@ export function buildCalibrationColumnsFromHeaders(headers: string[]): Calibrati
   return headers.map((header, index) => ({
     id: newCalibrationColumnId(),
     header: header.trim() || `Column ${index + 1}`,
+    type: 'number' as const,
+    required: false,
   }))
+}
+
+export function emptyCalibrationPointsColumn(
+  header = '',
+  type: CalibrationPointsColumnType = 'number',
+): CalibrationPointsColumn {
+  return {
+    id: newCalibrationColumnId(),
+    header,
+    type,
+    required: false,
+    ...(type === 'formula' ? { formula: emptyColumnFormula() } : {}),
+  }
+}
+
+function isPointsColumnType(v: unknown): v is CalibrationPointsColumnType {
+  return v === 'text' || v === 'number' || v === 'formula'
+}
+
+export function normalizeCalibrationPointsColumn(
+  raw: Record<string, unknown>,
+  index: number,
+): CalibrationPointsColumn {
+  const type = isPointsColumnType(raw.type) ? raw.type : 'number'
+  const formula =
+    type === 'formula' ? (parseColumnFormula(raw.formula) ?? emptyColumnFormula()) : undefined
+  return {
+    id: String(raw.id ?? newCalibrationColumnId()),
+    header: String(raw.header ?? `Column ${index + 1}`).trim() || `Column ${index + 1}`,
+    type,
+    required: type === 'formula' ? false : Boolean(raw.required),
+    ...(formula ? { formula } : {}),
+  }
 }
 
 export function rowHasCalibrationValues(row: CalibrationPointRow): boolean {
@@ -242,10 +301,7 @@ export function parseCalibrationPointsTable(raw: unknown): CalibrationPointsStor
     const rowsRaw = Array.isArray(obj.rows) ? obj.rows : []
     const columns: CalibrationPointsColumn[] = colsRaw.map((item, index) => {
       const col = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
-      return {
-        id: String(col.id ?? newCalibrationColumnId()),
-        header: String(col.header ?? `Column ${index + 1}`).trim() || `Column ${index + 1}`,
-      }
+      return normalizeCalibrationPointsColumn(col, index)
     })
     const rows: CalibrationPointRow[] = rowsRaw.map((item) => {
       const row = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
@@ -274,6 +330,8 @@ export function parseCalibrationPointsTable(raw: unknown): CalibrationPointsStor
     const columns = DEFAULT_CALIBRATION_POINT_HEADERS.map((header) => ({
       id: newCalibrationColumnId(),
       header,
+      type: 'number' as const,
+      required: false,
     }))
     const [nominal, actual, correction, uncertainty] = columns
     const rows = raw.map((item) => {
@@ -321,10 +379,20 @@ export function serializeCalibrationPointsTable(
   rows: CalibrationPointRow[],
 ): CalibrationPointsStored | null {
   if (columns.length === 0) return null
-  const cleanColumns = columns.map((c, index) => ({
-    id: c.id || newCalibrationColumnId(),
-    header: normalizeText(c.header) || `Column ${index + 1}`,
-  }))
+  const cleanColumns = columns.map((c, index) => {
+    const header = normalizeText(c.header) || `Column ${index + 1}`
+    const type: CalibrationPointsColumnType = c.type || 'number'
+    const base: CalibrationPointsColumn = {
+      id: c.id || newCalibrationColumnId(),
+      header,
+      type,
+      required: type === 'formula' ? false : Boolean(c.required),
+    }
+    if (type === 'formula') {
+      base.formula = c.formula ?? emptyColumnFormula()
+    }
+    return base
+  })
   const mappedRows = rows.map((r) => {
     const values: Record<string, string> = {}
     for (const col of cleanColumns) {
@@ -361,6 +429,9 @@ export function emptyEquipmentForCalibrationForm(): EquipmentForCalibrationForm 
     externalCalibrationAgencyName: '',
     modeOfCalibration: '',
     classOfInstrument: '',
+    calibrationTemperature: '',
+    calibrationHumidity: '',
+    coefficientOfThermalExpansion: '',
     intermediateCheckFrequency: '',
     lastIntermediateCheckDate: '',
     nextIntermediateCheckDate: '',
@@ -440,6 +511,9 @@ export function rowToForm(
     externalCalibrationAgencyName: row.external_calibration_agency_name ?? '',
     modeOfCalibration: row.mode_of_calibration ?? '',
     classOfInstrument: row.class_of_instrument ?? '',
+    calibrationTemperature: row.calibration_temperature ?? '',
+    calibrationHumidity: row.calibration_humidity ?? '',
+    coefficientOfThermalExpansion: row.coefficient_of_thermal_expansion ?? '',
     intermediateCheckFrequency: parseStoredFrequency(row.intermediate_check_frequency),
     lastIntermediateCheckDate: row.last_intermediate_check_date?.slice(0, 10) ?? '',
     nextIntermediateCheckDate: row.next_intermediate_check_date?.slice(0, 10) ?? '',
@@ -485,6 +559,10 @@ export function formToPayload(form: EquipmentForCalibrationForm) {
       normalizeText(form.externalCalibrationAgencyName) || null,
     mode_of_calibration: normalizeText(form.modeOfCalibration) || null,
     class_of_instrument: normalizeText(form.classOfInstrument) || null,
+    calibration_temperature: normalizeText(form.calibrationTemperature) || null,
+    calibration_humidity: normalizeText(form.calibrationHumidity) || null,
+    coefficient_of_thermal_expansion:
+      normalizeText(form.coefficientOfThermalExpansion) || null,
     intermediate_check_frequency: form.intermediateCheckFrequency || null,
     last_intermediate_check_date: form.lastIntermediateCheckDate.slice(0, 10) || null,
     next_intermediate_check_date: nextIc || null,

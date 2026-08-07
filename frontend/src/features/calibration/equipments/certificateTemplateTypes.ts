@@ -1,7 +1,7 @@
 /**
- * Per-equipment Calibration Certificate template.
- * Default layout = Universal Testing Machine (UTM) certificate format.
- * Other equipment start with the same template until customized.
+ * Per-equipment Calibration Certificate template (stored on that equipment row only).
+ * New equipment may start from the UTM default layout as a starter — customizing one
+ * equipment never overwrites another equipment’s saved format.
  */
 
 import {
@@ -20,10 +20,16 @@ export type CalibrationCertificateTemplate = {
   layoutName: string
   title: string
   formatNumber: string
+  /** Default Work Instruction number shown on the certificate. */
+  workInstructionNumber: string
   defaultNotes: string
   defaultRemarks: string
   calibratedByLabel: string
   authorizedSignatoryLabel: string
+  /** Shown under each signature role (e.g. Designation). */
+  signatureDesignationLabel: string
+  /** Shown under Designation (e.g. Name). */
+  signatureNameLabel: string
   deviceSectionPrefix: string
   masterSectionTitle: string
   resultsSectionTitle: string
@@ -38,10 +44,13 @@ export const DEFAULT_CALIBRATION_CERTIFICATE_TEMPLATE: CalibrationCertificateTem
   layoutName: 'Universal Testing Machine',
   title: 'Calibration Certificate',
   formatNumber: '',
+  workInstructionNumber: 'WI/CAL/01',
   defaultNotes: DEFAULT_CERTIFICATE_NOTES,
   defaultRemarks: DEFAULT_CERTIFICATE_REMARKS,
   calibratedByLabel: 'Calibrated By',
   authorizedSignatoryLabel: 'Authorized Signatory',
+  signatureDesignationLabel: 'Designation',
+  signatureNameLabel: 'Name',
   deviceSectionPrefix: 'Device under Calibration',
   masterSectionTitle: 'Master Used for Calibration',
   resultsSectionTitle: 'Calibration Results',
@@ -78,6 +87,10 @@ export function parseCalibrationCertificateTemplate(
     layoutName: asStr(o.layoutName ?? o.layout_name, base.layoutName).trim() || base.layoutName,
     title: asStr(o.title, base.title).trim() || base.title,
     formatNumber: asStr(o.formatNumber ?? o.format_number, base.formatNumber).trim(),
+    workInstructionNumber: asStr(
+      o.workInstructionNumber ?? o.work_instruction_number,
+      base.workInstructionNumber,
+    ).trim(),
     defaultNotes: asStr(o.defaultNotes ?? o.default_notes, base.defaultNotes),
     defaultRemarks: asStr(o.defaultRemarks ?? o.default_remarks, base.defaultRemarks),
     calibratedByLabel:
@@ -88,6 +101,14 @@ export function parseCalibrationCertificateTemplate(
         o.authorizedSignatoryLabel ?? o.authorized_signatory_label,
         base.authorizedSignatoryLabel,
       ).trim() || base.authorizedSignatoryLabel,
+    signatureDesignationLabel:
+      asStr(
+        o.signatureDesignationLabel ?? o.signature_designation_label,
+        base.signatureDesignationLabel,
+      ).trim() || base.signatureDesignationLabel,
+    signatureNameLabel:
+      asStr(o.signatureNameLabel ?? o.signature_name_label, base.signatureNameLabel).trim() ||
+      base.signatureNameLabel,
     deviceSectionPrefix:
       asStr(o.deviceSectionPrefix ?? o.device_section_prefix, base.deviceSectionPrefix).trim() ||
       base.deviceSectionPrefix,
@@ -113,6 +134,7 @@ export function serializeCalibrationCertificateTemplate(
     layoutName: parsed.layoutName.trim() || DEFAULT_CALIBRATION_CERTIFICATE_TEMPLATE.layoutName,
     title: parsed.title.trim() || DEFAULT_CALIBRATION_CERTIFICATE_TEMPLATE.title,
     formatNumber: parsed.formatNumber.trim(),
+    workInstructionNumber: parsed.workInstructionNumber.trim(),
     defaultNotes: parsed.defaultNotes,
     defaultRemarks: parsed.defaultRemarks,
     calibratedByLabel:
@@ -121,6 +143,12 @@ export function serializeCalibrationCertificateTemplate(
     authorizedSignatoryLabel:
       parsed.authorizedSignatoryLabel.trim() ||
       DEFAULT_CALIBRATION_CERTIFICATE_TEMPLATE.authorizedSignatoryLabel,
+    signatureDesignationLabel:
+      parsed.signatureDesignationLabel.trim() ||
+      DEFAULT_CALIBRATION_CERTIFICATE_TEMPLATE.signatureDesignationLabel,
+    signatureNameLabel:
+      parsed.signatureNameLabel.trim() ||
+      DEFAULT_CALIBRATION_CERTIFICATE_TEMPLATE.signatureNameLabel,
     deviceSectionPrefix:
       parsed.deviceSectionPrefix.trim() ||
       DEFAULT_CALIBRATION_CERTIFICATE_TEMPLATE.deviceSectionPrefix,

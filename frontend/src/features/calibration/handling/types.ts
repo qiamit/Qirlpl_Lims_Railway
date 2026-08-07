@@ -74,6 +74,8 @@ export type CalibrationJobRow = {
   equipment_detail: string
   equipment_master_id: string | null
   calibration_location: CalibrationJobLocation
+  /** Free-text place/site of calibration (Conduct — required before Raw Data Sheet). */
+  location_of_calibration?: string | null
   stage: CalibrationJobStage
   stage_entered_at: string
   remarks: string | null

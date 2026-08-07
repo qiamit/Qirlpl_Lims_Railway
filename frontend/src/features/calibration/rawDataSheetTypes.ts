@@ -1,5 +1,13 @@
 /** Raw Data Sheet template (equipment_master) + filled payload (calibration_raw_data_sheets). */
 
+import {
+  masterEquipmentFormulaRefColumns,
+  masterEquipmentFormulaRefValues,
+  masterPointsFormulaRefColumns,
+  masterPointsFormulaRefValues,
+  type MasterFormulaRefSource,
+} from './masterEquipmentFormulaRefs'
+
 export type RawDataColumnType = 'text' | 'number' | 'formula'
 
 export type RawDataFormulaOp =
@@ -247,6 +255,12 @@ export type RawDataReportGenerationSettings = {
   decimals: Record<string, number>
 }
 
+export type RawDataSheetActor = {
+  userId: string
+  name: string
+  designation: string
+}
+
 export type RawDataSheetPayload = {
   version: 1
   /** Snapshot of master template at first open (historical integrity). */
@@ -261,6 +275,10 @@ export type RawDataSheetPayload = {
   temperatureCorrection?: RawDataTemperatureCorrectionConfig
   /** Saved Generate Report column / randomness settings. */
   reportGenerationSettings?: RawDataReportGenerationSettings
+  /** Who entered / last saved Raw Data (Calibrated By on certificate). */
+  entryBy?: RawDataSheetActor
+  /** Who reviewed Raw Data (Authorized Signatory on certificate). */
+  reviewedBy?: RawDataSheetActor
 }
 
 export type RawDataTemperatureCorrectionConfig = {
@@ -271,6 +289,7 @@ export type RawDataTemperatureCorrectionConfig = {
 }
 
 export const DEFAULT_TEMP_CORRECTION: RawDataTemperatureCorrectionConfig = {
+  /** Default α ≈ 11.5 × 10⁻⁶ /°C; prefer equipment_for_calibration.coefficient_of_thermal_expansion when set. */
   alpha: '0.0000115',
   referenceTempC: '20',
   temperatureColumnKey: 'temperature_c',
@@ -708,6 +727,54 @@ export function environmentConditionsFilled(env: RawDataEnvironmentConditions | 
   )
 }
 
+/**
+ * Certificate Environment Condition: value from the Raw Data Sheet "Average" Field row
+ * (falls back to "Mean"). Matches Temperature / Humidity by column id or header text.
+ */
+export function getEnvironmentAverageParamValue(
+  env: RawDataEnvironmentConditions | null | undefined,
+  kind: 'temperature' | 'humidity',
+): string {
+  if (!env) return ''
+  const rows = env.rows ?? []
+  const avgRow =
+    rows.find((r) => /^average$/i.test(r.readingLabel.trim())) ??
+    rows.find((r) => /^mean$/i.test(r.readingLabel.trim()))
+  if (!avgRow) return ''
+
+  const cols = resolveEnvParameterColumns(env)
+  const idHints =
+    kind === 'temperature'
+      ? [/temp/i, /^temperaturec$/i]
+      : [/humid/i, /%?\s*rh/i, /^humiditypercent$/i]
+  const headerHints =
+    kind === 'temperature' ? [/temp/i] : [/humid/i, /%?\s*rh/i]
+
+  const col =
+    cols.find((c) => idHints.some((re) => re.test(c.id))) ??
+    cols.find((c) => headerHints.some((re) => re.test(c.header)))
+
+  if (col) {
+    const direct = (avgRow.values[col.id] ?? '').trim()
+    if (direct) return direct
+    const expr = (avgRow.formulas?.[col.id] ?? '').trim()
+    if (expr) {
+      try {
+        const n = evaluateEnvParameterFormula(expr, rows, col.id)
+        if (n != null && Number.isFinite(n)) return String(n)
+      } catch {
+        // incomplete
+      }
+    }
+  }
+
+  for (const [k, v] of Object.entries(avgRow.values ?? {})) {
+    if (!v.trim()) continue
+    if (idHints.some((re) => re.test(k))) return v.trim()
+  }
+  return ''
+}
+
 function newId(prefix: string): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -781,7 +848,7 @@ function isFormulaOp(v: unknown): v is RawDataFormulaOp {
   return RAW_DATA_FORMULA_OPS.some((o) => o.value === v)
 }
 
-function parseColumnFormula(raw: unknown): RawDataColumnFormula | null {
+export function parseColumnFormula(raw: unknown): RawDataColumnFormula | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
   const expressionRaw = o.expression ?? o.formula_expression
@@ -1068,6 +1135,20 @@ export function parseRawDataSheetPayload(raw: unknown): RawDataSheetPayload | nu
     reportGenerationSettings: parseReportGenerationSettings(
       obj.reportGenerationSettings ?? obj.report_generation_settings,
     ),
+    entryBy: parseRawDataSheetActor(obj.entryBy ?? obj.entry_by),
+    reviewedBy: parseRawDataSheetActor(obj.reviewedBy ?? obj.reviewed_by),
+  }
+}
+
+export function parseRawDataSheetActor(raw: unknown): RawDataSheetActor | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const name = String(o.name ?? '').trim()
+  if (!name) return undefined
+  return {
+    userId: String(o.userId ?? o.user_id ?? '').trim(),
+    name,
+    designation: String(o.designation ?? '').trim(),
   }
 }
 
@@ -1426,6 +1507,43 @@ export function formatPlusMinusPairDisplay(value: string): string {
   const m = /^(-?\d+(?:\.\d+)?)\s*[-−–—]\s*(-?\d+(?:\.\d+)?)$/.exec(t)
   if (!m) return value
   return `${m[1]}±${m[2]}`
+}
+
+/** Round a formula result to the column's Decimals setting (numbers and numeric strings / ± pairs). */
+export function formatFormulaOutput(result: number | string, decimals: number): string {
+  const dp =
+    Number.isFinite(decimals) && decimals >= 0 && decimals <= 12
+      ? Math.round(decimals)
+      : 2
+
+  if (typeof result === 'number') {
+    if (!Number.isFinite(result)) return ''
+    return result.toFixed(dp)
+  }
+
+  const t = String(result ?? '').trim()
+  if (!t) return ''
+
+  const pm = /^(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*±\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.exec(
+    t,
+  )
+  if (pm) {
+    return `${Number(pm[1]).toFixed(dp)}±${Number(pm[2]).toFixed(dp)}`
+  }
+
+  const withPm = formatPlusMinusPairDisplay(t)
+  if (withPm !== t) return formatFormulaOutput(withPm, dp)
+
+  const asNum = Number(t)
+  if (Number.isFinite(asNum) && /^-?\d/.test(t) && !/[^\d.eE+-]/.test(t)) {
+    return asNum.toFixed(dp)
+  }
+
+  // Mixed text + numbers (e.g. `0.123456 °C`): round each numeric token.
+  return t.replace(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, (m) => {
+    const x = Number(m)
+    return Number.isFinite(x) ? x.toFixed(dp) : m
+  })
 }
 
 function runValidatedMathExpression(body: string): number | null {
@@ -2397,11 +2515,8 @@ export function computeFormulaValue(
         excludeKeys: new Set([column.key]),
       })
       if (result != null) {
-        if (typeof result === 'string') return result
-        if (Number.isFinite(result)) {
-          const dp = formula.decimals ?? decimalPlaces
-          return result.toFixed(dp)
-        }
+        const dp = formula.decimals != null ? formula.decimals : decimalPlaces
+        return formatFormulaOutput(result, dp)
       }
       // Expression present but incomplete → blank (do NOT use stale legacy op).
       return ''
@@ -2515,25 +2630,38 @@ export function computeFormulaValue(
   }
 
   if (result == null || !Number.isFinite(result)) return ''
-  const dp = formula.decimals ?? decimalPlaces
-  return result.toFixed(dp)
+  const dp = formula.decimals != null ? formula.decimals : decimalPlaces
+  return formatFormulaOutput(result, dp)
 }
 
 /**
  * Recompute every formula column of a row. Columns are evaluated in template order,
  * so a formula can reference an earlier formula column.
+ * Optional `master` supplies Master Equipment field refs (`eq:*` / [Least Count], …).
+ * Optional `pointsTables` supplies Selected Master points column refs (`pt:*`).
  */
 export function applyFormulaColumns(
   columns: RawDataSheetColumn[],
   values: RawDataSheetRowValues,
   decimalPlaces: number,
   env?: RawDataEnvironmentConditions | null,
+  master?: MasterFormulaRefSource | null,
+  pointsTables?: Array<{ columns?: Array<{ header?: string | null }> | null } | null | undefined>,
 ): RawDataSheetRowValues {
   if (!columns.some((c) => c.type === 'formula')) return values
-  const next = { ...values }
+
+  const masterCols = masterEquipmentFormulaRefColumns()
+  const pointsCols = masterPointsFormulaRefColumns(pointsTables ?? [])
+  const mergedValues: RawDataSheetRowValues = {
+    ...values,
+    ...masterEquipmentFormulaRefValues(master),
+    ...masterPointsFormulaRefValues(pointsCols, columns, values),
+  }
+  const allColumns = [...columns, ...masterCols, ...pointsCols]
+  const next = { ...mergedValues }
   for (const col of columns) {
     if (col.type !== 'formula') continue
-    next[col.key] = computeFormulaValue(col, next, decimalPlaces, columns, env)
+    next[col.key] = computeFormulaValue(col, next, decimalPlaces, allColumns, env)
   }
   return next
 }

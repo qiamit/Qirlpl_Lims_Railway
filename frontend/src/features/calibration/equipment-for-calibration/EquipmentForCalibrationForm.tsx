@@ -63,7 +63,6 @@ import {
 import {
   EQUIPMENT_STATUSES,
   FREQUENCIES,
-  buildCalibrationColumnsFromHeaders,
   calculateNextDueDate,
   emptyCalibrationPointRow,
   formatManualDaysFrequency,
@@ -71,6 +70,8 @@ import {
   hasAutoNextDue,
   isPresetFrequency,
   parseManualIntervalDays,
+  type CalibrationPointsColumn,
+  type CalibrationPointRow,
   type EquipmentForCalibrationForm,
   type EquipmentScheduleSection,
   type EquipmentStatus,
@@ -82,11 +83,12 @@ import {
   validatePointFormula,
 } from './pointFormula'
 import { ScientificFormulaPad } from './ScientificFormulaPad'
+import { ThermalExpansionCoeffField } from './ThermalExpansionCoeffField'
+import { CalibrationPointsTableSetupDialog } from './CalibrationPointsTableSetupDialog'
+import { computeCalibrationPointRowValues } from './calibrationPointsFormula'
 
 const NESTED_FULLSCREEN_DIALOG_CLASS =
   '!flex fixed inset-0 z-[60] !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none !translate-x-0 !translate-y-0 flex-col gap-0 overflow-hidden !rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100'
-
-const MAX_SETUP_COLUMNS = 12
 
 const NESTED_FULLSCREEN_DIALOG_STYLE = {
   width: '100vw',
@@ -337,13 +339,6 @@ export function EquipmentForCalibrationForm({
   const [selectedPointIds, setSelectedPointIds] = useState<Set<string>>(() => new Set())
   const [pointsSortColId, setPointsSortColId] = useState<string | null>(null)
   const [pointsSortDir, setPointsSortDir] = useState<'asc' | 'desc'>('asc')
-  const [setupHeaders, setSetupHeaders] = useState<string[]>([
-    'Nominal',
-    'Actual',
-    'Correction',
-    'Uncertainty',
-  ])
-  const [draftColumnHeader, setDraftColumnHeader] = useState('')
   const formRef = useRef(form)
   const emittedRef = useRef<EquipmentForCalibrationForm | null>(null)
 
@@ -685,50 +680,20 @@ export function EquipmentForCalibrationForm({
   }
 
   const openPointsSetup = () => {
-    if (form.calibrationPointsColumns.length > 0) {
-      setSetupHeaders(form.calibrationPointsColumns.map((c) => c.header))
-    } else {
-      setSetupHeaders(['Nominal', 'Actual', 'Correction', 'Uncertainty'])
-    }
-    setDraftColumnHeader('')
     setPointsSetupOpen(true)
   }
 
-  const updateSetupHeader = (index: number, value: string) => {
-    setSetupHeaders((prev) => {
-      const next = [...prev]
-      next[index] = value
-      return next
-    })
-  }
-
-  const addSetupColumn = () => {
-    const name = draftColumnHeader.trim()
-    if (!name) return
-    setSetupHeaders((prev) => {
-      if (prev.length >= MAX_SETUP_COLUMNS) return prev
-      if (prev.some((h) => h.trim().toLowerCase() === name.toLowerCase())) return prev
-      return [...prev, name]
-    })
-    setDraftColumnHeader('')
-  }
-
-  const removeSetupColumn = (index: number) => {
-    setSetupHeaders((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const applyPointsSetup = () => {
-    const headers = setupHeaders.map((h, i) => h.trim() || `Column ${i + 1}`)
-    if (headers.length === 0) return
-    const columns = buildCalibrationColumnsFromHeaders(headers)
+  const applyPointsSetup = (
+    nextColumns: CalibrationPointsColumn[],
+    nextRows: CalibrationPointRow[],
+  ) => {
     onChange({
-      ...form,
-      calibrationPointsColumns: columns,
-      calibrationPoints: [emptyCalibrationPointRow(columns)],
+      ...formRef.current,
+      calibrationPointsColumns: nextColumns,
+      calibrationPoints: nextRows,
     })
     setSelectedPointIds(new Set())
     setPointsSortColId(null)
-    setPointsSetupOpen(false)
   }
 
   const updatePointValue = (rowId: string, columnId: string, value: string) => {
@@ -1225,6 +1190,34 @@ export function EquipmentForCalibrationForm({
                   </ScheduleFieldTile>
                 </div>
 
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <ScheduleFieldTile span="auto">
+                    <Label htmlFor="efc-cal-temp">Calibration Temperature</Label>
+                    <Input
+                      id="efc-cal-temp"
+                      value={form.calibrationTemperature}
+                      onChange={(e) => set('calibrationTemperature', e.target.value)}
+                      placeholder="e.g. 23 °C"
+                    />
+                  </ScheduleFieldTile>
+                  <ScheduleFieldTile span="auto">
+                    <Label htmlFor="efc-cal-humidity">Calibration Humidity</Label>
+                    <Input
+                      id="efc-cal-humidity"
+                      value={form.calibrationHumidity}
+                      onChange={(e) => set('calibrationHumidity', e.target.value)}
+                      placeholder="e.g. 55 %RH"
+                    />
+                  </ScheduleFieldTile>
+                  <ScheduleFieldTile span="auto">
+                    <ThermalExpansionCoeffField
+                      id="efc-cte"
+                      value={form.coefficientOfThermalExpansion}
+                      onChange={(stored) => set('coefficientOfThermalExpansion', stored)}
+                    />
+                  </ScheduleFieldTile>
+                </div>
+
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 pb-2">
                     <p className="min-w-0 flex-1 text-[12px] font-medium text-slate-600">
@@ -1293,15 +1286,25 @@ export function EquipmentForCalibrationForm({
                         </label>
                         {form.calibrationPointsColumns.map((col) => {
                           const active = pointsSortColId === col.id
+                          const isFormula = col.type === 'formula'
                           return (
                             <button
                               key={col.id}
                               type="button"
                               className="flex min-w-0 items-center gap-1 truncate text-left text-[12px] font-medium text-slate-600 hover:text-teal-800"
-                              title={`Sort by ${col.header}`}
+                              title={
+                                isFormula
+                                  ? `${col.header} (Calculated)`
+                                  : `Sort by ${col.header}`
+                              }
                               onClick={() => sortPointsByColumn(col.id)}
                             >
                               <span className="truncate">{col.header}</span>
+                              {isFormula ? (
+                                <span className="shrink-0 rounded bg-indigo-50 px-1 text-[9px] font-semibold uppercase tracking-wide text-indigo-700">
+                                  Calc
+                                </span>
+                              ) : null}
                               {active && pointsSortDir === 'asc' ? (
                                 <ArrowUp size={12} className="shrink-0 text-teal-700" />
                               ) : active && pointsSortDir === 'desc' ? (
@@ -1324,6 +1327,11 @@ export function EquipmentForCalibrationForm({
                         {form.calibrationPoints.map((pt, index) => {
                           const isLast = index === form.calibrationPoints.length - 1
                           const isFirst = index === 0
+                          const displayValues = computeCalibrationPointRowValues(
+                            form.calibrationPointsColumns,
+                            pt.values,
+                            formRef.current,
+                          )
                           return (
                             <div
                               key={pt.id}
@@ -1339,18 +1347,34 @@ export function EquipmentForCalibrationForm({
                                   aria-label={`Select point ${index + 1}`}
                                 />
                               </label>
-                              {form.calibrationPointsColumns.map((col) => (
-                                <Input
-                                  key={col.id}
-                                  id={`efc-pt-${pt.id}-${col.id}`}
-                                  value={pt.values[col.id] ?? ''}
-                                  onChange={(e) =>
-                                    updatePointValue(pt.id, col.id, e.target.value)
-                                  }
-                                  placeholder="—"
-                                  aria-label={`${col.header} row ${index + 1}`}
-                                />
-                              ))}
+                              {form.calibrationPointsColumns.map((col) => {
+                                const isFormula = col.type === 'formula'
+                                return isFormula ? (
+                                  <Input
+                                    key={col.id}
+                                    id={`efc-pt-${pt.id}-${col.id}`}
+                                    value={displayValues[col.id] ?? ''}
+                                    readOnly
+                                    tabIndex={-1}
+                                    placeholder="Auto"
+                                    className="bg-slate-50 text-slate-700"
+                                    aria-label={`${col.header} row ${index + 1} (calculated)`}
+                                    title={col.formula?.expression?.trim() || 'Calculated column'}
+                                  />
+                                ) : (
+                                  <Input
+                                    key={col.id}
+                                    id={`efc-pt-${pt.id}-${col.id}`}
+                                    value={pt.values[col.id] ?? ''}
+                                    onChange={(e) =>
+                                      updatePointValue(pt.id, col.id, e.target.value)
+                                    }
+                                    placeholder="—"
+                                    inputMode={col.type === 'number' ? 'decimal' : undefined}
+                                    aria-label={`${col.header} row ${index + 1}`}
+                                  />
+                                )
+                              })}
                               <div className="flex items-center justify-center gap-0.5">
                                 {isLast ? (
                                   <span className="inline-block h-9 w-[4.5rem]" aria-hidden />
@@ -1435,118 +1459,13 @@ export function EquipmentForCalibrationForm({
           </DialogContent>
         </Dialog>
 
-        <Dialog open={pointsSetupOpen} onOpenChange={handlePointsSetupOpenChange}>
-          <DialogContent
-            persistOnFocusLoss
-            layer="stacked"
-            className="flex max-h-[min(90dvh,40rem)] w-[calc(100vw-1.5rem)] max-w-lg flex-col gap-0 overflow-hidden border-0 bg-white p-0 shadow-xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
-            aria-describedby={undefined}
-          >
-            <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-              <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
-              <DialogHeader className="relative pr-10 text-left">
-                <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  Calibration Points
-                </p>
-                <DialogTitle className="text-lg font-semibold tracking-tight text-white">
-                  Create Table
-                </DialogTitle>
-              </DialogHeader>
-            </div>
-
-            <div
-              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-5 ${labRegistryFormClass}`}
-            >
-              <div className="w-full space-y-4">
-                <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <div className="min-w-0 space-y-2">
-                    <Label htmlFor="efc-points-draft-hdr">Column Head Name</Label>
-                    <Input
-                      id="efc-points-draft-hdr"
-                      value={draftColumnHeader}
-                      onChange={(e) => setDraftColumnHeader(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          addSetupColumn()
-                        }
-                      }}
-                      placeholder="Custom column header"
-                    />
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10 border-teal-600/40 text-teal-800 hover:bg-teal-50"
-                    disabled={
-                      !draftColumnHeader.trim() || setupHeaders.length >= MAX_SETUP_COLUMNS
-                    }
-                    onClick={addSetupColumn}
-                    aria-label="Add new column"
-                  >
-                    <Plus size={16} className="mr-1.5" />
-                    Add New Column
-                  </Button>
-                </div>
-
-                {setupHeaders.length > 0 ? (
-                  <div className="space-y-3">
-                    <p className="text-[12px] font-medium text-slate-600">Selected columns</p>
-                    {setupHeaders.map((header, index) => (
-                      <div
-                        key={`hdr-row-${index}`}
-                        className="flex items-end gap-3"
-                      >
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <Label htmlFor={`efc-points-hdr-${index}`}>
-                            Column {index + 1}
-                          </Label>
-                          <Input
-                            id={`efc-points-hdr-${index}`}
-                            value={header}
-                            onChange={(e) => updateSetupHeader(index, e.target.value)}
-                            placeholder="Column header"
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-10 w-10 shrink-0 px-0 text-destructive hover:bg-destructive/10"
-                          onClick={() => removeSetupColumn(index)}
-                          aria-label={`Remove column ${index + 1}`}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="rounded-md border border-dashed border-slate-200 bg-white/50 px-3 py-4 text-center text-sm text-slate-500">
-                    Select presets or add a custom column head name.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setPointsSetupOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={applyPointsSetup}
-                disabled={setupHeaders.length === 0}
-              >
-                Generate Table
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <CalibrationPointsTableSetupDialog
+          open={pointsSetupOpen}
+          onOpenChange={handlePointsSetupOpenChange}
+          columns={form.calibrationPointsColumns}
+          rows={form.calibrationPoints}
+          onApply={applyPointsSetup}
+        />
 
         <Dialog open={formulaDialogOpen} onOpenChange={handleFormulaDialogOpenChange}>
           <DialogContent

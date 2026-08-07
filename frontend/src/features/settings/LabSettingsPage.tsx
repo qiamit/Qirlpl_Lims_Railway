@@ -157,6 +157,7 @@ export default function LabSettingsPage() {
   const [timeDialogOpen, setTimeDialogOpen] = useState(false)
   const [newTimeFormat, setNewTimeFormat] = useState('')
   const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>('light')
+  const [generateReportEnabled, setGenerateReportEnabled] = useState(true)
   type AccreditationCard = {
     id: string
     inputLabel: string
@@ -860,6 +861,7 @@ export default function LabSettingsPage() {
       if (parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system') {
         setSelectedTheme(parsed.theme)
       }
+      setGenerateReportEnabled(parsed.generateReportEnabled)
     }
 
     void load()
@@ -1084,6 +1086,7 @@ export default function LabSettingsPage() {
             dateFormat: selectedDateFormat,
             timeFormat: selectedTimeFormat,
             theme: selectedTheme,
+            generateReportEnabled,
           }),
         )
         setSaveMessage('Saved successfully.')
@@ -2194,6 +2197,30 @@ export default function LabSettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="mt-6 space-y-2 border-t border-slate-200 pt-5">
+                <Label htmlFor="generate-report-feature">Calibration Generate Report</Label>
+                <label
+                  htmlFor="generate-report-feature"
+                  className="flex max-w-xl cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-slate-300"
+                >
+                  <span className="min-w-0 flex-1 text-xs font-medium leading-snug text-slate-700">
+                    Show Generate Report Format (Calibration Equipments) and Generate Report
+                    (Calibration Conduct)
+                  </span>
+                  <span className="relative inline-flex h-5 w-9 shrink-0 items-center">
+                    <input
+                      id="generate-report-feature"
+                      type="checkbox"
+                      className="peer sr-only"
+                      checked={generateReportEnabled}
+                      onChange={(e) => setGenerateReportEnabled(e.target.checked)}
+                    />
+                    <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-teal-600 peer-focus-visible:ring-2 peer-focus-visible:ring-teal-600/40" />
+                    <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+                  </span>
+                </label>
               </div>
           </LabSettingsPanel>
         </TabsContent>

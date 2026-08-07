@@ -11,7 +11,7 @@ import {
 } from '../types'
 
 const JOB_SELECT =
-  'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, outgoing_checklist, inward_checklist, certificate_draft, created_at, updated_at'
+  'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, location_of_calibration, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, outgoing_checklist, inward_checklist, certificate_draft, created_at, updated_at'
 
 export async function fetchCalibrationJobsByStage(
   stage: CalibrationJobStage | CalibrationJobStage[],
@@ -50,6 +50,18 @@ export async function updateCalibrationJobLocation(
   if (error) throw error
 }
 
+/** Place/site of calibration (Conduct Inside & Outside). */
+export async function updateCalibrationJobLocationOfCalibration(
+  id: string,
+  locationOfCalibration: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('calibration_jobs')
+    .update({ location_of_calibration: locationOfCalibration.trim() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function updateCalibrationJobEngineer(
   id: string,
   engineer: { id: string | null; name: string | null },
@@ -77,10 +89,69 @@ export async function updateCalibrationJobOutsideChecklist(
   if (error) throw error
 }
 
+/** Update free-text equipment_detail (e.g. Freq token for certificate due date). */
+export async function updateCalibrationJobEquipmentDetail(
+  id: string,
+  equipmentDetail: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('calibration_jobs')
+    .update({ equipment_detail: equipmentDetail.trim() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export type CalibrationEngineerOption = {
   id: string
   name: string
   designation: string
+}
+
+export async function fetchUserProfileBrief(
+  userId: string,
+): Promise<{ id: string; name: string; designation: string } | null> {
+  const id = userId.trim()
+  if (!id) return null
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('id, full_name, designation')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const name = String((data as { full_name?: string }).full_name ?? '').trim() || id
+  const designation = String((data as { designation?: string }).designation ?? '').trim()
+  return { id, name, designation }
+}
+
+/** Stamp reviewer on Raw Data Sheet when Review Data forwards to Certificate Prep. */
+export async function stampRawDataSheetReviewed(
+  jobId: string,
+  reviewer: { userId: string; name: string; designation: string },
+): Promise<void> {
+  const sheet = await fetchRawDataSheetByJobId(jobId)
+  if (!sheet) return
+  const base =
+    sheet.payload && typeof sheet.payload === 'object'
+      ? { ...(sheet.payload as Record<string, unknown>) }
+      : {}
+  const { error } = await supabase
+    .from('calibration_raw_data_sheets')
+    .update({
+      payload: {
+        ...base,
+        reviewedBy: {
+          userId: reviewer.userId,
+          name: reviewer.name,
+          designation: reviewer.designation,
+        },
+      },
+      reviewed_by: reviewer.name,
+      reviewed_at: new Date().toISOString(),
+      sheet_status: 'approved',
+    })
+    .eq('id', sheet.id)
+  if (error) throw error
 }
 
 export async function fetchCalibrationEngineerOptions(): Promise<CalibrationEngineerOption[]> {
@@ -393,6 +464,11 @@ export type MasterEquipmentForSheet = {
   range_capacity: string | null
   resolution_least_count: string | null
   accuracy_acceptance_criteria: string | null
+  class_of_instrument?: string | null
+  calibration_temperature?: string | null
+  calibration_humidity?: string | null
+  /** Canonical scientific text, e.g. 11.5e-6 (/°C). Used as α in temp-corrected formulas. */
+  coefficient_of_thermal_expansion?: string | null
   calibration_frequency: string | null
   last_calibration_date: string | null
   next_calibration_due: string | null
@@ -400,6 +476,7 @@ export type MasterEquipmentForSheet = {
   calibration_certificate_uncertainty: string | null
   calibration_uncertainty_unit: string | null
   calibration_coverage_factor: string | null
+  external_calibration_agency_name?: string | null
   current_location: string | null
 }
 
@@ -412,7 +489,7 @@ export async function fetchMasterEquipmentsByIds(
   const { data, error } = await supabase
     .from('equipment_for_calibration')
     .select(
-      'id, asset_code, equipment_name, manufacturer, model_number, serial_number, equipment_status, range_capacity, resolution_least_count, accuracy_acceptance_criteria, calibration_frequency, last_calibration_date, next_calibration_due, calibration_certificate_number, calibration_certificate_uncertainty, calibration_uncertainty_unit, calibration_coverage_factor, current_location',
+      'id, asset_code, equipment_name, manufacturer, model_number, serial_number, equipment_status, range_capacity, resolution_least_count, accuracy_acceptance_criteria, class_of_instrument, calibration_temperature, calibration_humidity, coefficient_of_thermal_expansion, calibration_frequency, last_calibration_date, next_calibration_due, calibration_certificate_number, calibration_certificate_uncertainty, calibration_uncertainty_unit, calibration_coverage_factor, external_calibration_agency_name, current_location',
     )
     .in('id', unique)
   if (error) throw error

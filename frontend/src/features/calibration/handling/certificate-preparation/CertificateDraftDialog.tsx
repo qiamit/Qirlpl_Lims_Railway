@@ -7,7 +7,7 @@ import {
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from 'react'
-import { ArrowRight, FileCheck, RefreshCw, Save } from 'lucide-react'
+import { ArrowRight, Download, FileCheck, Printer, RefreshCw, Save } from 'lucide-react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -16,13 +16,20 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   calculateNextDueDate,
+  formatManualDaysFrequency,
   isPresetFrequency,
+  parseManualIntervalDays,
   parseStoredFrequency,
   type Frequency,
 } from '@/features/calibration/equipment-for-calibration/types'
 import {
+  formatThermalExpansionDisplay,
+  parseThermalExpansion,
+} from '@/features/calibration/equipment-for-calibration/thermalExpansion'
+import {
   masterEquipmentIdsFromTabs,
   parseMeasurementRanges,
+  resolveEquipmentModeOfCalibration,
   type MeasurementRangeStored,
 } from '@/features/calibration/equipments/types'
 import {
@@ -32,6 +39,7 @@ import {
 } from '@/features/calibration/equipments/certificateTemplateTypes'
 import {
   parseRawDataSheetPayload,
+  getEnvironmentAverageParamValue,
   type RawDataEnvironmentConditions,
   type RawDataSheetPayload,
 } from '@/features/calibration/rawDataSheetTypes'
@@ -42,6 +50,7 @@ import {
   fetchMasterEquipmentsByIds,
   fetchRawDataSheetByJobId,
   fetchSrfSummaryForSheet,
+  fetchUserProfileBrief,
   resolveEquipmentMasterForJob,
   suggestCalibrationCertificateNumber,
   updateCalibrationJobCertificateDraft,
@@ -59,14 +68,72 @@ import {
   formatNablCertificateNo,
   type ManagementDocLetterhead,
 } from '@/features/management-docs/fetchManagementDocLetterhead'
+import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/report-preparation/reportScopeConfig'
 import {
   DEFAULT_CERTIFICATE_NOTES,
   DEFAULT_CERTIFICATE_REMARKS,
   EMPTY_CERTIFICATE_DRAFT,
+  applyCertificateNotesMinLoad,
+  composeCustomerContactDetails,
+  formatCertificateMinLoadDisplay,
   parseCertificateDraft,
+  parseCustomerContactDetails,
   serializeCertificateDraft,
   type CertificateDraftPayload,
 } from './certificateDraftTypes'
+import { waitForPrintDocumentReady } from '@/features/sample-handling/report-preparation/waitForPrintDocumentReady'
+import { downloadCertificatePagesAsPdf } from './downloadCertificatePagesAsPdf'
+
+/** Wait until certificate letterhead / footer images inside host are decoded. */
+async function waitForCertificateImagesReady(
+  host: HTMLElement | null,
+  timeoutMs = 15000,
+): Promise<void> {
+  if (!host) {
+    await waitForPrintDocumentReady(document, timeoutMs)
+    return
+  }
+  const images = Array.from(host.querySelectorAll('img'))
+  await Promise.all(
+    images.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete && img.naturalWidth > 0) {
+            resolve()
+            return
+          }
+          img.loading = 'eager'
+          const src = img.currentSrc || img.src
+          if (src) {
+            // Kick decode for images that were covered / deferred
+            img.src = src
+          }
+          const done = () => resolve()
+          img.addEventListener('load', done, { once: true })
+          img.addEventListener('error', done, { once: true })
+          if (typeof img.decode === 'function') {
+            void img.decode().then(done).catch(done)
+          }
+          window.setTimeout(done, timeoutMs)
+        }),
+    ),
+  )
+  await waitForPrintDocumentReady(document, Math.min(timeoutMs, 5000))
+  await new Promise<void>((r) => window.setTimeout(r, 200))
+}
+
+
+/** Lab Settings → Letter Head Templates (same as Certificate Format). */
+const CALIBRATION_LETTERHEAD_HEADER = 'NABL Letter Head for Calibration'
+const CALIBRATION_LETTERHEAD_FOOTER = 'General Letter Footer'
+
+function formatCertEnvNumber(raw: string | null | undefined): string {
+  const t = String(raw ?? '').trim()
+  if (!t) return ''
+  const n = Number.parseFloat(t.replace(/,/g, ''))
+  if (!Number.isFinite(n)) return t
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
 
 function NablScopeQrMark({
   imageUrl,
@@ -126,6 +193,22 @@ function CertificateLetterhead({ lh }: { lh: ManagementDocLetterhead | null }) {
   const qrPayload =
     (lh?.nablScopeQrPayload ?? '').trim() ||
     `NABL India Certificate No. ${nablCertDisplay} — https://nabl-india.org/`
+  const headerImageUrl = (lh?.headerUrl ?? '').trim() || null
+
+  /** Lab Settings → Letter Head Templates → "NABL Letter Head for Calibration" */
+  if (headerImageUrl) {
+    return (
+      <header className="certificate-page-header w-full shrink-0 bg-white pb-1">
+        <img
+          src={headerImageUrl}
+          alt={`${companyName} — NABL Letter Head for Calibration`}
+          className="-ml-[10mm] -mr-[5mm] w-[calc(100%+15mm)] max-w-none object-contain object-top"
+          loading="eager"
+          decoding="sync"
+        />
+      </header>
+    )
+  }
 
   return (
     <header className="certificate-page-header w-full shrink-0 bg-white pb-1">
@@ -203,6 +286,27 @@ function CertificatePageFooter({
 }) {
   const firmName = (lh?.labName ?? '').trim() || 'Laboratory'
   const { address, contact } = formatLabFooterParts(lh)
+  const footerImageUrl = (lh?.footerUrl ?? '').trim() || null
+
+  /** Letter Head Templates → Footer image (Lab Settings) — same as Certificate Format. */
+  if (footerImageUrl) {
+    return (
+      <footer className="certificate-page-footer relative mt-auto shrink-0">
+        <div className="relative -ml-[10mm] -mr-[5mm] w-[calc(100%+15mm)]">
+          <img
+            src={footerImageUrl}
+            alt={`${firmName} letterhead footer`}
+            className="w-full max-w-none object-contain object-bottom"
+            loading="eager"
+            decoding="sync"
+          />
+          <p className="pointer-events-none absolute bottom-1 right-[5mm] whitespace-nowrap text-right text-[9px] font-medium leading-none text-slate-800 sm:text-[10px]">
+            Page No : {pageLabel.trim() || '—'}
+          </p>
+        </div>
+      </footer>
+    )
+  }
 
   return (
     <footer className="certificate-page-footer mt-auto shrink-0 border-t border-slate-400 pt-1.5">
@@ -223,7 +327,7 @@ function CertificatePageFooter({
           {contact || '\u00a0'}
         </p>
         <p className="absolute bottom-0 right-0 whitespace-nowrap text-[9px] font-medium text-slate-800 sm:text-[10px]">
-          Page No :- {pageLabel.trim() || '—'}
+          Page No : {pageLabel.trim() || '—'}
         </p>
       </div>
     </footer>
@@ -269,18 +373,18 @@ function CertificateNumberUlrBar({
           <Label htmlFor={certId} className="sr-only">
             Certificate Number
           </Label>
-          <span className="shrink-0 text-xs font-medium text-slate-900 sm:text-sm">
+          <span className="shrink-0 text-xs font-bold text-slate-900 sm:text-sm">
             Certificate No
           </span>
-          <span className={certMetaSepClass} aria-hidden>
-            :-
+          <span className={cn(certMetaSepClass, 'font-bold')} aria-hidden>
+            :
           </span>
           <Input
             id={certId}
             value={certificateNumber}
             onChange={(e) => onCertificateNumberChange(e.target.value)}
             placeholder="e.g. QI/CC/2026/0001"
-            className={cn(certCellSingleLineClass, 'min-w-0 flex-1')}
+            className={cn(certCellSingleLineClass, 'min-w-0 flex-1 font-bold')}
             aria-label="Certificate Number"
           />
           <Button
@@ -300,16 +404,32 @@ function CertificateNumberUlrBar({
             {autoNumbering ? '…' : 'Auto'}
           </Button>
         </div>
-        <div className="flex min-h-[32px] items-center justify-end gap-1 bg-white p-1.5">
-          <div className="flex min-w-0 max-w-full items-center gap-1">
+        <div className="flex min-h-[32px] w-full items-center justify-between gap-2 bg-white p-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="certificate-draft-no-print h-7 shrink-0 gap-1 px-2 text-[10px]"
+            disabled={controlsDisabled || autoUlrNumbering}
+            onClick={onAutoUlr}
+            aria-label="Auto create NABL ULR number"
+          >
+            <RefreshCw
+              size={12}
+              className={cn(autoUlrNumbering && 'animate-spin')}
+              aria-hidden
+            />
+            {autoUlrNumbering ? '…' : 'Auto'}
+          </Button>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
             <Label htmlFor={ulrId} className="sr-only">
               ULR Number
             </Label>
-            <span className="shrink-0 text-xs font-medium text-slate-900 sm:text-sm">
-              ULR No
+            <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-900 sm:text-sm">
+              ULR
             </span>
-            <span className={certMetaSepClass} aria-hidden>
-              :-
+            <span className="shrink-0 select-none text-xs font-bold text-slate-900 sm:text-sm" aria-hidden>
+              :
             </span>
             <Input
               id={ulrId}
@@ -317,26 +437,13 @@ function CertificateNumberUlrBar({
               onChange={(e) => onUlrNumberChange(sanitizeNablUlrInput(e.target.value))}
               placeholder={ulrPlaceholder}
               maxLength={19}
-              className={cn(certCellSingleLineClass, 'min-w-0 w-[12.5rem]')}
+              className={cn(
+                certCellSingleLineClass,
+                'm-0 h-7 w-[19ch] min-w-0 border-0 bg-transparent p-0 text-left text-xs font-bold shadow-none focus-visible:ring-0 sm:text-sm',
+              )}
               aria-label="ULR Number"
               title="NABL 18-position ULR (19 chars): CC/TC + cert + YY + location + 8-digit serial + F"
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="certificate-draft-no-print h-7 shrink-0 gap-1 px-2 text-[10px]"
-              disabled={controlsDisabled || autoUlrNumbering}
-              onClick={onAutoUlr}
-              aria-label="Auto create NABL ULR number"
-            >
-              <RefreshCw
-                size={12}
-                className={cn(autoUlrNumbering && 'animate-spin')}
-                aria-hidden
-              />
-              {autoUlrNumbering ? '…' : 'Auto'}
-            </Button>
           </div>
         </div>
       </div>
@@ -365,9 +472,9 @@ function CertificateLetterPage({
   return (
     <article
       className={cn(
-        'certificate-letter-sheet mx-auto flex w-[8.5in] max-w-full flex-col gap-1.5',
+        'certificate-letter-sheet mx-auto flex w-[8.5in] max-w-full flex-col gap-1.5 leading-none [&_*]:leading-none',
         grow ? 'certificate-letter-sheet--grow min-h-[11in]' : 'h-[11in]',
-        'border-2 border-slate-800 bg-white pl-[10mm] pr-[5mm] pt-[calc(0.5in-5mm)] pb-3',
+        'border-2 border-slate-800 bg-white pl-[10mm] pr-[5mm] pt-[2mm] pb-[2mm]',
         'shadow-lg outline outline-1 outline-offset-[3px] outline-slate-800 print:shadow-none',
         !isLast && 'certificate-letter-sheet--break',
       )}
@@ -375,14 +482,9 @@ function CertificateLetterPage({
     >
       <CertificateLetterhead lh={lh} />
       {numberBar}
-      <div
-        className={cn(
-          'flex min-h-0 flex-1 flex-col gap-1.5',
-          !grow && 'overflow-hidden',
-        )}
-      >
-        {children}
-      </div>
+      {/* Natural height — do not flex-grow, or SectionCards stretch with empty space */}
+      <div className="flex w-full flex-col gap-1.5">{children}</div>
+      <div className="min-h-0 flex-1" aria-hidden />
       <CertificatePageFooter lh={lh} pageLabel={pageLabel} />
     </article>
   )
@@ -421,6 +523,17 @@ function parseNumericMagnitude(raw: string | null | undefined): number | null {
 
 function formatMagnitudeDisplay(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
+
+/** Parse instrument max capacity from strings like "0 - 1000 kN" or "1000 kN". */
+function parseInstrumentMaxCapacity(rangeText: string | null | undefined): number | null {
+  const t = String(rangeText ?? '').trim()
+  if (!t) return null
+  const nums = [...t.matchAll(/-?\d+(?:\.\d+)?/g)]
+    .map((m) => Number.parseFloat(m[0]!))
+    .filter((n) => Number.isFinite(n))
+  if (nums.length === 0) return null
+  return Math.max(...nums.map((n) => Math.abs(n)))
 }
 
 function findCertColumnByPatterns(
@@ -538,25 +651,43 @@ function collectMasterIdsFromEquipment(
   return out
 }
 
-function computeDueFromFrequency(calDate: string, frequency: string): string {
-  const date = calDate.trim().slice(0, 10)
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return ''
-  const freq = parseStoredFrequency(frequency)
-  if (!isPresetFrequency(freq)) return ''
-  return calculateNextDueDate(date, freq as Frequency) || ''
+function isoDateOnly(value: string | null | undefined): string {
+  const d = String(value ?? '').trim().slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : ''
 }
 
-function formatCustomerContactDetails(srf: SrfSummaryForSheet | null): string {
-  if (!srf) return ''
-  const lines: string[] = []
-  const person = (srf.contact_person ?? '').trim()
-  const phone = (srf.contact_phone ?? '').trim()
-  const email = (srf.contact_email ?? srf.contact_number_mail ?? '').trim()
-  if (person && phone) lines.push(`${person} - ${phone}`)
-  else if (person) lines.push(person)
-  else if (phone) lines.push(phone)
-  if (email && email !== phone) lines.push(email)
-  return lines.join('\n')
+/**
+ * Due Date = Calibration Date + Frequency (preset or "N Days" from Raw Data Sheet).
+ * Default frequency Yearly when blank.
+ */
+function computeDueFromFrequency(calDate: string, frequency: string): string {
+  const date = isoDateOnly(calDate)
+  if (!date) return ''
+  const raw = frequency.trim() || 'Yearly'
+  const parsed = parseStoredFrequency(raw)
+  const manualDays = parseManualIntervalDays(raw) ?? parseManualIntervalDays(parsed)
+  const forCalc: Frequency =
+    manualDays != null
+      ? formatManualDaysFrequency(manualDays)
+      : isPresetFrequency(parsed)
+        ? parsed
+        : isPresetFrequency(raw)
+          ? (raw as Frequency)
+          : 'Yearly'
+  return calculateNextDueDate(date, forCalc) || ''
+}
+
+function srfCustomerContactFields(srf: SrfSummaryForSheet | null): {
+  person: string
+  mobile: string
+  email: string
+} {
+  if (!srf) return { person: '', mobile: '', email: '' }
+  return {
+    person: (srf.contact_person ?? '').trim(),
+    mobile: (srf.contact_phone ?? '').trim(),
+    email: (srf.contact_email ?? '').trim(),
+  }
 }
 
 /** Continuous-text certificate field styles. */
@@ -566,14 +697,90 @@ const certCellInputClass =
 const certCellSingleLineClass =
   'h-7 w-full border-0 bg-transparent px-0 text-xs font-medium text-slate-900 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-sm'
 
-/** Right-meta label column — keeps `:-` on one vertical line. */
-const certMetaLabelClass =
-  'whitespace-nowrap text-xs font-medium text-slate-900 sm:text-sm'
+/** Right-side certificate meta: Label | : | Value (left / centre / right). */
+const certMetaBlockClass =
+  'ml-auto grid w-full max-w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0 leading-none'
 
-const certMetaGridClass =
-  'grid grid-cols-[max-content_max-content_minmax(0,1fr)] items-center gap-x-1 gap-y-0'
+/** Uniform row height — same as Dated lines (no tall inputs stretching gaps). */
+const certMetaRowH = 'h-4 min-h-4 max-h-4'
 
-const certMetaSepClass = 'select-none text-xs font-medium text-slate-900 sm:text-sm'
+const certMetaLabelClass = cn(
+  certMetaRowH,
+  'flex items-center justify-self-start text-left text-xs font-medium leading-none text-slate-900 sm:text-sm',
+)
+
+const certMetaSepClass = cn(
+  certMetaRowH,
+  'flex select-none items-center justify-self-center text-center text-xs font-medium leading-none text-slate-900 sm:text-sm',
+)
+
+const certMetaValueTextClass = cn(
+  certMetaRowH,
+  'flex w-full min-w-0 items-center justify-end text-right text-xs font-medium leading-none text-slate-900 sm:text-sm',
+)
+
+/** Value-column input — fills right cell, text right-aligned. */
+function CertMetaInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  'aria-label': ariaLabel,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  'aria-label': string
+}) {
+  return (
+    <input
+      id={id}
+      type="text"
+      value={value}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.value)}
+      className={cn(
+        certMetaRowH,
+        'm-0 w-full min-w-0 border-0 bg-transparent p-0 text-right text-xs font-medium leading-none text-slate-900 shadow-none outline-none ring-0 focus:outline-none focus:ring-0 sm:text-sm',
+      )}
+    />
+  )
+}
+
+function CertMetaRow({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string
+  htmlFor?: string
+  children: ReactNode
+}) {
+  return (
+    <>
+      {htmlFor ? (
+        <Label htmlFor={htmlFor} className={certMetaLabelClass}>
+          {label}
+        </Label>
+      ) : (
+        <span className={certMetaLabelClass}>{label}</span>
+      )}
+      <span className={certMetaSepClass} aria-hidden>
+        :
+      </span>
+      <div
+        className={cn(
+          certMetaRowH,
+          'flex min-w-0 items-center justify-end justify-self-stretch text-right',
+        )}
+      >
+        {children}
+      </div>
+    </>
+  )
+}
 
 /** Textarea that grows with content — no internal scrollbar. */
 function CertAutoGrowTextarea({
@@ -622,7 +829,6 @@ function CertAutoGrowTextarea({
   )
 }
 
-/** Escape text for safe use inside contentEditable HTML. */
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -632,35 +838,71 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Continuous "Customer Name:- **Firm**, Address…" editor.
- * Firm name stays bold; address flows after the comma (wraps as one paragraph).
+ * Certificate customer block (continuous):
+ * Customer Name: Firm, Address…
+ * Contact Person (Mobile)
+ * Email
  */
-function CustomerNameAddressContinuous({
+function CustomerBlockContinuous({
   name,
   address,
+  person,
+  mobile,
+  email,
   onChange,
 }: {
   name: string
   address: string
-  onChange: (next: { name: string; address: string }) => void
+  person: string
+  mobile: string
+  email: string
+  onChange: (next: {
+    name: string
+    address: string
+    person: string
+    mobile: string
+    email: string
+  }) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const focusedRef = useRef(false)
 
-  const buildHtml = useCallback((n: string, a: string) => {
-    const firm = escapeHtml(n.trim())
-    const addr = escapeHtml(a.trim().replace(/\s*\n+\s*/g, ', '))
-    if (!firm && !addr) {
-      return '<span class="text-slate-400">Customer Name:- Company Name, Address…</span>'
-    }
-    return `Customer Name:- <strong class="font-bold">${firm || '—'}</strong>, ${addr}`
-  }, [])
+  const buildHtml = useCallback(
+    (n: string, a: string, p: string, m: string, e: string) => {
+      const firm = escapeHtml(n.trim())
+      const addr = escapeHtml(a.trim().replace(/\s*\n+\s*/g, ', '))
+      const contact = escapeHtml(p.trim())
+      const phone = escapeHtml(m.trim())
+      const mail = escapeHtml(e.trim())
+
+      if (!firm && !addr && !contact && !phone && !mail) {
+        return (
+          '<span class="text-slate-400">' +
+          'Customer Name: Company Name, Address…<br/>' +
+          'Contact Person (Mobile)<br/>' +
+          'Email' +
+          '</span>'
+        )
+      }
+
+      const line1 =
+        `Customer Name: <strong class="font-semibold">${firm || '—'}</strong>` +
+        (addr ? `, ${addr}` : '')
+      const line2 =
+        contact && phone
+          ? `${contact} (${phone})`
+          : contact || (phone ? `(${phone})` : '')
+      const line3 = mail
+      return [line1, line2, line3].filter(Boolean).join('<br/>')
+    },
+    [],
+  )
 
   const syncFromProps = useCallback(() => {
     const el = ref.current
     if (!el || focusedRef.current) return
-    el.innerHTML = buildHtml(name, address)
-  }, [address, buildHtml, name])
+    el.innerHTML = buildHtml(name, address, person, mobile, email)
+  }, [address, buildHtml, email, mobile, name, person])
 
   useEffect(() => {
     syncFromProps()
@@ -673,36 +915,73 @@ function CustomerNameAddressContinuous({
     let firm = (strong?.textContent ?? '').trim()
     if (firm === '—') firm = ''
 
-    let rest = (el.innerText ?? '').replace(/\u00a0/g, ' ')
-    rest = rest.replace(/^Customer Name:-\s*/i, '')
-    if (firm && rest.startsWith(firm)) {
-      rest = rest.slice(firm.length)
-    }
-    rest = rest.replace(/^[\s,]*/, '').trim()
+    const lines = (el.innerText ?? '')
+      .replace(/\u00a0/g, ' ')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
 
-    onChange({ name: firm, address: rest })
+    let addr = ''
+    let contact = ''
+    let phone = ''
+    let mail = ''
+
+    const first = lines[0] ?? ''
+    let restFirst = first.replace(/^Customer Name(?::-|:)\s*/i, '')
+    if (firm && restFirst.startsWith(firm)) {
+      restFirst = restFirst.slice(firm.length)
+    }
+    addr = restFirst.replace(/^[\s,]*/, '').trim()
+
+    const remaining = lines.slice(1)
+    for (const line of remaining) {
+      const emailMatch = line.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+      if (emailMatch && !mail) {
+        mail = emailMatch[0]
+        continue
+      }
+      if (!contact && !phone) {
+        const withPhone = line.match(/^(.+?)\s*\((.+)\)\s*$/)
+        if (withPhone) {
+          contact = withPhone[1]!.trim()
+          phone = withPhone[2]!.trim()
+        } else {
+          contact = line
+        }
+      } else if (!mail) {
+        mail = line
+      }
+    }
+
+    onChange({
+      name: firm,
+      address: addr,
+      person: contact,
+      mobile: phone,
+      email: mail,
+    })
   }, [onChange])
 
   return (
     <div
       ref={ref}
-      id="cert-customer-name-address"
+      id="cert-customer-block"
       role="textbox"
       aria-multiline="true"
-      aria-label="Customer Name and Address"
+      aria-label="Customer name, address and contact"
       contentEditable
       suppressContentEditableWarning
       className={cn(
         'w-full cursor-text break-words border-0 bg-transparent px-0 text-xs font-medium leading-snug text-slate-900 shadow-none outline-none sm:text-sm',
-        'relative z-0 h-auto min-h-[1.25rem]',
+        'relative z-0 block h-auto min-h-[3.5rem] overflow-visible whitespace-pre-wrap',
       )}
       onFocus={() => {
         focusedRef.current = true
         const el = ref.current
         if (!el) return
-        if (!name.trim() && !address.trim()) {
+        if (!name.trim() && !address.trim() && !person.trim() && !mobile.trim() && !email.trim()) {
           el.innerHTML =
-            'Customer Name:- <strong class="font-bold"></strong>,&nbsp;'
+            'Customer Name: <strong class="font-semibold"></strong>,&nbsp;<br/><br/>'
         }
       }}
       onBlur={() => {
@@ -713,31 +992,49 @@ function CustomerNameAddressContinuous({
   )
 }
 
-function DucFieldCells({ label, value }: { label: string; value: string }) {
+function DucFieldLine({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <span className={cn(certMetaLabelClass, 'py-0.5')}>{label}</span>
-      <span className={cn(certMetaSepClass, 'py-0.5')} aria-hidden>
-        :-
+      <span className="flex items-center justify-self-start text-left text-xs font-medium leading-none text-slate-900 sm:text-sm">
+        {label}
       </span>
-      <span className="min-w-0 break-words py-0.5 text-xs font-medium text-slate-900 sm:text-sm">
+      <span
+        className="flex select-none items-center justify-self-center text-center text-xs font-medium leading-none text-slate-900 sm:text-sm"
+        aria-hidden
+      >
+        :
+      </span>
+      <span className="flex w-full min-w-0 items-center justify-end justify-self-stretch text-right text-xs font-medium leading-none text-slate-900 sm:text-sm">
         {cellText(value)}
       </span>
     </>
   )
 }
 
+/** Shared vertical tracks: Label | : | Value (aligned across rows). */
+const ducColumnGridClass =
+  'grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] content-center items-center gap-x-1.5 gap-y-1 leading-none'
+
 const MASTER_CERT_ROWS: Array<{
   label: string
   getValue: (master: MasterEquipmentForSheet) => string
 }> = [
   {
-    label: 'Master Equipment Name',
+    label: 'Item Description',
     getValue: (m) => (m.equipment_name ?? '').trim(),
   },
   {
     label: 'Calibration Temperature',
-    getValue: () => '',
+    getValue: (m) => (m.calibration_temperature ?? '').trim(),
+  },
+  {
+    label: 'Coefficient of Thermal Expansion',
+    getValue: (m) => {
+      const raw = (m.coefficient_of_thermal_expansion ?? '').trim()
+      if (!raw) return ''
+      const parts = parseThermalExpansion(raw)
+      return parts ? formatThermalExpansionDisplay(parts) : raw
+    },
   },
   {
     label: 'Serial Number',
@@ -747,7 +1044,7 @@ const MASTER_CERT_ROWS: Array<{
     label: 'Capacity & Class',
     getValue: (m) => {
       const capacity = (m.range_capacity ?? '').trim()
-      const cls = (m.accuracy_acceptance_criteria ?? '').trim()
+      const cls = (m.class_of_instrument ?? m.accuracy_acceptance_criteria ?? '').trim()
       if (capacity && cls) return `${capacity} / ${cls}`
       return capacity || cls
     },
@@ -765,12 +1062,12 @@ const MASTER_CERT_ROWS: Array<{
     getValue: (m) => formatDisplayDate(m.next_calibration_due),
   },
   {
-    label: 'Certificate No',
+    label: 'Calibration Cert No.',
     getValue: (m) => (m.calibration_certificate_number ?? '').trim(),
   },
   {
     label: 'Calibrated By',
-    getValue: () => '',
+    getValue: (m) => (m.external_calibration_agency_name ?? '').trim(),
   },
 ]
 
@@ -789,7 +1086,7 @@ function SectionCard({
   children: ReactNode
 }) {
   return (
-    <section className="overflow-hidden border border-slate-300 bg-white break-inside-avoid">
+    <section className="h-fit w-full shrink-0 overflow-hidden border border-slate-300 bg-white break-inside-avoid">
       <div className="border-b border-slate-300 bg-slate-100 px-3 py-1.5">
         {eyebrow ? (
           <p className="mb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-500">
@@ -807,7 +1104,7 @@ function SectionCard({
           ) : null}
         </div>
       </div>
-      <div className={contentClassName ?? 'p-2.5 sm:p-3'}>{children}</div>
+      <div className={cn('h-fit', contentClassName ?? 'p-2')}>{children}</div>
     </section>
   )
 }
@@ -817,16 +1114,23 @@ export function CertificateDraftDialog({
   open,
   onOpenChange,
   onIssueAndForward,
+  autoPrint = false,
+  autoDownload = false,
 }: {
   job: CalibrationJobRow | null
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Persist draft then forward job to Certificates stage. */
   onIssueAndForward?: (job: CalibrationJobRow) => void | Promise<void>
+  /** After load completes, open the browser print dialog. */
+  autoPrint?: boolean
+  /** After load completes, download the certificate PDF directly. */
+  autoDownload?: boolean
 }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [issuing, setIssuing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [autoNumbering, setAutoNumbering] = useState(false)
   const [autoUlrNumbering, setAutoUlrNumbering] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -839,8 +1143,16 @@ export function CertificateDraftDialog({
   const [certTemplate, setCertTemplate] = useState<CalibrationCertificateTemplate>(() =>
     defaultCalibrationCertificateTemplate(),
   )
-
+  const [modeOfCalibration, setModeOfCalibration] = useState('')
+  const pagesHostRef = useRef<HTMLDivElement | null>(null)
+  const autoDownloadFiredRef = useRef(false)
+  const autoPrintFiredRef = useRef(false)
+  const onOpenChangeRef = useRef(onOpenChange)
+  onOpenChangeRef.current = onOpenChange
+  const silentMode = autoPrint
+  // autoDownload uses the same full certificate UI as View Cert so PDF matches preview.
   const load = useCallback(async (activeJob: CalibrationJobRow) => {
+    // Reset draft UI state before loading job data (no Method Used on DUC).
     setLoading(true)
     setError(null)
     setMessage(null)
@@ -848,11 +1160,12 @@ export function CertificateDraftDialog({
     setMasters([])
     setLetterhead(null)
     setCertTemplate(defaultCalibrationCertificateTemplate())
+    setModeOfCalibration('')
     setDraft({ ...EMPTY_CERTIFICATE_DRAFT })
     setEquipmentLabel(activeJob.equipment_label)
 
     try {
-      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lh] = await Promise.all([
+      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lhBase] = await Promise.all([
         resolveEquipmentMasterForJob(activeJob),
         activeJob.service_request_id
           ? fetchSrfSummaryForSheet(activeJob.service_request_id, {
@@ -865,6 +1178,23 @@ export function CertificateDraftDialog({
         suggestCalibrationCertificateNumber(),
         fetchManagementDocLetterhead().catch(() => null),
       ])
+
+      let lh = lhBase
+      try {
+        const named = await resolveNamedLetterheadTemplates(
+          CALIBRATION_LETTERHEAD_HEADER,
+          CALIBRATION_LETTERHEAD_FOOTER,
+        )
+        if (lh) {
+          lh = {
+            ...lh,
+            headerUrl: named.headerUrl ?? lh.headerUrl,
+            footerUrl: named.footerUrl ?? lh.footerUrl,
+          }
+        }
+      } catch {
+        // keep base letterhead
+      }
 
       let ulrPrefill = ''
       try {
@@ -882,6 +1212,12 @@ export function CertificateDraftDialog({
 
       const template = resolveCertificateTemplateFromEquipment(equipment)
       setCertTemplate(template)
+      setModeOfCalibration(
+        resolveEquipmentModeOfCalibration(
+          parseMeasurementRanges(equipment?.measurement_ranges),
+          '',
+        ),
+      )
 
       const parsedSheet = sheet ? parseRawDataSheetPayload(sheet.payload) : null
       setPayload(parsedSheet)
@@ -902,18 +1238,106 @@ export function CertificateDraftDialog({
 
       const existing = parseCertificateDraft(storedDraft)
       const eqFields = parseJobEquipmentFields(activeJob)
+      const frequency = eqFields.frequency.trim() || 'Yearly'
+      // Calibration Date = day Raw Data Sheet was filled/seeded (fallback today).
+      const sheetFillDate = isoDateOnly(parsedSheet?.seededAt)
       const calDate =
+        sheetFillDate ||
         existing.dateOfCalibration ||
-        (activeJob.stage_entered_at ?? '').slice(0, 10) ||
         todayIsoDate()
+      // Due Date always from Calibration Date + Raw Data Sheet Frequency (default Yearly).
       const due =
+        computeDueFromFrequency(calDate, frequency) ||
         existing.dueDateOfCalibration ||
-        computeDueFromFrequency(calDate, eqFields.frequency)
-      const contactPrefill =
-        existing.customerContactDetails || formatCustomerContactDetails(srfRow)
+        ''
+      const srfContact = srfCustomerContactFields(srfRow)
+      const existingContact =
+        existing.customerContactPerson ||
+        existing.customerMobile ||
+        existing.customerEmail
+          ? {
+              person: existing.customerContactPerson,
+              mobile: existing.customerMobile,
+              email: existing.customerEmail,
+            }
+          : existing.customerContactDetails
+            ? parseCustomerContactDetails(existing.customerContactDetails)
+            : srfContact
+      const contactPerson = existingContact.person || srfContact.person
+      const contactMobile = existingContact.mobile || srfContact.mobile
+      const contactEmail = existingContact.email || srfContact.email
+      const contactPrefill = composeCustomerContactDetails({
+        person: contactPerson,
+        mobile: contactMobile,
+        email: contactEmail,
+      })
 
       const defaultNotes = template.defaultNotes.trim() || DEFAULT_CERTIFICATE_NOTES
       const defaultRemarks = template.defaultRemarks.trim() || DEFAULT_CERTIFICATE_REMARKS
+
+      const loadCol =
+        (parsedSheet?.template.columns ?? []).find((c) =>
+          /load/i.test(`${c.label} ${c.key}`),
+        ) ??
+        (parsedSheet?.template.columns ?? []).find((c) =>
+          /k\s*n/i.test(`${c.label} ${c.key}`),
+        ) ??
+        null
+      const loadNums: number[] = []
+      if (loadCol) {
+        for (const row of parsedSheet?.rows ?? []) {
+          const n = Number.parseFloat(
+            String(row.values[loadCol.key] ?? '').replace(/,/g, '').trim(),
+          )
+          if (Number.isFinite(n)) loadNums.push(n)
+        }
+      }
+      const unitMatch = loadCol
+        ? `${loadCol.label} ${loadCol.key}`.match(
+            /\b(kN|kn|N|kgf|kg|MPa|psi|bar|ton|t)\b/i,
+          )
+        : null
+      const loadUnit = unitMatch ? unitMatch[1]!.replace(/^kn$/i, 'kN') : 'kN'
+      const seededMinLoad =
+        loadNums.length > 0
+          ? formatCertificateMinLoadDisplay(Math.min(...loadNums), loadUnit)
+          : ''
+      const seedNotes = existing.notes.trim() ? existing.notes : defaultNotes
+
+      // Calibrated By = Raw Data entry person (fallback: allocated engineer).
+      // Authorized Signatory = Raw Data reviewer (Review Data forward).
+      const entryBy = parsedSheet?.entryBy
+      let calibratedName =
+        existing.calibratedByName.trim() ||
+        (entryBy?.name ?? '').trim() ||
+        (activeJob.allocated_engineer_name ?? '').trim()
+      let calibratedDesig =
+        existing.calibratedByDesignation.trim() ||
+        (entryBy?.designation ?? '').trim()
+      if (
+        !calibratedDesig &&
+        !existing.calibratedByDesignation.trim() &&
+        activeJob.allocated_engineer_id
+      ) {
+        try {
+          const eng = await fetchUserProfileBrief(activeJob.allocated_engineer_id)
+          if (eng) {
+            if (!calibratedName) calibratedName = eng.name
+            calibratedDesig = eng.designation
+          }
+        } catch {
+          // keep name-only
+        }
+      }
+
+      const reviewedBy = parsedSheet?.reviewedBy
+      let authorizedName =
+        existing.authorizedSignatoryName.trim() ||
+        (reviewedBy?.name ?? '').trim() ||
+        (sheet?.reviewed_by ?? '').trim()
+      let authorizedDesig =
+        existing.authorizedSignatoryDesignation.trim() ||
+        (reviewedBy?.designation ?? '').trim()
 
       setDraft({
         ...existing,
@@ -932,14 +1356,23 @@ export function CertificateDraftDialog({
           '',
         customerAddress:
           existing.customerAddress || (srfRow?.customer_address ?? '').trim() || '',
+        customerContactPerson: contactPerson,
+        customerMobile: contactMobile,
+        customerEmail: contactEmail,
         customerContactDetails: contactPrefill,
-        issueDate: existing.issueDate || todayIsoDate(),
+        // Issue Date = day certificate is prepared (not calibration date).
+        issueDate: existing.issueDate.trim() || todayIsoDate(),
         pageNumber: existing.pageNumber || '01 of 02',
-        workInstructionNumber: existing.workInstructionNumber || '',
+        workInstructionNumber:
+          existing.workInstructionNumber || template.workInstructionNumber || '',
         dateOfCalibration: calDate,
         dueDateOfCalibration: due,
-        notes: existing.notes.trim() ? existing.notes : defaultNotes,
+        notes: applyCertificateNotesMinLoad(seedNotes, seededMinLoad),
         remarks: existing.remarks.trim() ? existing.remarks : defaultRemarks,
+        calibratedByName: calibratedName,
+        calibratedByDesignation: calibratedDesig,
+        authorizedSignatoryName: authorizedName,
+        authorizedSignatoryDesignation: authorizedDesig,
       })
     } catch (err) {
       const msg =
@@ -957,6 +1390,133 @@ export function CertificateDraftDialog({
     void load(job)
   }, [open, job, load])
 
+  useEffect(() => {
+    if (!open) {
+      autoPrintFiredRef.current = false
+      return
+    }
+    if (!autoPrint || loading || !job) return
+
+    let cancelled = false
+    let fallbackTimer = 0
+
+    const closeAfterPrint = () => {
+      if (fallbackTimer) window.clearTimeout(fallbackTimer)
+      onOpenChangeRef.current(false)
+    }
+
+    const runPrint = async () => {
+      if (cancelled || autoPrintFiredRef.current) return
+      // Ensure pages + letterhead images are in DOM and decoded before print preview
+      const host = pagesHostRef.current
+      host?.querySelectorAll('.certificate-letter-sheet').forEach((sheet) => {
+        sheet.scrollIntoView({ block: 'nearest' })
+      })
+      await waitForCertificateImagesReady(host)
+      if (cancelled || autoPrintFiredRef.current) return
+      autoPrintFiredRef.current = true
+      window.addEventListener('afterprint', closeAfterPrint, { once: true })
+      fallbackTimer = window.setTimeout(closeAfterPrint, 120_000)
+      try {
+        window.print()
+      } catch (err) {
+        window.removeEventListener('afterprint', closeAfterPrint)
+        if (fallbackTimer) window.clearTimeout(fallbackTimer)
+        autoPrintFiredRef.current = false
+        const msg =
+          err && typeof err === 'object' && 'message' in err
+            ? String((err as { message?: string }).message)
+            : 'Unable to open print dialog'
+        setError(msg)
+      }
+    }
+
+    const t = window.setTimeout(() => {
+      void runPrint()
+    }, 400)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+      if (fallbackTimer) window.clearTimeout(fallbackTimer)
+      window.removeEventListener('afterprint', closeAfterPrint)
+    }
+  }, [open, autoPrint, loading, job?.id])
+
+  const buildPdfFilename = useCallback(() => {
+    const certNo = draft.certificateNumber.trim().replace(/\s+/g, '_')
+    const eq = (equipmentLabel || job?.equipment_label || 'Calibration_Certificate')
+      .trim()
+      .replace(/\s+/g, '_')
+    return certNo || eq || 'Calibration_Certificate'
+  }, [draft.certificateNumber, equipmentLabel, job?.equipment_label])
+
+  const buildPdfFilenameRef = useRef(buildPdfFilename)
+  buildPdfFilenameRef.current = buildPdfFilename
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!job) return
+    setDownloading(true)
+    setError(null)
+    setMessage(null)
+    try {
+      let host = pagesHostRef.current
+      for (
+        let i = 0;
+        i < 25 &&
+        (!host || host.querySelectorAll('.certificate-letter-sheet').length === 0);
+        i++
+      ) {
+        await new Promise<void>((r) => window.setTimeout(r, 100))
+        host = pagesHostRef.current
+      }
+      if (!host || host.querySelectorAll('.certificate-letter-sheet').length === 0) {
+        throw new Error('Certificate pages are not ready to download')
+      }
+      host.querySelectorAll('.certificate-letter-sheet').forEach((sheet) => {
+        sheet.scrollIntoView({ block: 'nearest' })
+      })
+      await waitForCertificateImagesReady(host)
+      await downloadCertificatePagesAsPdf(host, buildPdfFilenameRef.current())
+      if (autoDownload) {
+        onOpenChangeRef.current(false)
+        return
+      }
+      setMessage('Certificate PDF downloaded.')
+    } catch (err) {
+      const msg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message?: string }).message)
+          : 'Unable to download certificate PDF'
+      setError(msg)
+    } finally {
+      setDownloading(false)
+    }
+  }, [autoDownload, job])
+
+  const handleDownloadPdfRef = useRef(handleDownloadPdf)
+  handleDownloadPdfRef.current = handleDownloadPdf
+
+  useEffect(() => {
+    if (!open) {
+      autoDownloadFiredRef.current = false
+      return
+    }
+    if (!autoDownload || loading || !job) return
+
+    let cancelled = false
+    const t = window.setTimeout(() => {
+      if (cancelled || autoDownloadFiredRef.current) return
+      autoDownloadFiredRef.current = true
+      void handleDownloadPdfRef.current()
+    }, 700)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [open, autoDownload, loading, job?.id])
+
   const eqFields = useMemo(
     () => (job ? parseJobEquipmentFields(job) : null),
     [job],
@@ -965,19 +1525,14 @@ export function CertificateDraftDialog({
   const environment: RawDataEnvironmentConditions | null =
     payload?.environmentConditions ?? null
 
-  const ducTemperatureAtCalibration = useMemo(() => {
-    const rows = environment?.rows ?? []
-    for (const row of rows) {
-      const vals = row.values ?? {}
-      const direct = (vals.temperatureC ?? vals.temperature_c ?? '').trim()
-      if (direct) return `${direct} °C`
-      const fromKey = Object.entries(vals).find(([k, v]) =>
-        /temp/i.test(k) && v.trim(),
-      )
-      if (fromKey?.[1]?.trim()) return `${fromKey[1].trim()} °C`
-    }
-    return ''
-  }, [environment])
+  const envTemperatureAvg = useMemo(
+    () => formatCertEnvNumber(getEnvironmentAverageParamValue(environment, 'temperature')),
+    [environment],
+  )
+  const envHumidityAvg = useMemo(
+    () => formatCertEnvNumber(getEnvironmentAverageParamValue(environment, 'humidity')),
+    [environment],
+  )
 
   const ducReferredStandard = useMemo(() => {
     const m = masters[0]
@@ -994,11 +1549,11 @@ export function CertificateDraftDialog({
   ) => {
     setDraft((prev) => {
       const next = { ...prev, [key]: value }
-      if (key === 'dateOfCalibration' && eqFields?.frequency) {
-        const computed = computeDueFromFrequency(String(value), eqFields.frequency)
-        if (computed && !prev.dueDateOfCalibration) {
-          next.dueDateOfCalibration = computed
-        }
+      if (key === 'dateOfCalibration') {
+        const cal = String(value)
+        const frequency = (eqFields?.frequency ?? '').trim() || 'Yearly'
+        const computed = computeDueFromFrequency(cal, frequency)
+        if (computed) next.dueDateOfCalibration = computed
       }
       return next
     })
@@ -1136,8 +1691,34 @@ export function CertificateDraftDialog({
     const unit = unitMatch ? unitMatch[1]!.replace(/^kn$/i, 'kN') : 'kN'
     const fmt = (n: number) =>
       Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)))
-    return `Range ${fmt(min)} ${unit} - ${fmt(max)} ${unit}`
+    return `Range = ${fmt(min)} ${unit} - ${fmt(max)} ${unit}`
   }, [loadColumn, rows])
+
+  const minLoadDisplay = useMemo(() => {
+    if (!loadColumn || rows.length === 0) return ''
+    const values: number[] = []
+    for (const row of rows) {
+      const n = Number.parseFloat(
+        String(row.values[loadColumn.key] ?? '').replace(/,/g, '').trim(),
+      )
+      if (Number.isFinite(n)) values.push(n)
+    }
+    if (values.length === 0) return ''
+    const unitMatch = `${loadColumn.label} ${loadColumn.key}`.match(
+      /\b(kN|kn|N|kgf|kg|MPa|psi|bar|ton|t)\b/i,
+    )
+    const unit = unitMatch ? unitMatch[1]!.replace(/^kn$/i, 'kN') : 'kN'
+    return formatCertificateMinLoadDisplay(Math.min(...values), unit)
+  }, [loadColumn, rows])
+
+  useEffect(() => {
+    if (!minLoadDisplay) return
+    setDraft((prev) => {
+      const nextNotes = applyCertificateNotesMinLoad(prev.notes, minLoadDisplay)
+      if (nextNotes === prev.notes) return prev
+      return { ...prev, notes: nextNotes }
+    })
+  }, [minLoadDisplay])
 
   const computedCertSummary = useMemo(() => {
     const loadUnitMatch = loadColumn
@@ -1154,6 +1735,12 @@ export function CertificateDraftDialog({
     // "Reading at 0/120/360" = UTM angular positions — NOT zero-load reading.
     const isAngularReadingCol = (c: { key: string; label: string }) =>
       /reading\s*at\s*(0|120|360)\b/i.test(`${c.label} ${c.key}`)
+
+    // Prefer "Relative Resolution @ Fi" max (certificate Summary line source).
+    const relativeResolutionCol = findCertColumnByPatterns(columns, [
+      /relative\s*resolution\s*@?\s*fi/i,
+      /relative\s*resolution/i,
+    ])
 
     const zeroReadingCol = findCertColumnByPatterns(columns, [
       /max(?:imum)?\s*zero\s*reading/i,
@@ -1172,12 +1759,17 @@ export function CertificateDraftDialog({
     const expandedUCol = findCertColumnByPatterns(columns, [
       /actual\s*expanded\s*uncertain/i,
       /expanded\s*uncertain/i,
+      /actual\s*expanded\s*u\b/i,
     ])
 
-    // Prefer dedicated zero-reading column; else max |Load| deviation at lowest Load points
-    // expressed in Load unit (kN).
     let maxZero: number | null =
-      zeroReadingOk != null ? maxMagnitudeFromColumn(rows, zeroReadingOk.key) : null
+      relativeResolutionCol != null
+        ? maxMagnitudeFromColumn(rows, relativeResolutionCol.key)
+        : null
+
+    if (maxZero == null && zeroReadingOk != null) {
+      maxZero = maxMagnitudeFromColumn(rows, zeroReadingOk.key)
+    }
 
     if (maxZero == null && loadColumn && rows.length > 0) {
       const loads = rows
@@ -1189,8 +1781,6 @@ export function CertificateDraftDialog({
           const n = parseNumericMagnitude(r.values[loadColumn.key])
           return n != null && Math.abs(n - minLoad) < 1e-9
         })
-        // At lowest Load row(s), take max |Relative Indication Error| if present —
-        // still report in Load unit only when we have an absolute Load delta.
         const avgCol = findCertColumnByPatterns(columns, [
           /^average$/i,
           /\baverage\b/i,
@@ -1207,7 +1797,6 @@ export function CertificateDraftDialog({
           const std = stdCol
             ? parseNumericMagnitude(row.values[stdCol.key])
             : null
-          // Only use Average vs Load when Average is same order as Load (force units).
           if (load != null && avg != null && avg <= load * 5 + 50) {
             const d = Math.abs(avg - load)
             if (maxDelta == null || d > maxDelta) maxDelta = d
@@ -1216,45 +1805,100 @@ export function CertificateDraftDialog({
             if (maxDelta == null || d > maxDelta) maxDelta = d
           }
         }
-        // Fallback: report the lowest Load point itself (verified Load range start) in Load unit.
         maxZero = maxDelta ?? minLoad
       }
     }
 
-    const maxRelZero =
+    const maxRelZeroFromCol =
       relativeZeroCol != null
         ? maxMagnitudeFromColumn(rows, relativeZeroCol.key)
         : null
 
+    // Maximum Relative Zero Error =
+    // (max Relative Resolution @ Fi / Instrument max capacity) × 100 %
+    const relResMaxForPct =
+      relativeResolutionCol != null
+        ? maxMagnitudeFromColumn(rows, relativeResolutionCol.key)
+        : null
+    const instrumentCapacity =
+      parseInstrumentMaxCapacity(eqFields?.range ?? '') ??
+      (loadColumn && rows.length > 0
+        ? (() => {
+            const loads = rows
+              .map((r) => parseNumericMagnitude(r.values[loadColumn.key]))
+              .filter((n): n is number => n != null)
+            return loads.length > 0 ? Math.max(...loads) : null
+          })()
+        : null)
+    const maxRelZeroPct =
+      relResMaxForPct != null &&
+      instrumentCapacity != null &&
+      instrumentCapacity > 0
+        ? (relResMaxForPct / instrumentCapacity) * 100
+        : null
+
     const uCandidates: number[] = []
     if (expandedUCol) {
-      const fromRows = maxMagnitudeFromColumn(rows, expandedUCol.key)
-      if (fromRows != null) uCandidates.push(fromRows)
+      // All row values under "Actual Expanded Uncertainty" → take max later with masters.
+      for (const row of rows) {
+        const n = parseNumericMagnitude(row.values[expandedUCol.key])
+        if (n != null) uCandidates.push(n)
+      }
     }
     for (const master of masters) {
       const u = parseNumericMagnitude(master.calibration_certificate_uncertainty)
       if (u != null) uCandidates.push(u)
     }
     const maxU = uCandidates.length > 0 ? Math.max(...uCandidates) : null
+    const uUnitFromCol = (() => {
+      if (!expandedUCol) return ''
+      const fromLabel = `${expandedUCol.label} ${expandedUCol.key}`.match(
+        /\(([^)]+)\)|\b(kN|kn|N|kgf|kg|MPa|psi|%)\b/i,
+      )
+      if (fromLabel?.[1]) return fromLabel[1].trim().replace(/^kn$/i, 'kN')
+      if (fromLabel?.[2]) return fromLabel[2].replace(/^kn$/i, 'kN')
+      return ''
+    })()
     const uUnit =
       masters
         .map((m) => (m.calibration_uncertainty_unit ?? '').trim())
-        .find(Boolean) ?? ''
+        .find(Boolean) ||
+      uUnitFromCol ||
+      loadUnit
+
+    // Relative Resolution @ Fi max — keep unit from column label, else Load unit (kN).
+    const maxZeroFromRelativeResolution = relativeResolutionCol != null
+    const relativeResolutionUnit = (() => {
+      if (!relativeResolutionCol) return loadUnit
+      const fromLabel = `${relativeResolutionCol.label} ${relativeResolutionCol.key}`.match(
+        /\(([^)]+)\)|\b(kN|kn|N|kgf|kg|%|Div|div)\b/i,
+      )
+      if (fromLabel?.[1]) return fromLabel[1].trim().replace(/^kn$/i, 'kN')
+      if (fromLabel?.[2]) return fromLabel[2].replace(/^kn$/i, 'kN').replace(/^div$/i, 'Div')
+      return loadUnit
+    })()
 
     return {
-      maxZeroReadingObserved: maxZero != null ? withLoadUnit(maxZero) : '',
+      maxZeroReadingObserved:
+        maxZero != null
+          ? maxZeroFromRelativeResolution
+            ? `${formatMagnitudeDisplay(maxZero)} ${relativeResolutionUnit}`
+            : withLoadUnit(maxZero)
+          : '',
       maxRelativeZeroError:
-        maxRelZero != null ? formatMagnitudeDisplay(maxRelZero) : '',
+        maxRelZeroPct != null
+          ? `${formatMagnitudeDisplay(maxRelZeroPct)}%`
+          : maxRelZeroFromCol != null
+            ? `${formatMagnitudeDisplay(maxRelZeroFromCol)}%`
+            : '',
       uncertaintyReported:
         maxU != null
-          ? uUnit
-            ? `${formatMagnitudeDisplay(maxU)} ${uUnit}`
-            : formatMagnitudeDisplay(maxU)
+          ? `±${formatMagnitudeDisplay(maxU)}${uUnit ? ` ${uUnit}` : ''}`
           : '',
     }
-  }, [columns, rows, masters, loadColumn])
+  }, [columns, rows, masters, loadColumn, eqFields?.range])
 
-  // Prefill / refresh summary fields (replace old indicator Div auto-fill for zero reading).
+  // Prefill / refresh summary fields from Raw Data Sheet columns.
   useEffect(() => {
     if (loading) return
     setDraft((prev) => {
@@ -1263,26 +1907,36 @@ export function CertificateDraftDialog({
 
       const curZero = prev.maxZeroReadingObserved.trim()
       const computedZero = computedCertSummary.maxZeroReadingObserved
-      const looksLikeOldIndicatorAuto =
-        /^\d+(\.\d+)?$/.test(curZero) && !/\b(kN|N|kgf|kg)\b/i.test(curZero)
-      if (
-        computedZero &&
-        (!curZero || looksLikeOldIndicatorAuto || curZero !== computedZero)
-      ) {
-        // Always keep Maximum Zero Reading Observed in Load unit when we have a computed value.
-        if (!curZero || looksLikeOldIndicatorAuto) {
+      const looksLikeAutoNumeric =
+        /^\d+(\.\d+)?(\s*(kN|N|kgf|kg|%|Div))?$/i.test(curZero)
+      if (computedZero && (!curZero || looksLikeAutoNumeric)) {
+        if (curZero !== computedZero) {
           next.maxZeroReadingObserved = computedZero
           changed = true
         }
       }
 
-      if (!prev.maxRelativeZeroError.trim() && computedCertSummary.maxRelativeZeroError) {
-        next.maxRelativeZeroError = computedCertSummary.maxRelativeZeroError
-        changed = true
+      if (
+        computedCertSummary.maxRelativeZeroError &&
+        (!prev.maxRelativeZeroError.trim() ||
+          /^\d+(\.\d+)?%?$/i.test(prev.maxRelativeZeroError.trim()))
+      ) {
+        if (prev.maxRelativeZeroError.trim() !== computedCertSummary.maxRelativeZeroError) {
+          next.maxRelativeZeroError = computedCertSummary.maxRelativeZeroError
+          changed = true
+        }
       }
-      if (!prev.uncertaintyReported.trim() && computedCertSummary.uncertaintyReported) {
-        next.uncertaintyReported = computedCertSummary.uncertaintyReported
-        changed = true
+      if (
+        computedCertSummary.uncertaintyReported &&
+        (!prev.uncertaintyReported.trim() ||
+          /^[±+]?\s*\d+(\.\d+)?(\s*(kN|N|kgf|kg|%))?$/i.test(
+            prev.uncertaintyReported.trim(),
+          ))
+      ) {
+        if (prev.uncertaintyReported.trim() !== computedCertSummary.uncertaintyReported) {
+          next.uncertaintyReported = computedCertSummary.uncertaintyReported
+          changed = true
+        }
       }
       return changed ? next : prev
     })
@@ -1291,52 +1945,196 @@ export function CertificateDraftDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="certificate-draft-dialog !flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-[#e8eaed] p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100 print:static print:h-auto print:max-h-none print:overflow-visible print:bg-white"
+        data-certificate-draft-preview=""
+        className={cn(
+          'certificate-draft-dialog !flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none',
+          silentMode
+            ? 'bg-white'
+            : 'bg-[#e8eaed] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100',
+        )}
         layer="nested"
         aria-describedby={undefined}
+        showCloseButton={!silentMode}
+        onEscapeKeyDown={(e) => {
+          if (silentMode && downloading) e.preventDefault()
+        }}
+        onPointerDownOutside={(e) => {
+          if (silentMode) e.preventDefault()
+        }}
       >
         <style>{`
           @media print {
-            @page { size: letter; margin: 0; }
-            body * { visibility: hidden !important; }
-            .certificate-draft-dialog,
-            .certificate-draft-dialog * { visibility: visible !important; }
-            .certificate-draft-dialog {
-              position: static !important;
-              inset: auto !important;
-              width: auto !important;
-              height: auto !important;
-              max-height: none !important;
-              overflow: visible !important;
-              background: white !important;
-              transform: none !important;
+            @page {
+              size: letter;
+              margin: 0;
             }
-            .certificate-draft-no-print { display: none !important; }
-            .certificate-letter-sheet {
+
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #fff !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            body * {
+              visibility: hidden !important;
+            }
+            [data-certificate-draft-pages],
+            [data-certificate-draft-pages] * {
+              visibility: visible !important;
+            }
+
+            /* Header/footer letterhead images must always paint in print preview */
+            .certificate-page-header,
+            .certificate-page-footer,
+            .certificate-page-header img,
+            .certificate-page-footer img,
+            .certificate-letter-sheet img {
+              visibility: visible !important;
+              display: block !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+            }
+            .certificate-page-header,
+            .certificate-page-footer {
+              flex-shrink: 0 !important;
+              overflow: visible !important;
+            }
+            .certificate-page-header img,
+            .certificate-page-footer img {
+              width: calc(100% + 15mm) !important;
+              max-width: none !important;
+              height: auto !important;
+              object-fit: contain !important;
+            }
+            .certificate-page-header img {
+              margin-left: -10mm !important;
+              margin-right: -5mm !important;
+            }
+            .certificate-page-footer > div {
+              margin-left: -10mm !important;
+              margin-right: -5mm !important;
+              width: calc(100% + 15mm) !important;
+            }
+
+            [data-radix-dialog-overlay],
+            .certificate-draft-no-print {
+              display: none !important;
+            }
+
+            /* Pull certificate pages to printable origin */
+            [data-certificate-draft-pages] {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
               width: 8.5in !important;
               max-width: 8.5in !important;
-              min-height: 11in !important;
-              height: 11in !important;
               margin: 0 !important;
-              padding: calc(0.5in - 5mm) 5mm 0.35in 10mm !important;
-              box-shadow: none !important;
-              border: 2px solid #1e293b !important;
-              outline: 1px solid #1e293b !important;
-              outline-offset: 3px !important;
-              overflow: hidden !important;
-              box-sizing: border-box !important;
+              padding: 0 !important;
+              gap: 0 !important;
+              background: #fff !important;
+              display: flex !important;
+              flex-direction: column !important;
             }
-            .certificate-letter-sheet--grow {
-              height: auto !important;
+
+            /* Un-clip fixed dialog / portal wrappers */
+            body,
+            #root,
+            [data-radix-portal],
+            div.fixed.inset-0,
+            [data-certificate-draft-preview],
+            .certificate-draft-dialog {
               overflow: visible !important;
+              height: auto !important;
+              max-height: none !important;
+              position: static !important;
+              inset: auto !important;
+              transform: none !important;
+              background: transparent !important;
             }
-            .certificate-letter-sheet--break {
-              break-after: page !important;
+
+            [data-certificate-draft-preview],
+            .certificate-draft-dialog {
+              display: block !important;
+              width: auto !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+            }
+
+            .certificate-letter-sheet,
+            .certificate-letter-sheet.certificate-letter-sheet--grow {
+              display: flex !important;
+              flex-direction: column !important;
+              box-sizing: border-box !important;
+              width: 8.5in !important;
+              max-width: 8.5in !important;
+              height: 11in !important;
+              min-height: 11in !important;
+              max-height: 11in !important;
+              margin: 0 !important;
+              padding: 2mm 5mm 2mm 10mm !important;
+              overflow: hidden !important;
+              box-shadow: none !important;
+              outline: none !important;
+              border: 2px solid #1e293b !important;
+              background: #fff !important;
               page-break-after: always !important;
+              break-after: page !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+
+            /* Free vertical space so footer image is not clipped */
+            .certificate-letter-sheet > [aria-hidden="true"] {
+              display: none !important;
+              flex: 0 0 0 !important;
+              min-height: 0 !important;
+              height: 0 !important;
+            }
+
+            .certificate-letter-sheet:last-of-type,
+            .certificate-letter-sheet.certificate-letter-sheet--break:last-of-type {
+              page-break-after: auto !important;
+              break-after: auto !important;
             }
           }
         `}</style>
 
+        {silentMode ? (
+          <div className="certificate-draft-no-print absolute inset-x-0 top-0 z-50 flex flex-col items-center gap-2 border-b border-slate-200 bg-white/95 px-6 py-4 shadow-sm backdrop-blur-sm print:hidden">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Print calibration certificate</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm font-medium text-slate-800">
+              {error
+                ? 'Print failed'
+                : loading
+                  ? 'Preparing print…'
+                  : 'Opening print dialog…'}
+            </p>
+            {error ? (
+              <p className="max-w-md text-center text-sm text-destructive">{error}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Loading letterhead, then system print dialog will open.
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : null}
+
+        {!silentMode ? (
         <div className="certificate-draft-no-print relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
           <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
           <DialogHeader className="relative pr-12 text-left">
@@ -1379,14 +2177,24 @@ export function CertificateDraftDialog({
             </div>
           </DialogHeader>
         </div>
+        ) : null}
 
-        <div className="min-h-0 flex-1 overflow-auto bg-[#e8eaed] px-3 py-4 sm:px-6 sm:py-5 print:overflow-visible print:bg-white print:p-0">
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-6 sm:py-5',
+            silentMode ? 'bg-white pt-28' : 'bg-[#e8eaed]',
+          )}
+        >
           {loading ? (
             <p className="py-16 text-center text-sm text-muted-foreground">
               Loading certificate draft…
             </p>
           ) : (
-            <div className="mx-auto flex w-full max-w-[8.5in] flex-col gap-3">
+            <div
+              ref={pagesHostRef}
+              data-certificate-draft-pages=""
+              className="mx-auto flex w-full max-w-[8.5in] flex-col gap-3"
+            >
               {error ? (
                 <p className="certificate-draft-no-print rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
                   {error}
@@ -1401,209 +2209,190 @@ export function CertificateDraftDialog({
               <CertificateLetterPage
                 lh={letterhead}
                 pageLabel="01 of 02"
+                grow
                 numberBar={
-                  <CertificateNumberUlrBar
-                    pageKey="1"
-                    certificateNumber={draft.certificateNumber}
-                    ulrNumber={draft.ulrNumber}
-                    ulrPlaceholder={formatNablUlrNumber(
-                      buildCalibrationUlrHeaderPrefix(letterhead?.nablCertificateNo),
-                      1,
-                      'CC',
-                    )}
-                    onCertificateNumberChange={(v) =>
-                      patchDraft('certificateNumber', v)
-                    }
-                    onUlrNumberChange={(v) => patchDraft('ulrNumber', v)}
-                    onAutoCertificate={() => void autoCreateCertificateNumber()}
-                    onAutoUlr={() => void autoCreateUlrNumber()}
-                    autoNumbering={autoNumbering}
-                    autoUlrNumbering={autoUlrNumbering}
-                    controlsDisabled={loading || saving || issuing}
-                  />
+                  <>
+                    <p className="text-center text-sm font-bold uppercase tracking-[0.18em] text-slate-900 sm:text-base">
+                      {certTemplate.title}
+                    </p>
+                    <CertificateNumberUlrBar
+                      pageKey="1"
+                      certificateNumber={draft.certificateNumber}
+                      ulrNumber={draft.ulrNumber}
+                      ulrPlaceholder={formatNablUlrNumber(
+                        buildCalibrationUlrHeaderPrefix(letterhead?.nablCertificateNo),
+                        1,
+                        'CC',
+                      )}
+                      onCertificateNumberChange={(v) =>
+                        patchDraft('certificateNumber', v)
+                      }
+                      onUlrNumberChange={(v) => patchDraft('ulrNumber', v)}
+                      onAutoCertificate={() => void autoCreateCertificateNumber()}
+                      onAutoUlr={() => void autoCreateUlrNumber()}
+                      autoNumbering={autoNumbering}
+                      autoUlrNumbering={autoUlrNumbering}
+                      controlsDisabled={loading || saving || issuing}
+                    />
+                  </>
                 }
               >
-                <p className="text-center text-sm font-bold uppercase tracking-[0.18em] text-slate-900 sm:text-base">
-                  {certTemplate.title}
-                </p>
-
-                {/* Certificate header info table */}
-                <div className="w-full overflow-hidden border border-slate-400">
+                {/* Certificate header info table — shrink-0 so height follows content */}
+                <div className="w-full shrink-0 border border-slate-400">
                   {/* Customer (left) | Meta fields (right) */}
-                  <div className="grid grid-cols-2">
+                  <div className="grid grid-cols-2 items-stretch">
                     <div
                       className={cn(
-                        'flex min-h-[36px] flex-col gap-1.5 overflow-hidden bg-white p-1.5',
+                        'flex min-h-0 min-w-0 flex-col bg-white p-1.5',
                         'border-r border-slate-400',
                       )}
                     >
-                      <CustomerNameAddressContinuous
+                      <CustomerBlockContinuous
                         name={draft.customerName}
                         address={draft.customerAddress}
-                        onChange={({ name: nextName, address: nextAddress }) => {
+                        person={draft.customerContactPerson}
+                        mobile={draft.customerMobile}
+                        email={draft.customerEmail}
+                        onChange={({
+                          name: nextName,
+                          address: nextAddress,
+                          person,
+                          mobile,
+                          email,
+                        }) => {
                           setDraft((prev) => ({
                             ...prev,
                             customerName: nextName,
                             customerAddress: nextAddress,
+                            customerContactPerson: person,
+                            customerMobile: mobile,
+                            customerEmail: email,
+                            customerContactDetails: composeCustomerContactDetails({
+                              person,
+                              mobile,
+                              email,
+                            }),
                           }))
+                          setMessage(null)
                         }}
                       />
-                      <CertAutoGrowTextarea
-                        id="cert-customer-contact"
-                        value={draft.customerContactDetails}
-                        onChange={(v) => patchDraft('customerContactDetails', v)}
-                        placeholder={'Contact person - Phone\nEmail'}
-                        aria-label="Customer Contact Details"
-                        className="relative z-0 shrink-0"
-                      />
                     </div>
-                    <div
-                      className={cn(
-                        certMetaGridClass,
-                        'ml-auto w-max max-w-full min-h-[36px] bg-white p-1.5',
-                      )}
-                    >
-                      <Label htmlFor="cert-srf" className={certMetaLabelClass}>
-                        SRF No
-                      </Label>
-                      <span className={certMetaSepClass} aria-hidden>
-                        :-
-                      </span>
-                      <Input
-                        id="cert-srf"
-                        value={draft.srfNumber}
-                        onChange={(e) => patchDraft('srfNumber', e.target.value)}
-                        className={cn(certCellSingleLineClass, 'h-6 min-w-0')}
-                        aria-label="SRF Number"
-                      />
-                      <Label htmlFor="cert-issue-date" className={certMetaLabelClass}>
-                        Issue Date
-                      </Label>
-                      <span className={certMetaSepClass} aria-hidden>
-                        :-
-                      </span>
-                      <Input
-                        id="cert-issue-date"
-                        type="date"
-                        value={draft.issueDate}
-                        onChange={(e) => patchDraft('issueDate', e.target.value)}
-                        className={cn(certCellSingleLineClass, 'h-6 min-w-0')}
-                        aria-label="Issue Date"
-                      />
-                      <Label htmlFor="cert-wi" className={certMetaLabelClass}>
-                        WI No
-                      </Label>
-                      <span className={certMetaSepClass} aria-hidden>
-                        :-
-                      </span>
-                      <Input
-                        id="cert-wi"
-                        value={draft.workInstructionNumber}
-                        onChange={(e) =>
-                          patchDraft('workInstructionNumber', e.target.value)
-                        }
-                        placeholder="WI No."
-                        className={cn(certCellSingleLineClass, 'h-6 min-w-0')}
-                        aria-label="Work Instruction Number"
-                      />
-                      <Label htmlFor="cert-format" className={certMetaLabelClass}>
-                        Format No
-                      </Label>
-                      <span className={certMetaSepClass} aria-hidden>
-                        :-
-                      </span>
-                      <Input
-                        id="cert-format"
-                        value={draft.formatNumber}
-                        onChange={(e) => patchDraft('formatNumber', e.target.value)}
-                        placeholder="Format No."
-                        className={cn(certCellSingleLineClass, 'h-6 min-w-0')}
-                        aria-label="Format Number"
-                      />
-                      <Label htmlFor="cert-cal-date" className={certMetaLabelClass}>
-                        Date of Calibration
-                      </Label>
-                      <span className={certMetaSepClass} aria-hidden>
-                        :-
-                      </span>
-                      <Input
-                        id="cert-cal-date"
-                        type="date"
-                        value={draft.dateOfCalibration}
-                        onChange={(e) => patchDraft('dateOfCalibration', e.target.value)}
-                        className={cn(certCellSingleLineClass, 'h-6 min-w-0')}
-                        aria-label="Date of Calibration"
-                      />
-                      <Label htmlFor="cert-due-date" className={certMetaLabelClass}>
-                        Due Date of Calibration
-                      </Label>
-                      <span className={certMetaSepClass} aria-hidden>
-                        :-
-                      </span>
-                      <Input
-                        id="cert-due-date"
-                        type="date"
-                        value={draft.dueDateOfCalibration}
-                        onChange={(e) =>
-                          patchDraft('dueDateOfCalibration', e.target.value)
-                        }
-                        className={cn(certCellSingleLineClass, 'h-6 min-w-0')}
-                        aria-label="Due Date of Calibration"
-                      />
+                    <div className={cn(certMetaBlockClass, 'min-w-0 content-start bg-white p-1.5')}>
+                      <CertMetaRow label="SRF No" htmlFor="cert-srf">
+                        <CertMetaInput
+                          id="cert-srf"
+                          value={draft.srfNumber}
+                          onChange={(v) => patchDraft('srfNumber', v)}
+                          aria-label="SRF Number"
+                        />
+                      </CertMetaRow>
+                      <CertMetaRow label="Issue Date">
+                        <span
+                          id="cert-issue-date"
+                          title="Date certificate is prepared"
+                          className={certMetaValueTextClass}
+                        >
+                          {formatDisplayDate(draft.issueDate || todayIsoDate())}
+                        </span>
+                      </CertMetaRow>
+                      <CertMetaRow label="WI No" htmlFor="cert-wi">
+                        <CertMetaInput
+                          id="cert-wi"
+                          value={draft.workInstructionNumber}
+                          onChange={(v) => patchDraft('workInstructionNumber', v)}
+                          placeholder="WI No."
+                          aria-label="Work Instruction Number"
+                        />
+                      </CertMetaRow>
+                      <CertMetaRow label="Format No" htmlFor="cert-format">
+                        <CertMetaInput
+                          id="cert-format"
+                          value={draft.formatNumber}
+                          onChange={(v) => patchDraft('formatNumber', v)}
+                          placeholder="Format No."
+                          aria-label="Format Number"
+                        />
+                      </CertMetaRow>
+                      <CertMetaRow label="Date of Calibration">
+                        <span
+                          id="cert-cal-date"
+                          title="From Raw Data Sheet fill date"
+                          className={certMetaValueTextClass}
+                        >
+                          {formatDisplayDate(draft.dateOfCalibration)}
+                        </span>
+                      </CertMetaRow>
+                      <CertMetaRow label="Due Date of Calibration">
+                        <span
+                          id="cert-due-date"
+                          title="Auto: Calibration Date + Frequency"
+                          className={certMetaValueTextClass}
+                        >
+                          {formatDisplayDate(draft.dueDateOfCalibration)}
+                        </span>
+                      </CertMetaRow>
                     </div>
                   </div>
                 </div>
 
               <SectionCard
-                title={`${certTemplate.deviceSectionPrefix} :- ${cellText(equipmentLabel || job?.equipment_label)}`}
+                title={`${certTemplate.deviceSectionPrefix} : ${cellText(equipmentLabel || job?.equipment_label)}`}
+                contentClassName="p-1.5"
               >
-                {/* DUC — 2-column field layout */}
-                <div className="overflow-hidden border border-slate-300">
-                  <div className="grid grid-cols-1 sm:grid-cols-2">
-                    <div
-                      className={cn(
-                        certMetaGridClass,
-                        'min-w-0 content-start p-2 sm:border-r sm:border-slate-300',
-                      )}
-                    >
-                      <DucFieldCells label="Make" value={eqFields?.make ?? ''} />
-                      <DucFieldCells label="Model" value={eqFields?.model ?? ''} />
-                      <DucFieldCells label="Serial No" value={eqFields?.serial ?? ''} />
-                      <DucFieldCells
-                        label="Resolution"
-                        value={eqFields?.leastCount ?? ''}
-                      />
-                      <DucFieldCells label="Capacity" value={eqFields?.range ?? ''} />
-                      <DucFieldCells
-                        label="ID Number"
-                        value={eqFields?.customerId ?? ''}
-                      />
-                    </div>
-                    <div className={cn(certMetaGridClass, 'min-w-0 content-start p-2')}>
-                      <DucFieldCells
-                        label="Location"
-                        value={job?.calibration_location ?? ''}
-                      />
-                      <DucFieldCells
-                        label="Condition of DUC"
-                        value={eqFields?.condition ?? ''}
-                      />
-                      <DucFieldCells
-                        label="Referred Standard"
-                        value={
-                          (eqFields?.calMethod ?? '').trim() || ducReferredStandard
-                        }
-                      />
-                      <DucFieldCells
-                        label="Mode of Calibration"
-                        value={eqFields?.physical ?? ''}
-                      />
-                      <DucFieldCells label="Method Used" value="" />
-                      <DucFieldCells
-                        label="Temperature @ Calibration"
-                        value={ducTemperatureAtCalibration}
-                      />
-                    </div>
+                {/* Same field order / pairing as Certificate Format preview — 2 cols with vertical separator */}
+                <div className="grid h-fit grid-cols-2 divide-x divide-slate-300 border border-slate-300">
+                  <div className={cn(ducColumnGridClass, 'px-2 py-1')}>
+                    <DucFieldLine label="Make" value={eqFields?.make ?? ''} />
+                    <DucFieldLine label="Serial No" value={eqFields?.serial ?? ''} />
+                    <DucFieldLine label="Resolution" value={eqFields?.leastCount ?? ''} />
+                    <DucFieldLine
+                      label="Location"
+                      value={job?.location_of_calibration ?? ''}
+                    />
+                    <DucFieldLine
+                      label="Referred Standard"
+                      value={(eqFields?.calMethod ?? '').trim() || ducReferredStandard}
+                    />
+                  </div>
+                  <div className={cn(ducColumnGridClass, 'px-2 py-1')}>
+                    <DucFieldLine label="Model" value={eqFields?.model ?? ''} />
+                    <DucFieldLine label="Capacity" value={eqFields?.range ?? ''} />
+                    <DucFieldLine label="ID Number" value={eqFields?.customerId ?? ''} />
+                    <DucFieldLine
+                      label="Condition of DUC"
+                      value={eqFields?.condition ?? ''}
+                    />
+                    <DucFieldLine
+                      label="Mode of Calibration"
+                      value={modeOfCalibration || eqFields?.physical || ''}
+                    />
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Environment Condition" contentClassName="p-1.5">
+                <div className="grid grid-cols-2 divide-x divide-slate-300 border border-slate-300 text-xs sm:text-sm">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-1.5 gap-y-1 px-2 py-1 leading-none">
+                    <span className="flex items-center justify-self-start text-left font-medium text-slate-900">
+                      Temperature (°C)
+                    </span>
+                    <span className="flex items-center justify-self-center select-none text-center font-medium" aria-hidden>
+                      :
+                    </span>
+                    <span className="flex w-full min-w-0 items-center justify-end justify-self-stretch text-right font-medium text-slate-900">
+                      {envTemperatureAvg ? `${envTemperatureAvg} °C` : '—'}
+                    </span>
+                  </div>
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-1.5 gap-y-1 px-2 py-1 leading-none">
+                    <span className="flex items-center justify-self-start text-left font-medium text-slate-900">
+                      Humidity (%RH)
+                    </span>
+                    <span className="flex items-center justify-self-center select-none text-center font-medium" aria-hidden>
+                      :
+                    </span>
+                    <span className="flex w-full min-w-0 items-center justify-end justify-self-stretch text-right font-medium text-slate-900">
+                      {envHumidityAvg ? `${envHumidityAvg} %RH` : '—'}
+                    </span>
                   </div>
                 </div>
               </SectionCard>
@@ -1615,46 +2404,26 @@ export function CertificateDraftDialog({
                     Calibration Equipment range / Raw Data Sheet.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto border border-slate-300">
-                    <div
-                      className="grid min-w-0"
-                      style={{
-                        gridTemplateColumns: `minmax(9.5rem, max-content) auto repeat(${masters.length}, minmax(0, 1fr))`,
-                      }}
-                    >
-                      {MASTER_CERT_ROWS.map((row) => (
-                        <div key={row.label} className="contents">
-                          <span
-                            className={cn(
-                              certMetaLabelClass,
-                              'border-b border-slate-200 px-2 py-1',
-                            )}
-                          >
-                            {row.label}
-                          </span>
-                          <span
-                            className={cn(
-                              certMetaSepClass,
-                              'border-b border-slate-200 py-1 pr-1',
-                            )}
-                            aria-hidden
-                          >
-                            :-
-                          </span>
-                          {masters.map((master, index) => (
-                            <span
-                              key={`${row.label}-${master.id}`}
-                              className={cn(
-                                'min-w-0 break-words border-b border-slate-200 px-2 py-1 text-center text-xs font-medium text-slate-900 sm:text-sm',
-                                index > 0 && 'border-l border-slate-200',
-                              )}
-                            >
-                              {cellText(row.getValue(master))}
-                            </span>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
+                  <div className="overflow-hidden border border-slate-300">
+                    <table className="w-full border-collapse text-xs sm:text-sm">
+                      <tbody>
+                        {MASTER_CERT_ROWS.map((row) => (
+                          <tr key={row.label}>
+                            <td className="border border-slate-300 px-2 py-0.5 align-middle font-medium leading-none text-slate-900">
+                              {row.label}
+                            </td>
+                            {masters.map((master) => (
+                              <td
+                                key={`${row.label}-${master.id}`}
+                                className="border border-slate-300 px-2 py-0.5 align-middle text-center font-medium leading-none text-slate-900"
+                              >
+                                {cellText(row.getValue(master))}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </SectionCard>
@@ -1731,67 +2500,76 @@ export function CertificateDraftDialog({
 
               {certTemplate.showSummaryLine ? (
               <div className="overflow-hidden border border-slate-300 bg-white break-inside-avoid">
-                <div className="flex w-full flex-nowrap items-baseline gap-x-0.5 overflow-hidden px-2 py-1.5 text-[9px] leading-snug text-slate-900 sm:text-[10px]">
-                  <span className="shrink-0 whitespace-nowrap font-medium">
-                    Maximum Zero Reading Observed =
-                  </span>
-                  <Input
-                    id="cert-max-zero-reading"
-                    value={draft.maxZeroReadingObserved}
-                    onChange={(e) =>
-                      patchDraft('maxZeroReadingObserved', e.target.value)
-                    }
-                    placeholder={
-                      computedCertSummary.maxZeroReadingObserved || '—'
-                    }
-                    className={cn(
-                      certCellSingleLineClass,
-                      'h-5 min-w-0 flex-1 basis-0 px-0.5 text-[9px] sm:text-[10px]',
-                    )}
-                    aria-label="Maximum Zero Reading Observed"
-                  />
-                  <span className="shrink-0 select-none text-slate-500" aria-hidden>
-                    ,
-                  </span>
-                  <span className="shrink-0 whitespace-nowrap font-medium">
-                    Maximum Relative Zero Error =
-                  </span>
-                  <Input
-                    id="cert-max-rel-zero"
-                    value={draft.maxRelativeZeroError}
-                    onChange={(e) =>
-                      patchDraft('maxRelativeZeroError', e.target.value)
-                    }
-                    placeholder={
-                      computedCertSummary.maxRelativeZeroError || '—'
-                    }
-                    className={cn(
-                      certCellSingleLineClass,
-                      'h-5 min-w-0 flex-1 basis-0 px-0.5 text-[9px] sm:text-[10px]',
-                    )}
-                    aria-label="Maximum Relative Zero Error"
-                  />
-                  <span className="shrink-0 select-none text-slate-500" aria-hidden>
-                    ,
-                  </span>
-                  <span className="shrink-0 whitespace-nowrap font-medium">
-                    Uncertainty Reported =
-                  </span>
-                  <Input
-                    id="cert-uncertainty-reported"
-                    value={draft.uncertaintyReported}
-                    onChange={(e) =>
-                      patchDraft('uncertaintyReported', e.target.value)
-                    }
-                    placeholder={
-                      computedCertSummary.uncertaintyReported || '—'
-                    }
-                    className={cn(
-                      certCellSingleLineClass,
-                      'h-5 min-w-0 flex-1 basis-0 px-0.5 text-[9px] sm:text-[10px]',
-                    )}
-                    aria-label="Uncertainty Reported"
-                  />
+                <div className="grid grid-cols-3 divide-x divide-slate-300 px-0 py-1.5 text-[9px] font-bold leading-none text-slate-900 sm:text-[10px]">
+                  <div className="flex min-w-0 items-center px-1.5">
+                    <span className="shrink-0 whitespace-nowrap font-bold">
+                      Maximum Zero Reading Observed
+                    </span>
+                    <span className="min-w-0 flex-1 select-none text-center font-bold" aria-hidden>
+                      :
+                    </span>
+                    <Input
+                      id="cert-max-zero-reading"
+                      value={draft.maxZeroReadingObserved}
+                      onChange={(e) =>
+                        patchDraft('maxZeroReadingObserved', e.target.value)
+                      }
+                      placeholder={
+                        computedCertSummary.maxZeroReadingObserved || '—'
+                      }
+                      className={cn(
+                        certCellSingleLineClass,
+                        'm-0 h-5 w-auto min-w-[2.5rem] max-w-[48%] shrink border-0 bg-transparent p-0 text-right text-[9px] font-bold shadow-none focus-visible:ring-0 sm:text-[10px]',
+                      )}
+                      aria-label="Maximum Zero Reading Observed"
+                    />
+                  </div>
+                  <div className="flex min-w-0 items-center px-1.5">
+                    <span className="shrink-0 whitespace-nowrap font-bold">
+                      Maximum Relative Zero Error
+                    </span>
+                    <span className="min-w-0 flex-1 select-none text-center font-bold" aria-hidden>
+                      :
+                    </span>
+                    <Input
+                      id="cert-max-rel-zero"
+                      value={draft.maxRelativeZeroError}
+                      onChange={(e) =>
+                        patchDraft('maxRelativeZeroError', e.target.value)
+                      }
+                      placeholder={
+                        computedCertSummary.maxRelativeZeroError || '—'
+                      }
+                      className={cn(
+                        certCellSingleLineClass,
+                        'm-0 h-5 w-auto min-w-[2.5rem] max-w-[48%] shrink border-0 bg-transparent p-0 text-right text-[9px] font-bold shadow-none focus-visible:ring-0 sm:text-[10px]',
+                      )}
+                      aria-label="Maximum Relative Zero Error"
+                    />
+                  </div>
+                  <div className="flex min-w-0 items-center px-1.5">
+                    <span className="shrink-0 whitespace-nowrap font-bold">
+                      Uncertainty Reported
+                    </span>
+                    <span className="min-w-0 flex-1 select-none text-center font-bold" aria-hidden>
+                      :
+                    </span>
+                    <Input
+                      id="cert-uncertainty-reported"
+                      value={draft.uncertaintyReported}
+                      onChange={(e) =>
+                        patchDraft('uncertaintyReported', e.target.value)
+                      }
+                      placeholder={
+                        computedCertSummary.uncertaintyReported || '—'
+                      }
+                      className={cn(
+                        certCellSingleLineClass,
+                        'm-0 h-5 w-auto min-w-[2.5rem] max-w-[48%] shrink border-0 bg-transparent p-0 text-right text-[9px] font-bold shadow-none focus-visible:ring-0 sm:text-[10px]',
+                      )}
+                      aria-label="Uncertainty Reported"
+                    />
+                  </div>
                 </div>
               </div>
               ) : null}
@@ -1804,7 +2582,7 @@ export function CertificateDraftDialog({
                     value={draft.notes}
                     onChange={(v) => patchDraft('notes', v)}
                     placeholder={certTemplate.defaultNotes || DEFAULT_CERTIFICATE_NOTES}
-                    className="min-h-[1rem] !p-0 !text-[6px] !leading-snug sm:!text-[7px]"
+                    className="min-h-[1rem] !p-0 !text-[8px] !leading-snug"
                     aria-label="Notes"
                   />
                 </SectionCard>
@@ -1817,26 +2595,86 @@ export function CertificateDraftDialog({
                     placeholder={
                       certTemplate.defaultRemarks || DEFAULT_CERTIFICATE_REMARKS
                     }
-                    className="min-h-[1rem] !p-0 !text-[6px] !leading-snug sm:!text-[7px]"
+                    className="min-h-[1rem] !p-0 !text-[8px] !leading-snug"
                     aria-label="Remarks"
                   />
                 </SectionCard>
               </div>
               ) : null}
 
+              <p className="flex w-full items-center gap-2 break-inside-avoid py-1 text-[10px] font-bold tracking-wide text-slate-900 sm:text-xs">
+                <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap" aria-hidden>
+                  {'='.repeat(200)}
+                </span>
+                <span className="shrink-0 whitespace-nowrap">End of Calibration Certificate</span>
+                <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-right" aria-hidden>
+                  {'='.repeat(200)}
+                </span>
+              </p>
+
               {certTemplate.showSignatures ? (
-              <div className="grid grid-cols-2 gap-3 break-inside-avoid border border-slate-300 bg-white px-3 py-4">
-                <div className="flex min-h-[4.5rem] flex-col justify-end text-center">
-                  <div className="mb-6 min-h-[2rem] border-b border-slate-400" aria-hidden />
+              <div className="flex gap-3 break-inside-avoid border border-slate-300 bg-white px-3 py-4">
+                <div className="flex min-h-[4.5rem] min-w-0 flex-1 flex-col justify-end space-y-0.5 text-center">
+                  <div className="mb-4 min-h-[2rem] border-b border-slate-400" aria-hidden />
                   <p className="text-[10px] font-semibold text-slate-900 sm:text-xs">
                     {certTemplate.calibratedByLabel}
                   </p>
+                  <div className="mx-auto flex w-full max-w-[260px] items-center gap-1.5">
+                    <Input
+                      value={draft.calibratedByName}
+                      onChange={(e) => patchDraft('calibratedByName', e.target.value)}
+                      placeholder={certTemplate.signatureNameLabel || 'Name'}
+                      aria-label="Calibrated by name"
+                      className={cn(
+                        certCellSingleLineClass,
+                        'h-5 min-w-0 flex-1 text-center text-[9px] sm:text-[10px]',
+                      )}
+                    />
+                    <Input
+                      value={draft.calibratedByDesignation}
+                      onChange={(e) =>
+                        patchDraft('calibratedByDesignation', e.target.value)
+                      }
+                      placeholder={certTemplate.signatureDesignationLabel || 'Designation'}
+                      aria-label="Calibrated by designation"
+                      className={cn(
+                        certCellSingleLineClass,
+                        'h-5 min-w-0 flex-1 text-center text-[9px] sm:text-[10px]',
+                      )}
+                    />
+                  </div>
                 </div>
-                <div className="flex min-h-[4.5rem] flex-col justify-end text-center">
-                  <div className="mb-6 min-h-[2rem] border-b border-slate-400" aria-hidden />
+                <div className="flex min-h-[4.5rem] min-w-0 flex-1 flex-col justify-end space-y-0.5 text-center">
+                  <div className="mb-4 min-h-[2rem] border-b border-slate-400" aria-hidden />
                   <p className="text-[10px] font-semibold text-slate-900 sm:text-xs">
                     {certTemplate.authorizedSignatoryLabel}
                   </p>
+                  <div className="mx-auto flex w-full max-w-[260px] items-center gap-1.5">
+                    <Input
+                      value={draft.authorizedSignatoryName}
+                      onChange={(e) =>
+                        patchDraft('authorizedSignatoryName', e.target.value)
+                      }
+                      placeholder={certTemplate.signatureNameLabel || 'Name'}
+                      aria-label="Authorized signatory name"
+                      className={cn(
+                        certCellSingleLineClass,
+                        'h-5 min-w-0 flex-1 text-center text-[9px] sm:text-[10px]',
+                      )}
+                    />
+                    <Input
+                      value={draft.authorizedSignatoryDesignation}
+                      onChange={(e) =>
+                        patchDraft('authorizedSignatoryDesignation', e.target.value)
+                      }
+                      placeholder={certTemplate.signatureDesignationLabel || 'Designation'}
+                      aria-label="Authorized signatory designation"
+                      className={cn(
+                        certCellSingleLineClass,
+                        'h-5 min-w-0 flex-1 text-center text-[9px] sm:text-[10px]',
+                      )}
+                    />
+                  </div>
                 </div>
               </div>
               ) : null}
@@ -1848,7 +2686,38 @@ export function CertificateDraftDialog({
                   variant="outline"
                   size="sm"
                   className="gap-1.5"
-                  disabled={loading || saving || issuing || !job}
+                  disabled={loading || saving || issuing || downloading || !job}
+                  onClick={() => {
+                    void (async () => {
+                      await waitForCertificateImagesReady(pagesHostRef.current)
+                      window.print()
+                    })()
+                  }}
+                  aria-label="Print calibration certificate"
+                  title="Print"
+                >
+                  <Printer size={14} aria-hidden />
+                  Print
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={loading || saving || issuing || downloading || !job}
+                  onClick={() => void handleDownloadPdf()}
+                  aria-label="Download calibration certificate as PDF"
+                  title="Download PDF"
+                >
+                  <Download size={14} aria-hidden />
+                  {downloading ? 'Downloading…' : 'Download'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={loading || saving || issuing || downloading || !job}
                   onClick={() => void saveDraft()}
                   aria-label="Save certificate draft"
                 >
@@ -1860,7 +2729,7 @@ export function CertificateDraftDialog({
                     type="button"
                     size="sm"
                     className="gap-1.5 bg-teal-600 text-white hover:bg-teal-500"
-                    disabled={loading || saving || issuing || !job}
+                    disabled={loading || saving || issuing || downloading || !job}
                     onClick={() => void handleIssueAndForward()}
                     aria-label="Issue certificate and forward to Certificates"
                   >

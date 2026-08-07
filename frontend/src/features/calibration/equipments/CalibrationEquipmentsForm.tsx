@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Copy, Plus, Trash2 } from 'lucide-react'
+import { Calculator, ChevronDown, Copy, FileBarChart, FileSpreadsheet, Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import { fetchGenerateReportFeatureEnabled } from '@/features/settings/lab-settings/labSettingsDb'
+import { supabase } from '@/lib/supabaseClient'
+import { cn } from '@/lib/utils'
 import {
   FilterCombobox,
   type FilterComboboxOption,
@@ -46,6 +49,10 @@ import {
   sortEquipmentRangesByCapacityAsc,
   summarizeGenerateReportViewFactor,
   withSyncedRangeCapacity,
+  resolveRangeModeOfCalibration,
+  resolveEquipmentModeOfCalibration,
+  resolveRangeMethodUsed,
+  resolveEquipmentMethodUsed,
   type CalibrationEquipmentForm,
   type EquipmentRangeEntry,
   type GenerateReportConfig,
@@ -54,17 +61,23 @@ import {
   type GenerateReportRandomnessMode,
 } from './types'
 import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
-import { CalibrationRangePointsDialog } from './CalibrationRangePointsDialog'
+import { CalibrationRangePointsDialog, type CalibrationPointsDialogSection } from './CalibrationRangePointsDialog'
 import { RawDataSheetTemplateEditor } from './RawDataSheetTemplateEditor'
 import { MuCalculationSheetEditor } from './MuCalculationSheetEditor'
-import { CertificateTemplateEditor } from './CertificateTemplateEditor'
+import {
+  CertificateFormatButton,
+  CertificateFormatDialog,
+} from './CertificateFormatDialog'
+import {
+  certificateTemplateIsConfigured,
+  serializeCalibrationCertificateTemplate,
+} from './certificateTemplateTypes'
 import {
   MU_CALIBRATION_POINT_COLUMN,
   MU_EQUIPMENT_RANGE_FIELD_COLUMNS,
   MU_RANGE_MAX_FIELD_KEY,
   MU_RANGE_MIN_FIELD_KEY,
 } from './muCalculationTypes'
-import type { CalibrationCertificateTemplate } from './certificateTemplateTypes'
 
 const COLUMN_NONE = '__none__'
 
@@ -140,6 +153,8 @@ export function CalibrationEquipmentsForm({
   const [methodQuery, setMethodQuery] = useState(form.calibrationMethodLabel)
   const [methodOpen, setMethodOpen] = useState(false)
   const [pointsRangeId, setPointsRangeId] = useState<string | null>(null)
+  const [pointsDialogSection, setPointsDialogSection] =
+    useState<CalibrationPointsDialogSection>('masters')
   const [randomnessEditorRowId, setRandomnessEditorRowId] = useState<string | null>(null)
   const [randomnessDraft, setRandomnessDraft] = useState<GenerateReportPointRandomness[]>([])
   const [randomnessFormatDraft, setRandomnessFormatDraft] = useState<{
@@ -147,10 +162,22 @@ export function CalibrationEquipmentsForm({
     decimalPlaces: number
   }>({ roundOff: '', decimalPlaces: 2 })
   const [selectedRangeIds, setSelectedRangeIds] = useState<Set<string>>(() => new Set())
+  const [certificateFormatOpen, setCertificateFormatOpen] = useState(false)
+  const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
 
   useEffect(() => {
     setMethodQuery(form.calibrationMethodLabel)
   }, [form.calibrationMethodIsCodeId, form.calibrationMethodLabel])
+
+  useEffect(() => {
+    let canceled = false
+    void fetchGenerateReportFeatureEnabled(supabase).then((enabled) => {
+      if (!canceled) setCompanyGenerateReportEnabled(enabled)
+    })
+    return () => {
+      canceled = true
+    }
+  }, [])
 
   useEffect(() => {
     const valid = new Set(form.ranges.map((r) => r.id))
@@ -197,6 +224,8 @@ export function CalibrationEquipmentsForm({
       muCalculationTemplate: form.muCalculationTemplate,
       generateReportConfig: form.generateReportConfig,
       certificateTemplate: form.certificateTemplate,
+      modeOfCalibration: form.modeOfCalibration,
+      methodUsed: form.methodUsed,
     })
   }, [
     pointsRange,
@@ -204,13 +233,49 @@ export function CalibrationEquipmentsForm({
     form.muCalculationTemplate,
     form.generateReportConfig,
     form.certificateTemplate,
+    form.modeOfCalibration,
+    form.methodUsed,
   ])
 
   const templateRawDataSheet = templateRange?.rawDataSheetTemplate ?? form.rawDataSheetTemplate
   const templateMuCalculation = templateRange?.muCalculationTemplate ?? form.muCalculationTemplate
   const templateGenerateReport = templateRange?.generateReportConfig ?? form.generateReportConfig
-  const templateCertificate =
-    templateRange?.certificateTemplate ?? form.certificateTemplate
+
+  /** Raw Data Sheet columns for Certificate Format Results preview (any range with columns). */
+  const certificateRawDataColumnLabels = useMemo(() => {
+    for (const range of form.ranges) {
+      const seeded = seedRangeTemplatesFromEquipment(range, {
+        rawDataSheetTemplate: form.rawDataSheetTemplate,
+        muCalculationTemplate: form.muCalculationTemplate,
+        generateReportConfig: form.generateReportConfig,
+        certificateTemplate: form.certificateTemplate,
+        modeOfCalibration: form.modeOfCalibration,
+        methodUsed: form.methodUsed,
+      })
+      const cols = seeded.rawDataSheetTemplate?.columns ?? []
+      const labels = cols
+        .map((c) => String(c.label ?? '').trim())
+        .filter(Boolean)
+      if (labels.length > 0) return labels
+    }
+    return (form.rawDataSheetTemplate?.columns ?? [])
+      .map((c) => String(c.label ?? '').trim())
+      .filter(Boolean)
+  }, [
+    form.ranges,
+    form.rawDataSheetTemplate,
+    form.muCalculationTemplate,
+    form.generateReportConfig,
+    form.certificateTemplate,
+    form.modeOfCalibration,
+    form.methodUsed,
+  ])
+
+  const templateModeOfCalibration = resolveRangeModeOfCalibration(
+    templateRange,
+    form.modeOfCalibration,
+  )
+  const templateMethodUsed = resolveRangeMethodUsed(templateRange, form.methodUsed)
 
   const ensureRangeTemplatesSeeded = (rangeId: string) => {
     const range = form.ranges.find((r) => r.id === rangeId)
@@ -220,6 +285,8 @@ export function CalibrationEquipmentsForm({
       muCalculationTemplate: form.muCalculationTemplate,
       generateReportConfig: form.generateReportConfig,
       certificateTemplate: form.certificateTemplate,
+      modeOfCalibration: form.modeOfCalibration,
+      methodUsed: form.methodUsed,
     })
     const patch: Partial<EquipmentRangeEntry> = {}
     if (seeded.rawDataSheetTemplate && !range.rawDataSheetTemplate) {
@@ -234,12 +301,25 @@ export function CalibrationEquipmentsForm({
     if (seeded.certificateTemplate && !range.certificateTemplate) {
       patch.certificateTemplate = seeded.certificateTemplate
     }
+    if (seeded.modeOfCalibration && !(range.modeOfCalibration ?? '').trim()) {
+      patch.modeOfCalibration = seeded.modeOfCalibration
+    }
+    if (seeded.methodUsed && !(range.methodUsed ?? '').trim()) {
+      patch.methodUsed = seeded.methodUsed
+    }
     if (Object.keys(patch).length > 0) updateRange(rangeId, patch)
   }
 
-  const openPointsForRange = (rangeId: string) => {
+  const openPointsForRange = (rangeId: string, section: CalibrationPointsDialogSection = 'masters') => {
     ensureRangeTemplatesSeeded(rangeId)
+    setPointsDialogSection(section)
     setPointsRangeId(rangeId)
+  }
+
+  const openTemplateSection = (section: 'rawSheet' | 'muSheet' | 'generateReport') => {
+    const rangeId = pointsRangeId ?? form.ranges[0]?.id ?? null
+    if (!rangeId) return
+    openPointsForRange(rangeId, section)
   }
 
   /** Input Column may target any sheet column (including formula). */
@@ -258,17 +338,6 @@ export function CalibrationEquipmentsForm({
     if (!pointsRangeId) return
     updateRange(pointsRangeId, {
       generateReportConfig: { ...templateGenerateReport, ...patch },
-    })
-  }
-
-  const patchCertificateTemplate = (next: CalibrationCertificateTemplate) => {
-    if (!pointsRangeId) return
-    onChange({
-      ...form,
-      certificateTemplate: next,
-      ranges: form.ranges.map((r) =>
-        r.id === pointsRangeId ? { ...r, certificateTemplate: next } : r,
-      ),
     })
   }
 
@@ -488,7 +557,13 @@ export function CalibrationEquipmentsForm({
   }
 
   return (
-    <div className={labRegistryFormClass}>
+    <>
+    <div
+      className={cn(
+        labRegistryFormClass,
+        'min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5',
+      )}
+    >
       <div className="space-y-6">
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 space-y-2 md:col-span-6">
@@ -744,11 +819,62 @@ export function CalibrationEquipmentsForm({
           </div>
         </div>
       </div>
+    </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+      <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5 overflow-x-auto border-t border-slate-200 bg-white px-4 py-3 sm:gap-2 sm:px-6">
         <Button
           type="button"
-          className="bg-teal-600 text-white hover:bg-teal-500"
+          variant="outline"
+          size="sm"
+          className="h-9 shrink-0 border-teal-600/40 text-teal-800 hover:bg-teal-50"
+          disabled={form.ranges.length === 0}
+          onClick={() => openTemplateSection('rawSheet')}
+          aria-label="Raw Data Sheet Format"
+        >
+          <FileSpreadsheet size={16} className="mr-1.5" />
+          Raw Data Sheet Format
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 shrink-0 border-indigo-600/40 text-indigo-800 hover:bg-indigo-50"
+          disabled={form.ranges.length === 0}
+          onClick={() => openTemplateSection('muSheet')}
+          aria-label="MU Calculation Sheet"
+        >
+          <Calculator size={16} className="mr-1.5" />
+          MU Calculation Sheet
+        </Button>
+        {companyGenerateReportEnabled ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="relative h-9 shrink-0 border-amber-600/40 text-amber-900 hover:bg-amber-50"
+            disabled={form.ranges.length === 0}
+            onClick={() => openTemplateSection('generateReport')}
+            aria-label="Generate Report Format"
+          >
+            <FileBarChart size={16} className="mr-1.5" />
+            Generate Report Format
+            {templateGenerateReport.enabled ? (
+              <span
+                className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+                aria-hidden
+                title="Generate Report enabled"
+              />
+            ) : null}
+          </Button>
+        ) : null}
+        <CertificateFormatButton
+          configured={certificateTemplateIsConfigured(form.certificateTemplate)}
+          onClick={() => setCertificateFormatOpen(true)}
+        />
+        <Button
+          type="button"
+          size="sm"
+          className="h-9 shrink-0 bg-teal-600 text-white hover:bg-teal-500"
           onClick={onSave}
           disabled={!canSave || saveLoading}
         >
@@ -756,11 +882,27 @@ export function CalibrationEquipmentsForm({
         </Button>
       </div>
 
+      <CertificateFormatDialog
+        open={certificateFormatOpen}
+        onOpenChange={setCertificateFormatOpen}
+        value={form.certificateTemplate}
+        equipmentName={form.equipmentName}
+        rawDataColumnLabels={certificateRawDataColumnLabels}
+        onChange={(certificateTemplate) => {
+          onChange({
+            ...form,
+            certificateTemplate: serializeCalibrationCertificateTemplate(certificateTemplate),
+          })
+        }}
+      />
+
       <CalibrationRangePointsDialog
         open={pointsRangeId != null && pointsRange != null}
+        initialSection={pointsDialogSection}
         onOpenChange={(open) => {
           if (!open) {
             setPointsRangeId(null)
+            setPointsDialogSection('masters')
             closeRandomnessEditor()
           }
         }}
@@ -770,15 +912,18 @@ export function CalibrationEquipmentsForm({
         masterEquipmentIds={pointsRange?.masterEquipmentIds ?? []}
         masterPointsTabs={pointsRange?.masterPointsTabs}
         masterEquipmentOptions={masterEquipmentOptions ?? []}
-        generateReportEnabled={templateGenerateReport.enabled}
-        certificateTemplateConfigured={Boolean(
-          pointsRange?.certificateTemplate || form.certificateTemplate,
+        modeOfCalibrationConfigured={Boolean(
+          templateModeOfCalibration.trim() || templateMethodUsed.trim(),
         )}
         rawSheetContent={
           <>
             <h3 className="text-base font-semibold text-slate-900">Raw Data Sheet Format</h3>
             <RawDataSheetTemplateEditor
               value={templateRawDataSheet}
+              masterEquipmentIds={pointsRange?.masterEquipmentIds ?? []}
+              masterPointsTables={(pointsRange?.masterPointsTabs ?? [])
+                .map((t) => t.calibrationPointsTable)
+                .filter((t) => (t.columns?.length ?? 0) > 0)}
               onChange={(rawDataSheetTemplate) => {
                 if (!pointsRangeId) return
                 updateRange(pointsRangeId, { rawDataSheetTemplate })
@@ -977,15 +1122,52 @@ export function CalibrationEquipmentsForm({
             ) : null}
           </>
         }
-        certificateTemplateContent={
+        modeOfCalibrationContent={
           <>
-            <h3 className="text-base font-semibold text-slate-900">
-              Template of Calibration Certificate
-            </h3>
-            <CertificateTemplateEditor
-              value={templateCertificate}
-              onChange={patchCertificateTemplate}
-            />
+            <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="mode-of-calibration-input">Mode of Calibration</Label>
+                <Input
+                  id="mode-of-calibration-input"
+                  value={templateModeOfCalibration}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    if (!pointsRangeId) return
+                    const nextRanges = form.ranges.map((r) =>
+                      r.id === pointsRangeId ? { ...r, modeOfCalibration: next } : r,
+                    )
+                    onChange({
+                      ...form,
+                      ranges: nextRanges,
+                      modeOfCalibration: resolveEquipmentModeOfCalibration(nextRanges, next),
+                    })
+                  }}
+                  placeholder="e.g. Tension / Compression / Both"
+                  aria-label="Mode of Calibration"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="method-used-input">Method Used</Label>
+                <Input
+                  id="method-used-input"
+                  value={templateMethodUsed}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    if (!pointsRangeId) return
+                    const nextRanges = form.ranges.map((r) =>
+                      r.id === pointsRangeId ? { ...r, methodUsed: next } : r,
+                    )
+                    onChange({
+                      ...form,
+                      ranges: nextRanges,
+                      methodUsed: resolveEquipmentMethodUsed(nextRanges, next),
+                    })
+                  }}
+                  placeholder="e.g. Direct comparison"
+                  aria-label="Method Used"
+                />
+              </div>
+            </div>
           </>
         }
         onChange={({ calibrationPointsTable, masterEquipmentIds, masterPointsTabs }) => {
@@ -1333,6 +1515,6 @@ export function CalibrationEquipmentsForm({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

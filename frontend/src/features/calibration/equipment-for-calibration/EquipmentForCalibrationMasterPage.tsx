@@ -19,6 +19,7 @@ import {
   type EquipmentForCalibrationRow,
   type EquipmentScheduleSection,
 } from './types'
+import { withComputedCalibrationPointFormulas } from './calibrationPointsFormula'
 import {
   LAB_NAME_CHANGED_EVENT,
   LAB_NAME_STORAGE_KEY,
@@ -275,7 +276,7 @@ export default function EquipmentForCalibrationMasterPage() {
     setSaveLoading(true)
     setSaveMessage(null)
     try {
-      const payload = formToPayload(snapshot)
+      const payload = formToPayload(withComputedCalibrationPointFormulas(snapshot))
       if (editingId) {
         const { error } = await supabase
           .from('equipment_for_calibration')

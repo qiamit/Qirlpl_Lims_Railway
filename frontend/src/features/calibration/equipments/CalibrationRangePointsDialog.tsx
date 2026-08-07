@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  Calculator,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Eye,
-  FileBarChart,
-  FileSpreadsheet,
-  FileText,
+  Gauge,
   Plus,
   Trash2,
 } from 'lucide-react'
@@ -29,6 +29,8 @@ import {
   newCalibrationPointId,
   type CalibrationPointRow,
 } from '@/features/calibration/equipment-for-calibration/types'
+import { computeCalibrationPointRowValuesFromMaster } from '@/features/calibration/equipment-for-calibration/calibrationPointsFormula'
+import type { MasterFormulaRefSource } from '@/features/calibration/masterEquipmentFormulaRefs'
 import { supabase } from '@/lib/supabaseClient'
 import {
   emptyCalibrationPointsTable,
@@ -45,7 +47,7 @@ export type CalibrationPointsDialogSection =
   | 'rawSheet'
   | 'muSheet'
   | 'generateReport'
-  | 'certificateTemplate'
+  | 'modeOfCalibration'
 
 const FULLSCREEN_DIALOG_CLASS =
   '!flex fixed inset-0 z-[60] !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none !translate-x-0 !translate-y-0 flex-col gap-0 overflow-hidden !rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100'
@@ -94,6 +96,8 @@ type MasterEquipmentMeta = {
   nextMaintenanceDate: string
   nextMaintenanceDateRaw: string | null
   maintenanceDoneBy: string
+  /** Raw fields for calculated calibration-point formulas. */
+  formulaRef: MasterFormulaRefSource
 }
 
 function displayMetaValue(value: string | null | undefined): string {
@@ -275,7 +279,7 @@ async function fetchMasterMetadataMap(
   const { data, error } = await supabase
     .from('equipment_for_calibration')
     .select(
-      'id, asset_code, equipment_name, serial_number, equipment_status, current_location, manufacturer, model_number, mode_of_calibration, class_of_instrument, range_capacity, resolution_least_count, accuracy_acceptance_criteria, calibration_frequency, last_calibration_date, next_calibration_due, calibration_certificate_number, calibration_certificate_uncertainty, calibration_uncertainty_unit, calibration_coverage_factor, external_calibration_agency_name, intermediate_check_frequency, last_intermediate_check_date, next_intermediate_check_date, intermediate_check_result, intermediate_check_performed_by, maintenance_schedule_frequency, last_maintenance_date, next_maintenance_date, maintenance_done_by',
+      'id, asset_code, equipment_name, serial_number, equipment_status, current_location, manufacturer, model_number, mode_of_calibration, class_of_instrument, range_capacity, resolution_least_count, accuracy_acceptance_criteria, calibration_frequency, last_calibration_date, next_calibration_due, calibration_certificate_number, calibration_certificate_uncertainty, calibration_uncertainty_unit, calibration_coverage_factor, external_calibration_agency_name, calibration_temperature, calibration_humidity, coefficient_of_thermal_expansion, intermediate_check_frequency, last_intermediate_check_date, next_intermediate_check_date, intermediate_check_result, intermediate_check_performed_by, maintenance_schedule_frequency, last_maintenance_date, next_maintenance_date, maintenance_done_by',
     )
     .in('id', unique)
   if (error) throw error
@@ -303,6 +307,9 @@ async function fetchMasterMetadataMap(
     calibration_uncertainty_unit: string | null
     calibration_coverage_factor: string | null
     external_calibration_agency_name: string | null
+    calibration_temperature: string | null
+    calibration_humidity: string | null
+    coefficient_of_thermal_expansion: string | null
     intermediate_check_frequency: string | null
     last_intermediate_check_date: string | null
     next_intermediate_check_date: string | null
@@ -348,6 +355,23 @@ async function fetchMasterMetadataMap(
       nextMaintenanceDate: formatMetaDate(row.next_maintenance_date),
       nextMaintenanceDateRaw: row.next_maintenance_date,
       maintenanceDoneBy: displayMetaValue(row.maintenance_done_by),
+      formulaRef: {
+        asset_code: row.asset_code,
+        equipment_name: row.equipment_name,
+        manufacturer: row.manufacturer,
+        model_number: row.model_number,
+        serial_number: row.serial_number,
+        range_capacity: row.range_capacity,
+        resolution_least_count: row.resolution_least_count,
+        accuracy_acceptance_criteria: row.accuracy_acceptance_criteria,
+        class_of_instrument: row.class_of_instrument,
+        calibration_temperature: row.calibration_temperature,
+        calibration_humidity: row.calibration_humidity,
+        coefficient_of_thermal_expansion: row.coefficient_of_thermal_expansion,
+        calibration_certificate_uncertainty: row.calibration_certificate_uncertainty,
+        calibration_coverage_factor: row.calibration_coverage_factor,
+        calibration_certificate_number: row.calibration_certificate_number,
+      },
     })
   }
   return map
@@ -476,9 +500,12 @@ function MasterEquipmentNameCell({
 function CalibrationPointsTableEditor({
   table,
   onChange,
+  masterRef = null,
 }: {
   table: CalibrationPointsStored
   onChange: (next: CalibrationPointsStored) => void
+  /** Master equipment fields for Calculated column formulas. */
+  masterRef?: MasterFormulaRefSource | null
 }) {
   const ensureColumns = (t: CalibrationPointsStored): CalibrationPointsStored =>
     t.columns.length > 0 ? t : singleColumnPointsTable()
@@ -487,14 +514,65 @@ function CalibrationPointsTableEditor({
   const displayColumns = draft.columns
   const displayRows =
     draft.rows.length > 0 ? draft.rows : [emptyCalibrationPointRow(displayColumns)]
+  const hasFormulaColumns = displayColumns.some((c) => c.type === 'formula')
+  const [sortColId, setSortColId] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const updateCell = (rowId: string, colId: string, value: string) => {
+    const col = displayColumns.find((c) => c.id === colId)
+    if (col?.type === 'formula') return
     onChange({
       ...draft,
-      rows: draft.rows.map((r) =>
-        r.id === rowId ? { ...r, values: { ...r.values, [colId]: value } } : r,
-      ),
+      rows: draft.rows.map((r) => {
+        if (r.id !== rowId) return r
+        const nextValues = { ...r.values, [colId]: value }
+        if (!hasFormulaColumns) return { ...r, values: nextValues }
+        return {
+          ...r,
+          values: {
+            ...nextValues,
+            ...computeCalibrationPointRowValuesFromMaster(
+              displayColumns,
+              nextValues,
+              masterRef,
+            ),
+          },
+        }
+      }),
     })
+  }
+
+  const sortByColumn = (columnId: string) => {
+    const nextDir: 'asc' | 'desc' =
+      sortColId === columnId && sortDir === 'asc' ? 'desc' : 'asc'
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+    const valueForSort = (row: CalibrationPointRow): string => {
+      if (hasFormulaColumns) {
+        const computed = computeCalibrationPointRowValuesFromMaster(
+          displayColumns,
+          row.values,
+          masterRef,
+        )
+        return String(computed[columnId] ?? row.values[columnId] ?? '').trim()
+      }
+      return String(row.values[columnId] ?? '').trim()
+    }
+    const sorted = [...displayRows].sort((a, b) => {
+      const av = valueForSort(a)
+      const bv = valueForSort(b)
+      const an = Number(av.replace(/^[±+\s]+/, ''))
+      const bn = Number(bv.replace(/^[±+\s]+/, ''))
+      let cmp = 0
+      if (av !== '' && bv !== '' && Number.isFinite(an) && Number.isFinite(bn)) {
+        cmp = an - bn
+      } else {
+        cmp = collator.compare(av, bv)
+      }
+      return nextDir === 'asc' ? cmp : -cmp
+    })
+    setSortColId(columnId)
+    setSortDir(nextDir)
+    onChange({ ...draft, rows: sorted })
   }
 
   const addRow = () => {
@@ -520,36 +598,86 @@ function CalibrationPointsTableEditor({
           <thead className="bg-slate-50 text-left text-[11px] font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-12 px-3 py-2 text-center">#</th>
-              {displayColumns.map((col) => (
-                <th key={col.id} className="min-w-[140px] px-3 py-2">
-                  {col.header}
-                </th>
-              ))}
+              {displayColumns.map((col) => {
+                const active = sortColId === col.id
+                return (
+                  <th key={col.id} className="min-w-[140px] px-3 py-2">
+                    <button
+                      type="button"
+                      className="inline-flex max-w-full items-center gap-1 text-left hover:text-teal-800"
+                      title={
+                        active && sortDir === 'asc'
+                          ? 'Sorted lower → higher (click for higher → lower)'
+                          : active && sortDir === 'desc'
+                            ? 'Sorted higher → lower (click for lower → higher)'
+                            : `Sort ${col.header} lower → higher`
+                      }
+                      onClick={() => sortByColumn(col.id)}
+                    >
+                      <span className="truncate">{col.header}</span>
+                      {col.type === 'formula' ? (
+                        <span className="rounded bg-indigo-50 px-1 text-[9px] font-semibold normal-case tracking-wide text-indigo-700">
+                          Calc
+                        </span>
+                      ) : null}
+                      {active && sortDir === 'asc' ? (
+                        <ArrowUp size={12} className="shrink-0 text-teal-700" aria-hidden />
+                      ) : active && sortDir === 'desc' ? (
+                        <ArrowDown size={12} className="shrink-0 text-teal-700" aria-hidden />
+                      ) : (
+                        <ArrowUpDown size={12} className="shrink-0 text-slate-400" aria-hidden />
+                      )}
+                    </button>
+                  </th>
+                )
+              })}
               <th className="w-14 px-2 py-2 text-right"> </th>
             </tr>
           </thead>
           <tbody>
             {displayRows.map((row: CalibrationPointRow, index) => {
               const isLast = index === displayRows.length - 1
+              const displayValues = hasFormulaColumns
+                ? computeCalibrationPointRowValuesFromMaster(
+                    displayColumns,
+                    row.values,
+                    masterRef,
+                  )
+                : row.values
               return (
                 <tr key={row.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 align-middle text-center text-slate-500">
                     {index + 1}
                   </td>
-                  {displayColumns.map((col) => (
-                    <td key={col.id} className="px-3 py-2 align-middle">
-                      <Label htmlFor={`view-pt-${row.id}-${col.id}`} className="sr-only">
-                        {col.header} row {index + 1}
-                      </Label>
-                      <Input
-                        id={`view-pt-${row.id}-${col.id}`}
-                        value={row.values[col.id] ?? ''}
-                        onChange={(e) => updateCell(row.id, col.id, e.target.value)}
-                        placeholder={col.header}
-                        className="h-9"
-                      />
-                    </td>
-                  ))}
+                  {displayColumns.map((col) => {
+                    const isFormula = col.type === 'formula'
+                    return (
+                      <td key={col.id} className="px-3 py-2 align-middle">
+                        <Label htmlFor={`view-pt-${row.id}-${col.id}`} className="sr-only">
+                          {col.header} row {index + 1}
+                          {isFormula ? ' (calculated)' : ''}
+                        </Label>
+                        <Input
+                          id={`view-pt-${row.id}-${col.id}`}
+                          value={
+                            isFormula
+                              ? (displayValues[col.id] ?? '')
+                              : (row.values[col.id] ?? '')
+                          }
+                          onChange={(e) => updateCell(row.id, col.id, e.target.value)}
+                          readOnly={isFormula}
+                          tabIndex={isFormula ? -1 : undefined}
+                          placeholder={isFormula ? 'Auto' : col.header}
+                          className={cn('h-9', isFormula && 'bg-slate-50 text-slate-700')}
+                          title={
+                            isFormula
+                              ? col.formula?.expression?.trim() || 'Calculated column'
+                              : undefined
+                          }
+                        />
+                      </td>
+                    )
+                  })}
                   <td className="px-2 py-2 align-middle text-right">
                     {isLast ? (
                       <Button
@@ -717,6 +845,7 @@ function MasterCalibrationPointsViewDialog({
   tab,
   tabIndex,
   masterEquipmentOptions,
+  masterMetadata,
   loading,
   loadHint,
   onUpdateTable,
@@ -726,6 +855,7 @@ function MasterCalibrationPointsViewDialog({
   tab: MasterPointsTab | null
   tabIndex: number
   masterEquipmentOptions: FilterComboboxOption[]
+  masterMetadata: Map<string, MasterEquipmentMeta>
   loading: boolean
   loadHint: string | null
   onUpdateTable: (table: CalibrationPointsStored) => void
@@ -733,6 +863,10 @@ function MasterCalibrationPointsViewDialog({
   const title = tab
     ? masterLabelForTab(tab, tabIndex, masterEquipmentOptions)
     : 'Calibration Points'
+  const masterRef =
+    tab?.masterEquipmentId.trim()
+      ? (masterMetadata.get(tab.masterEquipmentId)?.formulaRef ?? null)
+      : null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -755,6 +889,7 @@ function MasterCalibrationPointsViewDialog({
             <CalibrationPointsTableEditor
               table={tab.calibrationPointsTable}
               onChange={onUpdateTable}
+              masterRef={masterRef}
             />
           ) : null}
         </div>
@@ -777,12 +912,12 @@ export function CalibrationRangePointsDialog({
   masterEquipmentIds = [],
   masterPointsTabs,
   masterEquipmentOptions = [],
-  generateReportEnabled = false,
-  certificateTemplateConfigured = false,
+  modeOfCalibrationConfigured = false,
   rawSheetContent = null,
   muSheetContent = null,
   generateReportContent = null,
-  certificateTemplateContent = null,
+  modeOfCalibrationContent = null,
+  initialSection = 'masters',
   onChange,
 }: {
   open: boolean
@@ -793,17 +928,18 @@ export function CalibrationRangePointsDialog({
   masterEquipmentIds?: string[]
   masterPointsTabs?: MasterPointsTab[]
   masterEquipmentOptions?: FilterComboboxOption[]
-  generateReportEnabled?: boolean
-  /** Orange/teal indicator when certificate template has been saved on this range. */
-  certificateTemplateConfigured?: boolean
+  /** Indicator when Mode of Calibration has been entered for this range. */
+  modeOfCalibrationConfigured?: boolean
   /** Inline Raw Data Sheet Format editor (section panel). */
   rawSheetContent?: ReactNode
   /** Inline MU Calculation Sheet editor (section panel). */
   muSheetContent?: ReactNode
   /** Inline Generate Report Format editor (section panel). */
   generateReportContent?: ReactNode
-  /** Inline Calibration Certificate template editor (section panel). */
-  certificateTemplateContent?: ReactNode
+  /** Inline Mode of Calibration manual input (section panel). */
+  modeOfCalibrationContent?: ReactNode
+  /** Section to open when the dialog becomes visible. */
+  initialSection?: CalibrationPointsDialogSection
   onChange: (next: {
     calibrationPointsTable: CalibrationPointsStored
     masterEquipmentIds: string[]
@@ -870,10 +1006,10 @@ export function CalibrationRangePointsDialog({
     setViewTabId(null)
     setStatusViewMasterId(null)
     setSelectedTabIds(new Set())
-    setActiveSection('masters')
+    setActiveSection(initialSection ?? 'masters')
     const initial = buildInitialTabs(masterPointsTabs, masterEquipmentIds, pointsTable)
     setTabs(initial.length > 0 ? initial : [emptyMasterPointsTab()])
-  }, [open, pointsTable, masterEquipmentIds, masterPointsTabs])
+  }, [open, pointsTable, masterEquipmentIds, masterPointsTabs, initialSection])
 
   useEffect(() => {
     if (!open) return
@@ -1086,7 +1222,7 @@ export function CalibrationRangePointsDialog({
                 {generateReportContent}
               </div>
             ) : null}
-            {activeSection === 'certificateTemplate' ? (
+            {activeSection === 'modeOfCalibration' ? (
               <div className="mx-auto w-full max-w-none space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
@@ -1099,7 +1235,7 @@ export function CalibrationRangePointsDialog({
                     ← Back to Masters
                   </Button>
                 </div>
-                {certificateTemplateContent}
+                {modeOfCalibrationContent}
               </div>
             ) : null}
             {activeSection === 'masters' ? (
@@ -1249,55 +1385,17 @@ export function CalibrationRangePointsDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 border-teal-600/40 text-xs text-teal-800 hover:bg-teal-50"
-                    onClick={() => setActiveSection('rawSheet')}
+                    className="relative h-8 border-violet-600/40 text-xs text-violet-900 hover:bg-violet-50"
+                    aria-label="Mode of Calibration"
+                    onClick={() => setActiveSection('modeOfCalibration')}
                   >
-                    <FileSpreadsheet size={14} className="mr-1" />
-                    Raw Data Sheet Format
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 border-indigo-600/40 text-xs text-indigo-800 hover:bg-indigo-50"
-                    onClick={() => setActiveSection('muSheet')}
-                  >
-                    <Calculator size={14} className="mr-1" />
-                    MU Calculation Sheet
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="relative h-8 border-amber-600/40 text-xs text-amber-900 hover:bg-amber-50"
-                    aria-label="Generate Report Format"
-                    onClick={() => setActiveSection('generateReport')}
-                  >
-                    <FileBarChart size={14} className="mr-1" />
-                    Generate Report Format
-                    {generateReportEnabled ? (
+                    <Gauge size={14} className="mr-1" />
+                    Mode of Calibration
+                    {modeOfCalibrationConfigured ? (
                       <span
-                        className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+                        className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-500"
                         aria-hidden
-                        title="Generate Report enabled"
-                      />
-                    ) : null}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="relative h-8 border-rose-600/40 text-xs text-rose-900 hover:bg-rose-50"
-                    aria-label="Template of Calibration Certificate"
-                    onClick={() => setActiveSection('certificateTemplate')}
-                  >
-                    <FileText size={14} className="mr-1" />
-                    Template of Calibration Certificate
-                    {certificateTemplateConfigured ? (
-                      <span
-                        className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-rose-500"
-                        aria-hidden
-                        title="Certificate template configured"
+                        title="Mode of Calibration set"
                       />
                     ) : null}
                   </Button>
@@ -1338,6 +1436,7 @@ export function CalibrationRangePointsDialog({
         tab={viewTab}
         tabIndex={viewTabIndex}
         masterEquipmentOptions={masterEquipmentOptions ?? []}
+        masterMetadata={masterMetadata}
         loading={viewTab != null && loadingPointsTabId === viewTab.id}
         loadHint={viewLoadHint}
         onUpdateTable={updateViewTabTable}

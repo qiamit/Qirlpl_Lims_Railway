@@ -169,13 +169,11 @@ export function UserManagementForm(props: UserManagementFormProps) {
   }
 
   const handleDeleteDesignation = (label: string) => {
-    props.setDesignations((prev) => {
-      const next = prev.filter((item) => item !== label)
-      if (formData.designation === label) {
-        setFormData((prev) => ({ ...prev, designation: next[0] ?? '' }))
-      }
-      return next
-    })
+    const next = props.designations.filter((item) => item !== label)
+    props.setDesignations(next)
+    if (formData.designation === label) {
+      setFormData((prev) => ({ ...prev, designation: next[0] ?? '' }))
+    }
   }
 
   const handleAddDepartment = () => {
@@ -208,16 +206,14 @@ export function UserManagementForm(props: UserManagementFormProps) {
   }
 
   const handleDeleteDepartment = (label: string) => {
-    props.setDepartments((prev) => {
-      const next = prev.filter((item) => item !== label)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
-      }
-      if (formData.department === label) {
-        setFormData((prev) => ({ ...prev, department: next[0] ?? '' }))
-      }
-      return next
-    })
+    const next = props.departments.filter((item) => item !== label)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
+    }
+    props.setDepartments(next)
+    if (formData.department === label) {
+      setFormData((prev) => ({ ...prev, department: next[0] ?? '' }))
+    }
   }
 
   const handleAddDivision = () => {
@@ -250,16 +246,14 @@ export function UserManagementForm(props: UserManagementFormProps) {
   }
 
   const handleDeleteDivision = (label: string) => {
-    props.setDivisions((prev) => {
-      const next = prev.filter((item) => item !== label)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('userManagement.divisions', JSON.stringify(next))
-      }
-      if (formData.division === label) {
-        setFormData((prev) => ({ ...prev, division: next[0] ?? '' }))
-      }
-      return next
-    })
+    const next = props.divisions.filter((item) => item !== label)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('userManagement.divisions', JSON.stringify(next))
+    }
+    props.setDivisions(next)
+    if (formData.division === label) {
+      setFormData((prev) => ({ ...prev, division: next[0] ?? '' }))
+    }
   }
 
   const handleSave = async () => {
@@ -538,13 +532,19 @@ export function UserManagementForm(props: UserManagementFormProps) {
                   })}
                 </div>
                 <Select
-                  value={formData.division || undefined}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, division: value }))}
+                  value={formData.division || '__none__'}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      division: value === '__none__' ? '' : value,
+                    }))
+                  }
                 >
                   <SelectTrigger id="user-division" className={fieldControlClass}>
                     <SelectValue placeholder="Select Division" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__">Select Division</SelectItem>
                     {divisionOptions.map((label) => (
                       <SelectItem key={label} value={label}>
                         {label}
@@ -573,13 +573,19 @@ export function UserManagementForm(props: UserManagementFormProps) {
                   })}
                 </div>
                 <Select
-                  value={formData.designation || undefined}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, designation: value }))}
+                  value={formData.designation || '__none__'}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      designation: value === '__none__' ? '' : value,
+                    }))
+                  }
                 >
                   <SelectTrigger id="user-designation" className={fieldControlClass}>
                     <SelectValue placeholder="Select Designation" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__">Select Designation</SelectItem>
                     {designationOptions.map((label) => (
                       <SelectItem key={label} value={label}>
                         {label}
@@ -608,13 +614,19 @@ export function UserManagementForm(props: UserManagementFormProps) {
                   })}
                 </div>
                 <Select
-                  value={formData.department || undefined}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, department: value }))}
+                  value={formData.department || '__none__'}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      department: value === '__none__' ? '' : value,
+                    }))
+                  }
                 >
                   <SelectTrigger id="user-department" className={fieldControlClass}>
                     <SelectValue placeholder="Select Department" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__">Select Department</SelectItem>
                     {departmentOptions.map((label) => (
                       <SelectItem key={label} value={label}>
                         {label}

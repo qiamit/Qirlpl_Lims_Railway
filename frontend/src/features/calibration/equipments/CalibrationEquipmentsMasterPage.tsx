@@ -21,6 +21,8 @@ import {
   muCalculationTemplateFromRow,
   generateReportConfigFromRow,
   certificateTemplateFromRow,
+  resolveEquipmentModeOfCalibration,
+  resolveEquipmentMethodUsed,
   serializeEquipmentRawDataSheetTemplate,
   serializeEquipmentMuCalculationTemplate,
   serializeEquipmentGenerateReportConfig,
@@ -438,6 +440,8 @@ export default function CalibrationEquipmentsMasterPage() {
     muCalculationTemplate: muCalculationTemplateFromRow(row),
     generateReportConfig: generateReportConfigFromRow(row),
     certificateTemplate: certificateTemplateFromRow(row),
+    modeOfCalibration: resolveEquipmentModeOfCalibration(rangesFromRow(row), ''),
+    methodUsed: resolveEquipmentMethodUsed(rangesFromRow(row), ''),
   })
 
   const openNew = () => {
@@ -679,10 +683,10 @@ export default function CalibrationEquipmentsMasterPage() {
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+          className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
           aria-describedby={undefined}
         >
-          <div className="relative bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+          <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.12]"
               style={{
@@ -704,9 +708,9 @@ export default function CalibrationEquipmentsMasterPage() {
             </DialogHeader>
           </div>
 
-          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#fafbfc]">
             {saveMessage && showForm ? (
-              <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <p className="shrink-0 border-l-2 border-destructive bg-destructive/5 px-4 py-2 text-sm text-destructive sm:px-6">
                 {saveMessage}
               </p>
             ) : null}

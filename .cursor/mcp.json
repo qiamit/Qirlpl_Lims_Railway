@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "supabase-qirlpl-lims-demo": {
-      "url": "https://mcp.supabase.com/mcp?project_ref=wsxdaimsfcgecbwjyszq"
+    "supabase-qirlpl-lims": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=tzbgywlwfcdsgrumstpu"
     }
   }
 }

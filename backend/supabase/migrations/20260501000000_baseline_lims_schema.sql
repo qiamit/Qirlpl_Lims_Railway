@@ -1,4 +1,4 @@
--- Baseline schema exported from tzbgywlwfcdsgrumstpu for bootstrap of wsxdaimsfcgecbwjyszq
+-- Baseline schema for Qirlpl_Lims (tzbgywlwfcdsgrumstpu)
 -- Generated: 2026-07-20T15:52:10.2850973+05:30
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";

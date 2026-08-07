@@ -27,6 +27,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabaseClient'
+import { parseCalibrationPointsTable } from '@/features/calibration/equipment-for-calibration/types'
 import {
   EMPTY_RAW_DATA_ENVIRONMENT,
   ENV_PARAMETER_OPTIONS,
@@ -54,6 +56,8 @@ import {
   type RawDataSheetColumn,
   type RawDataSheetTemplate,
 } from '@/features/calibration/rawDataSheetTypes'
+import { masterEquipmentFormulaRefColumns } from '@/features/calibration/masterEquipmentFormulaRefs'
+import { masterPointsFormulaRefColumns } from '@/features/calibration/masterEquipmentFormulaRefs'
 import {
   deleteSavedColumnFormula,
   loadSavedColumnFormulas,
@@ -194,6 +198,7 @@ function ColumnFormulaInput({
   const [cursor, setCursor] = useState(0)
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
+  const [focused, setFocused] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [formulaName, setFormulaName] = useState('')
   const [savedFormulas, setSavedFormulas] = useState<SavedColumnFormula[]>([])
@@ -213,32 +218,58 @@ function ColumnFormulaInput({
 
   const token = useMemo(() => findAutocompleteToken(value, cursor), [value, cursor])
 
+  /** After `=`, `(`, `,`, or bare `[` — offer all source columns (incl. Master fields). */
+  const offerAllAtCursor = useMemo(() => {
+    if (!focused) return false
+    const before = value.slice(0, cursor)
+    if (/[=(,]\s*$/.test(before)) return true
+    if (before.endsWith('[')) return true
+    return false
+  }, [focused, value, cursor])
+
   const suggestions = useMemo(() => {
-    if (!token) return []
-    const q = token.query.trim().toLowerCase()
-    return sourceColumns.filter((c) => {
-      const label = (c.label || 'Untitled column').toLowerCase()
-      const key = c.key.toLowerCase()
-      return !q || label.includes(q) || key.includes(q)
-    })
-  }, [sourceColumns, token])
+    if (sourceColumns.length === 0) return []
+    if (token) {
+      const q = token.query.trim().toLowerCase()
+      return sourceColumns.filter((c) => {
+        const label = (c.label || 'Untitled column').toLowerCase()
+        const key = c.key.toLowerCase()
+        return !q || label.includes(q) || key.includes(q)
+      })
+    }
+    if (offerAllAtCursor) return sourceColumns
+    return []
+  }, [sourceColumns, token, offerAllAtCursor])
 
   useEffect(() => {
-    setOpen(Boolean(token) && suggestions.length > 0)
+    setOpen(focused && suggestions.length > 0)
     setHighlight(0)
-  }, [token, suggestions.length])
+  }, [focused, suggestions.length, token?.query, offerAllAtCursor])
 
   const insertColumn = (col: RawDataSheetColumn) => {
-    if (!token) return
     const insert = bracketLabel(col.label || col.key)
-    const start = token.start
-    const end = token.end
-    let next: string
-    if (value[start - 1] === '[') {
-      const afterCursor = value.slice(end)
-      const rest = afterCursor.startsWith(']') ? afterCursor.slice(1) : afterCursor
-      next = `${value.slice(0, start - 1)}${insert}${rest}`
-      const caret = start - 1 + insert.length
+    if (token) {
+      const start = token.start
+      const end = token.end
+      let next: string
+      if (value[start - 1] === '[') {
+        const afterCursor = value.slice(end)
+        const rest = afterCursor.startsWith(']') ? afterCursor.slice(1) : afterCursor
+        next = `${value.slice(0, start - 1)}${insert}${rest}`
+        const caret = start - 1 + insert.length
+        onChange(next)
+        requestAnimationFrame(() => {
+          const el = inputRef.current
+          if (!el) return
+          el.focus()
+          el.setSelectionRange(caret, caret)
+          setCursor(caret)
+        })
+        setOpen(false)
+        return
+      }
+      next = `${value.slice(0, start)}${insert}${value.slice(end)}`
+      const caret = start + insert.length
       onChange(next)
       requestAnimationFrame(() => {
         const el = inputRef.current
@@ -250,9 +281,16 @@ function ColumnFormulaInput({
       setOpen(false)
       return
     }
-    next = `${value.slice(0, start)}${insert}${value.slice(end)}`
-    const caret = start + insert.length
-    onChange(next)
+    // Insert at cursor when offering the full list after = / ( / ,
+    const before = value.slice(0, cursor)
+    const after = value.slice(cursor)
+    const text = before.endsWith('[')
+      ? `${before}${col.label.trim() || col.key}]${after.startsWith(']') ? after.slice(1) : after}`
+      : `${before}${insert}${after}`
+    const caret = before.endsWith('[')
+      ? before.length + (col.label.trim() || col.key).length + 1
+      : before.length + insert.length
+    onChange(text)
     requestAnimationFrame(() => {
       const el = inputRef.current
       if (!el) return
@@ -449,6 +487,13 @@ function ColumnFormulaInput({
             onChange(e.target.value.replace(/\r?\n/g, ''))
             setCursor(e.target.selectionStart ?? e.target.value.length)
           }}
+          onFocus={(e) => {
+            setFocused(true)
+            setCursor(e.currentTarget.selectionStart ?? e.currentTarget.value.length)
+          }}
+          onBlur={() => {
+            window.setTimeout(() => setFocused(false), 120)
+          }}
           onClick={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
           onKeyUp={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
           onKeyDown={(e) => {
@@ -484,6 +529,8 @@ function ColumnFormulaInput({
         >
           {suggestions.map((col, i) => {
             const isEnv = col.key.startsWith(ENV_FORMULA_REF_PREFIX)
+            const isEq = col.key.startsWith('eq:')
+            const isPt = col.key.startsWith('pt:')
             return (
             <li key={col.key}>
               <button
@@ -505,6 +552,16 @@ function ColumnFormulaInput({
                   {isEnv ? (
                     <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
                       Env
+                    </span>
+                  ) : null}
+                  {isEq ? (
+                    <span className="shrink-0 rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-teal-800">
+                      Master
+                    </span>
+                  ) : null}
+                  {isPt ? (
+                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-900">
+                      Points
                     </span>
                   ) : null}
                 </span>
@@ -716,13 +773,14 @@ function EnvCellFormulaInput({
   )
 }
 
-function ColumnCalculationDialog({
+export function ColumnCalculationDialog({
   open,
   onOpenChange,
   column,
   columns,
   envColumns,
   onUpdateFormula,
+  layer = 'nested',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -730,6 +788,8 @@ function ColumnCalculationDialog({
   columns: RawDataSheetColumn[]
   envColumns: RawDataSheetColumn[]
   onUpdateFormula: (col: RawDataSheetColumn, patch: Partial<RawDataColumnFormula>) => void
+  /** Dialog stack level — use `top` when parent is already `stacked` (z-70). */
+  layer?: 'default' | 'nested' | 'stacked' | 'top'
 }) {
   const formula = column?.formula ?? emptyColumnFormula()
   const columnIndex = column ? columns.findIndex((c) => c.key === column.key) : -1
@@ -791,7 +851,7 @@ function ColumnCalculationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         persistOnFocusLoss
-        layer="nested"
+        layer={layer}
         className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-xl flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
         aria-describedby={undefined}
       >
@@ -868,6 +928,10 @@ function ColumnCalculationDialog({
             type="button"
             className="bg-indigo-600 text-white hover:bg-indigo-500"
             onClick={() => {
+              const dp = formula.decimals != null ? formula.decimals : 2
+              if (formula.decimals == null) {
+                onUpdateFormula(column, { decimals: dp })
+              }
               commitExpression(draftExpr)
               onOpenChange(false)
             }}
@@ -880,7 +944,7 @@ function ColumnCalculationDialog({
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
         <DialogContent
           persistOnFocusLoss
-          layer="nested"
+          layer={layer === 'default' ? 'nested' : layer}
           className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
           aria-describedby={undefined}
         >
@@ -1423,15 +1487,62 @@ function EnvironmentConditionEditor({
 export function RawDataSheetTemplateEditor({
   value,
   onChange,
+  masterPointsTables = [],
+  masterEquipmentIds = [],
 }: {
   value: RawDataSheetTemplate
   onChange: (next: RawDataSheetTemplate) => void
+  /** Selected masters' calibration-points tables — column headers become formula refs. */
+  masterPointsTables?: Array<{ columns: Array<{ header: string }> }>
+  /** When tables are not loaded yet, fetch column headers from these master ids. */
+  masterEquipmentIds?: string[]
 }) {
   const [calculationColumnKey, setCalculationColumnKey] = useState<string | null>(null)
+  const [fetchedPointsTables, setFetchedPointsTables] = useState<
+    Array<{ columns: Array<{ header: string }> }>
+  >([])
+
+  useEffect(() => {
+    const ids = [...new Set(masterEquipmentIds.map((id) => id.trim()).filter(Boolean))]
+    if (ids.length === 0) {
+      setFetchedPointsTables([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('equipment_for_calibration')
+          .select('id, calibration_points')
+          .in('id', ids)
+        if (error) throw error
+        if (cancelled) return
+        const tables = ((data ?? []) as Array<{ calibration_points: unknown }>).map((row) => {
+          const table = parseCalibrationPointsTable(row.calibration_points)
+          return { columns: table.columns.map((c) => ({ header: c.header })) }
+        })
+        setFetchedPointsTables(tables.filter((t) => t.columns.length > 0))
+      } catch {
+        if (!cancelled) setFetchedPointsTables([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [masterEquipmentIds.join('|')])
+
+  const pointsTablesForRefs = useMemo(() => {
+    const fromProps = masterPointsTables.filter((t) => (t.columns?.length ?? 0) > 0)
+    return fromProps.length > 0 ? fromProps : fetchedPointsTables
+  }, [masterPointsTables, fetchedPointsTables])
 
   const envFormulaColumns = useMemo(
-    () => envParameterFormulaColumns(value.environmentDefaults),
-    [value.environmentDefaults],
+    () => [
+      ...envParameterFormulaColumns(value.environmentDefaults),
+      ...masterEquipmentFormulaRefColumns(),
+      ...masterPointsFormulaRefColumns(pointsTablesForRefs),
+    ],
+    [value.environmentDefaults, pointsTablesForRefs],
   )
 
   const updateColumn = (key: string, patch: Partial<RawDataSheetColumn>) => {

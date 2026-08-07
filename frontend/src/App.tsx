@@ -53,6 +53,14 @@ import {
   NonConformitiesRoute,
   MrmAgendaRoute,
   ManagementReviewMeetingRoute,
+  CompetencyMatrixRoute,
+  TrainingNeedIdentificationRoute,
+  TrainingPlanRoute,
+  TrainingCalendarRoute,
+  TrainingRegisterRoute,
+  TrainingEvaluationRoute,
+  InductionTrainingRoute,
+  EffectivenessReviewRoute,
 } from '@/routes/routeElements'
 
 function PlaceholderPage({ title, clause }: { title: string; clause: string }) {
@@ -143,6 +151,23 @@ export default function App() {
           <Route
             path="audit-mrm/management-review-meeting"
             element={<ManagementReviewMeetingRoute />}
+          />
+
+          {/* Training Management (ISO 17025 §6.2) */}
+          <Route path="training" element={<Navigate to="/training/competency-matrix" replace />} />
+          <Route path="training/competency-matrix" element={<CompetencyMatrixRoute />} />
+          <Route
+            path="training/need-identification"
+            element={<TrainingNeedIdentificationRoute />}
+          />
+          <Route path="training/plan" element={<TrainingPlanRoute />} />
+          <Route path="training/calendar" element={<TrainingCalendarRoute />} />
+          <Route path="training/register" element={<TrainingRegisterRoute />} />
+          <Route path="training/evaluation" element={<TrainingEvaluationRoute />} />
+          <Route path="training/induction" element={<InductionTrainingRoute />} />
+          <Route
+            path="training/effectiveness-review"
+            element={<EffectivenessReviewRoute />}
           />
 
           {/* Calibration LIMS */}

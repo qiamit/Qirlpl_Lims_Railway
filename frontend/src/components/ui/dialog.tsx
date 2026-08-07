@@ -9,6 +9,7 @@ function isRadixSelectPortalTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
   return Boolean(
     target.closest('[data-radix-select-content]') ||
+      target.closest('[data-radix-dropdown-menu-content]') ||
       target.closest('[data-radix-popper-content-wrapper]'),
   )
 }
@@ -19,11 +20,12 @@ const DialogTrigger = DialogPrimitive.Trigger
 
 const DialogClose = DialogPrimitive.Close
 
-type DialogLayer = 'default' | 'nested' | 'stacked'
+type DialogLayer = 'default' | 'nested' | 'stacked' | 'top'
 
 const dialogLayerZClass = (layer: DialogLayer) => {
   if (layer === 'nested') return 'z-[60]'
   if (layer === 'stacked') return 'z-[70]'
+  if (layer === 'top') return 'z-[80]'
   return 'z-50'
 }
 
@@ -81,7 +83,7 @@ const DialogContent = React.forwardRef<
     persistOnFocusLoss?: boolean
     /** Render the top-right close control (default true) */
     showCloseButton?: boolean
-    /** Raise nested dialogs above an already-open parent dialog; use stacked for a third layer */
+    /** Raise nested dialogs above an already-open parent dialog; stacked = 3rd, top = 4th */
     layer?: DialogLayer
   }
 >(

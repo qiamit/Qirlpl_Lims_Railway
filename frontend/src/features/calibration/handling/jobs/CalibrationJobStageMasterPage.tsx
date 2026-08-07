@@ -12,9 +12,11 @@ import {
 import {
   fetchCalibrationEngineerOptions,
   fetchCalibrationJobsByStage,
+  fetchUserProfileBrief,
   moveCalibrationJobsToNextStage,
   moveCalibrationJobsToPreviousStage,
   referbackCalibrationJobsToServiceRequest,
+  stampRawDataSheetReviewed,
   updateCalibrationJobEngineer,
   updateCalibrationJobLocation,
   type CalibrationEngineerOption,
@@ -303,6 +305,23 @@ export function CalibrationJobStageMasterPage({
     setActionLoading(true)
     setActionMessage(null)
     try {
+      if (isReviewData && user?.id) {
+        const profile =
+          (await fetchUserProfileBrief(user.id).catch(() => null)) ?? {
+            id: user.id,
+            name: profileName.trim() || user.email || user.id,
+            designation: designation.trim(),
+          }
+        await Promise.all(
+          idsToMove.map((id) =>
+            stampRawDataSheetReviewed(id, {
+              userId: profile.id,
+              name: profile.name,
+              designation: profile.designation,
+            }).catch(() => undefined),
+          ),
+        )
+      }
       const { moved, skippedTerminal } = await moveCalibrationJobsToNextStage(idsToMove)
       setActionMessage(
         moved > 0
@@ -415,6 +434,17 @@ export function CalibrationJobStageMasterPage({
     )
   }
 
+  const handleLocationOfCalibrationSaved = (
+    jobId: string,
+    locationOfCalibration: string,
+  ) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === jobId ? { ...r, location_of_calibration: locationOfCalibration } : r,
+      ),
+    )
+  }
+
   const handleBulkForward = async () => {
     if (isConduct) {
       await moveJobsForward([...selectedJobIds])
@@ -500,6 +530,7 @@ export function CalibrationJobStageMasterPage({
           onForward={handleForwardJob}
           onReferback={handleReferbackJob}
           onChecklistSaved={isOutsideConduct ? handleChecklistSaved : undefined}
+          onLocationOfCalibrationSaved={handleLocationOfCalibrationSaved}
           actionLoading={actionLoading}
           scopedToEngineer={scopeConductToEngineer}
           showOutsideChecklists={isOutsideConduct}
@@ -531,7 +562,7 @@ export function CalibrationJobStageMasterPage({
         />
       )}
       <CalibrationJobStageFooterBar
-        message={actionMessage}
+        message={isConduct ? null : actionMessage}
         loading={listLoading || actionLoading}
         selectedCount={isConduct ? selectedJobIds.size : selectedSrfIds.size}
         totalCount={listTotal}
@@ -550,14 +581,21 @@ export function CalibrationJobStageMasterPage({
         nextStageLabel={nextStageLabel}
         onMoveNext={() => void handleBulkForward()}
         showBulkMove={!isPerJobStage && Boolean(nextStage)}
-        showBulkActions={!isPerJobStage}
+        showBulkActions={!isPerJobStage && !isConduct && stage !== 'certificates'}
         canReferbackBulk={
           !isPerJobStage &&
+          stage !== 'certificates' &&
           (isConduct ? selectedJobIds.size > 0 : selectedSrfIds.size > 0) &&
           Boolean(prevStageLabel)
         }
-        previousStageLabel={isPerJobStage ? null : prevStageLabel}
-        onReferbackBulk={isPerJobStage ? undefined : () => void handleBulkReferback()}
+        previousStageLabel={
+          isPerJobStage || isConduct || stage === 'certificates' ? null : prevStageLabel
+        }
+        onReferbackBulk={
+          isPerJobStage || isConduct || stage === 'certificates'
+            ? undefined
+            : () => void handleBulkReferback()
+        }
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

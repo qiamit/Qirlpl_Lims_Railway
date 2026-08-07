@@ -60,7 +60,24 @@ export function parseLabSettingsRow(row: LabSettingsRow) {
     dateFormat: String(row.date_format ?? ''),
     timeFormat: String(row.time_format ?? ''),
     theme: String(row.theme ?? '').trim(),
+    generateReportEnabled:
+      row.generate_report_enabled == null ? true : Boolean(row.generate_report_enabled),
   }
+}
+
+/** Company Setting: Generate Report Format / Conduct Generate Report visibility. Default true. */
+export async function fetchGenerateReportFeatureEnabled(
+  client: SupabaseClient,
+): Promise<boolean> {
+  const id = await resolveLabSettingsRowId(client)
+  const { data, error } = await client
+    .from('lab_settings')
+    .select('generate_report_enabled')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error || !data) return true
+  return data.generate_report_enabled !== false
 }
 
 export function labDetailsPayload(input: {
@@ -126,6 +143,7 @@ export function labSystemPayload(input: {
   dateFormat: string
   timeFormat: string
   theme: string
+  generateReportEnabled: boolean
 }): LabSettingsRow {
   return {
     id: LAB_SETTINGS_SINGLETON_ID,
@@ -133,6 +151,7 @@ export function labSystemPayload(input: {
     date_format: input.dateFormat,
     time_format: input.timeFormat,
     theme: input.theme,
+    generate_report_enabled: input.generateReportEnabled,
   }
 }
 
