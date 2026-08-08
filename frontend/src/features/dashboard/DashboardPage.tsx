@@ -19,6 +19,9 @@ import {
   FileSignature,
   UserRound,
   Gauge,
+  Receipt,
+  FileSpreadsheet,
+  Wallet,
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
@@ -42,7 +45,7 @@ import { cn } from '@/lib/utils'
 interface StatCardProps {
   title: string
   value: string | number
-  subtitle: string
+  subtitle?: string
   icon: ElementType
   badgeLabel?: string
   badgeVariant?: 'success' | 'warning' | 'destructive' | 'info'
@@ -50,10 +53,15 @@ interface StatCardProps {
   colorClass?: string
 }
 
+type DashboardSection = {
+  id: string
+  title: string
+  cards: StatCardProps[]
+}
+
 function StatCard({
   title,
   value,
-  subtitle,
   icon: Icon,
   badgeLabel,
   badgeVariant = 'info',
@@ -61,26 +69,33 @@ function StatCard({
   colorClass = 'bg-primary/10 text-primary',
 }: StatCardProps) {
   const content = (
-    <div className="group relative flex h-full flex-col app-card p-3.5 transition-all duration-200 hover:border-primary/25 hover:shadow-card">
-      <div className="flex items-start justify-between gap-2">
-        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', colorClass)}>
-          <Icon size={18} />
-        </div>
-        {badgeLabel ? (
-          <Badge variant={badgeVariant} className="max-w-[7.5rem] truncate px-1.5 py-0 text-[10px]">
-            {badgeLabel}
-          </Badge>
-        ) : null}
+    <div className="group relative flex h-full items-start gap-1.5 app-card px-2 py-1.5 transition-all duration-200 hover:border-primary/25 hover:shadow-card">
+      <div className={cn('mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md', colorClass)}>
+        <Icon size={11} />
       </div>
-      <div className="mt-2.5 min-w-0 flex-1">
-        <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">{value}</p>
-        <p className="mt-0.5 truncate text-xs font-semibold text-foreground/85">{title}</p>
-        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{subtitle}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-1">
+          <p className="text-sm font-bold leading-none tracking-tight text-foreground tabular-nums">
+            {value}
+          </p>
+          {badgeLabel ? (
+            <Badge
+              variant={badgeVariant}
+              className="max-w-[4.5rem] shrink-0 truncate px-1 py-0 text-[8px] leading-tight"
+            >
+              {badgeLabel}
+            </Badge>
+          ) : null}
+        </div>
+        <p className="mt-0.5 truncate text-[10px] font-semibold leading-tight text-foreground/85">
+          {title}
+        </p>
       </div>
       {href ? (
-        <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-          Open <ArrowRight size={11} />
-        </div>
+        <ArrowRight
+          size={10}
+          className="mt-0.5 shrink-0 text-primary opacity-0 transition-opacity group-hover:opacity-100"
+        />
       ) : null}
     </div>
   )
@@ -94,43 +109,6 @@ function StatCard({
   }
   return content
 }
-
-function QuickLinkCard({ title, subtitle, href }: { title: string; subtitle: string; href: string }) {
-  return (
-    <NavLink
-      to={href}
-      className="group app-card flex items-center justify-between gap-2 px-3 py-2.5 transition-all duration-200 hover:border-primary/25 hover:shadow-card"
-    >
-      <div className="min-w-0">
-        <h3 className="truncate text-xs font-semibold text-foreground">{title}</h3>
-        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p>
-      </div>
-      <ArrowRight
-        size={14}
-        className="shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
-      />
-    </NavLink>
-  )
-}
-
-const QUICK_LINKS = [
-  { title: 'Sample Under Testing', subtitle: 'Enter test results', href: '/samples/under-testing' },
-  { title: 'Test Allocation', subtitle: 'Assign methods & staff', href: '/samples/test-allocation' },
-  { title: 'Results Under Review', subtitle: 'Technical verification', href: '/samples/results-review' },
-  { title: 'Test Report Preparation', subtitle: 'Prepare & issue reports', href: '/samples/report-preparation' },
-  { title: 'Issued Test Report', subtitle: 'Completed records', href: '/samples/completed' },
-  { title: 'Retain & Disposed', subtitle: 'Retention & disposal', href: '/samples/retain-disposed' },
-  { title: 'Sample Allocation', subtitle: 'Section assignment', href: '/samples/allocation' },
-  { title: 'Sample Receiving', subtitle: 'Register new samples', href: '/samples/receiving' },
-  { title: 'Validating the Results', subtitle: 'IQC & validity checks', href: '/samples/result-validation' },
-  { title: 'Client Master', subtitle: 'Client directory', href: '/masters/clients' },
-  { title: 'Test Parameters', subtitle: 'Methods & parameters', href: '/masters/test-parameter' },
-  { title: 'IS Code Master', subtitle: 'Indian Standards', href: '/masters/is-codes' },
-  { title: 'Consent Letter', subtitle: 'BIS consent letters', href: '/masters/consent-letter' },
-  { title: 'Equipment Master', subtitle: 'Calibration & maintenance', href: '/masters/equipment' },
-  { title: 'Masters for IQC', subtitle: 'IQC materials', href: '/masters/iqc' },
-  { title: 'NABL Scope', subtitle: 'Accredited scope', href: '/masters/nabl-scope' },
-] as const
 
 interface DashboardStats {
   totalSamples: number
@@ -158,6 +136,7 @@ interface DashboardStats {
   iqcMastersCount: number
   resultChecksCount: number
   usersCount: number
+  quotationsCount: number
   delayedSamplesList: Array<{
     id: string
     sample_code: string | null
@@ -165,6 +144,12 @@ interface DashboardStats {
     client_name: string | null
     stage: string | null
     tentative_date_by_lab: string | null
+  }>
+  calibrationOverdueList: Array<{
+    id: string
+    asset_code: string | null
+    equipment_name: string | null
+    next_calibration_due: string | null
   }>
 }
 
@@ -270,7 +255,7 @@ function addDaysIso(baseIso: string, days: number): string {
 }
 
 export default function DashboardPage() {
-  const { designation, departmentName, profileName } = useAuth()
+  const { designation, departmentName } = useAuth()
   const access: UserAccessContext = { designation, departmentName }
   const isDirector = isLaboratoryDirector(designation)
   const role = useMemo(
@@ -281,8 +266,6 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  const visibleQuickLinks = QUICK_LINKS.filter((link) => canAccessPath(link.href, access))
 
   useEffect(() => {
     async function loadStats() {
@@ -309,19 +292,21 @@ export default function DashboardPage() {
           iqcRes,
           resultCheckRes,
           usersRes,
+          quotationsRes,
         ] = await Promise.all([
           supabase.from('clients').select('*', { count: 'exact', head: true }),
           supabase.from('is_codes').select('*', { count: 'exact', head: true }),
           supabase
             .from('equipment_master')
             .select(
-              'id, equipment_status, next_calibration_due, next_intermediate_check_date, next_maintenance_date',
+              'id, asset_code, equipment_name, equipment_status, next_calibration_due, next_intermediate_check_date, next_maintenance_date',
             ),
           supabase.from('consent_letters').select('*', { count: 'exact', head: true }),
           supabase.from('test_parameters').select('*', { count: 'exact', head: true }),
           supabase.from('iqc_masters').select('*', { count: 'exact', head: true }),
           supabase.from('result_validity_checks').select('*', { count: 'exact', head: true }),
           supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
+          supabase.from('quotations').select('*', { count: 'exact', head: true }),
         ])
 
         if (clientsRes.error) throw clientsRes.error
@@ -332,6 +317,7 @@ export default function DashboardPage() {
         let calibrationOverdue = 0
         let intermediateOverdue = 0
         let maintenanceOverdue = 0
+        const calibrationOverdueList: DashboardStats['calibrationOverdueList'] = []
         for (const eq of equipmentRows) {
           const status = String((eq as { equipment_status?: string | null }).equipment_status ?? '')
             .trim()
@@ -340,10 +326,23 @@ export default function DashboardPage() {
           const cal = (eq as { next_calibration_due?: string | null }).next_calibration_due
           const ic = (eq as { next_intermediate_check_date?: string | null }).next_intermediate_check_date
           const mt = (eq as { next_maintenance_date?: string | null }).next_maintenance_date
-          if (cal && cal < todayStr) calibrationOverdue++
+          if (cal && cal < todayStr) {
+            calibrationOverdue++
+            calibrationOverdueList.push({
+              id: String((eq as { id: string }).id),
+              asset_code: (eq as { asset_code?: string | null }).asset_code ?? null,
+              equipment_name: (eq as { equipment_name?: string | null }).equipment_name ?? null,
+              next_calibration_due: cal,
+            })
+          }
           if (ic && ic < todayStr) intermediateOverdue++
           if (mt && mt < todayStr) maintenanceOverdue++
         }
+        calibrationOverdueList.sort((a, b) => {
+          if (!a.next_calibration_due) return 1
+          if (!b.next_calibration_due) return -1
+          return a.next_calibration_due.localeCompare(b.next_calibration_due)
+        })
 
         let activeSamples = 0
         let completedSamples = 0
@@ -441,7 +440,9 @@ export default function DashboardPage() {
           iqcMastersCount: iqcRes.count ?? 0,
           resultChecksCount: resultCheckRes.count ?? 0,
           usersCount: usersRes.count ?? 0,
+          quotationsCount: quotationsRes.error ? 0 : (quotationsRes.count ?? 0),
           delayedSamplesList,
+          calibrationOverdueList,
         })
       } catch (err) {
         console.error('Error loading dashboard stats:', err)
@@ -454,23 +455,24 @@ export default function DashboardPage() {
     void loadStats()
   }, [])
 
-  const roleStatCards = useMemo((): StatCardProps[] => {
+  const dashboardSections = useMemo((): DashboardSection[] => {
     if (!stats) return []
 
-    const commonOps: StatCardProps[] = [
+    const link = (path: string) => (canAccessPath(path, access) ? path : undefined)
+    const keep = (card: StatCardProps) => !card.href || canAccessPath(card.href, access)
+
+    const testingCommon: StatCardProps[] = [
       {
         title: 'Received Today',
         value: stats.receivedToday,
-        subtitle: 'Samples registered today',
         icon: Inbox,
-        href: canAccessPath('/samples/receiving', access) ? '/samples/receiving' : undefined,
+        href: link('/samples/receiving'),
         badgeLabel: 'Today',
         colorClass: 'bg-cyan-500/10 text-cyan-700',
       },
       {
         title: 'Due in 7 Days',
         value: stats.dueSoonCount,
-        subtitle: 'Active samples nearing TAT',
         icon: CalendarClock,
         badgeLabel: 'Upcoming',
         badgeVariant: stats.dueSoonCount > 0 ? 'warning' : 'info',
@@ -479,7 +481,6 @@ export default function DashboardPage() {
       {
         title: 'Overdue Samples',
         value: stats.delayedSamplesCount,
-        subtitle: 'Past tentative lab date',
         icon: AlertTriangle,
         badgeLabel: stats.delayedSamplesCount > 0 ? 'Attention' : 'Clear',
         badgeVariant: stats.delayedSamplesCount > 0 ? 'warning' : 'success',
@@ -487,113 +488,138 @@ export default function DashboardPage() {
       },
     ]
 
+    const tatCard: StatCardProps = {
+      title: 'TAT Compliance',
+      value: `${stats.tatComplianceRate}%`,
+      icon: Clock,
+      badgeLabel: stats.tatComplianceRate >= 90 ? 'Healthy' : 'Review',
+      badgeVariant: stats.tatComplianceRate >= 90 ? 'success' : 'warning',
+      colorClass:
+        stats.tatComplianceRate >= 90
+          ? 'bg-emerald-500/10 text-emerald-600'
+          : 'bg-amber-500/10 text-amber-600',
+    }
+
+    const administrative: StatCardProps[] = []
+    const management: StatCardProps[] = []
+    const testing: StatCardProps[] = []
+    const calibration: StatCardProps[] = []
+
     if (isDirector) {
-      return [
+      administrative.push(
         {
-          title: 'Active Load',
-          value: stats.activeSamples,
-          subtitle: 'Samples currently in process',
-          icon: FlaskConical,
-          badgeLabel: 'In Progress',
-          colorClass: 'bg-blue-500/10 text-blue-600',
+          title: 'Lab Users',
+          value: stats.usersCount,
+          icon: UserRound,
+          href: link('/lab-settings/user-management'),
+          badgeLabel: 'Team',
+          colorClass: 'bg-stone-500/10 text-stone-700',
         },
         {
-          title: 'TAT Compliance',
-          value: `${stats.tatComplianceRate}%`,
-          subtitle: 'Active samples on schedule',
-          icon: Clock,
-          badgeLabel: stats.tatComplianceRate >= 90 ? 'Healthy' : 'Review',
-          badgeVariant: stats.tatComplianceRate >= 90 ? 'success' : 'warning',
-          colorClass:
-            stats.tatComplianceRate >= 90
-              ? 'bg-emerald-500/10 text-emerald-600'
-              : 'bg-amber-500/10 text-amber-600',
+          title: 'Clients / IS Codes',
+          value: `${stats.clientsCount}/${stats.isCodesCount}`,
+          icon: Layers,
+          badgeLabel: 'Masters',
+          colorClass: 'bg-slate-500/10 text-slate-700',
         },
-        ...commonOps,
         {
-          title: 'Issued Reports',
-          value: stats.completedSamples,
-          subtitle: 'Completed / archived SRFs',
-          icon: CheckCircle2,
-          href: '/samples/completed',
-          badgeLabel: 'Issued',
-          colorClass: 'bg-emerald-500/10 text-emerald-600',
+          title: 'Consent Letters',
+          value: stats.consentLettersCount,
+          icon: FileSignature,
+          href: link('/masters/consent-letter'),
+          badgeLabel: 'BIS',
+          colorClass: 'bg-lime-500/10 text-lime-700',
         },
+      )
+      management.push(
         {
           title: 'NABL / ULR',
           value: stats.nablCount,
-          subtitle: 'Issued with NABL ULR',
           icon: ShieldCheck,
           badgeLabel: 'Accreditation',
           colorClass: 'bg-violet-500/10 text-violet-600',
         },
         {
+          title: 'IQC / Validity',
+          value: `${stats.iqcMastersCount}/${stats.resultChecksCount}`,
+          icon: ClipboardCheck,
+          href: link('/samples/result-validation'),
+          badgeLabel: '7.7',
+          colorClass: 'bg-purple-500/10 text-purple-600',
+        },
+        {
+          title: 'Deviations / Witness',
+          value: `${stats.deviationCount}/${stats.witnessTestCount}`,
+          icon: Gauge,
+          badgeLabel: 'QC',
+          colorClass: 'bg-rose-500/10 text-rose-600',
+        },
+        tatCard,
+        {
+          title: 'Test Parameters',
+          value: stats.testParametersCount,
+          icon: BookOpen,
+          href: link('/masters/test-parameter'),
+          badgeLabel: 'Methods',
+          colorClass: 'bg-teal-500/10 text-teal-700',
+        },
+      )
+      testing.push(
+        {
+          title: 'Active Load',
+          value: stats.activeSamples,
+          icon: FlaskConical,
+          badgeLabel: 'In Progress',
+          colorClass: 'bg-blue-500/10 text-blue-600',
+        },
+        ...testingCommon,
+        {
           title: 'Under Testing',
           value: stats.stageCounts.under_testing,
-          subtitle: 'Analytical workload',
           icon: TestTube,
-          href: '/samples/under-testing',
+          href: link('/samples/under-testing'),
           badgeLabel: 'Testing',
           colorClass: 'bg-sky-500/10 text-sky-600',
         },
         {
           title: 'Results Review',
           value: stats.stageCounts.results_review,
-          subtitle: 'Awaiting verification',
           icon: ClipboardCheck,
-          href: '/samples/results-review',
+          href: link('/samples/results-review'),
           badgeLabel: 'Review',
           colorClass: 'bg-indigo-500/10 text-indigo-600',
         },
         {
           title: 'Report Prep',
           value: stats.stageCounts.report_preparation,
-          subtitle: 'Drafts pending issue',
           icon: FileText,
-          href: '/samples/report-preparation',
+          href: link('/samples/report-preparation'),
           badgeLabel: 'Reports',
           colorClass: 'bg-fuchsia-500/10 text-fuchsia-600',
         },
         {
-          title: 'Deviations / Witness',
-          value: `${stats.deviationCount}/${stats.witnessTestCount}`,
-          subtitle: 'Active quality flags',
-          icon: Gauge,
-          badgeLabel: 'QC',
-          colorClass: 'bg-rose-500/10 text-rose-600',
+          title: 'Issued Reports',
+          value: stats.completedSamples,
+          icon: CheckCircle2,
+          href: link('/samples/completed'),
+          badgeLabel: 'Issued',
+          colorClass: 'bg-emerald-500/10 text-emerald-600',
         },
-        {
-          title: 'Clients / IS Codes',
-          value: `${stats.clientsCount}/${stats.isCodesCount}`,
-          subtitle: 'Directory masters',
-          icon: Layers,
-          badgeLabel: 'Masters',
-          colorClass: 'bg-slate-500/10 text-slate-700',
-        },
-        {
-          title: 'Test Parameters',
-          value: stats.testParametersCount,
-          subtitle: 'Configured methods',
-          icon: BookOpen,
-          href: '/masters/test-parameter',
-          badgeLabel: 'Methods',
-          colorClass: 'bg-teal-500/10 text-teal-700',
-        },
+      )
+      calibration.push(
         {
           title: 'Equipment Active',
           value: `${stats.equipmentActiveCount}/${stats.equipmentCount}`,
-          subtitle: 'Active / total assets',
           icon: Wrench,
-          href: '/masters/equipment',
+          href: link('/masters/equipment'),
           badgeLabel: 'Assets',
           colorClass: 'bg-blue-500/10 text-blue-700',
         },
         {
           title: 'Cal. Overdue',
           value: stats.calibrationOverdue,
-          subtitle: 'Next calibration past due',
           icon: CalendarClock,
-          href: '/masters/equipment',
+          href: link('/masters/equipment'),
           badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
           badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
           colorClass: 'bg-red-500/10 text-red-600',
@@ -601,488 +627,477 @@ export default function DashboardPage() {
         {
           title: 'IC / Maint. Overdue',
           value: `${stats.intermediateOverdue}/${stats.maintenanceOverdue}`,
-          subtitle: 'Intermediate / maintenance',
           icon: Wrench,
-          href: '/masters/equipment',
+          href: link('/masters/equipment'),
           badgeLabel:
             stats.intermediateOverdue + stats.maintenanceOverdue > 0 ? 'Attention' : 'OK',
           badgeVariant:
             stats.intermediateOverdue + stats.maintenanceOverdue > 0 ? 'warning' : 'success',
           colorClass: 'bg-orange-500/10 text-orange-700',
         },
-        {
-          title: 'Consent Letters',
-          value: stats.consentLettersCount,
-          subtitle: 'Generated consent records',
-          icon: FileSignature,
-          href: '/masters/consent-letter',
-          badgeLabel: 'BIS',
-          colorClass: 'bg-lime-500/10 text-lime-700',
-        },
-        {
-          title: 'IQC / Validity',
-          value: `${stats.iqcMastersCount}/${stats.resultChecksCount}`,
-          subtitle: 'IQC masters / checks logged',
-          icon: ClipboardCheck,
-          href: '/samples/result-validation',
-          badgeLabel: '7.7',
-          colorClass: 'bg-purple-500/10 text-purple-600',
-        },
-        {
-          title: 'Lab Users',
-          value: stats.usersCount,
-          subtitle: 'Active user profiles',
-          icon: UserRound,
-          href: '/lab-settings/user-management',
-          badgeLabel: 'Team',
-          colorClass: 'bg-stone-500/10 text-stone-700',
-        },
-      ]
-    }
-
-    if (isSampleCellReceptionist(access)) {
-      return [
-        {
-          title: 'Receiving Queue',
-          value: stats.stageCounts.receiving,
-          subtitle: 'At receiving stage',
-          icon: Inbox,
-          href: '/samples/receiving',
-          badgeLabel: 'Receiving',
-          colorClass: 'bg-blue-500/10 text-blue-600',
-        },
-        {
-          title: 'Active in Lab',
-          value: stats.activeSamples,
-          subtitle: 'Non-completed samples',
-          icon: FlaskConical,
-          badgeLabel: 'In Progress',
-          colorClass: 'bg-sky-500/10 text-sky-600',
-        },
-        ...commonOps,
+      )
+    } else if (isSampleCellReceptionist(access)) {
+      administrative.push(
         {
           title: 'Clients',
           value: stats.clientsCount,
-          subtitle: 'Registered clients',
           icon: Users,
-          href: '/masters/clients',
+          href: link('/masters/clients'),
           badgeLabel: 'Directory',
           colorClass: 'bg-emerald-500/10 text-emerald-600',
         },
         {
           title: 'IS Codes',
           value: stats.isCodesCount,
-          subtitle: 'Standards available',
           icon: BookOpen,
-          href: '/masters/is-codes',
+          href: link('/masters/is-codes'),
           badgeLabel: 'Masters',
           colorClass: 'bg-teal-500/10 text-teal-700',
         },
+      )
+      testing.push(
+        {
+          title: 'Receiving Queue',
+          value: stats.stageCounts.receiving,
+          icon: Inbox,
+          href: link('/samples/receiving'),
+          badgeLabel: 'Receiving',
+          colorClass: 'bg-blue-500/10 text-blue-600',
+        },
+        {
+          title: 'Active in Lab',
+          value: stats.activeSamples,
+          icon: FlaskConical,
+          badgeLabel: 'In Progress',
+          colorClass: 'bg-sky-500/10 text-sky-600',
+        },
+        ...testingCommon,
         {
           title: 'Issued Reports',
           value: stats.completedSamples,
-          subtitle: 'Completed SRFs',
           icon: CheckCircle2,
           badgeLabel: 'Issued',
           colorClass: 'bg-emerald-500/10 text-emerald-700',
         },
-      ]
-    }
-
-    if (isSampleCellSampleIncharge(access)) {
-      return [
-        {
-          title: 'Allocation Backlog',
-          value: stats.stageCounts.allocation + stats.stageCounts.receiving,
-          subtitle: 'Receiving + allocation',
-          icon: Layers,
-          href: '/samples/allocation',
-          badgeLabel: 'Allocate',
-          colorClass: 'bg-blue-500/10 text-blue-600',
-        },
-        {
-          title: 'Under Testing',
-          value: stats.stageCounts.under_testing,
-          subtitle: 'Sections testing',
-          icon: TestTube,
-          badgeLabel: 'In Lab',
-          colorClass: 'bg-sky-500/10 text-sky-600',
-        },
-        ...commonOps,
-        {
-          title: 'Equipment',
-          value: stats.equipmentCount,
-          subtitle: 'Assets in register',
-          icon: Wrench,
-          href: '/masters/equipment',
-          badgeLabel: 'Assets',
-          colorClass: 'bg-slate-500/10 text-slate-700',
-        },
+      )
+    } else if (isSampleCellSampleIncharge(access)) {
+      administrative.push(
         {
           title: 'Consent Letters',
           value: stats.consentLettersCount,
-          subtitle: 'BIS consent records',
           icon: FileSignature,
-          href: '/masters/consent-letter',
+          href: link('/masters/consent-letter'),
           badgeLabel: 'BIS',
           colorClass: 'bg-lime-500/10 text-lime-700',
         },
         {
           title: 'IS Codes',
           value: stats.isCodesCount,
-          subtitle: 'Standards available',
           icon: BookOpen,
-          href: '/masters/is-codes',
+          href: link('/masters/is-codes'),
           badgeLabel: 'Masters',
           colorClass: 'bg-teal-500/10 text-teal-700',
         },
-      ]
-    }
-
-    if (isChemicalTechnicalManager(access) || isMechanicalTechnicalManager(access)) {
-      return [
+      )
+      testing.push(
+        {
+          title: 'Allocation Backlog',
+          value: stats.stageCounts.allocation + stats.stageCounts.receiving,
+          icon: Layers,
+          href: link('/samples/allocation'),
+          badgeLabel: 'Allocate',
+          colorClass: 'bg-blue-500/10 text-blue-600',
+        },
+        {
+          title: 'Under Testing',
+          value: stats.stageCounts.under_testing,
+          icon: TestTube,
+          badgeLabel: 'In Lab',
+          colorClass: 'bg-sky-500/10 text-sky-600',
+        },
+        ...testingCommon,
+      )
+      calibration.push({
+        title: 'Equipment',
+        value: stats.equipmentCount,
+        icon: Wrench,
+        href: link('/masters/equipment'),
+        badgeLabel: 'Assets',
+        colorClass: 'bg-slate-500/10 text-slate-700',
+      })
+    } else if (isChemicalTechnicalManager(access) || isMechanicalTechnicalManager(access)) {
+      management.push(tatCard, {
+        title: 'Test Parameters',
+        value: stats.testParametersCount,
+        icon: BookOpen,
+        href: link('/masters/test-parameter'),
+        badgeLabel: 'Methods',
+        colorClass: 'bg-teal-500/10 text-teal-700',
+      })
+      testing.push(
         {
           title: 'Test Allocation',
           value: stats.stageCounts.test_allocation,
-          subtitle: 'Awaiting assign',
           icon: ClipboardCheck,
-          href: '/samples/test-allocation',
+          href: link('/samples/test-allocation'),
           badgeLabel: 'Assign',
           colorClass: 'bg-blue-500/10 text-blue-600',
         },
         {
           title: 'Results Review',
           value: stats.stageCounts.results_review,
-          subtitle: 'Pending verification',
           icon: ShieldCheck,
-          href: '/samples/results-review',
+          href: link('/samples/results-review'),
           badgeLabel: 'Review',
           colorClass: 'bg-violet-500/10 text-violet-600',
         },
         {
           title: 'Under Testing',
           value: stats.stageCounts.under_testing,
-          subtitle: 'Analytical workload',
           icon: FlaskConical,
           badgeLabel: 'Testing',
           colorClass: 'bg-sky-500/10 text-sky-600',
         },
-        {
-          title: 'TAT Compliance',
-          value: `${stats.tatComplianceRate}%`,
-          subtitle: 'On-schedule active',
-          icon: Clock,
-          badgeVariant: stats.tatComplianceRate >= 90 ? 'success' : 'warning',
-          badgeLabel: stats.tatComplianceRate >= 90 ? 'Healthy' : 'Review',
-          colorClass:
-            stats.tatComplianceRate >= 90
-              ? 'bg-emerald-500/10 text-emerald-600'
-              : 'bg-amber-500/10 text-amber-600',
-        },
-        ...commonOps,
-        {
-          title: 'Cal. Overdue',
-          value: stats.calibrationOverdue,
-          subtitle: 'Equipment calibration',
-          icon: Wrench,
-          href: '/masters/equipment',
-          badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
-          badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
-          colorClass: 'bg-red-500/10 text-red-600',
-        },
-        {
-          title: 'Test Parameters',
-          value: stats.testParametersCount,
-          subtitle: 'Configured methods',
-          icon: BookOpen,
-          href: '/masters/test-parameter',
-          badgeLabel: 'Methods',
-          colorClass: 'bg-teal-500/10 text-teal-700',
-        },
-      ]
-    }
-
-    if (isChemicalTestingEngineer(access) || isMechanicalTestingEngineer(access)) {
-      return [
+        ...testingCommon,
+      )
+      calibration.push({
+        title: 'Cal. Overdue',
+        value: stats.calibrationOverdue,
+        icon: Wrench,
+        href: link('/masters/equipment'),
+        badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
+        badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
+        colorClass: 'bg-red-500/10 text-red-600',
+      })
+    } else if (isChemicalTestingEngineer(access) || isMechanicalTestingEngineer(access)) {
+      management.push({
+        title: 'IQC Masters',
+        value: stats.iqcMastersCount,
+        icon: Layers,
+        href: link('/masters/iqc'),
+        badgeLabel: 'IQC',
+        colorClass: 'bg-purple-500/10 text-purple-600',
+      })
+      testing.push(
         {
           title: 'Testing Queue',
           value: stats.stageCounts.under_testing,
-          subtitle: 'Samples under testing',
           icon: FlaskConical,
-          href: '/samples/under-testing',
+          href: link('/samples/under-testing'),
           badgeLabel: 'Enter Results',
           colorClass: 'bg-blue-500/10 text-blue-600',
         },
         {
           title: 'In Review',
           value: stats.stageCounts.results_review,
-          subtitle: 'Sent for review',
           icon: ClipboardCheck,
           badgeLabel: 'Review',
           colorClass: 'bg-violet-500/10 text-violet-600',
         },
-        ...commonOps,
+        ...testingCommon,
+      )
+      calibration.push(
         {
           title: 'Equipment',
           value: stats.equipmentCount,
-          subtitle: 'Register entries',
           icon: Wrench,
-          href: canAccessPath('/masters/equipment', access) ? '/masters/equipment' : undefined,
+          href: link('/masters/equipment'),
           badgeLabel: 'Assets',
           colorClass: 'bg-sky-500/10 text-sky-600',
         },
         {
           title: 'IC Overdue',
           value: stats.intermediateOverdue,
-          subtitle: 'Intermediate checks due',
           icon: CalendarClock,
-          href: canAccessPath('/masters/equipment', access) ? '/masters/equipment' : undefined,
+          href: link('/masters/equipment'),
           badgeVariant: stats.intermediateOverdue > 0 ? 'warning' : 'success',
           badgeLabel: stats.intermediateOverdue > 0 ? 'Due' : 'OK',
           colorClass: 'bg-orange-500/10 text-orange-600',
         },
+      )
+    } else if (isQualityAssuranceQualityManager(access)) {
+      administrative.push({
+        title: 'Consent Letters',
+        value: stats.consentLettersCount,
+        icon: FileSignature,
+        href: link('/masters/consent-letter'),
+        badgeLabel: 'BIS',
+        colorClass: 'bg-lime-500/10 text-lime-700',
+      })
+      management.push(
         {
-          title: 'IQC Masters',
-          value: stats.iqcMastersCount,
-          subtitle: 'IQC material records',
-          icon: Layers,
-          href: canAccessPath('/masters/iqc', access) ? '/masters/iqc' : undefined,
-          badgeLabel: 'IQC',
+          title: 'NABL / ULR',
+          value: stats.nablCount,
+          icon: ShieldCheck,
+          badgeLabel: 'Accreditation',
+          colorClass: 'bg-violet-500/10 text-violet-600',
+        },
+        {
+          title: 'Validity Checks',
+          value: stats.resultChecksCount,
+          icon: ClipboardCheck,
+          href: link('/samples/result-validation'),
+          badgeLabel: '7.7',
           colorClass: 'bg-purple-500/10 text-purple-600',
         },
-      ]
-    }
-
-    if (isQualityAssuranceQualityManager(access)) {
-      return [
+      )
+      testing.push(
         {
           title: 'Report Preparation',
           value: stats.stageCounts.report_preparation,
-          subtitle: 'Drafts awaiting issue',
           icon: FileText,
-          href: '/samples/report-preparation',
+          href: link('/samples/report-preparation'),
           badgeLabel: 'Prepare',
           colorClass: 'bg-blue-500/10 text-blue-600',
         },
         {
           title: 'Issued Reports',
           value: stats.completedSamples,
-          subtitle: 'Completed / archived',
           icon: CheckCircle2,
-          href: '/samples/completed',
+          href: link('/samples/completed'),
           badgeLabel: 'Issued',
           colorClass: 'bg-emerald-500/10 text-emerald-600',
         },
+        ...testingCommon,
+      )
+      calibration.push({
+        title: 'Cal. Overdue',
+        value: stats.calibrationOverdue,
+        icon: Wrench,
+        href: link('/masters/equipment'),
+        badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
+        badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
+        colorClass: 'bg-red-500/10 text-red-600',
+      })
+    } else {
+      management.push(tatCard)
+      testing.push(
         {
-          title: 'NABL / ULR',
-          value: stats.nablCount,
-          subtitle: 'With NABL ULR',
-          icon: ShieldCheck,
-          badgeLabel: 'Accreditation',
-          colorClass: 'bg-violet-500/10 text-violet-600',
-        },
-        ...commonOps,
-        {
-          title: 'Consent Letters',
-          value: stats.consentLettersCount,
-          subtitle: 'BIS consent records',
-          icon: FileSignature,
-          href: '/masters/consent-letter',
-          badgeLabel: 'BIS',
-          colorClass: 'bg-lime-500/10 text-lime-700',
-        },
-        {
-          title: 'Validity Checks',
-          value: stats.resultChecksCount,
-          subtitle: 'Result validity logs',
-          icon: ClipboardCheck,
-          href: '/samples/result-validation',
-          badgeLabel: '7.7',
-          colorClass: 'bg-purple-500/10 text-purple-600',
+          title: 'Active Samples',
+          value: stats.activeSamples,
+          icon: FlaskConical,
+          badgeLabel: 'In Progress',
+          colorClass: 'bg-blue-500/10 text-blue-600',
         },
         {
-          title: 'Cal. Overdue',
-          value: stats.calibrationOverdue,
-          subtitle: 'Equipment calibration',
-          icon: Wrench,
-          href: '/masters/equipment',
-          badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
-          badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
-          colorClass: 'bg-red-500/10 text-red-600',
+          title: 'Under Testing',
+          value: stats.stageCounts.under_testing,
+          icon: TestTube,
+          href: link('/samples/under-testing'),
+          badgeLabel: 'Testing',
+          colorClass: 'bg-sky-500/10 text-sky-600',
         },
-      ]
+        ...testingCommon,
+      )
     }
 
+    const financePaths = [
+      '/finance/sale/quotation',
+      '/finance/sale/proforma-invoice',
+      '/finance/sale/invoice',
+      '/finance/sale/credit-note',
+      '/finance/sale/payment-receipt',
+    ] as const
+    const canSeeFinance = financePaths.some((p) => canAccessPath(p, access))
+    const finance: StatCardProps[] = canSeeFinance
+      ? [
+          {
+            title: 'Quotations',
+            value: stats.quotationsCount,
+            icon: FileSpreadsheet,
+            href: link('/finance/sale/quotation'),
+            badgeLabel: 'Sale',
+            colorClass: 'bg-emerald-500/10 text-emerald-700',
+          },
+          {
+            title: 'Proforma Invoice',
+            value: 0,
+            icon: Receipt,
+            href: link('/finance/sale/proforma-invoice'),
+            badgeLabel: 'Sale',
+            colorClass: 'bg-teal-500/10 text-teal-700',
+          },
+          {
+            title: 'Invoice',
+            value: 0,
+            icon: FileText,
+            href: link('/finance/sale/invoice'),
+            badgeLabel: 'Sale',
+            colorClass: 'bg-blue-500/10 text-blue-700',
+          },
+          {
+            title: 'Credit Note',
+            value: 0,
+            icon: FileSignature,
+            href: link('/finance/sale/credit-note'),
+            badgeLabel: 'Sale',
+            colorClass: 'bg-rose-500/10 text-rose-700',
+          },
+          {
+            title: 'Payment Receipt',
+            value: 0,
+            icon: Wallet,
+            href: link('/finance/sale/payment-receipt'),
+            badgeLabel: 'Sale',
+            colorClass: 'bg-amber-500/10 text-amber-700',
+          },
+        ].filter(keep)
+      : []
+
     return [
-      {
-        title: 'Active Samples',
-        value: stats.activeSamples,
-        subtitle: 'In laboratory process',
-        icon: FlaskConical,
-        badgeLabel: 'In Progress',
-        colorClass: 'bg-blue-500/10 text-blue-600',
-      },
-      {
-        title: 'Under Testing',
-        value: stats.stageCounts.under_testing,
-        subtitle: 'Analytical work',
-        icon: TestTube,
-        href: canAccessPath('/samples/under-testing', access) ? '/samples/under-testing' : undefined,
-        badgeLabel: 'Testing',
-        colorClass: 'bg-sky-500/10 text-sky-600',
-      },
-      {
-        title: 'TAT Compliance',
-        value: `${stats.tatComplianceRate}%`,
-        subtitle: 'On-schedule active',
-        icon: Clock,
-        badgeVariant: stats.tatComplianceRate >= 90 ? 'success' : 'warning',
-        badgeLabel: stats.tatComplianceRate >= 90 ? 'Healthy' : 'Review',
-        colorClass:
-          stats.tatComplianceRate >= 90
-            ? 'bg-emerald-500/10 text-emerald-600'
-            : 'bg-amber-500/10 text-amber-600',
-      },
-      ...commonOps,
-    ]
+      { id: 'administrative', title: 'Administrative', cards: administrative.filter(keep) },
+      { id: 'management', title: 'Management System', cards: management.filter(keep) },
+      { id: 'testing', title: 'Testing LIMS', cards: testing.filter(keep) },
+      { id: 'calibration', title: 'Calibration LIMS', cards: calibration.filter(keep) },
+      { id: 'finance', title: 'Finance', cards: finance },
+    ].filter((section) => section.cards.length > 0)
   }, [stats, access, isDirector])
 
-  const renderPipeline = () => {
+  const renderOverdueCard = () => {
     if (!stats) return null
-    const steps = [
-      { key: 'receiving', label: 'Receiving', desc: 'Registration', clause: '7.4.1' },
-      { key: 'allocation', label: 'Allocation', desc: 'Sections', clause: '7.4.2' },
-      { key: 'test_allocation', label: 'Test Alloc.', desc: 'Methods', clause: '7.2' },
-      { key: 'under_testing', label: 'Testing', desc: 'Records', clause: '7.5' },
-      { key: 'results_review', label: 'Review', desc: 'Verify', clause: '7.7' },
-      { key: 'report_preparation', label: 'Report', desc: 'Draft', clause: '7.8' },
-      { key: 'completed', label: 'Issued', desc: 'Archive', clause: '7.8.8' },
-    ]
-    const visibleSteps = isDirector
-      ? steps
-      : steps.filter((s) => role.focusStages.includes(s.key) || (stats.stageCounts[s.key] ?? 0) > 0)
+    const sampleLimit = isDirector ? 10 : 8
+    const calLimit = isDirector ? 10 : 8
+    const sampleList = stats.delayedSamplesList.slice(0, sampleLimit)
+    const calList = stats.calibrationOverdueList.slice(0, calLimit)
+    const equipmentHref = canAccessPath('/masters/equipment', access) ? '/masters/equipment' : undefined
+    const totalOverdue = stats.delayedSamplesCount + stats.calibrationOverdue
 
     return (
       <div className="space-y-2">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {isDirector ? 'Workflow Pipeline' : 'Focus Stages'}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <AlertTriangle size={14} className="text-warning" />
+            Overdue Attention
+            {totalOverdue > 0 ? (
+              <Badge variant="warning" className="ml-1 px-1.5 py-0 text-[10px]">
+                {totalOverdue}
+              </Badge>
+            ) : null}
           </h3>
           <p className="text-[11px] text-muted-foreground">
-            Total {stats.totalSamples} · Active {stats.activeSamples}
+            Samples {stats.delayedSamplesCount} · Calibration {stats.calibrationOverdue}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-          {visibleSteps.map((step) => {
-            const count = stats.stageCounts[step.key] ?? 0
-            const isFocus = role.focusStages.includes(step.key)
-            const href = stageHref(step.key)
-            const canLink = href ? canAccessPath(href, access) : false
-            const card = (
-              <div
-                className={cn(
-                  'app-card flex h-full flex-col justify-between p-2.5 transition-all hover:border-primary/20',
-                  isFocus || count > 0 ? 'border-l-2 border-l-primary bg-card' : 'bg-muted/30 opacity-80',
-                )}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-semibold text-muted-foreground">{step.clause}</span>
-                    <Badge variant={isFocus ? 'info' : 'secondary'} className="px-1 py-0 text-[9px]">
-                      {isFocus ? 'Focus' : count > 0 ? 'Active' : 'Idle'}
-                    </Badge>
-                  </div>
-                  <h4 className="mt-1 text-xs font-bold text-foreground">{step.label}</h4>
-                  <p className="text-[10px] text-muted-foreground">{step.desc}</p>
-                </div>
-                <div className="mt-2 flex items-baseline justify-between border-t border-border/40 pt-1.5">
-                  <span className="text-[10px] font-semibold text-muted-foreground">Load</span>
-                  <span className={cn('text-base font-bold tabular-nums', count > 0 ? 'text-primary' : 'text-muted-foreground')}>
-                    {count}
-                  </span>
-                </div>
-              </div>
-            )
-            return canLink && href ? (
-              <NavLink key={step.key} to={href} className="block">
-                {card}
-              </NavLink>
-            ) : (
-              <div key={step.key}>{card}</div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
 
-  const renderAttentionItems = () => {
-    if (!stats) return null
-    const list = stats.delayedSamplesList.slice(0, isDirector ? 10 : 8)
-    return (
-      <div className="space-y-2">
-        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          <AlertTriangle size={14} className="text-warning" />
-          Overdue Samples
-          {stats.delayedSamplesCount > 0 ? (
-            <Badge variant="warning" className="ml-1 px-1.5 py-0 text-[10px]">
-              {stats.delayedSamplesCount}
-            </Badge>
-          ) : null}
-        </h3>
         <div className="app-card overflow-hidden">
-          {list.length > 0 ? (
-            <div className="max-h-[220px] overflow-auto">
-              <table className="w-full border-collapse text-left text-[11px]">
-                <thead className="sticky top-0 z-[1] bg-muted/90 backdrop-blur-sm">
-                  <tr className="border-b border-border/60 font-semibold text-muted-foreground">
-                    <th className="px-3 py-2">Sample</th>
-                    <th className="px-3 py-2">Client</th>
-                    <th className="hidden px-3 py-2 md:table-cell">Description</th>
-                    <th className="px-3 py-2">Stage</th>
-                    <th className="px-3 py-2 text-right">Due</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {list.map((sample) => {
-                    const stagePath = stageHref(sample.stage ?? '')
-                    const href =
-                      stagePath && canAccessPath(stagePath, access)
-                        ? stagePath
-                        : role.primaryHref && canAccessPath(role.primaryHref, access)
-                          ? role.primaryHref
-                          : '/'
-                    return (
-                      <tr key={sample.id} className="hover:bg-muted/20">
-                        <td className="px-3 py-1.5 font-semibold text-primary">
-                          <NavLink to={href} className="hover:underline">
-                            {sample.sample_code || '—'}
-                          </NavLink>
-                        </td>
-                        <td className="max-w-[120px] truncate px-3 py-1.5">{sample.client_name || '—'}</td>
-                        <td className="hidden max-w-[180px] truncate px-3 py-1.5 md:table-cell">
-                          {sample.description || '—'}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <Badge variant="warning" className="text-[9px] capitalize">
-                            {(sample.stage ?? 'receiving').replace(/_/g, ' ')}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-medium text-destructive tabular-nums">
-                          {sample.tentative_date_by_lab || '—'}
-                        </td>
+          <div className="grid grid-cols-1 divide-y divide-border/60 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+            <section className="min-w-0">
+              <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/40 px-3 py-2">
+                <h4 className="text-xs font-semibold text-foreground">Overdue Samples</h4>
+                <Badge
+                  variant={stats.delayedSamplesCount > 0 ? 'warning' : 'success'}
+                  className="px-1.5 py-0 text-[10px]"
+                >
+                  {stats.delayedSamplesCount}
+                </Badge>
+              </div>
+              {sampleList.length > 0 ? (
+                <div className="max-h-[280px] overflow-auto">
+                  <table className="w-full border-collapse text-left text-[11px]">
+                    <thead className="sticky top-0 z-[1] bg-muted/90 backdrop-blur-sm">
+                      <tr className="border-b border-border/60 font-semibold text-muted-foreground">
+                        <th className="px-3 py-2">Sample</th>
+                        <th className="px-3 py-2">Client</th>
+                        <th className="hidden px-3 py-2 md:table-cell">Description</th>
+                        <th className="px-3 py-2">Stage</th>
+                        <th className="px-3 py-2 text-right">Due</th>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="px-4 py-5 text-center text-xs text-muted-foreground">
-              <ShieldCheck size={22} className="mx-auto mb-1.5 text-success" />
-              All active samples are within target timelines.
-            </div>
-          )}
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {sampleList.map((sample) => {
+                        const stagePath = stageHref(sample.stage ?? '')
+                        const href =
+                          stagePath && canAccessPath(stagePath, access)
+                            ? stagePath
+                            : role.primaryHref && canAccessPath(role.primaryHref, access)
+                              ? role.primaryHref
+                              : '/'
+                        return (
+                          <tr key={sample.id} className="hover:bg-muted/20">
+                            <td className="px-3 py-1.5 font-semibold text-primary">
+                              <NavLink to={href} className="hover:underline">
+                                {sample.sample_code || '—'}
+                              </NavLink>
+                            </td>
+                            <td className="max-w-[120px] truncate px-3 py-1.5">
+                              {sample.client_name || '—'}
+                            </td>
+                            <td className="hidden max-w-[180px] truncate px-3 py-1.5 md:table-cell">
+                              {sample.description || '—'}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <Badge variant="warning" className="text-[9px] capitalize">
+                                {(sample.stage ?? 'receiving').replace(/_/g, ' ')}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-medium text-destructive tabular-nums">
+                              {sample.tentative_date_by_lab || '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                  <ShieldCheck size={22} className="mx-auto mb-1.5 text-success" />
+                  All active samples are within target timelines.
+                </div>
+              )}
+            </section>
+
+            <section className="min-w-0">
+              <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/40 px-3 py-2">
+                <h4 className="text-xs font-semibold text-foreground">Overdue Calibration</h4>
+                <Badge
+                  variant={stats.calibrationOverdue > 0 ? 'destructive' : 'success'}
+                  className="px-1.5 py-0 text-[10px]"
+                >
+                  {stats.calibrationOverdue}
+                </Badge>
+              </div>
+              {calList.length > 0 ? (
+                <div className="max-h-[280px] overflow-auto">
+                  <table className="w-full border-collapse text-left text-[11px]">
+                    <thead className="sticky top-0 z-[1] bg-muted/90 backdrop-blur-sm">
+                      <tr className="border-b border-border/60 font-semibold text-muted-foreground">
+                        <th className="px-3 py-2">Asset</th>
+                        <th className="px-3 py-2">Equipment</th>
+                        <th className="px-3 py-2 text-right">Cal. Due</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {calList.map((eq) => (
+                        <tr key={eq.id} className="hover:bg-muted/20">
+                          <td className="px-3 py-1.5 font-semibold text-primary">
+                            {equipmentHref ? (
+                              <NavLink to={equipmentHref} className="hover:underline">
+                                {eq.asset_code || '—'}
+                              </NavLink>
+                            ) : (
+                              eq.asset_code || '—'
+                            )}
+                          </td>
+                          <td className="max-w-[220px] truncate px-3 py-1.5">
+                            {eq.equipment_name || '—'}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-medium text-destructive tabular-nums">
+                            {eq.next_calibration_due || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                  <ShieldCheck size={22} className="mx-auto mb-1.5 text-success" />
+                  No equipment calibration is overdue.
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       </div>
     )
@@ -1091,10 +1106,17 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="h-full w-full space-y-3 p-3 sm:p-4">
-        <Skeleton className="h-16 w-full rounded-xl" />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-xl" />
+        <Skeleton className="h-14 w-full rounded-xl" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, sectionIdx) => (
+            <div key={sectionIdx} className="space-y-1.5">
+              <Skeleton className="h-3 w-24 rounded" />
+              <div className="flex flex-col gap-1.5">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -1120,61 +1142,35 @@ export default function DashboardPage() {
 
   if (!stats) return null
 
-  const displayName = profileName?.trim() || designation || 'User'
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3 overflow-auto p-3 sm:p-4">
       <div className="app-card shrink-0 overflow-hidden">
-        <div className="flex flex-col gap-2 bg-gradient-to-r from-lab-800 via-primary to-lab-600 px-4 py-3 text-white sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div className="min-w-0 text-left">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <Badge className="border-none bg-white/20 text-[10px] text-white hover:bg-white/20">
-                {role.badge}
-              </Badge>
-            </div>
-            <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">{role.title}</h1>
-            <p className="mt-0.5 line-clamp-1 text-xs text-blue-50/90">{role.subtitle}</p>
-          </div>
-          <div className="shrink-0 text-left text-[11px] text-blue-100/80 sm:text-right">
-            <p className="font-medium text-white/95">{displayName}</p>
-            <p>
-              {[departmentName, designation].filter(Boolean).join(' · ') || 'Laboratory Staff'}
-            </p>
-            <p className="mt-0.5 tabular-nums text-blue-100/70">
-              {stats.totalSamples} samples · {stats.activeSamples} active · {stats.tatComplianceRate}% TAT
-            </p>
-          </div>
+        <div className="flex flex-col gap-2 bg-gradient-to-r from-lab-800 via-primary to-lab-600 px-4 py-2.5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <h1 className="min-w-0 truncate text-base font-bold tracking-tight sm:text-lg">
+            {role.title}
+          </h1>
+          <p className="shrink-0 text-[11px] tabular-nums text-blue-100/80">
+            {stats.totalSamples} samples · {stats.activeSamples} active · {stats.tatComplianceRate}% TAT
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-6">
-        {roleStatCards.map((card) => (
-          <StatCard key={card.title} {...card} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {dashboardSections.map((section) => (
+          <section key={section.id} className="min-w-0 space-y-1.5">
+            <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {section.title}
+            </h2>
+            <div className="flex flex-col gap-1.5">
+              {section.cards.map((card) => (
+                <StatCard key={`${section.id}-${card.title}`} {...card} />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[1.35fr_1fr]">
-        <div className="space-y-3">
-          {renderPipeline()}
-          <div className="space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Modules Available to You
-            </h2>
-            {visibleQuickLinks.length > 0 ? (
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                {visibleQuickLinks.map((link) => (
-                  <QuickLinkCard key={link.href} title={link.title} subtitle={link.subtitle} href={link.href} />
-                ))}
-              </div>
-            ) : (
-              <div className="app-card p-4 text-center text-xs text-muted-foreground">
-                No module shortcuts assigned to this role yet.
-              </div>
-            )}
-          </div>
-        </div>
-        {renderAttentionItems()}
-      </div>
+      <div className="min-h-0 flex-1">{renderOverdueCard()}</div>
     </div>
   )
 }
