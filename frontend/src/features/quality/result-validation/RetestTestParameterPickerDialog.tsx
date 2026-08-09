@@ -178,7 +178,7 @@ export function RetestTestParameterPickerDialog({
           <div className="overflow-x-auto rounded-md border border-border/80 max-h-80 overflow-y-auto">
             <table className={cn('text-sm', GRID_TABLE)}>
               <thead>
-                <tr className="hover:bg-muted/60">
+                <tr className="bg-stone-800 hover:bg-stone-800">
                   <th className={cn(GRID_HEAD, 'w-10 p-2')}>
                     <input
                       ref={selectAllRef}

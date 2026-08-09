@@ -87,7 +87,7 @@ export function ManagementDocumentsTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+    <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error ? <p className="px-3 pt-3 text-sm text-destructive sm:px-5 sm:pt-4">{error}</p> : null}
 
       {loading ? (
@@ -104,7 +104,7 @@ export function ManagementDocumentsTable({
       ) : (
         <Table className={GRID_TABLE}>
           <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
+            <TableRow className="bg-stone-800 hover:bg-stone-800">
               <TableHead className="w-12 text-center text-xs sm:w-14">
                 <input
                   type="checkbox"
@@ -235,7 +235,7 @@ export function ManagementDocumentsTable({
           {controlRow ? (
             <>
               <div className="relative bg-slate-900 px-5 py-4 text-white">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="pr-8 text-left">
                   <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                     Document Control

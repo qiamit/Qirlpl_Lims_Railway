@@ -507,12 +507,12 @@ function Breadcrumbs() {
   if (!label || location.pathname === '/') return null
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
-      <NavLink to="/" className="hover:text-foreground transition-colors">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-stone-300">
+      <NavLink to="/" className="transition-colors hover:text-amber-200">
         Dashboard
       </NavLink>
-      <ChevronsRight size={14} className="text-muted-foreground/50" />
-      <span className="font-medium text-foreground">{label}</span>
+      <ChevronsRight size={14} className="text-stone-500" />
+      <span className="font-medium text-white">{label}</span>
     </nav>
   )
 }
@@ -545,7 +545,7 @@ function NavSectionGroup({
   if (collapsed) {
     return (
       <div className="space-y-0.5">
-        <div className="mx-2 my-2 h-px bg-white/10" />
+        <div className="mx-2 my-2 h-px bg-stone-600/80" />
         {visibleItems.map((item) => (
           <div key={item.to ?? item.label}>
             {item.children && item.children.length > 0 ? (
@@ -564,23 +564,23 @@ function NavSectionGroup({
       <button
         type="button"
         onClick={toggleOpen}
-        className="flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-lg px-1.5 py-2 text-left transition-colors hover:bg-white/[0.05]"
+        className="flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-none px-1.5 py-2 text-left transition-colors hover:bg-white/10"
         aria-expanded={open}
         title={formatNavLabel(section.title)}
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-teal-500/15 text-teal-300/90 ring-1 ring-teal-400/20">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30">
           <SectionIcon size={13} aria-hidden />
         </span>
-        <span className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-wide text-sidebar-foreground/55">
+        <span className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-wide text-stone-300">
           {formatNavLabel(section.title)}
         </span>
-        <span className="shrink-0 text-sidebar-foreground/35">
+        <span className="shrink-0 text-stone-500">
           {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
       </button>
 
       {open && visibleItems.length === 0 ? (
-        <p className="mx-1 mb-1 rounded-md bg-white/[0.03] px-2.5 py-2 text-[11px] text-sidebar-foreground/35">
+        <p className="mx-1 mb-1 rounded-none bg-stone-800/60 px-2.5 py-2 text-[11px] text-stone-400">
           Coming soon
         </p>
       ) : null}
@@ -688,7 +688,7 @@ function NavItemGroup({ item, collapsed, access }: { item: NavItem; collapsed: b
       </button>
 
       {open && (
-        <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-teal-400/20 pl-2">
+        <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-amber-500/25 pl-2">
           {visibleChildren.map((c) => (
             <li key={c.to ?? c.label}>
               <NavItemLink item={c} collapsed={false} access={access} nested />
@@ -879,19 +879,28 @@ export default function GlobalLayout() {
     <>
       <div
         className={cn(
-          'relative flex shrink-0 items-center justify-center border-b border-sidebar-border/60 px-3 py-3',
-          'bg-gradient-to-r from-slate-950 via-slate-900 to-teal-950/80',
+          'relative flex shrink-0 items-center gap-3 overflow-hidden border-b border-stone-700 px-3 py-3',
+          'bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950',
           'min-h-[5.5rem]',
         )}
       >
         <div
-          className="flex h-14 w-[11.5rem] items-center justify-center overflow-hidden rounded-xl bg-white px-2 py-1 shadow-lg ring-1 ring-teal-400/35"
+          className="pointer-events-none absolute inset-0 opacity-[0.16]"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 10% 30%, rgba(217,119,6,0.4), transparent 40%), radial-gradient(circle at 90% 0%, rgba(251,191,36,0.22), transparent 35%)',
+          }}
+        />
+        <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+
+        <div
+          className="relative flex h-14 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-none bg-white px-2 py-1 shadow-md ring-1 ring-amber-500/40"
           title={labName || brandShortName}
         >
           <img
             src="/brand/qi-logo.png"
             alt=""
-            className="h-full w-full object-contain"
+            className="h-full w-full max-w-[11rem] object-contain"
             draggable={false}
           />
         </div>
@@ -900,7 +909,7 @@ export default function GlobalLayout() {
           <button
             type="button"
             onClick={toggleSidebarCollapsed}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+            className="relative z-10 shrink-0 rounded-none border border-transparent p-1.5 text-stone-200 transition-colors hover:border-amber-500/40 hover:bg-white/10 hover:text-white"
             aria-label="Hide sidebar"
             title="Hide sidebar"
           >
@@ -909,7 +918,7 @@ export default function GlobalLayout() {
         ) : (
           <button
             type="button"
-            className="absolute right-3 top-1/2 -translate-y-1/2 md:hidden rounded-md p-1.5 text-white/80 hover:bg-white/10"
+            className="relative z-10 shrink-0 rounded-none p-1.5 text-stone-200 hover:bg-white/10 hover:text-white md:hidden"
             onClick={() => setMobileNavOpen(false)}
             aria-label="Close navigation menu"
           >
@@ -920,7 +929,7 @@ export default function GlobalLayout() {
 
       <ScrollArea className="min-w-0 flex-1 overflow-hidden py-3">
         <nav className="w-full min-w-0 max-w-full space-y-2 overflow-x-hidden px-2 pb-3" aria-label="Main navigation">
-          <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-white/[0.06] bg-gradient-to-br from-white/[0.07] to-transparent p-1">
+          <div className="min-w-0 max-w-full overflow-hidden rounded-none border border-stone-600/80 bg-stone-900/50 p-1">
             <NavItemLink
               item={{ label: 'Dashboard', to: '/', icon: LayoutDashboard }}
               collapsed={false}
@@ -955,8 +964,8 @@ export default function GlobalLayout() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-[min(88vw,280px)] max-w-[280px] flex-col overflow-hidden border-r border-sidebar-border',
-          'bg-gradient-to-b from-sidebar via-sidebar to-[#0a1628] shadow-2xl shadow-teal-950/20',
+          'fixed inset-y-0 left-0 z-50 flex w-[min(88vw,280px)] max-w-[280px] flex-col overflow-hidden border-r border-stone-700',
+          'bg-gradient-to-b from-stone-800 via-stone-900 to-stone-950 shadow-2xl shadow-stone-950/40',
           'transition-transform duration-300 ease-in-out md:hidden',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
         )}
@@ -967,8 +976,8 @@ export default function GlobalLayout() {
       {!sidebarCollapsed ? (
         <aside
           className={cn(
-            'hidden w-[268px] min-w-0 max-w-[268px] flex-col overflow-hidden border-r border-sidebar-border bg-gradient-to-b from-sidebar via-sidebar to-[#0a1628]',
-            'shadow-lg shadow-teal-950/15 transition-[width] duration-300 ease-in-out md:flex',
+            'hidden w-[268px] min-w-0 max-w-[268px] flex-col overflow-hidden border-r border-stone-700 bg-gradient-to-b from-stone-800 via-stone-900 to-stone-950',
+            'relative z-[55] shadow-lg shadow-stone-950/30 transition-[width] duration-300 ease-in-out md:flex',
           )}
         >
           {renderSidebar(false, { showCollapseToggle: true })}
@@ -976,12 +985,21 @@ export default function GlobalLayout() {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-border/80 bg-white/90 px-4 shadow-sm backdrop-blur-md sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+        <header className="relative sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between overflow-hidden border-b border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 text-white shadow-md sm:px-6">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.16]"
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 10% 30%, rgba(217,119,6,0.4), transparent 40%), radial-gradient(circle at 90% 0%, rgba(251,191,36,0.22), transparent 35%)',
+            }}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+
+          <div className="relative flex min-w-0 items-center gap-3">
             <button
               type="button"
               className={cn(
-                'inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-accent',
+                'inline-flex h-9 w-9 items-center justify-center rounded-none border border-stone-500 bg-stone-800/80 text-white shadow-sm transition-colors hover:border-amber-500/50 hover:bg-stone-700',
                 !sidebarCollapsed && 'md:hidden',
               )}
               onClick={() => {
@@ -999,36 +1017,36 @@ export default function GlobalLayout() {
             <div className="min-w-0">
               <Breadcrumbs />
               {!ROUTE_LABELS[location.pathname] && (
-                <span className="block truncate text-sm font-semibold text-foreground sm:text-base">
+                <span className="block truncate text-sm font-semibold text-white sm:text-base">
                   {labName || 'Quality International Research & Laboratories Pvt. Ltd.'}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <div className="hidden items-center gap-2 rounded-full border border-success/20 bg-success/10 px-3 py-1 md:flex">
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
-              <span className="text-[11px] font-semibold text-success">Accredited</span>
+          <div className="relative flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden items-center gap-2 rounded-none border border-amber-500/30 bg-amber-500/10 px-3 py-1 md:flex">
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+              <span className="text-[11px] font-semibold text-amber-200">Accredited</span>
             </div>
 
-            <Separator orientation="vertical" className="hidden h-6 bg-border md:block" />
+            <Separator orientation="vertical" className="hidden h-6 bg-stone-600 md:block" />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow-sm">
+                <button className="flex items-center gap-2 rounded-none px-2 py-1.5 transition-colors hover:bg-white/10">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-none bg-amber-700 text-xs font-bold text-white shadow-sm">
                     {initials}
                   </div>
                   <div className="hidden text-left leading-tight sm:block">
-                    <p className="max-w-[140px] truncate text-xs font-semibold text-foreground lg:max-w-[180px]">
+                    <p className="max-w-[140px] truncate text-xs font-semibold text-white lg:max-w-[180px]">
                       {profileName || 'User'}
                     </p>
-                    <p className="max-w-[140px] truncate text-[10px] text-muted-foreground lg:max-w-[180px]">
+                    <p className="max-w-[140px] truncate text-[10px] text-stone-300 lg:max-w-[180px]">
                       {designation || 'Staff'}
                     </p>
                   </div>
-                  <ChevronDown size={14} className="hidden text-muted-foreground sm:block" />
+                  <ChevronDown size={14} className="hidden text-stone-400 sm:block" />
                 </button>
               </DropdownMenuTrigger>
 

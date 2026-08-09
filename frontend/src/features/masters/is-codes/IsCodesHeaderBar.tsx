@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsPrimaryBtnClass, limsDarkBarSearchClass, limsDarkBarFieldClass, limsDarkBarBtnClass, limsAiTriggerClass } from '@/lib/limsThemeUi'
 import { Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,12 +21,12 @@ export function IsCodesHeaderBar({
   onAssistantDataChanged?: () => void
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-        <h1 className="shrink-0 text-lg font-semibold tracking-tight text-foreground">IS Code Master</h1>
+        <h1 className="shrink-0 text-lg font-semibold tracking-tight text-white">IS Code Master</h1>
         <div className="relative w-full sm:max-w-sm">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
             aria-hidden
           />
           <Input
@@ -32,7 +34,7 @@ export function IsCodesHeaderBar({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder=""
-            className="h-9 pl-9"
+            className={cn(limsDarkBarSearchClass, 'pl-9')}
             aria-label="Search IS codes"
           />
         </div>
@@ -52,11 +54,12 @@ export function IsCodesHeaderBar({
           onDataChanged={onAssistantDataChanged}
           enablePdfImport
           triggerVariant="icon"
+          triggerClassName={limsAiTriggerClass}
         />
-        <Button type="button" variant="outline" size="sm" onClick={onOpenBIS}>
+        <Button type="button" variant="outline" size="sm" className={limsDarkBarBtnClass} onClick={onOpenBIS}>
           BIS Website
         </Button>
-        <Button type="button" className="gap-2 shrink-0" size="sm" onClick={onNew} aria-label="Add New IS Code">
+        <Button type="button" className={cn('gap-2 shrink-0', limsPrimaryBtnClass)} size="sm" onClick={onNew} aria-label="Add New IS Code">
           <Plus size={14} />
           Add New IS Code
         </Button>

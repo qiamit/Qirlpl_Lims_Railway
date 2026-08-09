@@ -6,6 +6,7 @@ import {
   splitPartDRemarks,
 } from './testReportPartDRemarks'
 import {
+  REPORT_PART_HEADING_CLASS,
   REPORT_PART_INNER_CLASS,
   REPORT_PART_OUTER_CLASS,
   REPORT_PART_ROW_BORDER,
@@ -35,14 +36,14 @@ export function TestReportRemarksSection({
 
   return (
     <div className={REPORT_PART_OUTER_CLASS}>
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
-        Part D — Remarks
-      </h3>
+      <h3 className={REPORT_PART_HEADING_CLASS}>Part D — Remarks</h3>
       <div className={`${REPORT_PART_INNER_CLASS} text-sm`}>
-        <div className={`border-b ${REPORT_PART_ROW_BORDER} bg-primary/10 px-4 py-2.5`}>
-          <p className="text-xs font-bold uppercase tracking-wide text-foreground">{PART_D_HEADING}</p>
+        <div className={`border-b ${REPORT_PART_ROW_BORDER} bg-stone-800 px-4 py-2.5`}>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+            {PART_D_HEADING}
+          </p>
         </div>
-        <p className={`border-b ${REPORT_PART_ROW_BORDER} bg-sky-50/50 px-4 py-2.5 text-sm leading-relaxed text-foreground`}>
+        <p className={`border-b ${REPORT_PART_ROW_BORDER} bg-white px-4 py-2.5 text-sm leading-relaxed text-stone-900`}>
           {line1}
         </p>
         <Textarea

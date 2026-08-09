@@ -31,7 +31,11 @@ import {
 } from './reportPrepLetterhead'
 import { TEST_REPORT_PREFIX_SETTING_NAMES } from './testReportNumberPrefix'
 import { ReportResultsTable } from './ReportResultsTable'
-import { REPORT_PART_INNER_CLASS, REPORT_PART_OUTER_CLASS } from './reportPartUiClasses'
+import {
+  REPORT_PART_HEADING_CLASS,
+  REPORT_PART_INNER_CLASS,
+  REPORT_PART_OUTER_CLASS,
+} from './reportPartUiClasses'
 import { formatTestReportEndNotesText, TEST_REPORT_END_MARKER } from './testReportEndNotes'
 
 const NONE = '__none__'
@@ -47,11 +51,11 @@ function letterheadSelectValue(value: string): string {
 function TestReportEndNotesBlock() {
   return (
     <div
-      className="border-t-2 border-t-primary/30 border-x border-b border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground leading-relaxed"
+      className="border border-stone-400 bg-stone-100/80 px-3 py-3 text-xs leading-relaxed text-stone-600"
       role="note"
       aria-label="End of report notes"
     >
-      <p className="text-center font-medium text-foreground/80 tracking-wide mb-2">
+      <p className="mb-2 text-center font-medium tracking-wide text-stone-800">
         {TEST_REPORT_END_MARKER}
       </p>
       <p className="text-justify">{formatTestReportEndNotesText()}</p>
@@ -151,7 +155,7 @@ function ScopePrepToolbar({
 
   return (
     <div
-      className={`grid ${gridCols} gap-3 rounded-md border border-border/40 bg-background/60 px-3 py-2.5`}
+      className={`grid ${gridCols} gap-3 border border-stone-400 bg-white px-3 py-2.5`}
     >
       <div className="space-y-1.5 min-w-0 md:col-span-2 xl:col-span-1">
         <Label htmlFor={`tr-num-${scope}`} className="text-xs">
@@ -286,14 +290,12 @@ export function TestReportResultsSection({
 }) {
   return (
     <div className={REPORT_PART_OUTER_CLASS}>
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
-        Part C — Test Results
-      </h3>
+      <h3 className={REPORT_PART_HEADING_CLASS}>Part C — Test Results</h3>
       <div className={`${REPORT_PART_INNER_CLASS} p-3`}>
         {resultsLoading ? (
-          <p className="text-sm text-muted-foreground py-2">Loading test results…</p>
+          <p className="text-sm text-stone-600 py-2">Loading test results…</p>
         ) : applicableScopes.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-2">
+          <p className="text-sm text-stone-600 py-2">
             No completed test results for this SRF.
           </p>
         ) : (
@@ -302,12 +304,12 @@ export function TestReportResultsSection({
             onValueChange={(v) => onActiveScopeChange(v as ReportScopeKind)}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-2 h-auto gap-1 bg-primary/10 p-1 border border-primary/20">
+            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 border border-stone-500 bg-stone-200/80 p-1">
               {applicableScopes.map((scope) => (
                 <TabsTrigger
                   key={scope}
                   value={scope}
-                  className="text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+                  className="rounded-none text-xs text-stone-600 sm:text-sm data-[state=active]:bg-stone-800 data-[state=active]:text-amber-100 data-[state=active]:shadow-sm"
                 >
                   {REPORT_SCOPE_TITLE[scope]} ({REPORT_SCOPE_SUFFIX[scope]})
                 </TabsTrigger>
@@ -341,7 +343,7 @@ export function TestReportResultsSection({
                     onWatermarkChange={(v) => onLetterheadChange(scope, 'watermarkName', v)}
                     disabled={disabled}
                   />
-                  <div className="overflow-hidden rounded-md border-2 border-primary/40 shadow-sm">
+                  <div className="overflow-hidden border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/15">
                     <ReportResultsTable
                       rows={scopedRows}
                       showScope={false}

@@ -35,7 +35,7 @@ export function isParameterSentForReview(row: {
 
 /**
  * Load test_allocation ids that already have a results reviewer (sent for review).
- * Chunked to avoid PostgREST max-rows truncating large parameter lists.
+ * Chunked (parallel) to avoid PostgREST max-rows truncating large parameter lists.
  */
 export async function fetchSentForReviewTestAllocationIds(
   testAllocationIds: string[],
@@ -43,7 +43,7 @@ export async function fetchSentForReviewTestAllocationIds(
   const ids = [...new Set(testAllocationIds.map((id) => id.trim()).filter(Boolean))]
   if (ids.length === 0) return new Set()
 
-  const rows = await fetchByIdChunks(ids, 40, async (chunkIds) => {
+  const rows = await fetchByIdChunks(ids, 60, async (chunkIds) => {
     const { data, error } = await supabase
       .from('test_allocation_parameters')
       .select('test_allocation_id, results_reviewer_id, results_reviewer_name, results_review_status')
@@ -52,21 +52,23 @@ export async function fetchSentForReviewTestAllocationIds(
     return Array.isArray(data) ? data : []
   })
 
+  return collectSentForReviewAllocationIds(rows)
+}
+
+/** Derive sent-for-review allocation ids from already-loaded parameter rows (no extra query). */
+export function collectSentForReviewAllocationIds(
+  rows: Array<{
+    test_allocation_id?: string | null
+    results_reviewer_id?: string | null
+    results_reviewer_name?: string | null
+    results_review_status?: string | null
+  }>,
+): Set<string> {
   const sent = new Set<string>()
   for (const row of rows) {
-    const allocId = (row as { test_allocation_id?: string | null }).test_allocation_id
+    const allocId = row.test_allocation_id
     if (!allocId) continue
-    if (
-      isParameterSentForReview(
-        row as {
-          results_reviewer_id?: string | null
-          results_reviewer_name?: string | null
-          results_review_status?: string | null
-        },
-      )
-    ) {
-      sent.add(allocId)
-    }
+    if (isParameterSentForReview(row)) sent.add(allocId)
   }
   return sent
 }

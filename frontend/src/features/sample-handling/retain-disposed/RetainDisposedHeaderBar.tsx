@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsPrimaryBtnClass, limsDarkBarSearchClass, limsDarkBarFieldClass, limsDarkBarBtnClass, limsAiTriggerClass } from '@/lib/limsThemeUi'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { RetainDisposedFilter } from './types'
@@ -18,10 +20,10 @@ export function RetainDisposedHeaderBar({
   onFilterChange: (value: RetainDisposedFilter) => void
 }) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between app-card px-4 py-4 sm:px-5">
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-4 sm:px-5">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-foreground whitespace-nowrap">
+          <h1 className="text-lg font-semibold tracking-tight text-white whitespace-nowrap">
             Retain &amp; Disposed Sample
           </h1>
         </div>
@@ -29,7 +31,7 @@ export function RetainDisposedHeaderBar({
           <Input
             placeholder="Search SRF, IS code…"
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value)} className={limsDarkBarSearchClass}
           />
         </div>
         <div className="w-36">
@@ -47,7 +49,7 @@ export function RetainDisposedHeaderBar({
         </div>
         <div className="w-28">
           <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger aria-label="Rows per page">
+            <SelectTrigger className={cn(limsDarkBarFieldClass, 'w-full')} aria-label="Rows per page">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -893,7 +893,7 @@ export function SelectCalibrationEquipmentDialog({
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-8 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               Service Request · Equipment
@@ -920,7 +920,7 @@ export function SelectCalibrationEquipmentDialog({
             ) : (
               <Table className={GRID_TABLE}>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableRow className="bg-stone-800 hover:bg-stone-800">
                     <TableHead className="w-12 text-center text-xs sm:w-14">
                       <input
                         type="checkbox"
@@ -1174,7 +1174,7 @@ export function SelectCalibrationEquipmentDialog({
           aria-describedby={undefined}
         >
           <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-8 text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                 Equipment · Calibration Details

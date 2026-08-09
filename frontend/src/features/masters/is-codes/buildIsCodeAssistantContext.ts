@@ -1,9 +1,8 @@
 import type { IsCodeRow } from './types'
+import { formatIsCodeLabel } from './formatIsCodeLabel'
 
-export function formatIsCodeLabel(row: Pick<IsCodeRow, 'is_number' | 'revision_year'>) {
-  const rev = (row.revision_year ?? '').trim()
-  return rev ? `${row.is_number}: ${rev}` : row.is_number
-}
+export { formatIsCodeLabel, formatIsCodeLabelFromParts, normalizeIsCodeLabel } from './formatIsCodeLabel'
+
 
 /** List context for header QI Assistant (includes UUIDs for create/update/delete). */
 export function buildIsCodesListAssistantContext(rows: IsCodeRow[], search: string): string {

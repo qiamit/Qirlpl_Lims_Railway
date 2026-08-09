@@ -26,7 +26,7 @@ export function ProductServicesTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 overflow-hidden">
       {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
       {loading ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
@@ -36,8 +36,8 @@ export function ProductServicesTable({
         <div className="overflow-x-auto">
           <Table className="table-auto w-max min-w-full">
             <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="text-xs w-[44px] text-center align-middle">
+              <TableRow className="bg-stone-800 hover:bg-stone-800">
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 w-[44px] text-center align-middle">
                   <input
                     type="checkbox"
                     aria-label="Select all"
@@ -48,17 +48,17 @@ export function ProductServicesTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className="text-xs text-center align-middle w-[56px]">S.No</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[180px]">Discipline / Group</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[180px]">Materials / Products</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[220px]">Component / Parameter / Test</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[160px]">Test Method</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[120px]">Testing Type</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[100px]">Type of Test</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[88px]">Range Min</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[88px]">Range Max</TableHead>
-                <TableHead className="text-xs text-center align-middle min-w-[100px]">Uncertainty</TableHead>
-                <TableHead className="text-xs text-center align-middle w-[96px]">Action</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle w-[56px]">S.No</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[180px]">Discipline / Group</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[180px]">Materials / Products</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[220px]">Component / Parameter / Test</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[160px]">Test Method</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[120px]">Testing Type</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[100px]">Type of Test</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[88px]">Range Min</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[88px]">Range Max</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle min-w-[100px]">Uncertainty</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center align-middle w-[96px]">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

@@ -3011,7 +3011,7 @@ export function RawDataSheetDialog({
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-12 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               Calibration Conduct · Raw Data Sheet
@@ -3100,7 +3100,7 @@ export function RawDataSheetDialog({
               aria-describedby={undefined}
             >
               <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
                   <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                     Request Context
@@ -3173,7 +3173,7 @@ export function RawDataSheetDialog({
               aria-describedby={undefined}
             >
               <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
                   <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                     Request Context
@@ -3231,7 +3231,7 @@ export function RawDataSheetDialog({
               aria-describedby={undefined}
             >
               <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
                   <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                     Request Context
@@ -3273,7 +3273,7 @@ export function RawDataSheetDialog({
               aria-describedby={undefined}
             >
               <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
                   <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                     Calibration Standards
@@ -3434,7 +3434,7 @@ export function RawDataSheetDialog({
               aria-describedby={undefined}
             >
               <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
                   <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                     Before Calibration
@@ -3924,7 +3924,7 @@ export function RawDataSheetDialog({
                   aria-describedby={undefined}
                 >
                   <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                    <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+                    <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                     <DialogHeader className="relative pr-10 text-left">
                       <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                         ISO / IEC 17025 · Clause 6.3

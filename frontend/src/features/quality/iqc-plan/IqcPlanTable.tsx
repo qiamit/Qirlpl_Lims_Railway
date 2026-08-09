@@ -17,7 +17,7 @@ const GRID_TABLE =
   'table-auto w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
 const GRID_HEAD =
-  'text-xs font-semibold text-foreground bg-muted/60 border-border whitespace-nowrap px-2 py-1.5 text-center'
+  'bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 whitespace-nowrap px-2 py-1.5 border-stone-700'
 const GRID_CELL = 'text-xs border-border px-2 py-1.5 align-middle text-center'
 
 function StatusBadge({ status }: { status: IqcPlanStatus }) {
@@ -71,7 +71,7 @@ export function IqcPlanTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-card overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
       {loading ? (
         <p className="px-4 py-6 text-sm text-muted-foreground text-center">Loading…</p>
@@ -83,7 +83,7 @@ export function IqcPlanTable({
         <div className="overflow-x-auto">
           <Table className={GRID_TABLE}>
             <TableHeader>
-              <TableRow className="hover:bg-muted/60">
+              <TableRow className="bg-stone-800 hover:bg-stone-800">
                 <TableHead className={cn(GRID_HEAD, 'w-10 p-2')}>
                   <input
                     type="checkbox"

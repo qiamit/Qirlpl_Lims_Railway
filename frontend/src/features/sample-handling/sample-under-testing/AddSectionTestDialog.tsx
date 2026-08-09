@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,8 +11,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  limsDarkBarGlowStyle,
+  limsDarkBarSearchClass,
+  limsDialogClass,
+  limsPanelClass,
+  limsPrimaryBtnClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
-import { openAddTestParameterWindow } from '@/features/masters/test-parameter/openAddTestParameterWindow'
+import {
+  AddTestParameterNestedDialog,
+  type AddedTestParameterInfo,
+} from '@/features/masters/test-parameter/AddTestParameterNestedDialog'
 import type { TestAllocationRow } from '../types'
 import {
   fetchIsCodeTestsForSection,
@@ -23,6 +34,18 @@ import type { SectionParameterEntry } from './sectionParameterRows'
 
 const TEST_GRID_COLS =
   'grid grid-cols-[2.25rem_minmax(9rem,1.5fr)_minmax(5rem,0.7fr)_minmax(10rem,2fr)_minmax(5rem,0.8fr)_minmax(7rem,1.1fr)]'
+
+const thClass = cn(limsTableHeadClass, 'border-b border-r border-stone-700 !p-2 last:border-r-0')
+const tdClass =
+  'border-b border-r border-[#e7e0d4] px-2 py-2 text-xs text-[#292524] last:border-r-0'
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/70 hover:bg-[#fde68a]/80'
+const rowWillRemoveClass = 'bg-red-50/80 hover:bg-red-50'
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 accent-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
+const pencilBtnClass =
+  'h-7 w-7 shrink-0 rounded-none text-amber-800 hover:bg-amber-500/15 hover:text-amber-950'
 
 export function AddSectionTestDialog({
   open,
@@ -49,6 +72,7 @@ export function AddSectionTestDialog({
   const [editSpecOpen, setEditSpecOpen] = useState(false)
   const [editSpecTestId, setEditSpecTestId] = useState<string | null>(null)
   const [editSpecValue, setEditSpecValue] = useState('')
+  const [addTestParameterOpen, setAddTestParameterOpen] = useState(false)
   const selectAllRef = useRef<HTMLInputElement>(null)
 
   const applyLoadedOptions = (list: AllocatedTestOption[], resetSelection: boolean) => {
@@ -232,121 +256,115 @@ export function AddSectionTestDialog({
   }
 
   const handleConfirm = async () => {
-    if (!hasChanges) return
-    await onConfirm(selectionChange)
+    if (hasChanges) await onConfirm(selectionChange)
     onOpenChange(false)
   }
 
   const openAddTestParameterDirectory = () => {
-    openAddTestParameterWindow({
-      isCodeId: row?.isCodeId,
-      isCodeLabel: row?.isCodeLabel,
-      department: row?.department,
-      designation: row?.designation,
+    setAddTestParameterOpen(true)
+  }
+
+  const handleTestParameterAdded = (param: AddedTestParameterInfo) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.add(param.id)
+      return next
     })
+    void loadOptions('soft')
   }
 
   const sectionLabel = row?.sectionCode?.trim() || '—'
   const editSpecTestLabel =
     options.find((o) => o.testParameterId === editSpecTestId)?.testLabel ?? ''
-  const alreadyCount = options.filter((o) => o.alreadyInSection).length
-  const availableCount = options.length - alreadyCount
-
-  const applyLabel = (() => {
-    const { toAdd, toRemove, toUpdate } = selectionChange
-    const parts: string[] = []
-    if (toAdd.length > 0) parts.push(`Add ${toAdd.length}`)
-    if (toRemove.length > 0) parts.push(`Remove ${toRemove.length}`)
-    if (toUpdate.length > 0) parts.push(`Update ${toUpdate.length}`)
-    if (parts.length === 0) return 'Apply'
-    return parts.join(' · ')
-  })()
-
-  const cellClass = 'border-b border-r border-border/60 px-2 py-2 text-sm last:border-r-0'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] h-[calc(100vh-1rem)] max-h-[calc(100vh-1rem)] flex flex-col gap-0 overflow-hidden p-0 sm:rounded-lg"
+        className={cn(
+          limsDialogClass,
+          'left-0 top-0 z-[60] flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none',
+          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+        )}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
         layer="nested"
-        showCloseButton={!editSpecOpen}
+        showCloseButton={!editSpecOpen && !addTestParameterOpen}
+        aria-describedby={undefined}
       >
-        <DialogHeader className="px-6 pt-5 pb-3 pr-14 space-y-2">
-          <div className="flex flex-row flex-wrap items-center gap-3 sm:pr-2">
-            <DialogTitle className="shrink-0 whitespace-nowrap">
-              Manage Tests — Section {sectionLabel}
-            </DialogTitle>
-            <Input
-              placeholder="Search test name, clause, requirement…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 min-w-[12rem] flex-1"
-            />
+        <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <div className="relative flex flex-row flex-wrap items-center gap-3 pr-10">
+            <DialogHeader className="shrink-0 space-y-0 text-left">
+              <DialogTitle className="whitespace-nowrap text-base font-semibold tracking-tight text-white sm:text-lg">
+                Manage Tests — Section {sectionLabel}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="relative w-[14rem] shrink-0 sm:w-[18rem]">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+                aria-hidden
+              />
+              <Input
+                placeholder="Search test name, clause, requirement…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className={cn(limsDarkBarSearchClass, 'h-8 pl-9')}
+              />
+            </div>
             <Button
               type="button"
               size="sm"
-              variant="default"
-              className="shrink-0 gap-1.5"
+              className={cn(limsPrimaryBtnClass, 'h-8 shrink-0 gap-1.5')}
               disabled={!row?.isCodeId}
-              title="Add a new test parameter in Test Parameter module"
+              title="Add a new test parameter"
               onClick={openAddTestParameterDirectory}
             >
               <Plus size={14} />
               Add New Test Parameter
             </Button>
           </div>
-          {!loading && options.length > 0 ? (
-            <p className="text-xs text-muted-foreground font-normal text-left">
-              {alreadyCount} already in section · {availableCount} available · Unselect to remove from
-              section
-            </p>
-          ) : null}
-        </DialogHeader>
+        </div>
 
-        <div className="min-h-0 flex-1 overflow-auto px-6 pb-2">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#f7f3eb] p-4 sm:p-5">
           {error ? (
-            <p className="text-sm text-destructive py-4">{error}</p>
+            <p className="py-4 text-sm text-red-700">{error}</p>
           ) : !row?.isCodeId ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">
+            <p className="py-6 text-center text-sm text-[#57534e]">
               No IS code on this section. Set IS code in Sample Receiving first.
             </p>
           ) : (
-            <div className="min-h-full rounded-md border border-border overflow-hidden">
-              <div
-                className={cn(
-                  TEST_GRID_COLS,
-                  'sticky top-0 z-10 border-b border-border bg-muted/80 text-xs font-semibold backdrop-blur-sm',
-                )}
-              >
-                <div className={cn(cellClass, 'flex items-start justify-center bg-muted/50')}>
+            <div className={cn(limsPanelClass, 'min-h-full bg-[#f7f3eb]')}>
+              <div className={cn(TEST_GRID_COLS, 'sticky top-0 z-10 bg-stone-800')}>
+                <div className={cn(thClass, 'flex items-center justify-center')}>
                   <input
                     ref={selectAllRef}
                     type="checkbox"
+                    className={checkboxClass}
                     aria-label="Select all tests"
                     checked={allFilteredSelected}
                     disabled={loading || filtered.length === 0}
                     onChange={toggleAll}
                   />
                 </div>
-                <div className={cn(cellClass, 'bg-muted/50 text-left')}>Test Name</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Clause Number</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Specified Requirement</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Uncertainty</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Under Accreditation</div>
+                <div className={cn(thClass, 'text-left')}>Test Name</div>
+                <div className={thClass}>Clause Number</div>
+                <div className={thClass}>Specified Requirement</div>
+                <div className={thClass}>Uncertainty</div>
+                <div className={thClass}>Under Accreditation</div>
               </div>
 
               {loading ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">Loading…</p>
+                <p className="py-8 text-center text-sm text-[#57534e]">Loading…</p>
               ) : options.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">
+                <p className="py-8 text-center text-sm text-[#57534e]">
                   No test parameters found for this IS code and department in Test Parameter master.
                 </p>
               ) : filtered.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">
+                <p className="py-8 text-center text-sm text-[#57534e]">
                   No matches for &quot;{search.trim()}&quot;.
                 </p>
               ) : (
-                filtered.map((opt) => {
+                filtered.map((opt, index) => {
                   const inSection = Boolean(opt.alreadyInSection)
                   const checked = selectedIds.has(opt.testParameterId)
                   const willRemove = inSection && !checked
@@ -357,9 +375,14 @@ export function AddSectionTestDialog({
                       tabIndex={0}
                       className={cn(
                         TEST_GRID_COLS,
-                        'cursor-pointer hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-                        willRemove && 'bg-destructive/5',
-                        inSection && checked && 'bg-muted/20',
+                        'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 focus-visible:ring-inset',
+                        willRemove
+                          ? rowWillRemoveClass
+                          : checked
+                            ? rowSelectedClass
+                            : index % 2 === 0
+                              ? rowEvenClass
+                              : rowOddClass,
                       )}
                       onClick={() => toggle(opt)}
                       onKeyDown={(e) => {
@@ -369,9 +392,10 @@ export function AddSectionTestDialog({
                         }
                       }}
                     >
-                      <div className={cn(cellClass, 'flex items-start justify-center')}>
+                      <div className={cn(tdClass, 'flex items-center justify-center')}>
                         <input
                           type="checkbox"
+                          className={checkboxClass}
                           checked={checked}
                           onChange={() => toggle(opt)}
                           onClick={(e) => e.stopPropagation()}
@@ -384,39 +408,34 @@ export function AddSectionTestDialog({
                           }
                         />
                       </div>
-                      <div className={cn(cellClass, 'font-medium break-words')}>
+                      <div className={cn(tdClass, 'break-words font-semibold text-[#1c1917]')}>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span>{opt.testLabel}</span>
                           {inSection && checked ? (
-                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <span className="border border-amber-700/40 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900">
                               In section
                             </span>
                           ) : null}
                           {willRemove ? (
-                            <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                            <span className="border border-red-500/40 bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-800">
                               Will remove
                             </span>
                           ) : null}
                         </div>
                       </div>
-                      <div
-                        className={cn(
-                          cellClass,
-                          'text-xs text-muted-foreground text-center break-words',
-                        )}
-                      >
+                      <div className={cn(tdClass, 'break-words text-center text-[#57534e]')}>
                         {opt.clauseNo?.trim() || '—'}
                       </div>
-                      <div className={cn(cellClass, 'text-xs text-muted-foreground break-words')}>
-                        <div className="flex items-start w-full gap-1">
-                          <span className="flex-1 min-w-0 break-words whitespace-pre-wrap text-center">
+                      <div className={cn(tdClass, 'break-words text-[#57534e]')}>
+                        <div className="flex w-full items-start gap-1">
+                          <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-center">
                             {displaySpecificRequirement(opt)}
                           </span>
                           <Button
                             type="button"
                             size="icon"
                             variant="ghost"
-                            className="h-7 w-7 shrink-0 ml-auto"
+                            className={cn(pencilBtnClass, 'ml-auto')}
                             aria-label="Edit specified requirement"
                             onClick={(e) => openEditSpec(opt, e)}
                           >
@@ -424,15 +443,10 @@ export function AddSectionTestDialog({
                           </Button>
                         </div>
                       </div>
-                      <div
-                        className={cn(
-                          cellClass,
-                          'text-xs text-muted-foreground text-center break-words',
-                        )}
-                      >
+                      <div className={cn(tdClass, 'break-words text-center text-[#57534e]')}>
                         {opt.uncertaintyMu?.trim() || '—'}
                       </div>
-                      <div className={cn(cellClass, 'text-xs text-center break-words')}>
+                      <div className={cn(tdClass, 'break-words text-center text-[#57534e]')}>
                         {opt.underAccreditation || '—'}
                       </div>
                     </div>
@@ -443,52 +457,82 @@ export function AddSectionTestDialog({
           )}
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
-          </Button>
+        <DialogFooter className="relative shrink-0 gap-2 border-t-2 border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 sm:justify-end sm:px-5">
+          <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <Button
             type="button"
+            className={cn(limsPrimaryBtnClass, 'relative min-w-[8.5rem]')}
             onClick={() => void handleConfirm()}
-            disabled={saving || !hasChanges}
+            disabled={saving}
           >
-            {saving ? 'Saving…' : applyLabel}
+            {saving ? 'Saving…' : 'Save & Close'}
           </Button>
         </DialogFooter>
       </DialogContent>
 
+      <AddTestParameterNestedDialog
+        open={addTestParameterOpen}
+        onOpenChange={setAddTestParameterOpen}
+        layer="stacked"
+        prefill={{
+          isCodeId: row?.isCodeId,
+          isCodeLabel: row?.isCodeLabel,
+          department: row?.department,
+          designation: row?.designation,
+        }}
+        onSaved={handleTestParameterAdded}
+      />
+
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
-        <DialogContent className="max-w-md" layer="stacked">
-          <DialogHeader>
-            <DialogTitle>Edit Specified Requirement — Section {sectionLabel}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
+        <DialogContent
+          className={cn(limsDialogClass, '!max-w-md !gap-0 !p-0')}
+          layer="stacked"
+          aria-describedby={undefined}
+        >
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold text-white">
+                Edit Specified Requirements — Section {sectionLabel}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="space-y-4 bg-[#f7f3eb] px-4 py-4">
+            <p className="text-xs text-[#57534e]">
               Applies only to this section code. Test Parameter master and other sections are not
-              changed. Click Apply to save requirement edits for tests already in the section.
+              changed.
             </p>
             {editSpecTestLabel ? (
-              <p className="text-sm font-medium">{editSpecTestLabel}</p>
+              <p className="text-sm font-medium text-[#1c1917]">{editSpecTestLabel}</p>
             ) : null}
             <div className="space-y-2">
-              <Label htmlFor="add-section-edit-spec-value">Specified Requirement</Label>
+              <Label
+                htmlFor="add-section-edit-spec-value"
+                className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+              >
+                Specified Requirement
+              </Label>
               <Textarea
                 id="add-section-edit-spec-value"
                 rows={3}
                 value={editSpecValue}
                 onChange={(e) => setEditSpecValue(e.target.value)}
                 placeholder="e.g. 0.30 Maximum"
+                className="rounded-none border-stone-500 bg-stone-50 shadow-none focus-visible:border-amber-600 focus-visible:ring-amber-500/20"
               />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setEditSpecOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={saveEditSpec}>
-                Save
-              </Button>
-            </div>
           </div>
+          <DialogFooter className="relative gap-2 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 sm:justify-end">
+            <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <Button
+              type="button"
+              className={cn(limsPrimaryBtnClass, 'relative min-w-[8.5rem]')}
+              onClick={saveEditSpec}
+            >
+              Save & Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Dialog>

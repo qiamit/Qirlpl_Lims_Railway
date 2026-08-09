@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { deleteConsentLetter, fetchConsentLetters } from './consentLetterDb'
 import { ConsentLetterFooterBar } from './ConsentLetterFooterBar'
 import { ConsentLetterGenerateDialog } from './ConsentLetterGenerateDialog'
@@ -151,7 +152,7 @@ export default function ConsentLetterMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <ConsentLetterHeaderBar
         search={search}
         onSearchChange={(v) => {

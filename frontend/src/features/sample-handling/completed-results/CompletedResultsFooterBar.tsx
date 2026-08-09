@@ -2,6 +2,13 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/SampleHandlingDeleteButton'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarFieldClass,
+  limsDarkBarGlowStyle,
+  limsPanelClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
 export function CompletedResultsFooterBar({
   loading,
@@ -33,64 +40,85 @@ export function CompletedResultsFooterBar({
   onDeleteSelected?: () => void
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card px-5 py-3 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-2">
-          {showDelete && onDeleteSelected ? (
-            <SampleHandlingDeleteButton
-              disabled={loading || selectedCount === 0}
-              onClick={onDeleteSelected}
-            />
-          ) : null}
-          <p className="text-xs text-muted-foreground">
-            Issued test reports and closed SRFs (Clause 7.8) · {totalCount} record{totalCount === 1 ? '' : 's'}
-          </p>
-          {message && (
-            <p
-              className={
-                message.toLowerCase().includes('referback') ||
-                message.toLowerCase().includes('download') ||
-                message.toLowerCase().includes('moved')
-                  ? 'text-sm text-success'
-                  : 'text-sm text-destructive'
-              }
-            >
-              {message}
-            </p>
-          )}
-        </div>
+    <div className={cn(limsPanelClass)}>
+      <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-2 text-white sm:px-5 sm:py-2.5">
+        <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+        <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
 
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-3">
-          <span className="text-xs text-muted-foreground md:order-first">Selected: {selectedCount}</span>
-          <div className="flex items-center justify-end gap-2">
-          <div className="flex items-center gap-2">
+        <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            {showDelete && onDeleteSelected ? (
+              <SampleHandlingDeleteButton
+                disabled={loading || selectedCount === 0}
+                onClick={onDeleteSelected}
+              />
+            ) : null}
+            <span className="text-xs text-stone-300">
+              Selected: {selectedCount} · {totalCount} record{totalCount === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {message ? (
+              <p
+                className={cn(
+                  'text-sm',
+                  message.toLowerCase().includes('referback') ||
+                    message.toLowerCase().includes('download') ||
+                    message.toLowerCase().includes('moved') ||
+                    message.toLowerCase().includes('opened')
+                    ? 'text-emerald-300'
+                    : message.toLowerCase().includes('fail') ||
+                        message.toLowerCase().includes('error')
+                      ? 'text-red-300'
+                      : 'text-stone-300',
+                )}
+              >
+                {message}
+              </p>
+            ) : null}
             <Input
-              aria-label="Jump to page"
+              className={cn(limsDarkBarFieldClass, 'w-16')}
               placeholder="Page"
               value={jumpTo}
               onChange={(e) => onJumpToChange(e.target.value.replace(/[^0-9]/g, ''))}
-              className="h-9 w-20"
+              aria-label="Jump to page"
             />
-            <Button type="button" variant="outline" onClick={onJumpToGo} disabled={loading}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={limsDarkBarBtnClass}
+              onClick={onJumpToGo}
+              disabled={loading}
+            >
               Jump
             </Button>
-          </div>
-
-          <Button type="button" variant="outline" size="icon" onClick={onPrevPage} disabled={loading || page <= 1}>
-            <ChevronLeft size={16} />
-          </Button>
-          <span className="text-xs font-medium text-muted-foreground">
-            Page {page} / {pageCount}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={onNextPage}
-            disabled={loading || page >= pageCount}
-          >
-            <ChevronRight size={16} />
-          </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={cn('h-8 w-8', limsDarkBarBtnClass)}
+              onClick={onPrevPage}
+              disabled={loading || page <= 1}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={16} />
+            </Button>
+            <span className="text-xs font-medium text-stone-300">
+              Page {page} / {pageCount}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={cn('h-8 w-8', limsDarkBarBtnClass)}
+              onClick={onNextPage}
+              disabled={loading || page >= pageCount}
+              aria-label="Next page"
+            >
+              <ChevronRight size={16} />
+            </Button>
           </div>
         </div>
       </div>

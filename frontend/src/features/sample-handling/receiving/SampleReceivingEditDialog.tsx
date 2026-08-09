@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
+import { limsDarkBarGlowStyle, limsDialogClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import {
   RECEIVING_REPORT_TYPES,
   addDays,
@@ -17,6 +19,7 @@ import { generateNextSrfNumber } from './generateNextSrfNumber'
 import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { isSampleReceivingEditLocked } from './sampleReceivingEditLock'
 import { setSampleReceivingEditUnlocked } from './sampleReceivingEditUnlock'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   fetchSampleRowById,
   sampleRowToReceivingForm,
@@ -103,7 +106,7 @@ export function SampleReceivingEditDialog({
       setIsCodeOptions(
         list.map((r) => ({
           id: r.id,
-          label: r.revision_year ? `${r.is_number ?? ''} : ${r.revision_year}` : (r.is_number ?? r.id),
+          label: formatIsCodeLabelFromParts(r.is_number, r.revision_year) || r.id,
         })),
       )
     } catch {
@@ -324,6 +327,16 @@ export function SampleReceivingEditDialog({
     await loadReceivingOptions()
   }
 
+  const onUpdateReceivingOption = async (category: string, id: string, label: string) => {
+    const { error } = await supabase
+      .from('sample_receiving_options')
+      .update({ label: label.trim() })
+      .eq('id', id)
+      .eq('category', category)
+    if (error) throw error
+    await loadReceivingOptions()
+  }
+
   const onDeleteReceivingOption = async (category: string, id: string) => {
     const { error } = await supabase.from('sample_receiving_options').delete().eq('id', id)
     if (error) throw error
@@ -335,66 +348,93 @@ export function SampleReceivingEditDialog({
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent
           persistOnFocusLoss
-          className="w-[min(96vw,62.5rem)] max-w-[62.5rem] max-h-[92vh] overflow-y-auto"
+          layer="nested"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'flex max-h-[92vh] w-[min(96vw,62.5rem)] max-w-[62.5rem] flex-col',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
         >
-          <DialogHeader>
-            <DialogTitle>Edit Sample Receiving — {form.srfNumber.trim() || 'SRF'}</DialogTitle>
-          </DialogHeader>
-          {loadLoading && <p className="text-sm text-muted-foreground">Loading sample…</p>}
-          {loadError && <p className="text-sm text-destructive">{loadError}</p>}
-          {saveMessage && <p className="text-sm text-destructive">{saveMessage}</p>}
-          {!loadLoading && !loadError && loadedSampleId ? (
-            <SampleReceivingForm
-              form={form}
-              onChange={setForm}
-              onSave={handleSave}
-              onClear={() => {
-                if (loadedRow) setForm(sampleRowToReceivingForm(loadedRow))
-              }}
-              onGoToReview={() => setActiveTab('review')}
-              canSave={canSave}
-              saveLoading={saveLoading}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              clientOptions={clientOptions}
-              isCodeOptions={isCodeOptions}
-              testRequiredOptions={receivingOptions.test_required}
-              modeOfDisposalOptions={receivingOptions.mode_of_disposal}
-              natureOfSampleOptions={receivingOptions.nature_of_sample}
-              sampleReceivingStatusOptions={statusOptions}
-              onAddClient={() => setAddClientOpen(true)}
-              onAddIsCode={() => setAddIsCodeOpen(true)}
-              onFileSelect={setClientReferencesFile}
-              clientReferencesFileName={clientReferencesFile?.name}
-              editingSampleId={loadedSampleId}
-              srfSearchRows={srfSearchRows}
-              onReportTypeChange={handleReportTypeChange}
-              onSelectReferencedSrf={handleSelectReferencedSrf}
-              onDateOfSampleReceivingChange={async (newDate) => {
-                const tent = addDays(newDate, 10)
-                if (form.receivingReportType === RECEIVING_REPORT_TYPES[0]) {
-                  const srf = await generateNextSrfNumber(newDate)
-                  setForm((prev) => ({
-                    ...prev,
-                    dateOfSampleReceiving: newDate,
-                    srfNumber: srf,
-                    tentativeDateRequired: tent,
-                    tentativeDateByLab: tent,
-                  }))
-                } else {
-                  setForm((prev) => ({
-                    ...prev,
-                    dateOfSampleReceiving: newDate,
-                    tentativeDateRequired: tent,
-                    tentativeDateByLab: tent,
-                  }))
-                }
-              }}
-              onAddReceivingOption={onAddReceivingOption}
-              onDeleteReceivingOption={onDeleteReceivingOption}
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
             />
-          ) : null}
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                Edit Sample Receiving — {form.srfNumber.trim() || 'SRF'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/90 to-stone-50 px-4 py-4 sm:px-5 sm:py-5">
+            {loadLoading && <p className="text-sm text-stone-600">Loading sample…</p>}
+            {loadError && (
+              <p className="border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {loadError}
+              </p>
+            )}
+            {saveMessage && (
+              <p className="mb-3 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {saveMessage}
+              </p>
+            )}
+            {!loadLoading && !loadError && loadedSampleId ? (
+              <SampleReceivingForm
+                form={form}
+                onChange={setForm}
+                onSave={handleSave}
+                onClear={() => {
+                  if (loadedRow) setForm(sampleRowToReceivingForm(loadedRow))
+                }}
+                onGoToReview={() => setActiveTab('review')}
+                canSave={canSave}
+                saveLoading={saveLoading}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                clientOptions={clientOptions}
+                isCodeOptions={isCodeOptions}
+                testRequiredOptions={receivingOptions.test_required}
+                modeOfDisposalOptions={receivingOptions.mode_of_disposal}
+                natureOfSampleOptions={receivingOptions.nature_of_sample}
+                sampleReceivingStatusOptions={statusOptions}
+                onAddClient={() => setAddClientOpen(true)}
+                onAddIsCode={() => setAddIsCodeOpen(true)}
+                onFileSelect={setClientReferencesFile}
+                clientReferencesFileName={clientReferencesFile?.name}
+                editingSampleId={loadedSampleId}
+                srfSearchRows={srfSearchRows}
+                onReportTypeChange={handleReportTypeChange}
+                onSelectReferencedSrf={handleSelectReferencedSrf}
+                onDateOfSampleReceivingChange={async (newDate) => {
+                  const tent = addDays(newDate, 10)
+                  if (form.receivingReportType === RECEIVING_REPORT_TYPES[0]) {
+                    const srf = await generateNextSrfNumber(newDate)
+                    setForm((prev) => ({
+                      ...prev,
+                      dateOfSampleReceiving: newDate,
+                      srfNumber: srf,
+                      tentativeDateRequired: tent,
+                      tentativeDateByLab: tent,
+                    }))
+                  } else {
+                    setForm((prev) => ({
+                      ...prev,
+                      dateOfSampleReceiving: newDate,
+                      tentativeDateRequired: tent,
+                      tentativeDateByLab: tent,
+                    }))
+                  }
+                }}
+                onAddReceivingOption={onAddReceivingOption}
+                onUpdateReceivingOption={onUpdateReceivingOption}
+                onDeleteReceivingOption={onDeleteReceivingOption}
+              />
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
       <AddClientDialog

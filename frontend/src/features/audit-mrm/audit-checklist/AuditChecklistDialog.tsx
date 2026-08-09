@@ -406,7 +406,7 @@ export function AuditChecklistDialog({
               backgroundSize: '24px 24px',
             }}
           />
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-8 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               Audit Checklist · ISO/IEC 17025:2017
@@ -466,8 +466,8 @@ export function AuditChecklistDialog({
             <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card">
               <Table className="min-w-[1100px] border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border">
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="sticky top-0 z-10 w-12 bg-muted/50 text-center text-xs">
+                  <TableRow className="bg-stone-800 hover:bg-stone-800">
+                    <TableHead className="sticky top-0 z-10 w-12 bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                       <input
                         type="checkbox"
                         className={checkboxClass}
@@ -479,15 +479,15 @@ export function AuditChecklistDialog({
                         onChange={(e) => toggleAllFiltered(e.target.checked)}
                       />
                     </TableHead>
-                    <TableHead className="sticky top-0 z-10 w-[88px] bg-muted/50 text-xs">Clause No</TableHead>
-                    <TableHead className="sticky top-0 z-10 min-w-[240px] bg-muted/50 text-xs">Description</TableHead>
-                    <TableHead className="sticky top-0 z-10 w-[110px] bg-muted/50 text-center text-xs">
+                    <TableHead className="sticky top-0 z-10 w-[88px] bg-stone-800 text-xs">Clause No</TableHead>
+                    <TableHead className="sticky top-0 z-10 min-w-[240px] bg-stone-800 text-xs">Description</TableHead>
+                    <TableHead className="sticky top-0 z-10 w-[110px] bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                       Conformity
                     </TableHead>
-                    <TableHead className="sticky top-0 z-10 min-w-[220px] bg-muted/50 text-center text-xs">
+                    <TableHead className="sticky top-0 z-10 min-w-[220px] bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                       Observation
                     </TableHead>
-                    <TableHead className="sticky top-0 z-10 min-w-[220px] bg-muted/50 text-center text-xs">
+                    <TableHead className="sticky top-0 z-10 min-w-[220px] bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                       Non Conformity
                     </TableHead>
                   </TableRow>

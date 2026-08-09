@@ -38,7 +38,7 @@ export function IsCodesTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+    <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error ? <p className="px-5 pt-4 text-sm text-destructive">{error}</p> : null}
 
       {loading ? (
@@ -55,8 +55,8 @@ export function IsCodesTable({
       ) : (
         <Table className={GRID_TABLE}>
           <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="w-14 text-center text-xs">
+            <TableRow className="bg-stone-800 hover:bg-stone-800">
+              <TableHead className="w-14 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                 <input
                   type="checkbox"
                   className={checkboxClass}
@@ -68,11 +68,11 @@ export function IsCodesTable({
                   onChange={onToggleAll}
                 />
               </TableHead>
-              <TableHead className="text-left text-xs">IS Details</TableHead>
-              <TableHead className="text-center text-xs">IS Title</TableHead>
-              <TableHead className="text-center text-xs">Reaffirmation / Amendment</TableHead>
-              <TableHead className="text-center text-xs">Aspect &amp; Charges</TableHead>
-              <TableHead className="text-center text-xs">Actions</TableHead>
+              <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">IS Details</TableHead>
+              <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">IS Title</TableHead>
+              <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Reaffirmation / Amendment</TableHead>
+              <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Aspect &amp; Charges</TableHead>
+              <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -92,10 +92,7 @@ export function IsCodesTable({
 
                   <TableCell className="align-middle text-left">
                     <div className="min-w-[120px] space-y-0.5">
-                      <p className="font-medium text-foreground">
-                        {r.is_number}
-                        {r.revision_year ? ` : ${r.revision_year}` : ''}
-                      </p>
+                      <p className="font-medium text-foreground">{formatIsCodeLabel(r)}</p>
                       <Button
                         type="button"
                         variant="outline"

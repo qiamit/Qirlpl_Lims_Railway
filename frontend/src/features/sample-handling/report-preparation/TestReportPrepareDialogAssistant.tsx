@@ -11,6 +11,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useShowAiAssistant } from '@/hooks/useShowAiAssistant'
 import { QiAssistantChatPanel } from '@/components/qi-assistant/QiAssistantChatPanel'
+import { limsAiTriggerClass, limsDarkBarGlowStyle, limsDialogClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import type { TestReportCoverDetails } from './fetchTestReportCoverDetails'
 import {
   buildTestReportPrepareDialogAssistantContext,
@@ -95,33 +97,52 @@ export function TestReportPrepareDialogAssistant({
         <Button
           type="button"
           variant="outline"
-          className="gap-2 shrink-0"
+          className={cn('shrink-0 gap-2', limsAiTriggerClass)}
           disabled={disabled || !row}
           aria-label="Open Test Report AI Assistant"
         >
-          <Sparkles size={16} className="text-primary" />
+          <Sparkles size={16} className="text-amber-200" />
           AI Assistant
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl">
-        <DialogHeader className="border-b border-border px-5 py-4">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Bot size={20} className="text-primary" />
-            Test Report AI Assistant
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        layer="nested"
+        aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          'flex max-h-[88vh] flex-col sm:max-w-2xl',
+          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+        )}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight text-white">
+              <Bot size={20} className="text-amber-200" />
+              Test Report AI Assistant
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
-        <div className="flex min-h-0 flex-1 flex-col px-5 pb-4 pt-3">
+        <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-b from-stone-100/90 to-stone-50 px-4 pb-4 pt-3 sm:px-5">
           <Tabs
             value={activeTab}
             onValueChange={(v) => setActiveTab(v as AssistantTab)}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <TabsList className="mb-3 grid h-auto w-full grid-cols-2 gap-1 bg-muted/50 p-1">
-              <TabsTrigger value="full_review" className="text-xs sm:text-sm py-2">
+            <TabsList className="mb-3 grid h-auto w-full grid-cols-2 gap-1 border border-stone-500 bg-stone-200/80 p-1">
+              <TabsTrigger
+                value="full_review"
+                className="rounded-none py-2 text-xs text-stone-600 sm:text-sm data-[state=active]:bg-stone-800 data-[state=active]:text-amber-100"
+              >
                 Full Review of Report
               </TabsTrigger>
-              <TabsTrigger value="general_ask" className="text-xs sm:text-sm py-2">
+              <TabsTrigger
+                value="general_ask"
+                className="rounded-none py-2 text-xs text-stone-600 sm:text-sm data-[state=active]:bg-stone-800 data-[state=active]:text-amber-100"
+              >
                 General Ask
               </TabsTrigger>
             </TabsList>

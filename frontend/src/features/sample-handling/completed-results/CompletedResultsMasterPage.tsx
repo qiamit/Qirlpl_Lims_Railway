@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
 import {
@@ -12,6 +13,7 @@ import { CompletedResultsFooterBar } from './CompletedResultsFooterBar'
 import { CompletedResultsHeaderBar } from './CompletedResultsHeaderBar'
 import { CompletedResultsTable } from './CompletedResultsTable'
 import { printIssuedTestReportPdf } from './printIssuedTestReport'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   referbackIssuedTestReportToPreparation,
   referbackIssuedTestReportToResultsReview,
@@ -69,9 +71,10 @@ export default function CompletedResultsMasterPage() {
           .in('id', isIds)
         for (const c of Array.isArray(isData) ? isData : []) {
           const row = c as { id: string; is_number?: string; revision_year?: string | null }
-          const label = row.revision_year
-            ? `${row.is_number ?? ''} : ${row.revision_year}`
-            : (row.is_number ?? row.id)
+          const label =
+            formatIsCodeLabelFromParts(row.is_number, row.revision_year) ||
+            row.is_number ||
+            row.id
           isMap.set(row.id, label)
         }
       }
@@ -259,7 +262,7 @@ export default function CompletedResultsMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <CompletedResultsHeaderBar
         search={search}
         onSearchChange={setSearch}

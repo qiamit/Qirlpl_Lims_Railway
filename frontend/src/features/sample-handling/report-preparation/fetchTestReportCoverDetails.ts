@@ -6,6 +6,7 @@ import { RECEIVING_REPORT_TYPES } from '../types'
 import type { ReportScopeKind } from './reportScope'
 import { buildTestReportPartBDetails, type TestReportPartBDetails } from './testReportPartB'
 import { resolveReferenceReportNo } from './testReportReferenceReportNo'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 
 export type { TestReportPartBDetails }
 
@@ -324,9 +325,8 @@ export async function fetchTestReportCoverDetails(
       .maybeSingle()
     if (isRow) {
       const r = isRow as { is_number?: string; revision_year?: string | null; title?: string | null }
-      isNumber = r.revision_year
-        ? `${r.is_number ?? ''} : ${r.revision_year}`
-        : (r.is_number ?? isCodeId)
+      isNumber =
+        formatIsCodeLabelFromParts(r.is_number, r.revision_year) || r.is_number || isCodeId
       productTitleFromIs = fmt(r.title)
     }
   }

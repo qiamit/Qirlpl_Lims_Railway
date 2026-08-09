@@ -29,7 +29,7 @@ const GRID_TABLE =
   'table-auto w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
 const GRID_HEAD =
-  'text-xs font-semibold text-foreground bg-muted/60 border-border whitespace-nowrap px-2 py-1.5 text-center'
+  'bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 whitespace-nowrap px-2 py-1.5 border-stone-700'
 const GRID_CELL = 'text-xs border-border px-2 py-1.5 align-middle text-center'
 
 function statusCellClass(status: RetestStatus): string {
@@ -76,7 +76,7 @@ export function RetestSelectedParametersTable({
     <div className="overflow-x-auto rounded-md border border-border/80 max-h-64 overflow-y-auto">
       <Table className={GRID_TABLE}>
         <TableHeader>
-          <TableRow className="hover:bg-muted/60">
+          <TableRow className="bg-stone-800 hover:bg-stone-800">
             <TableHead className={cn(GRID_HEAD, 'min-w-[120px]')}>Test Name</TableHead>
             <TableHead className={cn(GRID_HEAD, 'min-w-[120px]')}>Test Method</TableHead>
             <TableHead className={cn(GRID_HEAD, 'min-w-[70px]')}>Unit</TableHead>

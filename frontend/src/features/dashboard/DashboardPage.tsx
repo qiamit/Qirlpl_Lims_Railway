@@ -561,7 +561,7 @@ export default function DashboardPage() {
           icon: BookOpen,
           href: link('/masters/test-parameter'),
           badgeLabel: 'Methods',
-          colorClass: 'bg-teal-500/10 text-teal-700',
+          colorClass: 'bg-amber-500/10 text-amber-800',
         },
       )
       testing.push(
@@ -652,7 +652,7 @@ export default function DashboardPage() {
           icon: BookOpen,
           href: link('/masters/is-codes'),
           badgeLabel: 'Masters',
-          colorClass: 'bg-teal-500/10 text-teal-700',
+          colorClass: 'bg-amber-500/10 text-amber-800',
         },
       )
       testing.push(
@@ -696,7 +696,7 @@ export default function DashboardPage() {
           icon: BookOpen,
           href: link('/masters/is-codes'),
           badgeLabel: 'Masters',
-          colorClass: 'bg-teal-500/10 text-teal-700',
+          colorClass: 'bg-amber-500/10 text-amber-800',
         },
       )
       testing.push(
@@ -732,7 +732,7 @@ export default function DashboardPage() {
         icon: BookOpen,
         href: link('/masters/test-parameter'),
         badgeLabel: 'Methods',
-        colorClass: 'bg-teal-500/10 text-teal-700',
+        colorClass: 'bg-amber-500/10 text-amber-800',
       })
       testing.push(
         {
@@ -915,7 +915,7 @@ export default function DashboardPage() {
             icon: Receipt,
             href: link('/finance/sale/proforma-invoice'),
             badgeLabel: 'Sale',
-            colorClass: 'bg-teal-500/10 text-teal-700',
+            colorClass: 'bg-amber-500/10 text-amber-800',
           },
           {
             title: 'Invoice',
@@ -1145,11 +1145,11 @@ export default function DashboardPage() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3 overflow-auto p-3 sm:p-4">
       <div className="app-card shrink-0 overflow-hidden">
-        <div className="flex flex-col gap-2 bg-gradient-to-r from-lab-800 via-primary to-lab-600 px-4 py-2.5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="flex flex-col gap-2 bg-gradient-to-r from-stone-800 via-stone-900 to-amber-900 px-4 py-2.5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <h1 className="min-w-0 truncate text-base font-bold tracking-tight sm:text-lg">
             {role.title}
           </h1>
-          <p className="shrink-0 text-[11px] tabular-nums text-blue-100/80">
+          <p className="shrink-0 text-[11px] tabular-nums text-amber-100/80">
             {stats.totalSamples} samples · {stats.activeSamples} active · {stats.tatComplianceRate}% TAT
           </p>
         </div>

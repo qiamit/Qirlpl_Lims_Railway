@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ArrowDown, ArrowUp, ArrowUpDown, FileText, FolderOpen } from 'lucide-react'
+import { limsDialogClass, limsOutlineBtnClass, limsTableHeadClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import type { TestAllocationRow } from '../types'
 
@@ -89,15 +91,15 @@ function SortableParamHeader({
   const justify = align === 'left' ? 'justify-start' : 'justify-center'
 
   return (
-    <th className="p-2 text-xs font-medium leading-snug">
+    <th className={cn(limsTableHeadClass, 'border border-stone-700 px-2 py-2')}>
       <button
         type="button"
-        className={`inline-flex w-full items-center gap-1 hover:text-foreground transition-colors ${justify} ${align === 'left' ? 'text-left' : 'text-center'}`}
+        className={`inline-flex w-full items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-200 transition-colors hover:text-amber-100 ${justify} ${align === 'left' ? 'text-left' : 'text-center'}`}
         onClick={() => onSort(columnKey)}
         aria-label={`Sort by ${label}${active ? `, ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
       >
         <span>{label}</span>
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-amber-300' : 'text-amber-200/60'}`} />
       </button>
     </th>
   )
@@ -413,38 +415,52 @@ export function TestAllocationParametersViewDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[min(96vw,72rem)] max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader className="border-b border-border pb-3 shrink-0">
-            <DialogTitle className="text-lg">Test Parameters — {sectionLabel}</DialogTitle>
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => void openSampleDetails()}>
-                <FileText className="mr-1 h-4 w-4" />
-                View Sample Details
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void openViewFilesWindow()}
-                disabled={!row?.isCodeId}
-                title={row?.isCodeId ? `View files for ${row.isCodeLabel ?? 'IS Code'}` : 'No IS Code on this section'}
-              >
-                <FolderOpen className="mr-1 h-4 w-4" />
-                View Files
-              </Button>
-            </div>
-          </DialogHeader>
+        <DialogContent
+          className={cn(limsDialogClass, 'flex max-h-[85vh] max-w-[min(96vw,72rem)] flex-col overflow-hidden p-0')}
+        >
+          <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative space-y-2 text-left">
+              <DialogTitle className="text-base font-semibold text-white">
+                Test Parameters — {sectionLabel}
+              </DialogTitle>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(limsOutlineBtnClass, 'h-8 border-amber-500/40 bg-stone-800/80 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50')}
+                  onClick={() => void openSampleDetails()}
+                >
+                  <FileText className="mr-1 h-4 w-4" />
+                  View Sample Details
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(limsOutlineBtnClass, 'h-8 border-amber-500/40 bg-stone-800/80 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50 disabled:opacity-50')}
+                  onClick={() => void openViewFilesWindow()}
+                  disabled={!row?.isCodeId}
+                  title={row?.isCodeId ? `View files for ${row.isCodeLabel ?? 'IS Code'}` : 'No IS Code on this section'}
+                >
+                  <FolderOpen className="mr-1 h-4 w-4" />
+                  View Files
+                </Button>
+              </div>
+            </DialogHeader>
+          </div>
 
-          <div className="min-h-0 flex-1 overflow-auto pt-2">
+          <div className="min-h-0 flex-1 overflow-auto bg-[#f7f3eb] p-4">
             {loading ? (
-              <p className="text-sm text-muted-foreground py-4">Loading test parameters…</p>
+              <p className="py-4 text-sm text-stone-600">Loading test parameters…</p>
             ) : error ? (
-              <p className="text-sm text-destructive py-4">{error}</p>
+              <p className="py-4 text-sm text-red-700">{error}</p>
             ) : parameters.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">No test parameters allotted for this section yet.</p>
+              <p className="py-4 text-sm text-stone-600">No test parameters allotted for this section yet.</p>
             ) : (
-              <div className="rounded-md border overflow-hidden">
-                <table className="w-full table-fixed text-sm border-collapse">
+              <div className="overflow-hidden border-2 border-stone-500 bg-white ring-1 ring-amber-700/20">
+                <table className="w-full table-fixed border-collapse text-sm">
                   <colgroup>
                     <col className="w-[14%]" />
                     <col className="w-[8%]" />
@@ -453,7 +469,7 @@ export function TestAllocationParametersViewDialog({
                     <col className="w-[26%]" />
                   </colgroup>
                   <thead>
-                    <tr className="border-b bg-muted/50">
+                    <tr>
                       <SortableParamHeader
                         label={PARAM_VIEW_SORT_LABELS.testName}
                         columnKey="testName"
@@ -494,20 +510,20 @@ export function TestAllocationParametersViewDialog({
                   </thead>
                   <tbody>
                     {sortedParameters.map((p) => (
-                      <tr key={p.id} className="border-b last:border-b-0 hover:bg-muted/20">
-                        <td className="p-2 align-top text-left text-xs font-medium leading-snug break-words">
+                      <tr key={p.id} className="odd:bg-white/70 hover:bg-[#f3e9d8]">
+                        <td className="border border-[#e7e0d4] p-2 align-top text-left text-xs font-medium leading-snug break-words text-stone-900">
                           {p.testName}
                         </td>
-                        <td className="p-2 align-top text-center text-xs text-muted-foreground leading-snug break-words">
+                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words text-stone-700">
                           {p.unit}
                         </td>
-                        <td className="p-2 align-top text-center text-xs text-muted-foreground leading-snug break-words whitespace-pre-wrap">
+                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words whitespace-pre-wrap text-stone-700">
                           {p.specifiedRequirement}
                         </td>
-                        <td className="p-2 align-top text-center text-xs text-muted-foreground leading-snug break-words whitespace-pre-wrap">
+                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words whitespace-pre-wrap text-stone-700">
                           {p.uncertainty}
                         </td>
-                        <td className="p-2 align-top text-center text-xs leading-snug break-words">
+                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words text-stone-800">
                           {p.underAccreditation}
                         </td>
                       </tr>
@@ -521,33 +537,61 @@ export function TestAllocationParametersViewDialog({
       </Dialog>
 
       <Dialog open={sampleDetailsOpen} onOpenChange={setSampleDetailsOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Sample Details</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {sampleDetailsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-            {sampleDetailsError && <p className="text-sm text-destructive">{sampleDetailsError}</p>}
+        <DialogContent className={cn(limsDialogClass, 'max-w-lg p-0')}>
+          <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative text-left">
+              <DialogTitle className="text-base font-semibold text-white">Sample Details</DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="space-y-3 bg-[#f7f3eb] p-5">
+            {sampleDetailsLoading && <p className="text-sm text-stone-600">Loading…</p>}
+            {sampleDetailsError && <p className="text-sm text-red-700">{sampleDetailsError}</p>}
             {!sampleDetailsLoading && !sampleDetailsError && sampleDetails && (
-              <div className="grid gap-4 text-sm">
-                <div className="space-y-2">
-                  <h5 className="font-medium text-foreground">Sample Description &amp; Sample Declaration</h5>
-                  <div className="grid grid-cols-[120px_1fr] gap-2 items-baseline">
-                    <span className="text-muted-foreground">Sample Description</span>
-                    <span className="whitespace-pre-wrap">{fmt(sampleDetails.sample_description)}</span>
-                  </div>
-                  <div className="grid grid-cols-[120px_1fr] gap-2 items-start">
-                    <span className="text-muted-foreground pt-0.5">Sample Declaration</span>
-                    <span className="whitespace-pre-wrap">{fmt(sampleDetails.sample_declaration)}</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <h5 className="font-medium text-foreground">Any Other Information</h5>
-                  <div className="grid grid-cols-[120px_1fr] gap-2 items-start">
-                    <span className="text-muted-foreground pt-0.5">Details</span>
-                    <span className="whitespace-pre-wrap">{fmt(sampleDetails.any_other_information)}</span>
-                  </div>
-                </div>
+              <div className="space-y-3 text-sm text-stone-800">
+                <article className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
+                  <header className="border-b border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5">
+                    <h5 className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Sample Description &amp; Sample Declaration
+                    </h5>
+                  </header>
+                  <dl className="divide-y divide-stone-200">
+                    <div className="grid gap-1 px-4 py-3 sm:grid-cols-[9rem_1fr] sm:gap-4">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                        Sample Description
+                      </dt>
+                      <dd className="whitespace-pre-wrap break-words font-medium leading-relaxed text-stone-900">
+                        {fmt(sampleDetails.sample_description)}
+                      </dd>
+                    </div>
+                    <div className="grid gap-1 px-4 py-3 sm:grid-cols-[9rem_1fr] sm:gap-4">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                        Sample Declaration
+                      </dt>
+                      <dd className="whitespace-pre-wrap break-words font-medium leading-relaxed text-stone-900">
+                        {fmt(sampleDetails.sample_declaration)}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+
+                <article className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
+                  <header className="border-b border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5">
+                    <h5 className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Any Other Information
+                    </h5>
+                  </header>
+                  <dl>
+                    <div className="grid gap-1 px-4 py-3 sm:grid-cols-[9rem_1fr] sm:gap-4">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                        Details
+                      </dt>
+                      <dd className="whitespace-pre-wrap break-words font-medium leading-relaxed text-stone-900">
+                        {fmt(sampleDetails.any_other_information)}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
               </div>
             )}
           </div>

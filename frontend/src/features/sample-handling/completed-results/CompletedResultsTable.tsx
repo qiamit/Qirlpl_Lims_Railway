@@ -1,13 +1,22 @@
-import { Eye } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { formatDate } from '@/lib/utils'
 import { appendReportScopeSuffix } from '@/features/sample-handling/report-preparation/reportScope'
+import {
+  limsPanelClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
 import { IssuedTestReportRowActions } from './IssuedTestReportRowActions'
 import type { IssuedTestReportListRow } from './types'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 
+const thClass = cn(limsTableHeadClass, 'border border-stone-700 !p-2')
+const tdClass = 'border border-[#e7e0d4] !p-2 align-middle text-xs text-[#292524]'
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 accent-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
 export function CompletedResultsTable({
   rows,
   loading,
@@ -41,144 +50,120 @@ export function CompletedResultsTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-card overflow-hidden">
-      {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
-      {loading ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">
-          No issued test reports yet. Issue reports from Test Report Preparation after results are approved.
-        </p>
-      ) : (
-        <div className="overflow-x-auto [&>div]:overflow-visible">
-          <Table className="w-full min-w-[1000px] table-fixed">
-            <colgroup>
-              <col className="w-[44px]" />
-              <col className="w-[14%]" />
-              <col className="w-[13%]" />
-              <col className="w-[13%]" />
-              <col className="w-[14%]" />
-              <col className="w-[12%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[52px]" />
-            </colgroup>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="px-2 text-center text-xs">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all"
-                    checked={allChecked}
-                    ref={(el) => {
-                      if (el) el.indeterminate = !allChecked && someChecked
-                    }}
-                    onChange={(e) => onToggleAll(e.target.checked)}
-                  />
-                </TableHead>
-                <TableHead className="text-left text-xs">SRF</TableHead>
-                <TableHead className="text-xs text-center">Client</TableHead>
-                <TableHead className="text-xs text-center">IS Code</TableHead>
-                <TableHead className="text-xs text-center">Report Number</TableHead>
-                <TableHead className="text-xs text-center">ULR Number</TableHead>
-                <TableHead className="text-xs text-center">Issued on</TableHead>
-                <TableHead className="text-xs text-center">Received Date</TableHead>
-                <TableHead className="text-xs text-center">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => {
-                const busy = actionBusyId === r.id
-                const nablReport =
-                  r.nablIssuedAt && r.reportNumberBase
-                    ? appendReportScopeSuffix(r.reportNumberBase, 'nabl')
-                    : null
-                const nonNablReport =
-                  r.nonNablIssuedAt && r.reportNumberBase
-                    ? appendReportScopeSuffix(r.reportNumberBase, 'non_nabl')
-                    : null
+    <div className={cn(limsPanelClass, 'overflow-hidden bg-[#f7f3eb]')}>
+      {error ? <p className="px-4 pt-4 text-sm text-red-700 sm:px-5">{error}</p> : null}
 
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell className="align-middle px-2 text-center">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${fmt(r.srfNumber)}`}
-                        checked={selectedIds.has(r.id)}
-                        onChange={() => onToggle(r.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="align-middle text-left py-2">
-                      <div className="flex flex-col items-start gap-1 min-w-0">
-                        <div className="line-clamp-2 break-words font-medium leading-snug text-xs">
-                          {fmt(r.srfNumber)}
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-1.5 -ml-1.5 text-xs gap-1"
-                          aria-label={`View SRF details for ${fmt(r.srfNumber)}`}
-                          onClick={() => onViewSrf(r)}
-                        >
-                          <Eye size={12} />
-                          View
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="line-clamp-2 break-words text-xs leading-snug">{fmt(r.clientName)}</div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="line-clamp-2 break-words text-xs leading-snug">{fmt(r.isCodeLabel)}</div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="space-y-0.5 text-xs leading-snug break-words">
-                        {nablReport ? (
-                          <div>
-                            <span className="text-muted-foreground">NABL: </span>
-                            <span className="font-medium">{nablReport}</span>
-                          </div>
-                        ) : null}
-                        {nonNablReport ? (
-                          <div>
-                            <span className="text-muted-foreground">Non-NABL: </span>
-                            <span className="font-medium">{nonNablReport}</span>
-                          </div>
-                        ) : null}
-                        {!nablReport && !nonNablReport ? (
-                          <span className="font-medium">{fmt(r.reportNumberBase)}</span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="line-clamp-2 break-words text-xs font-medium leading-snug">
-                        {r.nablIssuedAt && r.nablUlrNumber ? fmt(r.nablUlrNumber) : '—'}
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center text-xs text-muted-foreground">
-                      {formatDate(r.issuedAt ?? '')}
-                    </TableCell>
-                    <TableCell className="align-middle text-center text-xs text-muted-foreground">
-                      {formatDate(r.dateReceiving ?? '')}
-                    </TableCell>
-                    <TableCell className="align-middle text-center px-1">
-                      <IssuedTestReportRowActions
-                        row={r}
-                        busy={busy}
-                        onDownloadNabl={onDownloadNabl}
-                        onDownloadNonNabl={onDownloadNonNabl}
-                        onReferbackToPreparation={onReferbackToPreparation}
-                        onReferbackToResultsReview={onReferbackToResultsReview}
-                        canReferbackToResultsReview={canReferbackToResultsReview}
-                      />
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+      {loading ? (
+        <p className="px-4 py-6 text-sm text-[#78716c] sm:px-5">Loading…</p>
+      ) : rows.length === 0 ? (
+        <div className="m-3 border border-dashed border-[#d6d3d1] bg-[#fffcf7] p-4 text-center sm:m-4 sm:p-6">
+          <p className="text-sm text-[#57534e]">
+            No issued test reports yet. Issue reports from Test Report Preparation after results are
+            approved.
+          </p>
         </div>
+      ) : (
+        <Table className={cn(limsTableClass, 'w-max min-w-full table-auto')}>
+          <TableHeader>
+            <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+              <TableHead className={cn(thClass, 'w-0 whitespace-nowrap text-center')}>
+                <input
+                  type="checkbox"
+                  className={checkboxClass}
+                  aria-label="Select all"
+                  checked={allChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = !allChecked && someChecked
+                  }}
+                  onChange={(e) => onToggleAll(e.target.checked)}
+                />
+              </TableHead>
+              <TableHead className={cn(thClass, 'w-0 whitespace-nowrap text-left')}>SRF</TableHead>
+              <TableHead className={cn(thClass, 'w-full text-center')}>Client</TableHead>
+              <TableHead className={cn(thClass, 'w-0 whitespace-nowrap text-center')}>
+                Report Number
+              </TableHead>
+              <TableHead className={cn(thClass, 'w-0 whitespace-nowrap text-center')}>
+                ULR Number
+              </TableHead>
+              <TableHead className={cn(thClass, 'w-0 whitespace-nowrap text-center')}>
+                Issued on
+              </TableHead>
+              <TableHead className={cn(thClass, 'w-0 whitespace-nowrap text-center')}>Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r, index) => {
+              const busy = actionBusyId === r.id
+              const nablReport =
+                r.nablIssuedAt && r.reportNumberBase
+                  ? appendReportScopeSuffix(r.reportNumberBase, 'nabl')
+                  : null
+              const nonNablReport =
+                r.nonNablIssuedAt && r.reportNumberBase
+                  ? appendReportScopeSuffix(r.reportNumberBase, 'non_nabl')
+                  : null
+
+              return (
+                <TableRow key={r.id} className={index % 2 === 0 ? rowEvenClass : rowOddClass}>
+                  <TableCell className={cn(tdClass, 'w-0 whitespace-nowrap text-center')}>
+                    <input
+                      type="checkbox"
+                      className={checkboxClass}
+                      aria-label={`Select ${fmt(r.srfNumber)}`}
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => onToggle(r.id)}
+                    />
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'w-0 whitespace-nowrap py-2 text-left')}>
+                    <div className="flex w-max flex-col items-start gap-0.5">
+                      <div className="whitespace-nowrap text-xs font-medium leading-snug">
+                        {fmt(r.srfNumber)}
+                      </div>
+                      <div className="whitespace-nowrap text-[11px] leading-snug text-[#78716c]">
+                        {fmt(r.isCodeLabel)}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'w-full text-center')}>
+                    <div className="whitespace-nowrap leading-snug">{fmt(r.clientName)}</div>
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'w-0 whitespace-nowrap text-center')}>
+                    <div className="space-y-0.5 text-xs font-medium leading-snug">
+                      {nablReport ? <div className="whitespace-nowrap">{nablReport}</div> : null}
+                      {nonNablReport ? (
+                        <div className="whitespace-nowrap">{nonNablReport}</div>
+                      ) : null}
+                      {!nablReport && !nonNablReport ? (
+                        <div className="whitespace-nowrap">{fmt(r.reportNumberBase)}</div>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'w-0 whitespace-nowrap text-center font-medium')}>
+                    {r.nablIssuedAt && r.nablUlrNumber ? fmt(r.nablUlrNumber) : '—'}
+                  </TableCell>
+                  <TableCell
+                    className={cn(tdClass, 'w-0 whitespace-nowrap text-center text-[#78716c]')}
+                  >
+                    {formatDate(r.issuedAt ?? '')}
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'w-0 whitespace-nowrap text-center')}>
+                    <IssuedTestReportRowActions
+                      row={r}
+                      busy={busy}
+                      onViewSrf={onViewSrf}
+                      onDownloadNabl={onDownloadNabl}
+                      onDownloadNonNabl={onDownloadNonNabl}
+                      onReferbackToPreparation={onReferbackToPreparation}
+                      onReferbackToResultsReview={onReferbackToResultsReview}
+                      canReferbackToResultsReview={canReferbackToResultsReview}
+                    />
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
       )}
     </div>
   )

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
@@ -8,6 +9,7 @@ import { CalibrationEquipmentsTable } from './CalibrationEquipmentsTable'
 import { CalibrationEquipmentsFooterBar } from './CalibrationEquipmentsFooterBar'
 import { CalibrationEquipmentsForm } from './CalibrationEquipmentsForm'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   emptyCalibrationEquipmentForm,
   equipmentTemplatesFromRanges,
@@ -287,9 +289,7 @@ export default function CalibrationEquipmentsMasterPage() {
       setIsCodeOptions(
         list.map((r) => ({
           id: r.id,
-          label: r.revision_year
-            ? `${r.is_number ?? ''} : ${r.revision_year}`
-            : (r.is_number ?? r.id),
+          label: formatIsCodeLabelFromParts(r.is_number, r.revision_year) || r.id,
         })),
       )
     } catch {
@@ -671,7 +671,7 @@ export default function CalibrationEquipmentsMasterPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:space-y-5 sm:p-4 md:p-6">
+    <div className={limsPageShellClass}>
       <CalibrationEquipmentsHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -695,7 +695,7 @@ export default function CalibrationEquipmentsMasterPage() {
                 backgroundSize: '24px 24px',
               }}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-8 text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                 {editingId

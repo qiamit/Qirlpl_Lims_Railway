@@ -139,7 +139,7 @@ export function ConsentLetterTestParameterPickerDialog({
               placeholder="Search test name, clause, requirement…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 min-w-[12rem] flex-1"
+              className="h-9 w-[14rem] shrink-0 sm:w-[18rem]"
             />
           </div>
           {isCodeLabel.trim() ? (
@@ -158,7 +158,7 @@ export function ConsentLetterTestParameterPickerDialog({
                   'sticky top-0 z-10 border-b border-border bg-muted/80 text-xs font-semibold backdrop-blur-sm',
                 )}
               >
-                <div className={cn(cellClass, 'flex items-start justify-center bg-muted/50')}>
+                <div className={cn(cellClass, 'flex items-start justify-center bg-stone-800')}>
                   <input
                     ref={selectAllRef}
                     type="checkbox"
@@ -168,11 +168,11 @@ export function ConsentLetterTestParameterPickerDialog({
                     onChange={toggleAll}
                   />
                 </div>
-                <div className={cn(cellClass, 'bg-muted/50 text-left')}>Test Name</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Clause</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Specified Requirement</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Uncertainty</div>
-                <div className={cn(cellClass, 'bg-muted/50 text-center')}>Under Accreditation</div>
+                <div className={cn(cellClass, 'bg-stone-800 text-left')}>Test Name</div>
+                <div className={cn(cellClass, 'bg-stone-800 text-center')}>Clause</div>
+                <div className={cn(cellClass, 'bg-stone-800 text-center')}>Specified Requirement</div>
+                <div className={cn(cellClass, 'bg-stone-800 text-center')}>Uncertainty</div>
+                <div className={cn(cellClass, 'bg-stone-800 text-center')}>Under Accreditation</div>
               </div>
 
               {loading ? (

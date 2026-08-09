@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
@@ -17,6 +19,7 @@ import type { UncertaintyCalculationData } from './testParameterUncertainty'
 import { IsCodesForm } from '@/features/masters/is-codes/IsCodesForm'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { emptyIsCodeForm, normalizeText as normalizeIsText, type IsCodeForm, type IsAspect } from '@/features/masters/is-codes/types'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   emptyTestParameterForm,
   normalizeText,
@@ -274,9 +277,7 @@ export default function TestParameterMasterPage() {
       setIsCodes(
         isList
           .map((r) => {
-            const rev = r.revision_year ? String(r.revision_year).trim() : ''
-            const base = r.is_number?.trim() ?? ''
-            const displayCode = `${base}${rev ? `: ${rev}` : ''}`
+            const displayCode = formatIsCodeLabelFromParts(r.is_number, r.revision_year)
             const searchLabel = r.title ? `${displayCode} — ${r.title}` : displayCode
             return {
               id: r.id,
@@ -524,11 +525,6 @@ export default function TestParameterMasterPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleClear = () => {
-    setSaveMessage(null)
-    setForm(emptyTestParameterForm())
-  }
-
   const handleEdit = (row: TestParameterRow) => {
     setSaveMessage(null)
     setEditingId(row.id)
@@ -605,6 +601,7 @@ export default function TestParameterMasterPage() {
         setForm(emptyTestParameterForm())
         setEditingId(null)
         setShowForm(false)
+        // Keep list page/search/scroll; only refresh rows after closing the form.
         await loadRows()
       } catch (err) {
         setSaveMessage(formatSupabaseError(err))
@@ -703,7 +700,7 @@ export default function TestParameterMasterPage() {
         if (error) throw error
 
         const row = data as { id: string; is_number: string; revision_year: string | null; title: string }
-        const displayCode = `${row.is_number}${row.revision_year ? `: ${row.revision_year}` : ''}`
+        const displayCode = formatIsCodeLabelFromParts(row.is_number, row.revision_year)
 
         setIsCodeDialogOpen(false)
         setIsCodeForm(emptyIsCodeForm())
@@ -960,6 +957,35 @@ export default function TestParameterMasterPage() {
     })()
   }
 
+  const handleUpdateAccreditationBody = (id: string) => {
+    const name = normalizeText(newAccreditationBody)
+    if (!name) return
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('accreditation_bodies')
+          .update({ name })
+          .eq('id', id)
+          .select('id, name, created_at')
+          .single()
+
+        if (error) throw error
+
+        const row = data as AccreditationBodyRow
+        setAccreditationBodies((prev) =>
+          prev
+            .map((b) => (b.id === id ? row : b))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        )
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to update accreditation body')
+      } finally {
+        setNewAccreditationBody('')
+        setAccreditationDialogOpen(false)
+      }
+    })()
+  }
+
   const handleDeleteAccreditationBody = (id: string) => {
     void (async () => {
       try {
@@ -1010,7 +1036,7 @@ export default function TestParameterMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <TestParameterHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -1026,37 +1052,63 @@ export default function TestParameterMasterPage() {
       />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
-        <DialogContent persistOnFocusLoss className="max-w-6xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Add New Test Parameter</DialogTitle>
-          </DialogHeader>
-
-          {saveMessage && (
-            <div className="text-sm text-destructive">
-              {saveMessage}
-            </div>
+        <DialogContent
+          persistOnFocusLoss
+          aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'max-h-[92vh] w-[calc(100%-1.5rem)] max-w-5xl p-0 sm:w-full',
+            // Center in main content area (sidebar 268px stays clear)
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
           )}
+        >
+          <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 text-white sm:px-6">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                {editingId ? 'Edit Test Parameter' : 'Add New Test Parameter'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
 
-          <TestParameterForm
-            form={form}
-            onChange={setForm}
-            canSave={canSave}
-            saveLoading={saveLoading}
-            onSave={handleSave}
-            onClear={handleClear}
-            isCodes={isCodes}
-            accreditationBodies={accreditationBodies}
-            accreditationDialogOpen={accreditationDialogOpen}
-            setAccreditationDialogOpen={setAccreditationDialogOpen}
-            newAccreditationBody={newAccreditationBody}
-            setNewAccreditationBody={setNewAccreditationBody}
-            onAddAccreditationBody={handleAddAccreditationBody}
-            onDeleteAccreditationBody={handleDeleteAccreditationBody}
-            onOpenAddIsCodeForm={openAddIsCodeForm}
-            departments={departments}
-            designations={designations}
-            designationsByDepartment={designationsByDepartment}
-          />
+          <div className="flex max-h-[min(78vh,760px)] min-h-0 flex-col overflow-hidden bg-gradient-to-b from-stone-100/90 to-stone-50">
+            {saveMessage && (
+              <p
+                className={cn(
+                  'shrink-0 px-4 pt-3 text-sm sm:px-6',
+                  saveMessage.toLowerCase().includes('success') || saveMessage.toLowerCase().includes('saved')
+                    ? 'text-emerald-700'
+                    : 'text-red-700',
+                )}
+              >
+                {saveMessage}
+              </p>
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+              <TestParameterForm
+                form={form}
+                onChange={setForm}
+                canSave={canSave}
+                saveLoading={saveLoading}
+                onSave={handleSave}
+                isCodes={isCodes}
+                accreditationBodies={accreditationBodies}
+                accreditationDialogOpen={accreditationDialogOpen}
+                setAccreditationDialogOpen={setAccreditationDialogOpen}
+                newAccreditationBody={newAccreditationBody}
+                setNewAccreditationBody={setNewAccreditationBody}
+                onAddAccreditationBody={handleAddAccreditationBody}
+                onUpdateAccreditationBody={handleUpdateAccreditationBody}
+                onDeleteAccreditationBody={handleDeleteAccreditationBody}
+                onOpenAddIsCodeForm={openAddIsCodeForm}
+                departments={departments}
+                designations={designations}
+                designationsByDepartment={designationsByDepartment}
+              />
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

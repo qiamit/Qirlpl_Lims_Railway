@@ -1149,7 +1149,7 @@ export function CalibrationRangePointsDialog({
           aria-describedby={undefined}
         >
           <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative space-y-0 pr-10 text-left">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <p className="mb-0 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">

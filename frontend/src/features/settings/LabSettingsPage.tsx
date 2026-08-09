@@ -1,4 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { Plus, Trash2 } from 'lucide-react'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -1109,7 +1110,7 @@ export default function LabSettingsPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <Tabs
         value={activeTab}
         onValueChange={(v) => {

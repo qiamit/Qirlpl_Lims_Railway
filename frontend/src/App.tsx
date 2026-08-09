@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { RoutePersistence } from '@/components/routing/RoutePersistence'
 import { Construction } from 'lucide-react'
 import AuthPage from '@/features/auth/AuthPage'
 import {
@@ -95,6 +96,7 @@ function ContactUsRoute() {
 export default function App() {
   return (
     <BrowserRouter>
+      <RoutePersistence />
       <Routes>
         <Route path="auth" element={<AuthPage />} />
 

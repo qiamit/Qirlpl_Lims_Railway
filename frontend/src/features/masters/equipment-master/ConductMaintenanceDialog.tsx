@@ -275,7 +275,7 @@ export function ConductMaintenanceDialog({
 
           <div className="overflow-x-auto rounded-md border border-border">
             <table className="w-full min-w-[720px] text-xs">
-              <thead className="bg-muted/50">
+              <thead className="bg-stone-800">
                 <tr>
                   <th className="w-12 p-2 text-center">
                     <div className="flex justify-center">

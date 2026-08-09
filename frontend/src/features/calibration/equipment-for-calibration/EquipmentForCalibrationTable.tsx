@@ -120,7 +120,7 @@ export function EquipmentForCalibrationTable({
   }
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-sm overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
       {loading ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</p>
@@ -150,7 +150,7 @@ export function EquipmentForCalibrationTable({
               <col className="w-[80px]" />
             </colgroup>
             <TableHeader>
-              <TableRow className="bg-muted/50">
+              <TableRow className="bg-stone-800 hover:bg-stone-800">
                 <TableHead className="px-2 text-center text-xs">
                   <input
                     type="checkbox"
@@ -162,12 +162,12 @@ export function EquipmentForCalibrationTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className="text-left text-xs">Equipment Identity</TableHead>
-                <TableHead className="text-xs text-center">Make &amp; Serial</TableHead>
-                <TableHead className="text-xs text-center">Technical Details</TableHead>
-                <TableHead className="text-xs text-center">Location &amp; Status</TableHead>
-                <TableHead className="text-xs text-center">Calibration &amp; Maintenance Status</TableHead>
-                <TableHead className="text-xs text-center">Action</TableHead>
+                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Equipment Identity</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Make &amp; Serial</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Technical Details</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Location &amp; Status</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Calibration &amp; Maintenance Status</TableHead>
+                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

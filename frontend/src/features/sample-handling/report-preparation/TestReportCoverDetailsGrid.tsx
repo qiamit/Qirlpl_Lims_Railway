@@ -15,6 +15,7 @@ import {
 } from './nablUlrNumber'
 import type { ReportScopeKind } from './reportScope'
 import {
+  REPORT_PART_HEADING_CLASS,
   REPORT_PART_INNER_CLASS,
   REPORT_PART_INNER_DIVIDE,
   REPORT_PART_OUTER_CLASS,
@@ -39,12 +40,12 @@ function PartAInlineLine({
   return (
     <div className={PART_A_INLINE_CELL}>
       {valueOnly ? (
-        <span className="font-medium">{display(value)}</span>
+        <span className="font-medium text-stone-900">{display(value)}</span>
       ) : (
         <>
-          <span className="text-muted-foreground">{label}</span>
-          <span className="text-muted-foreground"> - </span>
-          <span className="font-medium">{display(value)}</span>
+          <span className="text-stone-500">{label}</span>
+          <span className="text-stone-500"> - </span>
+          <span className="font-medium text-stone-900">{display(value)}</span>
         </>
       )}
     </div>
@@ -76,8 +77,8 @@ function PartAInlineEditableCell({
   return (
     <div className={PART_A_INLINE_CELL}>
       <label htmlFor={id} className="inline cursor-text">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="text-muted-foreground"> - </span>
+        <span className="text-stone-500">{label}</span>
+        <span className="text-stone-500"> - </span>
         <Input
           id={id}
           className={PART_A_INLINE_INPUT}
@@ -266,8 +267,8 @@ function FieldBlock({
         <PartAInlineLine label={label} value={details[key]} valueOnly={valueOnly} />
       ) : (
         <>
-          <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="font-medium break-words">{display(details[key])}</span>
+          <span className="shrink-0 text-stone-500">{label}</span>
+          <span className="break-words font-medium text-stone-900">{display(details[key])}</span>
         </>
       )}
     </div>
@@ -301,11 +302,7 @@ export function TestReportCoverDetailsGrid({
 }) {
   return (
     <div className={REPORT_PART_OUTER_CLASS}>
-      <div className="mb-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-primary">
-          Part A — Particulars of Sample Submitted
-        </h3>
-      </div>
+      <h3 className={REPORT_PART_HEADING_CLASS}>Part A — Particulars of Sample Submitted</h3>
       <div className={`${REPORT_PART_INNER_CLASS} grid grid-cols-1 text-sm`}>
         {COVER_ITEMS.map((item) => (
           <div key={item.kind === 'threeColumn' ? item.id : item.key} className="contents">

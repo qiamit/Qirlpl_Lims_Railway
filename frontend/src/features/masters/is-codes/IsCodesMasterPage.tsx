@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -6,7 +7,7 @@ import { IsCodesHeaderBar } from './IsCodesHeaderBar'
 import { IsCodesForm } from './IsCodesForm'
 import { IsCodesTable } from './IsCodesTable'
 import { IsCodesTableFooterBar } from './IsCodesFooterBar'
-import { buildIsCodesListAssistantContext } from './buildIsCodeAssistantContext'
+import { buildIsCodesListAssistantContext, formatIsCodeLabel } from './buildIsCodeAssistantContext'
 import { emptyIsCodeForm, normalizeText, type IsCodeFileRow, type IsCodeForm, type IsCodeRow } from './types'
 
 const BUCKET = 'is-code-files'
@@ -484,10 +485,8 @@ export default function IsCodesMasterPage() {
 </body>
 </html>`
 
-  const formatIsCodeDisplay = (row: Pick<IsCodeRow, 'is_number' | 'revision_year'>) => {
-    const rev = normalizeText(row.revision_year ?? '')
-    return rev ? `${row.is_number}: ${rev}` : row.is_number
-  }
+  const formatIsCodeDisplay = (row: Pick<IsCodeRow, 'is_number' | 'revision_year'>) =>
+    formatIsCodeLabel(row)
 
   const buildFilesPopupHtml = (
     isCodeId: string,
@@ -915,7 +914,7 @@ export default function IsCodesMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <input
         ref={importInputRef}
         type="file"
@@ -951,7 +950,7 @@ export default function IsCodesMasterPage() {
                 backgroundSize: '24px 24px',
               }}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-8 text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                 {editingId ? 'IS Registry · Edit Entry' : 'IS Registry · New Entry'}

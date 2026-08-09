@@ -35,7 +35,7 @@ export function RetainDisposedTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-card overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
       {loading ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
@@ -48,7 +48,7 @@ export function RetainDisposedTable({
         <div className="overflow-x-auto [&>div]:overflow-visible">
           <Table className="w-full table-auto">
             <TableHeader>
-              <TableRow className="bg-muted/50">
+              <TableRow className="bg-stone-800 hover:bg-stone-800">
                 <TableHead className={cn(compactCol, 'px-1 text-center text-xs')}>
                   <input
                     type="checkbox"
@@ -61,8 +61,8 @@ export function RetainDisposedTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className="text-left text-xs">SRF Number</TableHead>
-                <TableHead className="text-left text-xs">IS Code</TableHead>
+                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">SRF Number</TableHead>
+                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">IS Code</TableHead>
                 <TableHead className={cn(compactCol, 'text-xs text-center leading-snug')}>
                   <div>Report Issue</div>
                   <div className="font-normal text-muted-foreground">/ Retention Due</div>

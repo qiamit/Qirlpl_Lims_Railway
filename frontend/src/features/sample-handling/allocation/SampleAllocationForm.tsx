@@ -7,6 +7,13 @@ import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrf
 import type { SampleRow } from '../types'
 import { Plus, Trash2, FileText, FolderOpen } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import { normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
+import {
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import {
   generateSectionCode,
   sanitizeSectionCodeInput,
@@ -38,11 +45,17 @@ const emptySection = (): AllocationSection => ({
   sampleQuantity: '',
 })
 
+const readonlyBoxClass =
+  'flex min-h-10 items-center rounded-none border border-stone-500 bg-stone-100 px-3 py-2 text-sm text-stone-900'
+
+const sectionCardClass =
+  'space-y-4 rounded-none border-2 border-stone-500 bg-[#f7f3eb]/70 p-4 ring-1 ring-amber-700/15'
+
 export function SampleAllocationForm({
   form,
   onChange,
   onSave,
-  onClose,
+  onClose: _onClose,
   saveLoading = false,
   samples,
   departments,
@@ -72,7 +85,6 @@ export function SampleAllocationForm({
 
   const currentSample = samples.find((s) => s.id === form.sampleId) ?? null
 
-  // Keep search input in sync when parent sets sample/SRF (dialog reuse, edit row, refer-back).
   useEffect(() => {
     const fromForm = form.srfNumber?.trim()
     if (fromForm) {
@@ -104,7 +116,6 @@ export function SampleAllocationForm({
       )
     : sampleOptions
 
-  // When sample is pre-selected, auto-fill SRF, IS code, and allocation date.
   useEffect(() => {
     if (!currentSample) {
       if (!form.sampleId && form.isCodeLabel) {
@@ -236,17 +247,14 @@ export function SampleAllocationForm({
   )
 
   return (
-    <div className="space-y-6">
-      {/* Step 1: Select SRF → IS Code, Date, Sample qty on one line, equal width */}
-      <div className="space-y-4 rounded-lg border bg-muted/30 p-4 mx-[3mm]">
-        <h4 className="text-sm font-semibold">Select SRF</h4>
-        <div className="grid grid-cols-4 gap-4">
-          <div className="space-y-2 min-w-0">
+    <div className={cn(limsRegistryFormClass, 'space-y-5')}>
+      <div className={sectionCardClass}>
+        <h4 className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-900">Select SRF</h4>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="min-w-0 space-y-2">
             <Label>SRF Number</Label>
             {lockSrfSection || form.sampleId ? (
-              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm min-h-10 flex items-center">
-                {form.srfNumber || srfInput || '—'}
-              </div>
+              <div className={readonlyBoxClass}>{form.srfNumber || srfInput || '—'}</div>
             ) : (
               <div className="relative">
                 <Input
@@ -254,11 +262,11 @@ export function SampleAllocationForm({
                   onChange={(e) => setSrfInput(e.target.value)}
                   onFocus={() => setSrfDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setSrfDropdownOpen(false), 120)}
-                  placeholder="Type to search or select SRF..."
+                  placeholder="Type to Search or Select SRF"
                   autoComplete="off"
                 />
                 {srfDropdownOpen && filteredSrfOptions.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
+                  <div className="absolute z-20 mt-1 w-full rounded-none border-2 border-stone-500 bg-white shadow-lg ring-1 ring-amber-700/20">
                     <ul className="max-h-48 overflow-auto text-sm">
                       {filteredSrfOptions.map((opt) => {
                         const sample = samples.find((s) => s.id === opt.id)
@@ -267,7 +275,7 @@ export function SampleAllocationForm({
                           <li key={opt.id}>
                             <button
                               type="button"
-                              className="w-full px-3 py-2 text-left hover:bg-muted"
+                              className="w-full px-3 py-2 text-left hover:bg-amber-50"
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => handleSelectSrf(sample)}
                             >
@@ -282,12 +290,10 @@ export function SampleAllocationForm({
               </div>
             )}
           </div>
-          <div className="space-y-2 min-w-0">
+          <div className="min-w-0 space-y-2">
             <Label>Date of Allocation</Label>
             {lockSrfSection ? (
-              <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm min-h-10 flex items-center">
-                {form.allocationDate || today()}
-              </div>
+              <div className={readonlyBoxClass}>{form.allocationDate || today()}</div>
             ) : (
               <Input
                 type="date"
@@ -296,32 +302,30 @@ export function SampleAllocationForm({
               />
             )}
           </div>
-          <div className="space-y-2 min-w-0">
-            <Label className="text-muted-foreground">Test Report as per IS</Label>
-            <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm min-h-10 flex items-center">
-              {form.isCodeLabel || '—'}
+          <div className="min-w-0 space-y-2">
+            <Label>Test Report as per IS</Label>
+            <div className={readonlyBoxClass}>
+              {normalizeIsCodeLabel(form.isCodeLabel) || '—'}
             </div>
           </div>
-          <div className="space-y-2 min-w-0">
-            <Label className="text-muted-foreground">Sample Quantity</Label>
-            <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm min-h-10 flex items-center">
-              {currentSample?.sample_quantity ?? '—'}
-            </div>
+          <div className="min-w-0 space-y-2">
+            <Label>Sample Quantity</Label>
+            <div className={readonlyBoxClass}>{currentSample?.sample_quantity ?? '—'}</div>
           </div>
         </div>
       </div>
 
-      {/* Step 2: Sample Allocation Section */}
-      <div className="space-y-4 rounded-lg border bg-muted/30 p-4 mx-[3mm]">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">
-            2. Sample Allocation Section
+      <div className={sectionCardClass}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h4 className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-900">
+            Sample Allocation Section
           </h4>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className={cn('gap-1', limsOutlineBtnClass)}
               onClick={() => void openViewIsCodeFiles()}
               disabled={!form.sampleId || !isCodeId}
               title={
@@ -330,49 +334,49 @@ export function SampleAllocationForm({
                   : 'Select an SRF with a linked IS Code to view files'
               }
             >
-              <FolderOpen className="mr-1 h-4 w-4" />
+              <FolderOpen className="h-4 w-4" />
               View IS Code File
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className={cn('gap-1', limsOutlineBtnClass)}
               onClick={() => setSampleDetailsOpen(true)}
               disabled={!form.sampleId}
             >
-              <FileText className="mr-1 h-4 w-4" />
+              <FileText className="h-4 w-4" />
               View Sample Details
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className={cn('gap-1', limsOutlineBtnClass)}
               onClick={addSection}
               disabled={!form.sampleId}
             >
-              <Plus className="mr-1 h-4 w-4" />
-              Add section
+              <Plus className="h-4 w-4" />
+              Add Section
             </Button>
           </div>
         </div>
 
         {!form.sampleId ? (
-          <p className="text-sm text-muted-foreground">
-            Select an SRF above to add allocation sections.
-          </p>
+          <p className="text-sm text-stone-600">Select an SRF above to add allocation sections.</p>
         ) : form.sections.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No sections yet. Click &quot;Add section&quot; to allocate to departments/designations.
+          <p className="text-sm text-stone-600">
+            No sections yet. Click &quot;Add Section&quot; to allocate to departments/designations.
           </p>
         ) : (
           <div className="space-y-3">
             {form.sections.map((sec, index) => (
               <div
                 key={sec.id ?? `section-row-${index}`}
-                className="grid grid-cols-[1fr_1fr_1fr_1fr_2.25rem] items-end gap-2 rounded-md border p-3"
+                className="grid grid-cols-1 items-end gap-3 rounded-none border border-stone-500 bg-white/80 p-3 sm:grid-cols-[1fr_1fr_1fr_1fr_2.25rem]"
               >
-                <div className="space-y-1 min-w-0">
-                  <Label className="text-xs">Section</Label>
+                <div className="min-w-0 space-y-1">
+                  <Label>Section</Label>
                   <Input
                     value={sec.sectionCode}
                     onChange={(e) =>
@@ -380,17 +384,17 @@ export function SampleAllocationForm({
                     }
                     placeholder="10-digit code"
                     maxLength={SECTION_CODE_LENGTH}
-                    className="h-9 font-mono tracking-wide"
+                    className="font-mono tracking-wide"
                     aria-label={`Section code row ${index + 1}`}
                   />
                 </div>
-                <div className="space-y-1 min-w-0">
-                  <Label className="text-xs">Department</Label>
+                <div className="min-w-0 space-y-1">
+                  <Label>Department</Label>
                   <Select
                     value={sec.department || ''}
                     onValueChange={(v) => updateSection(index, { department: v })}
                   >
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
@@ -404,13 +408,13 @@ export function SampleAllocationForm({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1 min-w-0">
-                  <Label className="text-xs">Designation</Label>
+                <div className="min-w-0 space-y-1">
+                  <Label>Designation</Label>
                   <Select
                     value={sec.designation || ''}
                     onValueChange={(v) => updateSection(index, { designation: v })}
                   >
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
@@ -424,13 +428,12 @@ export function SampleAllocationForm({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1 min-w-0">
-                  <Label className="text-xs">Quantity</Label>
+                <div className="min-w-0 space-y-1">
+                  <Label>Quantity</Label>
                   <Input
                     value={sec.sampleQuantity}
                     onChange={(e) => updateSection(index, { sampleQuantity: e.target.value })}
                     placeholder="Qty"
-                    className="h-9"
                   />
                 </div>
                 <div className="flex items-end pb-0.5">
@@ -438,7 +441,7 @@ export function SampleAllocationForm({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 shrink-0 text-destructive hover:text-destructive"
+                    className="h-10 w-9 shrink-0 rounded-none text-red-700 hover:bg-red-50 hover:text-red-800"
                     aria-label="Remove section"
                     onClick={() => removeSection(index)}
                   >
@@ -451,12 +454,14 @@ export function SampleAllocationForm({
         )}
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onClose} disabled={saveLoading}>
-          Cancel
-        </Button>
-        <Button type="button" onClick={onSave} disabled={!canSave || saveLoading}>
-          {saveLoading ? 'Saving…' : 'Save allocation'}
+      <div className="mt-1 flex items-center justify-end border-t border-stone-200 pt-3">
+        <Button
+          type="button"
+          className={limsPrimaryBtnClass}
+          onClick={onSave}
+          disabled={!canSave || saveLoading}
+        >
+          {saveLoading ? 'Saving…' : 'Save & Close'}
         </Button>
       </div>
 

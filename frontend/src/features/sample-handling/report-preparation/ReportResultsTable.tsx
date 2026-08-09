@@ -28,13 +28,17 @@ import {
 
 /** Full grid: vertical + horizontal lines; header/section rows emphasized */
 const GRID_TABLE =
-  'table-auto w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'w-max min-w-full table-auto border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4]'
 
-const GRID_HEAD = 'text-xs font-semibold text-foreground bg-muted/60 border-border whitespace-nowrap px-2 py-1.5'
-const GRID_HEAD_ROW = 'border-b-2 border-primary/40 hover:bg-muted/60'
-const GRID_CELL = 'text-xs border-border px-2 py-1.5 align-top'
-const GRID_SECTION_ROW = 'bg-muted/30 hover:bg-muted/30 border-y-2 border-y-primary/30'
-const GRID_SECTION_CELL = 'text-xs text-foreground font-semibold whitespace-pre-wrap px-3 py-2 border-border'
+const GRID_HEAD =
+  'bg-stone-800 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 border-stone-700 whitespace-nowrap px-2 py-1.5'
+const GRID_HEAD_ROW = 'border-b-2 border-amber-500/40 bg-stone-800 hover:bg-stone-800'
+const GRID_CELL = 'bg-[#f7f3eb] text-xs text-stone-900 border-[#e7e0d4] px-2 py-1.5 align-middle'
+/** Shrink-wrap numeric / short columns to content */
+const GRID_COL_FIT = 'w-0 whitespace-nowrap'
+const GRID_SECTION_ROW = 'bg-stone-200/80 hover:bg-stone-200/80 border-y-2 border-y-amber-600/35'
+const GRID_SECTION_CELL =
+  'text-xs text-stone-900 font-semibold whitespace-pre-wrap px-3 py-2 align-middle border-[#e7e0d4]'
 
 function columnCount(showScope: boolean): number {
   return showScope ? 8 : 7
@@ -60,20 +64,20 @@ function ResultDataRow({
   const remark = normalizeResultRemark(row.remark)
 
   return (
-    <TableRow className="hover:bg-muted/20">
-      <TableCell className={cn(GRID_CELL, 'text-center font-medium w-0 whitespace-nowrap')}>
+    <TableRow className="hover:bg-amber-50/40">
+      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center font-medium')}>
         {row.srNo}
       </TableCell>
-      <TableCell className={cn(GRID_CELL, 'text-left')}>
+      <TableCell className={cn(GRID_CELL, 'w-[311px] max-w-[311px] text-left')}>
         <div className="font-medium leading-snug">{row.testName}</div>
         {row.testMethodClause && (
           <div className="mt-0.5 text-muted-foreground leading-snug">{row.testMethodClause}</div>
         )}
       </TableCell>
-      <TableCell className={cn(GRID_CELL, 'text-center w-0 whitespace-nowrap')}>{row.unit}</TableCell>
-      <TableCell className={cn(GRID_CELL, 'text-center whitespace-pre-wrap')}>
-        <div className="flex items-start w-full gap-1">
-          <span className="flex-1 min-w-0 break-words whitespace-pre-wrap text-center">
+      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center')}>{row.unit}</TableCell>
+      <TableCell className={cn(GRID_CELL, 'w-[234px] min-w-[234px] max-w-[234px] text-center')}>
+        <div className="inline-flex w-full items-center justify-center gap-1">
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-center">
             {row.specifiedRequirement}
           </span>
           {specifiedRequirementEditable &&
@@ -84,7 +88,7 @@ function ResultDataRow({
                 type="button"
                 size="icon"
                 variant="ghost"
-                className="h-7 w-7 shrink-0 ml-auto"
+                className="h-7 w-7 shrink-0"
                 aria-label="Edit specified requirement"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -96,16 +100,17 @@ function ResultDataRow({
             )}
         </div>
       </TableCell>
-      <TableCell className={cn(GRID_CELL, 'text-center whitespace-pre-wrap font-medium w-0')}>
+      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center font-medium')}>
         {row.observedValue}
       </TableCell>
-      <TableCell className={cn(GRID_CELL, 'text-center whitespace-pre-wrap w-0')}>
+      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center')}>
         {row.uncertainty}
       </TableCell>
       <TableCell
         className={cn(
           GRID_CELL,
-          'text-center whitespace-pre-wrap font-medium w-0',
+          GRID_COL_FIT,
+          'text-center font-medium',
           !editable && resultRemarkCellClass(remark),
         )}
       >
@@ -136,7 +141,7 @@ function ResultDataRow({
         )}
       </TableCell>
       {showScope && (
-        <TableCell className={cn(GRID_CELL, 'text-center w-0 whitespace-nowrap')}>{row.scope}</TableCell>
+        <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center')}>{row.scope}</TableCell>
       )}
     </TableRow>
   )
@@ -146,14 +151,18 @@ function ResultsTableHeader({ showScope }: { showScope: boolean }) {
   return (
     <TableHeader>
       <TableRow className={GRID_HEAD_ROW}>
-        <TableHead className={cn(GRID_HEAD, 'text-center w-0')}>Sr No</TableHead>
-        <TableHead className={cn(GRID_HEAD, 'text-left')}>Test Name</TableHead>
-        <TableHead className={cn(GRID_HEAD, 'text-center w-0')}>Unit</TableHead>
-        <TableHead className={cn(GRID_HEAD, 'text-center')}>Specified Requirements</TableHead>
-        <TableHead className={cn(GRID_HEAD, 'text-center w-0')}>Observed Value</TableHead>
-        <TableHead className={cn(GRID_HEAD, 'text-center w-0')}>Uncertainty</TableHead>
-        <TableHead className={cn(GRID_HEAD, 'text-center w-0')}>Remark</TableHead>
-        {showScope && <TableHead className={cn(GRID_HEAD, 'text-center w-0')}>Scope</TableHead>}
+        <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Sr No</TableHead>
+        <TableHead className={cn(GRID_HEAD, 'w-[311px] max-w-[311px] text-left')}>Test Name</TableHead>
+        <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Unit</TableHead>
+        <TableHead className={cn(GRID_HEAD, 'w-[234px] min-w-[234px] max-w-[234px] whitespace-nowrap text-center')}>
+          Specified Requirements
+        </TableHead>
+        <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Observed Value</TableHead>
+        <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Uncertainty</TableHead>
+        <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Remark</TableHead>
+        {showScope && (
+          <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Scope</TableHead>
+        )}
       </TableRow>
     </TableHeader>
   )
@@ -166,7 +175,9 @@ function ResultsTableShell({
   embedded: boolean
   children: ReactNode
 }) {
-  const wrapClass = embedded ? 'overflow-x-auto' : 'rounded-md border overflow-x-auto'
+  const wrapClass = embedded
+    ? 'overflow-x-auto'
+    : 'overflow-x-auto border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/15'
 
   return (
     <div className={wrapClass}>
@@ -229,7 +240,7 @@ function ResultsGroupedBody({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 shrink-0 gap-1.5 text-xs font-normal"
+                      className="h-7 shrink-0 gap-1.5 rounded-none border-stone-500 bg-stone-50 text-xs font-normal text-stone-800 hover:bg-stone-100"
                       onClick={() =>
                         onEditSectionCode({
                           sectionCode: section.sectionCode,

@@ -115,7 +115,7 @@ function ViewEquipmentButton({
           aria-describedby={undefined}
         >
           <div className="relative bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-8 text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                 Service Request · Equipment
@@ -131,7 +131,7 @@ function ViewEquipmentButton({
             <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
               <Table className={VIEW_GRID}>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableRow className="bg-stone-800 hover:bg-stone-800">
                     <TableHead className="min-w-[160px] text-left text-xs">Name</TableHead>
                     <TableHead className="min-w-[100px] text-center text-xs">Least Count</TableHead>
                     <TableHead className="min-w-[110px] text-center text-xs">Range</TableHead>
@@ -202,7 +202,7 @@ export function ServiceRequestTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+    <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error ? <p className="px-3 pt-3 text-sm text-destructive sm:px-5 sm:pt-4">{error}</p> : null}
 
       {loading ? (
@@ -222,8 +222,8 @@ export function ServiceRequestTable({
         <div className="overflow-x-auto">
           <Table className={GRID_TABLE}>
             <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50">
-                <TableHead className="sticky left-0 z-10 w-12 bg-muted/50 text-center text-xs sm:w-14">
+              <TableRow className="bg-stone-800 hover:bg-stone-800">
+                <TableHead className="sticky left-0 z-10 w-12 bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 sm:w-14">
                   <input
                     type="checkbox"
                     className={checkboxClass}
@@ -235,7 +235,7 @@ export function ServiceRequestTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className="sticky left-12 z-10 min-w-[120px] bg-muted/50 text-center text-xs sm:left-14">
+                <TableHead className="sticky left-12 z-10 min-w-[120px] bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 sm:left-14">
                   SRF Number
                 </TableHead>
                 <TableHead className="min-w-[100px] text-center text-xs">SRF Date</TableHead>

@@ -85,6 +85,8 @@ const DialogContent = React.forwardRef<
     showCloseButton?: boolean
     /** Raise nested dialogs above an already-open parent dialog; stacked = 3rd, top = 4th */
     layer?: DialogLayer
+    /** Optional classes for the dimmed backdrop (e.g. leave app sidebar uncovered) */
+    overlayClassName?: string
   }
 >(
   (
@@ -94,6 +96,7 @@ const DialogContent = React.forwardRef<
       persistOnFocusLoss,
       showCloseButton = true,
       layer = 'default',
+      overlayClassName,
       onFocusOutside,
       onPointerDownOutside,
       onInteractOutside,
@@ -103,7 +106,7 @@ const DialogContent = React.forwardRef<
     ref,
   ) => (
     <DialogPortal layer={layer}>
-      <DialogOverlay layer={layer} />
+      <DialogOverlay layer={layer} className={overlayClassName} />
       <DialogPrimitive.Content
         ref={ref}
         aria-describedby={ariaDescribedBy ?? undefined}
@@ -121,7 +124,7 @@ const DialogContent = React.forwardRef<
           onInteractOutside?.(e)
         }}
         className={cn(
-          'fixed grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:rounded-lg',
+          'fixed grid w-full max-w-lg gap-4 rounded-none border-2 border-stone-600 bg-background p-6 shadow-lg ring-1 ring-amber-700/20 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:rounded-none',
           dialogLayerZClass(layer),
           className,
         )}
@@ -130,10 +133,10 @@ const DialogContent = React.forwardRef<
         {children}
         {showCloseButton ? (
           <DialogPrimitive.Close
-            className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-md border border-border/70 bg-background/95 text-foreground shadow-sm ring-offset-background transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+            className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-none border !border-red-600 !bg-red-600 !text-white shadow-sm ring-offset-background transition-colors hover:!border-red-700 hover:!bg-red-700 hover:!text-white focus:outline-none focus:ring-2 focus:!ring-red-500 focus:ring-offset-2 disabled:pointer-events-none"
             aria-label="Close"
           >
-            <X className="h-6 w-6" strokeWidth={2.75} aria-hidden />
+            <X className="h-3.5 w-3.5 !text-white" strokeWidth={2.75} aria-hidden />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         ) : null}

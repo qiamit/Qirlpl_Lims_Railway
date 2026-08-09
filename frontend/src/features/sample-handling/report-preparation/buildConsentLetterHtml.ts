@@ -2,6 +2,7 @@ import { buildConsentLetterPrintStylesCss } from './buildConsentLetterPrintStyle
 import { formatConsentLetterClientDisplayLine } from './consentLetterDefaults'
 import type { ConsentLetterPrintContext } from './fetchConsentLetterPrintContext'
 import type { TestReportSignature } from '@/features/settings/lab-settings/printSettingsTypes'
+import { formatIsCodeLabelFromParts, normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
 
 function escapeHtml(s: string): string {
   return String(s ?? '')
@@ -16,12 +17,9 @@ function formatIsCodeDisplay(
   isNumber: string,
   revisionYear: string | null,
 ): string {
-  const label = isCodeLabel?.trim()
+  const label = normalizeIsCodeLabel(isCodeLabel)
   if (label) return label
-  const num = isNumber.trim()
-  const rev = revisionYear?.trim()
-  if (!num) return '—'
-  return rev ? `${num}: ${rev}` : num
+  return formatIsCodeLabelFromParts(isNumber, revisionYear) || '—'
 }
 
 function imgTag(url: string, alt: string): string {

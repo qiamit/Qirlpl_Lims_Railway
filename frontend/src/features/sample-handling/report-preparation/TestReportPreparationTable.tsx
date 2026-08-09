@@ -1,11 +1,27 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, Eye, FileText, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { formatDate } from '@/lib/utils'
+import {
+  limsPanelClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import type { TestReportPreparationSortKey } from './sortTestReportPreparationRows'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
+
+const thClass = cn(limsTableHeadClass, 'border border-stone-700 !p-2')
+const tdClass = 'border border-[#e7e0d4] !p-2 align-middle text-xs text-[#292524]'
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 accent-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
+const actionBtnClass =
+  'h-8 w-8 rounded-none border border-amber-700/50 bg-[#fde68a]/70 text-[#78350f] shadow-none hover:bg-amber-700 hover:text-white hover:border-amber-800'
+const eyeIconBtnClass =
+  'h-7 w-7 shrink-0 rounded-none border border-amber-700/50 bg-[#fde68a]/70 text-[#78350f] shadow-none hover:bg-amber-700 hover:text-white hover:border-amber-800'
 
 function SortableHead({
   label,
@@ -26,15 +42,15 @@ function SortableHead({
   const Icon = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
 
   return (
-    <TableHead className={className}>
+    <TableHead className={cn(thClass, className)}>
       <button
         type="button"
-        className="inline-flex w-full items-center justify-center gap-1 text-xs font-medium hover:text-foreground transition-colors"
+        className="inline-flex w-full items-center justify-center gap-1 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 hover:text-amber-100"
         onClick={() => onSort(columnKey)}
         aria-label={`Sort by ${label}${active ? `, ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
       >
         <span>{label}</span>
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+        <Icon className={cn('h-3.5 w-3.5 shrink-0', active ? 'text-amber-300' : 'text-amber-200/60')} />
       </button>
     </TableHead>
   )
@@ -77,159 +93,156 @@ export function TestReportPreparationTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-card overflow-hidden">
-      {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
+    <div className={cn(limsPanelClass, 'overflow-hidden bg-[#f7f3eb]')}>
+      {error ? <p className="px-4 pt-4 text-sm text-red-700 sm:px-5">{error}</p> : null}
+
       {loading ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-4 py-6 text-sm text-[#78716c] sm:px-5">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">
-          No SRFs approved and ready for test report yet. Approve all sections in Results Under Review first.
-        </p>
+        <div className="m-3 border border-dashed border-[#d6d3d1] bg-[#fffcf7] p-4 text-center sm:m-4 sm:p-6">
+          <p className="text-sm text-[#57534e]">
+            No SRFs approved and ready for test report yet. Approve all sections in Results Under
+            Review first.
+          </p>
+        </div>
       ) : (
-        <div className="[&>div]:overflow-hidden">
-          <Table className="w-full table-fixed">
-            <colgroup>
-              <col className="w-[44px]" />
-              <col className="w-[16%]" />
-              <col className="w-[120px]" />
-              <col className="w-[14%]" />
-              <col className="w-[14%]" />
-              <col className="w-[11%]" />
-              <col className="w-[12%]" />
-              <col className="w-[90px]" />
-            </colgroup>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="px-2 text-center text-xs">
+        <Table className={cn(limsTableClass, 'min-w-[820px] table-fixed')}>
+          <colgroup>
+            <col className="w-[44px]" />
+            <col className="w-[22%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
+            <col className="w-[14%]" />
+            <col className="w-[140px]" />
+          </colgroup>
+          <TableHeader>
+            <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+              <TableHead className={cn(thClass, 'w-[44px] text-center')}>
+                <input
+                  type="checkbox"
+                  className={checkboxClass}
+                  aria-label="Select all"
+                  checked={allChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = !allChecked && someChecked
+                  }}
+                  onChange={(e) => onToggleAll(e.target.checked)}
+                />
+              </TableHead>
+              <SortableHead
+                label="SRF"
+                columnKey="srfNumber"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="[&_button]:justify-start"
+              />
+              <SortableHead
+                label="Client"
+                columnKey="clientName"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+              />
+              <SortableHead
+                label="IS Code"
+                columnKey="isCode"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+              />
+              <SortableHead
+                label="Received Date"
+                columnKey="dateReceiving"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+              />
+              <TableHead className={cn(thClass, 'text-center')}>Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r, index) => (
+              <TableRow key={r.id} className={index % 2 === 0 ? rowEvenClass : rowOddClass}>
+                <TableCell className={cn(tdClass, 'text-center')}>
                   <input
                     type="checkbox"
-                    aria-label="Select all"
-                    checked={allChecked}
-                    ref={(el) => {
-                      if (el) el.indeterminate = !allChecked && someChecked
-                    }}
-                    onChange={(e) => onToggleAll(e.target.checked)}
+                    className={checkboxClass}
+                    aria-label={`Select ${fmt(r.srfNumber)}`}
+                    checked={selectedIds.has(r.id)}
+                    onChange={() => onToggle(r.id)}
                   />
-                </TableHead>
-                <SortableHead
-                  label="SRF"
-                  columnKey="srfNumber"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={onSort}
-                  className="text-xs [&_button]:justify-start"
-                />
-                <TableHead className="text-xs text-center">View Sample Details</TableHead>
-                <SortableHead
-                  label="Client"
-                  columnKey="clientName"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={onSort}
-                  className="text-xs text-center"
-                />
-                <SortableHead
-                  label="IS Code"
-                  columnKey="isCode"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={onSort}
-                  className="text-xs text-center"
-                />
-                <SortableHead
-                  label="Received Date"
-                  columnKey="dateReceiving"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={onSort}
-                  className="text-xs text-center"
-                />
-                <TableHead className="text-xs text-center">View Results</TableHead>
-                <TableHead className="text-xs text-right pr-3">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="align-middle px-2 text-center">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${fmt(r.srfNumber)}`}
-                      checked={selectedIds.has(r.id)}
-                      onChange={() => onToggle(r.id)}
-                    />
-                  </TableCell>
-                  <TableCell className="align-middle text-left">
-                    <div className="line-clamp-2 break-words font-medium leading-snug">{fmt(r.srfNumber)}</div>
-                  </TableCell>
-                  <TableCell className="align-middle text-center px-1">
+                </TableCell>
+                <TableCell className={cn(tdClass, 'pl-3 text-left font-medium')}>
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1 line-clamp-2 break-words leading-snug">
+                      {fmt(r.srfNumber)}
+                    </div>
                     <Button
                       type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-1.5 text-xs gap-1"
-                      aria-label={`View SRF details for ${fmt(r.srfNumber)}`}
+                      size="icon"
+                      variant="outline"
+                      className={eyeIconBtnClass}
+                      aria-label={`View sample details for ${fmt(r.srfNumber)}`}
+                      title="View Sample Details"
                       onClick={() => onViewSrf(r)}
                     >
-                      <Eye size={12} />
-                      View
+                      <Eye size={15} strokeWidth={2.35} />
                     </Button>
-                  </TableCell>
-                  <TableCell className="align-middle text-center">
-                    <div className="line-clamp-2 break-words text-xs leading-snug">{fmt(r.clientName)}</div>
-                  </TableCell>
-                  <TableCell className="align-middle text-center">
-                    <div className="line-clamp-2 break-words text-xs leading-snug">{fmt(r.isCodeLabel)}</div>
-                  </TableCell>
-                  <TableCell className="align-middle text-center text-xs text-muted-foreground">
-                    {formatDate(r.dateReceiving ?? '')}
-                  </TableCell>
-                  <TableCell className="align-middle text-center px-1">
+                  </div>
+                </TableCell>
+                <TableCell className={cn(tdClass, 'text-center')}>
+                  <div className="line-clamp-2 break-words leading-snug">{fmt(r.clientName)}</div>
+                </TableCell>
+                <TableCell className={cn(tdClass, 'text-center')}>
+                  <div className="line-clamp-2 break-words leading-snug">{fmt(r.isCodeLabel)}</div>
+                </TableCell>
+                <TableCell className={cn(tdClass, 'text-center text-[#78716c]')}>
+                  {formatDate(r.dateReceiving ?? '')}
+                </TableCell>
+                <TableCell className={cn(tdClass, 'text-center')}>
+                  <div className="inline-flex items-center justify-center gap-1.5">
                     <Button
                       type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-1.5 text-xs gap-1"
+                      size="icon"
+                      variant="outline"
+                      className={actionBtnClass}
                       aria-label={`View test results for ${fmt(r.srfNumber)}`}
+                      title="View Results"
                       onClick={() => onViewResults(r)}
                     >
-                      <Eye size={12} />
-                      View
+                      <Eye size={17} strokeWidth={2.35} />
                     </Button>
-                  </TableCell>
-                  <TableCell className="align-middle text-right pr-3">
-                    <div className="inline-flex items-center justify-end gap-1">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        aria-label={`Prepare report for ${fmt(r.srfNumber)}`}
-                        title="Prepare Report (Clause 7.8)"
-                        onClick={() => onPrepare(r)}
-                        disabled={referbackBusyId === r.id}
-                      >
-                        <FileText size={16} />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        aria-label={`Refer back ${fmt(r.srfNumber)}`}
-                        title="Refer Back"
-                        onClick={() => onReferback(r)}
-                        disabled={!canReferback || referbackBusyId === r.id}
-                      >
-                        <Undo2 size={16} className="text-amber-700 dark:text-amber-500" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className={actionBtnClass}
+                      aria-label={`Prepare report for ${fmt(r.srfNumber)}`}
+                      title="Prepare Report (Clause 7.8)"
+                      onClick={() => onPrepare(r)}
+                      disabled={referbackBusyId === r.id}
+                    >
+                      <FileText size={17} strokeWidth={2.35} />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className={actionBtnClass}
+                      aria-label={`Refer back ${fmt(r.srfNumber)}`}
+                      title="Refer Back"
+                      onClick={() => onReferback(r)}
+                      disabled={!canReferback || referbackBusyId === r.id}
+                    >
+                      <Undo2 size={17} strokeWidth={2.35} />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </div>
   )

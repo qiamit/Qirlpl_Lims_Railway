@@ -133,3 +133,35 @@ export function partitionResultsUnderReviewRows(rows: TestAllocationRow[]) {
   }
   return { pending, reviewed }
 }
+
+/**
+ * Section was allotted for review to this user (Send for Review → Department / Designation / Employee).
+ * Matches Sample Under Testing assignment visibility pattern.
+ */
+export function isSectionAssignedToResultsReviewer(
+  row: TestAllocationRow,
+  userId: string,
+  profileName: string,
+): boolean {
+  const uid = userId.trim()
+  const myName = profileName.trim().toLowerCase()
+
+  for (const p of row.parameters ?? []) {
+    const reviewerId = p.resultsReviewerId?.trim()
+    if (uid && reviewerId && reviewerId === uid) return true
+    const reviewerName = p.resultsReviewerName?.trim().toLowerCase()
+    if (
+      myName &&
+      reviewerName &&
+      reviewerName === myName &&
+      isActiveReviewerName(p.resultsReviewerName)
+    ) {
+      return true
+    }
+  }
+
+  const rowName = row.resultsReviewerName?.trim().toLowerCase()
+  return Boolean(
+    myName && rowName && rowName === myName && isActiveReviewerName(row.resultsReviewerName),
+  )
+}

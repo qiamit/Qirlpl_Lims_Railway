@@ -1,5 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { limsDeleteBtnClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
 export function SampleHandlingDeleteButton({
   disabled,
@@ -12,11 +14,13 @@ export function SampleHandlingDeleteButton({
     <Button
       type="button"
       variant="destructive"
+      size="sm"
       disabled={disabled}
       onClick={onClick}
       aria-label="Delete selected"
+      className={cn(limsDeleteBtnClass)}
     >
-      <Trash2 size={16} /> Delete
+      <Trash2 size={14} /> Delete
     </Button>
   )
 }

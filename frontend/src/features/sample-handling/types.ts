@@ -232,7 +232,7 @@ export const emptySampleReceivingFormTab1 = (): SampleReceivingFormTab1 => ({
   sampleCode: '',
   sampleQrCode: '',
   shelfLife: 'Life Long',
-  testRequired: '',
+  testRequired: 'All',
   batchNumber: '',
   dateOfManufacturing: today(),
   bisSeal: false,

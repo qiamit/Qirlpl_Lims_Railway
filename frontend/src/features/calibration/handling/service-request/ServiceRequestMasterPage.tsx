@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
@@ -463,7 +464,7 @@ export default function ServiceRequestMasterPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:space-y-5 sm:p-4 md:p-6">
+    <div className={limsPageShellClass}>
       <ServiceRequestHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -487,7 +488,7 @@ export default function ServiceRequestMasterPage() {
                 backgroundSize: '24px 24px',
               }}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-8 text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                 {editingId

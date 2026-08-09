@@ -7,6 +7,13 @@ import {
   SECTION_CODE_LENGTH,
   sanitizeSectionCodeInput,
 } from '@/features/sample-handling/allocation/sectionCode'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { updateReportSectionCode } from './reportResultRows'
 
 export type ReportSectionCodeEditTarget = {
@@ -63,16 +70,35 @@ export function ReportSectionCodeEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Section Code</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-1">
-          <p className="text-sm text-muted-foreground">
-            Update only the section code number. Other section details are unchanged.
-          </p>
+      <DialogContent
+        persistOnFocusLoss
+        layer="nested"
+        aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          'flex w-[calc(100%-1.5rem)] max-w-md flex-col sm:w-full',
+          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+        )}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white">
+              Edit Section Code
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+
+        <div className="space-y-3 bg-gradient-to-b from-stone-100/90 to-stone-50 px-4 py-4 sm:px-5">
           <div className="space-y-2">
-            <Label htmlFor="report-section-code">Section Code</Label>
+            <Label
+              htmlFor="report-section-code"
+              className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+            >
+              Section Code
+            </Label>
             <Input
               id="report-section-code"
               value={value}
@@ -80,21 +106,25 @@ export function ReportSectionCodeEditDialog({
               maxLength={SECTION_CODE_LENGTH}
               autoComplete="off"
               spellCheck={false}
-              className="font-mono uppercase tracking-wide"
+              className={cn(limsFieldClass, 'font-mono uppercase tracking-wide')}
               disabled={saving}
             />
-            <p className="text-xs text-muted-foreground">
-              Alphanumeric, up to {SECTION_CODE_LENGTH} characters.
-            </p>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error ? (
+            <p className="border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={handleSave} disabled={saving || !value.trim()}>
-            {saving ? 'Saving…' : 'Save'}
+
+        <DialogFooter className="border-t border-stone-400 bg-stone-100/80 px-4 py-3 sm:px-5">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={handleSave}
+            disabled={saving || !value.trim()}
+          >
+            {saving ? 'Saving…' : 'Save & Close'}
           </Button>
         </DialogFooter>
       </DialogContent>

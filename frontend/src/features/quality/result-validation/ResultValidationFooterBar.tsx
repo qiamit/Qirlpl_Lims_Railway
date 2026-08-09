@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,7 +32,7 @@ export function ResultValidationFooterBar({
   deleteBusy: boolean
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card px-5 py-3 shadow-sm">
+    <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-5 py-3 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-2">
           {message ? (
@@ -39,8 +41,8 @@ export function ResultValidationFooterBar({
                 message.toLowerCase().includes('saved') ||
                 message.toLowerCase().includes('updated') ||
                 message.toLowerCase().includes('deleted')
-                  ? 'text-sm text-success'
-                  : 'text-sm text-destructive'
+                  ? 'text-sm text-emerald-300'
+                  : 'text-sm text-red-300'
               }
             >
               {message}
@@ -49,15 +51,13 @@ export function ResultValidationFooterBar({
         </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-3">
-          <span className="text-xs text-muted-foreground md:order-first">
+          <span className="text-xs text-stone-300 md:order-first">
             Selected: {selectedCount}
           </span>
           {selectedCount > 0 && (
             <Button
               type="button"
-              variant="destructive"
-              size="sm"
-              className="gap-1.5"
+              variant="destructive" size="sm" className={limsDeleteBtnClass}
               disabled={deleteBusy || loading}
               onClick={onDeleteSelected}
             >
@@ -67,13 +67,13 @@ export function ResultValidationFooterBar({
           )}
           <div className="flex items-center justify-end gap-2">
             <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1 || loading} onClick={onPrevPage} aria-label="Previous page">
+              <Button type="button" variant="outline" size="icon" className={cn('h-8 w-8', limsDarkBarBtnClass)} disabled={page <= 1 || loading} onClick={onPrevPage} aria-label="Previous page">
                 <ChevronLeft size={16} />
               </Button>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
+              <span className="text-xs text-stone-300 whitespace-nowrap">
                 Page {page} of {pageCount}
               </span>
-              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page >= pageCount || loading} onClick={onNextPage} aria-label="Next page">
+              <Button type="button" variant="outline" size="icon" className={cn('h-8 w-8', limsDarkBarBtnClass)} disabled={page >= pageCount || loading} onClick={onNextPage} aria-label="Next page">
                 <ChevronRight size={16} />
               </Button>
             </div>

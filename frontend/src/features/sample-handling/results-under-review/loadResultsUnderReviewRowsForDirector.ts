@@ -12,6 +12,7 @@ import {
   isSectionVisibleInResultsUnderReview,
   isSectionVisibleInScopedResultsUnderReview,
 } from './resultsUnderReviewPartitions'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 
 export type ResultsUnderReviewLoadScope = {
   department?: string | null
@@ -82,16 +83,6 @@ function filterAllocationsByScope(
   // Department is the primary allotment filter. Designation on allocation is often
   // Testing Engineer while the reviewer is Technical Manager — do not hide those.
   return allocations.filter((a) => departmentsMatch(a.department, scope.department))
-}
-
-function mergeAllocationsById(...lists: AllocationRow[][]): AllocationRow[] {
-  const map = new Map<string, AllocationRow>()
-  for (const list of lists) {
-    for (const row of list) {
-      if (row.id) map.set(row.id, row)
-    }
-  }
-  return [...map.values()]
 }
 
 async function loadReviewerAssignedAllocations(
@@ -188,7 +179,7 @@ async function loadIsCodeMap(isCodeIds: string[]): Promise<Map<string, string>> 
     isCodes.map(
       (c: { id: string; is_number?: string; revision_year?: string | null }) => [
         c.id,
-        c.revision_year ? `${c.is_number ?? ''} : ${c.revision_year}` : (c.is_number ?? c.id),
+        formatIsCodeLabelFromParts(c.is_number, c.revision_year) || (c.is_number ?? c.id),
       ],
     ),
   )
@@ -466,6 +457,19 @@ async function loadResultsUnderReviewRowsForDepartmentScope(
   const samplesMap = await loadSamplesMap(sampleIdsFromStages, SCOPED_SAMPLE_STAGES)
   if (samplesMap.size === 0) return []
 
+  // Prefer sections explicitly allotted to this reviewer (Send for Review employee).
+  // Do not dump the whole department queue onto every user in that department.
+  if (scope.reviewerUserId?.trim()) {
+    const reviewerAllocs = await loadReviewerAssignedAllocations(
+      scope.reviewerUserId,
+      allowedSampleIds,
+    )
+    const scopedAllocations = reviewerAllocs.filter((a) => samplesMap.has(a.sample_id))
+    if (scopedAllocations.length === 0) return []
+    const rows = await buildRowsForAllocations({ allocations: scopedAllocations, samplesMap })
+    return rows.filter(isSectionVisibleInScopedResultsUnderReview)
+  }
+
   const allocData = await fetchByIdChunks(sampleIdsFromStages, 80, async (chunkIds) => {
     const { data, error: allocErr } = await supabase
       .from('sample_allocations')
@@ -475,18 +479,12 @@ async function loadResultsUnderReviewRowsForDepartmentScope(
     return Array.isArray(data) ? data : []
   })
 
-  const deptScoped = filterAllocationsByScope(allocData as AllocationRow[], scope)
-
-  const reviewerAllocs = scope.reviewerUserId?.trim()
-    ? await loadReviewerAssignedAllocations(scope.reviewerUserId, allowedSampleIds)
-    : []
-
-  const scopedAllocations = mergeAllocationsById(deptScoped, reviewerAllocs).filter((a) =>
+  const deptScoped = filterAllocationsByScope(allocData as AllocationRow[], scope).filter((a) =>
     samplesMap.has(a.sample_id),
   )
-  if (scopedAllocations.length === 0) return []
+  if (deptScoped.length === 0) return []
 
-  const rows = await buildRowsForAllocations({ allocations: scopedAllocations, samplesMap })
+  const rows = await buildRowsForAllocations({ allocations: deptScoped, samplesMap })
   return rows.filter(isSectionVisibleInScopedResultsUnderReview)
 }
 
@@ -524,11 +522,11 @@ async function loadResultsUnderReviewRowsUnscoped(): Promise<TestAllocationRow[]
   return rows.filter(isSectionVisibleInResultsUnderReview)
 }
 
-/** Section rows on SRFs in results review workflow. Optional scope filters by allocation department/designation. */
+/** Section rows on SRFs in results review workflow. Optional scope filters by reviewer / department. */
 export async function loadResultsUnderReviewRowsForDirector(
   scope?: ResultsUnderReviewLoadScope,
 ): Promise<TestAllocationRow[]> {
-  if (scope?.department?.trim()) {
+  if (scope?.reviewerUserId?.trim() || scope?.department?.trim()) {
     return loadResultsUnderReviewRowsForDepartmentScope(scope)
   }
   return loadResultsUnderReviewRowsUnscoped()

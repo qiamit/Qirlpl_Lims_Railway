@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { ChevronLeft, ChevronRight, Download, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,26 +42,26 @@ export function AuditChecklistFooterBar({
   const to = Math.min(page * pageSize, totalCount)
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-3 py-3 shadow-sm sm:px-5 sm:py-4">
+    <div className="flex flex-col gap-3 relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-3 py-3 shadow-sm sm:px-5 sm:py-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onExport} disabled={loading}>
+          <Button type="button" variant="outline" size="sm" className={cn('gap-1.5', limsDarkBarBtnClass)} onClick={onExport} disabled={loading}>
             <Download size={14} />
             <span className="hidden sm:inline">Export</span>
           </Button>
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onPrint} disabled={loading}>
+          <Button type="button" variant="outline" size="sm" className={cn('gap-1.5', limsDarkBarBtnClass)} onClick={onPrint} disabled={loading}>
             <Printer size={14} />
             <span className="hidden sm:inline">Print</span>
           </Button>
           {selectedCount > 0 ? (
-            <span className="text-xs text-muted-foreground">Selected: {selectedCount}</span>
+            <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
           ) : null}
           {message ? (
             <p
               className={
                 message.toLowerCase().includes('exported') || message.toLowerCase().includes('saved')
-                  ? 'w-full text-sm text-emerald-700 sm:w-auto'
-                  : 'w-full text-sm text-destructive sm:w-auto'
+                  ? 'w-full text-sm text-emerald-300 sm:w-auto'
+                  : 'w-full text-sm text-red-300 sm:w-auto'
               }
             >
               {message}
@@ -68,13 +70,13 @@ export function AuditChecklistFooterBar({
         </div>
 
         <div className="flex flex-nowrap items-center justify-start gap-2 overflow-x-auto overscroll-x-contain pb-0.5 sm:justify-end sm:gap-3 [-webkit-overflow-scrolling:touch]">
-          <p className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
-            Showing <span className="font-medium text-foreground">{from}</span>–
-            <span className="font-medium text-foreground">{to}</span> of{' '}
-            <span className="font-medium text-foreground">{totalCount}</span>
+          <p className="shrink-0 whitespace-nowrap text-sm text-stone-300">
+            Showing <span className="font-medium text-white">{from}</span>–
+            <span className="font-medium text-white">{to}</span> of{' '}
+            <span className="font-medium text-white">{totalCount}</span>
           </p>
           <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger className="h-9 w-[118px] shrink-0" aria-label="Rows per page">
+            <SelectTrigger className={cn(limsDarkBarFieldClass, 'w-[110px] shrink-0')} aria-label="Rows per page">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -95,28 +97,24 @@ export function AuditChecklistFooterBar({
             className="h-9 w-16 shrink-0 sm:w-20"
             inputMode="numeric"
           />
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={onJumpToGo} disabled={loading}>
+          <Button type="button" variant="outline" size="sm" className={cn('shrink-0', limsDarkBarBtnClass)} onClick={onJumpToGo} disabled={loading}>
             Jump
           </Button>
           <Button
             type="button"
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 shrink-0"
+            variant="outline" size="icon" className={cn('h-9 w-9 shrink-0', limsDarkBarBtnClass)}
             onClick={onPrevPage}
             disabled={loading || page <= 1}
           >
             <ChevronLeft size={16} />
             <span className="sr-only">Previous page</span>
           </Button>
-          <span className="min-w-[5rem] shrink-0 whitespace-nowrap text-center text-xs font-medium text-muted-foreground">
+          <span className="min-w-[5rem] shrink-0 whitespace-nowrap text-center text-xs font-medium text-stone-300">
             Page {page} / {pageCount}
           </span>
           <Button
             type="button"
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 shrink-0"
+            variant="outline" size="icon" className={cn('h-9 w-9 shrink-0', limsDarkBarBtnClass)}
             onClick={onNextPage}
             disabled={loading || page >= pageCount}
           >

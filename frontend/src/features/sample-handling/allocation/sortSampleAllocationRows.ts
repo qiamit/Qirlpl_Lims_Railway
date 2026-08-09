@@ -1,6 +1,12 @@
 import type { AllocationRow } from '../types'
 
-export type SampleAllocationSortKey = 'srfDate' | 'isCode' | 'sectionCode' | 'department' | 'quantity'
+export type SampleAllocationSortKey =
+  | 'srfNumber'
+  | 'date'
+  | 'isCode'
+  | 'sectionCode'
+  | 'department'
+  | 'quantity'
 
 const joinList = (arr: string[]) => arr.filter(Boolean).join(', ')
 
@@ -13,19 +19,18 @@ export function sortSampleAllocationRows(
   return [...rows].sort((a, b) => {
     let cmp = 0
     switch (key) {
-      case 'srfDate': {
-        const da = a.sample.date_of_sample_receiving ?? a.sample.collection_date ?? ''
-        const db = b.sample.date_of_sample_receiving ?? b.sample.collection_date ?? ''
-        cmp = da.localeCompare(db)
-        if (cmp === 0) {
-          cmp = (a.sample.srf_number ?? a.sample.sample_code ?? '').localeCompare(
-            b.sample.srf_number ?? b.sample.sample_code ?? '',
-            undefined,
-            { numeric: true },
-          )
-        }
+      case 'srfNumber':
+        cmp = (a.sample.srf_number ?? a.sample.sample_code ?? '').localeCompare(
+          b.sample.srf_number ?? b.sample.sample_code ?? '',
+          undefined,
+          { numeric: true },
+        )
         break
-      }
+      case 'date':
+        cmp = (a.sample.date_of_sample_receiving ?? a.sample.collection_date ?? '').localeCompare(
+          b.sample.date_of_sample_receiving ?? b.sample.collection_date ?? '',
+        )
+        break
       case 'isCode':
         cmp = (a.sample.test_report_is_code_label ?? '').localeCompare(
           b.sample.test_report_is_code_label ?? '',

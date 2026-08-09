@@ -1055,7 +1055,7 @@ export function DraftSectionRichEditor({
         class: cn(
           'prose prose-sm max-w-none focus:outline-none px-3 py-2',
           '[&_table]:w-full [&_table]:border-collapse [&_td]:border [&_th]:border [&_td]:border-border [&_th]:border-border',
-          '[&_td]:px-2 [&_td]:py-1 [&_th]:px-2 [&_th]:py-1 [&_th]:bg-muted/50',
+          '[&_td]:px-2 [&_td]:py-1 [&_th]:px-2 [&_th]:py-1 [&_th]:bg-stone-800',
           '[&_td_p]:m-0 [&_th_p]:m-0 [&_td]:align-top [&_th]:align-middle',
           '[&_.is-editor-empty:first-child::before]:text-muted-foreground',
           fillHeight ? 'min-h-[12rem]' : minHeightClass,
@@ -1268,7 +1268,7 @@ export function DraftSectionRichEditor({
       <Dialog open={tableSettingsOpen} onOpenChange={setTableSettingsOpen}>
         <DialogContent layer="stacked" className="w-[min(420px,94vw)] max-w-none gap-0 overflow-hidden p-0">
           <div className="relative bg-slate-900 px-5 py-4 text-white">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="pr-8 text-left">
               <DialogTitle className="text-lg font-semibold text-white">Table Settings</DialogTitle>
               <p className="text-sm text-slate-300">Column width, row height &amp; structure</p>
@@ -1359,7 +1359,7 @@ export function DraftSectionRichEditor({
       <Dialog open={aiOpen} onOpenChange={setAiOpen}>
         <DialogContent layer="stacked" className="w-[min(520px,96vw)] max-w-none gap-0 overflow-hidden p-0">
           <div className="relative bg-slate-900 px-5 py-4 text-white">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="pr-8 text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                 QI Assist

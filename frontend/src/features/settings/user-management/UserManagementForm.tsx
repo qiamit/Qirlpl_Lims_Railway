@@ -430,7 +430,7 @@ export function UserManagementForm(props: UserManagementFormProps) {
               backgroundSize: '24px 24px',
             }}
           />
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-8 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               {isCreate ? 'User Registry · New Entry' : 'User Registry · Edit Entry'}

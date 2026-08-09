@@ -18,6 +18,15 @@ import {
 } from '@/components/ui/dialog'
 import { Calculator, Plus, Trash2 } from 'lucide-react'
 import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarFieldClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import type { SectionCompareSource } from './sectionCompareSources'
 import { TestResultMiniCalculator } from './TestResultMiniCalculator'
 import {
@@ -80,6 +89,7 @@ export function TestResultsEntryCell({
   const [compareSourceId, setCompareSourceId] = useState('')
   const [compareAction, setCompareAction] = useState<TestResultCompareAction>('difference')
   const [calcOpen, setCalcOpen] = useState(false)
+  const [reportedCalcOpen, setReportedCalcOpen] = useState(false)
 
   const structuredValue = useMemo(() => parseTestResultValue(value ?? ''), [value])
   const displayText = useMemo(() => formatTestResultForTable(value), [value])
@@ -130,7 +140,11 @@ export function TestResultsEntryCell({
   }, [open, value, defaultUnit])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setCalcOpen(false)
+      setReportedCalcOpen(false)
+      return
+    }
     if (compareSourceId && !sectionCompareSources.some((s) => s.id === compareSourceId)) {
       setCompareSourceId('')
     }
@@ -151,6 +165,16 @@ export function TestResultsEntryCell({
         .filter((e): e is TestResultReadingEntry => e !== null),
     [readingRows],
   )
+
+  const calculatorReferences = useMemo((): SectionCompareSource[] => {
+    const current: SectionCompareSource[] = entries.map((e, index) => ({
+      id: `current:entry:${index}`,
+      label: `${testLabel} · ${e.label?.trim() || `Reading ${index + 1}`}`,
+      value: e.value,
+      unit: e.unit,
+    }))
+    return [...current, ...sectionCompareSources]
+  }, [entries, sectionCompareSources, testLabel])
 
   const numericReadings = useMemo(() => entries.map((e) => e.value), [entries])
   const stats = useMemo(() => computeTestResultStats(numericReadings), [numericReadings])
@@ -279,105 +303,139 @@ export function TestResultsEntryCell({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Test Results — {testLabel}</DialogTitle>
-          </DialogHeader>
+        <DialogContent
+          layer="nested"
+          className={cn(limsDialogClass, 'max-w-2xl max-h-[90vh] overflow-hidden p-0')}
+          aria-describedby={undefined}
+        >
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                Test Results — {testLabel}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="text-sm font-medium">Individual readings</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addReading}>
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  Add reading
-                </Button>
+          <div className="max-h-[calc(90vh-7.5rem)] space-y-4 overflow-y-auto bg-[#f7f3eb] px-4 py-4">
+            <div className="space-y-2 overflow-hidden border-2 border-stone-500 bg-[#f7f3eb] shadow-sm ring-1 ring-amber-700/20">
+              <div className="border-b border-stone-500 bg-stone-800 px-3 py-2">
+                <Label className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                  Individual Readings
+                </Label>
               </div>
-              <div className="grid grid-cols-[1.1fr_0.9fr_0.65fr_auto] gap-2 px-1 text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-[1.1fr_0.9fr_0.65fr_auto] gap-2 border-b border-[#e7e0d4] bg-stone-800/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-100/90">
                 <span>Label</span>
                 <span>Value</span>
                 <span>Unit</span>
                 <span className="w-8" />
               </div>
-              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                {readingRows.map((row, index) => (
-                  <div
-                    key={`reading-${index}`}
-                    className="grid grid-cols-[1.1fr_0.9fr_0.65fr_auto] gap-2 items-center"
-                  >
-                    <Input
-                      type="text"
-                      className="h-8 text-sm"
-                      placeholder="e.g. Specimen 1"
-                      value={row.label}
-                      onChange={(e) =>
-                        setReadingRows((prev) =>
-                          prev.map((r, i) => (i === index ? { ...r, label: e.target.value } : r)),
-                        )
-                      }
-                    />
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      className="h-8 text-sm"
-                      placeholder="Value"
-                      value={row.value}
-                      onChange={(e) =>
-                        setReadingRows((prev) =>
-                          prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r)),
-                        )
-                      }
-                    />
-                    <MeasurementUnitSelect
-                      value={row.unit}
-                      onChange={(unit) =>
-                        setReadingRows((prev) =>
-                          prev.map((r, i) => (i === index ? { ...r, unit } : r)),
-                        )
-                      }
-                      showLabel={false}
-                      inputClassName="h-8 text-sm"
-                      className="space-y-0"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0 text-destructive"
-                      aria-label="Remove reading"
-                      onClick={() => removeReading(index)}
+              <div className="max-h-[220px] space-y-2 overflow-y-auto px-3 py-2">
+                {readingRows.map((row, index) => {
+                  const isLastRow = index === readingRows.length - 1
+                  return (
+                    <div
+                      key={`reading-${index}`}
+                      className="grid grid-cols-[1.1fr_0.9fr_0.65fr_auto] items-center gap-2"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ))}
+                      <Input
+                        type="text"
+                        className={cn(limsFieldClass, 'h-8 text-sm')}
+                        placeholder="e.g. Specimen 1"
+                        value={row.label}
+                        onChange={(e) =>
+                          setReadingRows((prev) =>
+                            prev.map((r, i) => (i === index ? { ...r, label: e.target.value } : r)),
+                          )
+                        }
+                      />
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        className={cn(limsFieldClass, 'h-8 text-sm')}
+                        placeholder="Value"
+                        value={row.value}
+                        onChange={(e) =>
+                          setReadingRows((prev) =>
+                            prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r)),
+                          )
+                        }
+                      />
+                      <MeasurementUnitSelect
+                        value={row.unit}
+                        onChange={(unit) =>
+                          setReadingRows((prev) =>
+                            prev.map((r, i) => (i === index ? { ...r, unit } : r)),
+                          )
+                        }
+                        showLabel={false}
+                        inputClassName={cn(limsFieldClass, 'h-8 text-sm')}
+                        className="space-y-0"
+                      />
+                      {isLastRow ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 rounded-none text-[#92400e] hover:bg-[#f3e9d8] hover:text-[#78350f]"
+                          aria-label="Add reading"
+                          title="Add reading"
+                          onClick={addReading}
+                        >
+                          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 rounded-none text-red-700 hover:bg-[#f3e9d8] hover:text-red-800"
+                          aria-label="Remove reading"
+                          title="Remove reading"
+                          onClick={() => removeReading(index)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
             {stats && entries.length > 0 && (
-              <div className="rounded-md border bg-muted/30 p-3 space-y-4">
-                <div className="space-y-2 border-b border-border/50 pb-3">
+              <div className="relative space-y-4 overflow-hidden border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 p-3 text-white shadow-sm ring-1 ring-amber-700/20">
+                <div className="pointer-events-none absolute inset-0 opacity-[0.12]" style={limsDarkBarGlowStyle} />
+                <div className="relative space-y-2 border-b border-amber-500/30 pb-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                       Statistics
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
-                        variant={calcOpen ? 'default' : 'outline'}
+                        variant="outline"
                         size="sm"
-                        className="h-8 gap-1.5 text-xs"
+                        className={cn(
+                          limsDarkBarBtnClass,
+                          'h-8 gap-1.5 text-xs',
+                          calcOpen && 'border-amber-400 bg-amber-500/25 text-amber-50',
+                        )}
                         onClick={() => setCalcOpen((o) => !o)}
                       >
                         <Calculator className="h-3.5 w-3.5" />
                         Calculator
                       </Button>
-                      <div className="flex items-center gap-2 min-w-[150px]">
-                        <Label htmlFor="decimal-places" className="text-xs shrink-0">
+                      <div className="flex min-w-[150px] items-center gap-2">
+                        <Label htmlFor="decimal-places" className="shrink-0 text-xs text-amber-100/90">
                           Decimals
                         </Label>
                         <Select value={String(decimalPlaces)} onValueChange={handleDecimalPlacesChange}>
-                          <SelectTrigger id="decimal-places" className="h-8 text-xs w-[110px]">
+                          <SelectTrigger
+                            id="decimal-places"
+                            className={cn(limsDarkBarFieldClass, 'w-[110px] text-xs')}
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -394,6 +452,7 @@ export function TestResultsEntryCell({
                   {calcOpen && (
                     <TestResultMiniCalculator
                       decimalPlaces={decimalPlaces}
+                      references={calculatorReferences}
                       onInsertReading={(val) => {
                         setReadingRows((prev) => {
                           const unit = prev[0]?.unit ?? defaultUnit
@@ -412,14 +471,14 @@ export function TestResultsEntryCell({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
+                <div className="relative grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Statistic</Label>
+                    <Label className="text-xs text-amber-100/90">Statistic</Label>
                     <Select
                       value={statPicker}
                       onValueChange={(v) => setStatPicker(v as TestResultStatKey)}
                     >
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className={cn(limsDarkBarFieldClass, 'text-xs')}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -432,10 +491,10 @@ export function TestResultsEntryCell({
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Value</Label>
+                    <Label className="text-xs text-amber-100/90">Value</Label>
                     <Input
                       readOnly
-                      className="h-8 text-xs font-mono bg-background"
+                      className={cn(limsDarkBarFieldClass, 'font-mono text-xs')}
                       value={selectedStatDisplay}
                     />
                   </div>
@@ -443,16 +502,16 @@ export function TestResultsEntryCell({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-8 text-xs"
+                    className={cn(limsDarkBarBtnClass, 'h-8 text-xs')}
                     onClick={() => applyStat(statPicker, 'apply')}
                   >
                     Apply
                   </Button>
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
-                    className="h-8 text-xs"
+                    className={cn(limsDarkBarBtnClass, 'h-8 text-xs')}
                     onClick={() => applyStat(statPicker, 'add')}
                   >
                     Add
@@ -460,15 +519,18 @@ export function TestResultsEntryCell({
                 </div>
 
                 {sectionCompareSources.length > 0 && (
-                  <div className="space-y-2 border-t border-border/50 pt-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <div className="relative space-y-2 border-t border-amber-500/30 pt-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                       Compare with another field (same section)
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-[1.4fr_1fr_0.9fr_auto_auto] gap-2 items-end">
+                    <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1.4fr_1fr_0.9fr_auto_auto]">
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Field</Label>
-                        <Select value={compareSourceId || '__none__'} onValueChange={(v) => setCompareSourceId(v === '__none__' ? '' : v)}>
-                          <SelectTrigger className="h-8 text-xs">
+                        <Label className="text-xs text-amber-100/90">Field</Label>
+                        <Select
+                          value={compareSourceId || '__none__'}
+                          onValueChange={(v) => setCompareSourceId(v === '__none__' ? '' : v)}
+                        >
+                          <SelectTrigger className={cn(limsDarkBarFieldClass, 'text-xs')}>
                             <SelectValue placeholder="Select parameter / reading" />
                           </SelectTrigger>
                           <SelectContent>
@@ -485,12 +547,12 @@ export function TestResultsEntryCell({
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Action</Label>
+                        <Label className="text-xs text-amber-100/90">Action</Label>
                         <Select
                           value={compareAction}
                           onValueChange={(v) => setCompareAction(v as TestResultCompareAction)}
                         >
-                          <SelectTrigger className="h-8 text-xs">
+                          <SelectTrigger className={cn(limsDarkBarFieldClass, 'text-xs')}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -503,10 +565,10 @@ export function TestResultsEntryCell({
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Result</Label>
+                        <Label className="text-xs text-amber-100/90">Result</Label>
                         <Input
                           readOnly
-                          className="h-8 text-xs font-mono bg-background"
+                          className={cn(limsDarkBarFieldClass, 'font-mono text-xs')}
                           value={compareResultDisplay}
                           placeholder="—"
                         />
@@ -515,7 +577,7 @@ export function TestResultsEntryCell({
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 text-xs"
+                        className={cn(limsDarkBarBtnClass, 'h-8 text-xs')}
                         disabled={!compareResultDisplay || compareResultDisplay === '—'}
                         onClick={() => applyCompare('apply')}
                       >
@@ -523,51 +585,51 @@ export function TestResultsEntryCell({
                       </Button>
                       <Button
                         type="button"
-                        variant="secondary"
+                        variant="outline"
                         size="sm"
-                        className="h-8 text-xs"
+                        className={cn(limsDarkBarBtnClass, 'h-8 text-xs')}
                         disabled={!compareResultDisplay || compareResultDisplay === '—'}
                         onClick={() => applyCompare('add')}
                       >
                         Add
                       </Button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[11px] text-stone-400">
                       Uses selected statistic ({statLabel(statPicker)}) against the chosen field from this
                       section code.
                     </p>
                   </div>
                 )}
 
-                <div className="rounded-md border border-border/60 bg-background/70 p-3 space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="relative space-y-3 border border-amber-500/35 bg-stone-950/40 p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                     Compose reported result
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer rounded-md border border-border/50 px-2.5 py-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <label className="flex cursor-pointer items-center gap-2 border border-stone-500 bg-stone-800/60 px-2.5 py-2">
                       <input
                         type="checkbox"
-                        className="rounded border-input"
+                        className="rounded-none border-stone-500"
                         checked={composeOptions.includeLabels}
                         onChange={(e) =>
                           setComposeOptions((o) => ({ ...o, includeLabels: e.target.checked }))
                         }
                       />
-                      <span className="text-xs">Include labels</span>
+                      <span className="text-xs text-amber-50">Include labels</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer rounded-md border border-border/50 px-2.5 py-2">
+                    <label className="flex cursor-pointer items-center gap-2 border border-stone-500 bg-stone-800/60 px-2.5 py-2">
                       <input
                         type="checkbox"
-                        className="rounded border-input"
+                        className="rounded-none border-stone-500"
                         checked={composeOptions.includeStat}
                         onChange={(e) =>
                           setComposeOptions((o) => ({ ...o, includeStat: e.target.checked }))
                         }
                       />
-                      <span className="text-xs">Include statistic</span>
+                      <span className="text-xs text-amber-50">Include statistic</span>
                     </label>
                     <div className="space-y-1">
-                      <Label className="text-xs">Separator</Label>
+                      <Label className="text-xs text-amber-100/90">Separator</Label>
                       <Select
                         value={composeOptions.separator}
                         onValueChange={(v) =>
@@ -577,7 +639,7 @@ export function TestResultsEntryCell({
                           }))
                         }
                       >
-                        <SelectTrigger className="h-8 text-xs">
+                        <SelectTrigger className={cn(limsDarkBarFieldClass, 'text-xs')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -595,7 +657,7 @@ export function TestResultsEntryCell({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="text-xs h-8"
+                      className={cn(limsDarkBarBtnClass, 'h-8 text-xs')}
                       onClick={() => applyComposed({ includeLabels: false, includeStat: false })}
                     >
                       Values only
@@ -604,7 +666,7 @@ export function TestResultsEntryCell({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="text-xs h-8"
+                      className={cn(limsDarkBarBtnClass, 'h-8 text-xs')}
                       onClick={() => applyComposed({ includeLabels: true, includeStat: false })}
                     >
                       With labels
@@ -613,7 +675,7 @@ export function TestResultsEntryCell({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="text-xs h-8"
+                      className={cn(limsDarkBarBtnClass, 'h-8 text-xs')}
                       onClick={() => applyComposed({ includeLabels: false, includeStat: true })}
                     >
                       With statistic
@@ -621,7 +683,7 @@ export function TestResultsEntryCell({
                     <Button
                       type="button"
                       size="sm"
-                      className="text-xs h-8"
+                      className={cn(limsPrimaryBtnClass, 'h-8 text-xs')}
                       onClick={() => applyComposed()}
                     >
                       Apply composed result
@@ -631,11 +693,47 @@ export function TestResultsEntryCell({
               </div>
             )}
 
-            <div className="space-y-1.5 rounded-md border border-primary/20 bg-primary/5 p-3">
-              <Label htmlFor="reported-result">Reported result (saved value)</Label>
+            <div className="space-y-2 border-2 border-stone-500 bg-stone-50 p-3 shadow-sm ring-1 ring-amber-700/20">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label
+                  htmlFor="reported-result"
+                  className="text-[11px] font-bold uppercase tracking-[0.14em] text-stone-700"
+                >
+                  Reported result (saved value)
+                </Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    'h-7 gap-1.5 rounded-none border-amber-700/45 px-2 text-[11px] font-semibold text-[#92400e] hover:bg-[#f3e9d8]',
+                    reportedCalcOpen && 'border-amber-700 bg-[#f3e9d8]',
+                  )}
+                  onClick={() => setReportedCalcOpen((o) => !o)}
+                  aria-expanded={reportedCalcOpen}
+                  aria-label="Open calculator using section readings"
+                  title="Calculate using this section’s test parameters and individual readings"
+                >
+                  <Calculator className="h-3.5 w-3.5" />
+                  Calculator
+                </Button>
+              </div>
+              {reportedCalcOpen ? (
+                <div className="border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 p-2 shadow-sm ring-1 ring-amber-700/20">
+                  <TestResultMiniCalculator
+                    decimalPlaces={decimalPlaces}
+                    references={calculatorReferences}
+                    onApplyReported={(val) => {
+                      setSelectedStat('manual')
+                      setReported(val)
+                      setReportedCalcOpen(false)
+                    }}
+                  />
+                </div>
+              ) : null}
               <Input
                 id="reported-result"
-                className="h-9"
+                className={limsFieldClass}
                 value={reported}
                 onChange={(e) => {
                   setSelectedStat('manual')
@@ -643,18 +741,12 @@ export function TestResultsEntryCell({
                 }}
                 placeholder="Final value for report / review"
               />
-              <p className="text-xs text-muted-foreground">
-                Statistic value is preview only until you click Apply (replace) or Add (append).
-              </p>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={handleSave}>
-              Save result
+          <DialogFooter className="gap-2 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 sm:justify-end">
+            <Button type="button" className={limsPrimaryBtnClass} onClick={handleSave}>
+              Save & Close
             </Button>
           </DialogFooter>
         </DialogContent>

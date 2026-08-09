@@ -133,7 +133,7 @@ function TypeAUncertaintySection({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
         <div className="min-w-0 flex-1 rounded-md border border-border">
           <table className="w-full table-fixed text-xs">
-            <thead className="bg-muted/50">
+            <thead className="bg-stone-800">
               <tr>
                 <th className="p-2 text-center font-medium w-[calc(50%-1.5rem)]">Reading</th>
                 <th className="p-2 text-center font-medium w-[calc(50%-1.5rem)]">
@@ -333,7 +333,7 @@ function TypeBUncertaintySection({
 
       <div className="overflow-x-auto rounded-md border border-border">
         <table className="w-full min-w-[640px] text-xs">
-          <thead className="bg-muted/50">
+          <thead className="bg-stone-800">
             <tr>
               <th className="p-2 text-left font-medium w-28">Type of Source</th>
               <th className="p-2 text-center font-medium">Source Name</th>

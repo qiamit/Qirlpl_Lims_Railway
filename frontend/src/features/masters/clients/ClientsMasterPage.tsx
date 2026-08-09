@@ -6,6 +6,7 @@ import { ClientsTableFooterBar } from './ClientsFooterBar'
 import { ClientsForm } from './ClientsForm'
 import { ClientsHeaderBar } from './ClientsHeaderBar'
 import { ClientsTable } from './ClientsTable'
+import { clientPageShellClass } from './clientsFormUi'
 import { buildClientsAssistantContext } from './buildClientsAssistantContext'
 import {
   DEFAULT_COUNTRY,
@@ -48,7 +49,7 @@ export default function ClientsMasterPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(5)
   const [jumpTo, setJumpTo] = useState('')
 
   const [states, setStates] = useState<Array<{ id: string; label: string }>>(() => [{ id: 'default-state', label: DEFAULT_STATE }])
@@ -108,7 +109,7 @@ export default function ClientsMasterPage() {
       const { data, error } = await supabase
         .from('clients')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('company_name', { ascending: true })
 
       if (error) throw error
 
@@ -121,6 +122,7 @@ export default function ClientsMasterPage() {
           payment_term: (r.payment_term ?? '100 % Advance') as ClientRow['payment_term'],
           remark: (r.remark ?? null) as ClientRow['remark'],
         }))
+        .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || '', undefined, { sensitivity: 'base' }))
 
       setRows(list)
 
@@ -334,6 +336,134 @@ export default function ClientsMasterPage() {
     })()
   }
 
+  const CLIENT_FIELD_BY_CATEGORY: Record<string, keyof ClientRow | null> = {
+    state: 'state',
+    country: 'country',
+    district: 'district',
+    pin_code: 'pin_code',
+    country_code: 'country_code',
+    company_type: 'company_type',
+    company_scale: 'company_scale',
+    payment_term: 'payment_term',
+  }
+
+  const updateMasterOption = (id: string, category: string, rawLabel: string) => {
+    const name =
+      category === 'pin_code'
+        ? rawLabel.trim().replace(/[^0-9]/g, '').slice(0, 6)
+        : category === 'country_code'
+          ? (() => {
+              const raw = normalizeText(rawLabel)
+              return raw ? (raw.startsWith('+') ? raw : `+${raw}`) : ''
+            })()
+          : normalizeText(rawLabel)
+    if (!name || !id) return
+
+    void (async () => {
+      try {
+        const findOldLabel = () => {
+          if (category === 'state') return states.find((x) => x.id === id)?.label
+          if (category === 'country') return countries.find((x) => x.id === id)?.label
+          if (category === 'district') return districts.find((x) => x.id === id)?.label
+          if (category === 'pin_code') return pinCodes.find((x) => x.id === id)?.label
+          if (category === 'country_code') return countryCodes.find((x) => x.id === id)?.value
+          if (category === 'company_type') return companyTypes.find((x) => x.id === id)?.label
+          if (category === 'company_scale') return companyScales.find((x) => x.id === id)?.label
+          if (category === 'payment_term') return paymentTerms.find((x) => x.id === id)?.label
+          return undefined
+        }
+        const oldLabel = findOldLabel()
+
+        if (!id.startsWith('default-') && !id.startsWith('db-') && !id.startsWith('tmp-')) {
+          const { error } = await supabase
+            .from('client_master_options')
+            .update({ label: name, value: name })
+            .eq('id', id)
+          if (error) throw error
+        }
+
+        const sortByLabel = <T extends { label: string }>(list: T[]) =>
+          [...list].sort((a, b) => a.label.localeCompare(b.label))
+
+        if (category === 'state') setStates((prev) => sortByLabel(prev.map((x) => (x.id === id ? { ...x, label: name } : x))))
+        if (category === 'country') setCountries((prev) => sortByLabel(prev.map((x) => (x.id === id ? { ...x, label: name } : x))))
+        if (category === 'district') setDistricts((prev) => sortByLabel(prev.map((x) => (x.id === id ? { ...x, label: name } : x))))
+        if (category === 'pin_code') setPinCodes((prev) => sortByLabel(prev.map((x) => (x.id === id ? { ...x, label: name } : x))))
+        if (category === 'country_code') {
+          setCountryCodes((prev) =>
+            prev.map((x) => (x.id === id ? { ...x, value: name, label: name } : x)),
+          )
+        }
+        if (category === 'company_type') setCompanyTypes((prev) => sortByLabel(prev.map((x) => (x.id === id ? { ...x, label: name } : x))))
+        if (category === 'company_scale') setCompanyScales((prev) => sortByLabel(prev.map((x) => (x.id === id ? { ...x, label: name } : x))))
+        if (category === 'payment_term') setPaymentTerms((prev) => sortByLabel(prev.map((x) => (x.id === id ? { ...x, label: name } : x))))
+
+        const clientField = CLIENT_FIELD_BY_CATEGORY[category]
+        if (clientField && oldLabel && oldLabel !== name) {
+          setForm((prev) => {
+            if (category === 'district' && prev.district === oldLabel) return { ...prev, district: name }
+            if (category === 'state' && prev.state === oldLabel) return { ...prev, state: name }
+            if (category === 'country' && prev.country === oldLabel) return { ...prev, country: name }
+            if (category === 'pin_code' && prev.pinCode === oldLabel) return { ...prev, pinCode: name }
+            if (category === 'country_code' && prev.countryCode === oldLabel) return { ...prev, countryCode: name }
+            if (category === 'company_type' && prev.companyType === oldLabel) {
+              return { ...prev, companyType: name as ClientFormType['companyType'] }
+            }
+            if (category === 'company_scale' && prev.companyScale === oldLabel) {
+              return { ...prev, companyScale: name as ClientFormType['companyScale'] }
+            }
+            if (category === 'payment_term' && prev.paymentTerm === oldLabel) {
+              return { ...prev, paymentTerm: name as ClientFormType['paymentTerm'] }
+            }
+            return prev
+          })
+
+          const { error: clientErr } = await supabase
+            .from('clients')
+            .update({ [clientField]: name })
+            .eq(clientField, oldLabel)
+          if (clientErr) throw clientErr
+          await loadClients()
+        }
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to update option')
+      } finally {
+        if (category === 'state') {
+          setNewStateName('')
+          setStateDialogOpen(false)
+        }
+        if (category === 'country') {
+          setNewCountryName('')
+          setCountryDialogOpen(false)
+        }
+        if (category === 'district') {
+          setNewDistrictName('')
+          setDistrictDialogOpen(false)
+        }
+        if (category === 'pin_code') {
+          setNewPinCode('')
+          setPinCodeDialogOpen(false)
+        }
+        if (category === 'country_code') {
+          setNewCountryCode('')
+          setCountryCodeDialogOpen(false)
+        }
+        if (category === 'company_type') {
+          setNewCompanyType('')
+          setCompanyTypeDialogOpen(false)
+        }
+        if (category === 'company_scale') {
+          setNewCompanyScale('')
+          setCompanyScaleDialogOpen(false)
+        }
+        if (category === 'payment_term') {
+          setNewPaymentTerm('')
+          setPaymentTermDialogOpen(false)
+        }
+      }
+    })()
+  }
+
   const pinAutoFill = useMemo(() => {
     const m = new Map<string, { district?: string; state?: string; country?: string }>()
     for (const r of rows) {
@@ -503,34 +633,38 @@ export default function ClientsMasterPage() {
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
+    const byName = (a: ClientRow, b: ClientRow) =>
+      (a.company_name || '').localeCompare(b.company_name || '', undefined, { sensitivity: 'base' })
 
-    if (!q) return rows
+    if (!q) return [...rows].sort(byName)
 
-    return rows.filter((r) => {
-      const blob = [
-        r.company_name,
-        r.gst_number ?? '',
-        r.company_type,
-        r.company_scale,
-        r.contact_person_name ?? '',
-        r.country_code ?? '',
-        r.mobile ?? '',
-        r.email ?? '',
-        r.address ?? '',
-        r.pin_code ?? '',
-        r.district ?? '',
-        r.state ?? '',
-        r.country ?? '',
-        String(r.opening_balance ?? ''),
-        r.balance_type,
-        r.payment_term,
-        r.remark ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
+    return rows
+      .filter((r) => {
+        const blob = [
+          r.company_name,
+          r.gst_number ?? '',
+          r.company_type,
+          r.company_scale,
+          r.contact_person_name ?? '',
+          r.country_code ?? '',
+          r.mobile ?? '',
+          r.email ?? '',
+          r.address ?? '',
+          r.pin_code ?? '',
+          r.district ?? '',
+          r.state ?? '',
+          r.country ?? '',
+          String(r.opening_balance ?? ''),
+          r.balance_type,
+          r.payment_term,
+          r.remark ?? '',
+        ]
+          .join(' ')
+          .toLowerCase()
 
-      return blob.includes(q)
-    })
+        return blob.includes(q)
+      })
+      .sort(byName)
   }, [rows, search])
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
@@ -770,7 +904,7 @@ export default function ClientsMasterPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:space-y-5 sm:p-4 md:p-6">
+    <div className={clientPageShellClass}>
       <ClientsHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -782,30 +916,26 @@ export default function ClientsMasterPage() {
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none [&>button]:!rounded-none [&>button]:opacity-100"
           aria-describedby={undefined}
         >
-          <div className="relative bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
               style={{
                 backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
+                  'radial-gradient(circle at 12% 20%, rgba(217,119,6,0.45), transparent 42%), radial-gradient(circle at 88% 0%, rgba(251,191,36,0.25), transparent 35%)',
               }}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                {editingId ? 'Client Registry · Edit Entry' : 'Client Registry · New Entry'}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId ? 'Edit Client' : 'Add New Client'}
               </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
             {saveMessage ? (
               <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {saveMessage}
@@ -828,30 +958,35 @@ export default function ClientsMasterPage() {
             newStateName={newStateName}
             setNewStateName={setNewStateName}
             onAddState={handleAddState}
+            onUpdateState={(id: string) => updateMasterOption(id, 'state', newStateName)}
             onDeleteState={(id: string) => deleteMasterOption(id, 'state')}
             countryDialogOpen={countryDialogOpen}
             setCountryDialogOpen={setCountryDialogOpen}
             newCountryName={newCountryName}
             setNewCountryName={setNewCountryName}
             onAddCountry={handleAddCountry}
+            onUpdateCountry={(id: string) => updateMasterOption(id, 'country', newCountryName)}
             onDeleteCountry={(id: string) => deleteMasterOption(id, 'country')}
             districtDialogOpen={districtDialogOpen}
             setDistrictDialogOpen={setDistrictDialogOpen}
             newDistrictName={newDistrictName}
             setNewDistrictName={setNewDistrictName}
             onAddDistrict={handleAddDistrict}
+            onUpdateDistrict={(id: string) => updateMasterOption(id, 'district', newDistrictName)}
             onDeleteDistrict={(id: string) => deleteMasterOption(id, 'district')}
             pinCodeDialogOpen={pinCodeDialogOpen}
             setPinCodeDialogOpen={setPinCodeDialogOpen}
             newPinCode={newPinCode}
             setNewPinCode={setNewPinCode}
             onAddPinCode={handleAddPinCode}
+            onUpdatePinCode={(id: string) => updateMasterOption(id, 'pin_code', newPinCode)}
             onDeletePinCode={(id: string) => deleteMasterOption(id, 'pin_code')}
             countryCodeDialogOpen={countryCodeDialogOpen}
             setCountryCodeDialogOpen={setCountryCodeDialogOpen}
             newCountryCode={newCountryCode}
             setNewCountryCode={setNewCountryCode}
             onAddCountryCode={handleAddCountryCode}
+            onUpdateCountryCode={(id: string) => updateMasterOption(id, 'country_code', newCountryCode)}
             onDeleteCountryCode={(id: string) => deleteMasterOption(id, 'country_code')}
             companyTypeDialogOpen={companyTypeDialogOpen}
             setCompanyTypeDialogOpen={setCompanyTypeDialogOpen}
@@ -865,6 +1000,7 @@ export default function ClientsMasterPage() {
                 setCompanyTypeDialogOpen(false)
               })
             }
+            onUpdateCompanyType={(id: string) => updateMasterOption(id, 'company_type', newCompanyType)}
             onDeleteCompanyType={(id: string) => deleteMasterOption(id, 'company_type')}
             companyScaleDialogOpen={companyScaleDialogOpen}
             setCompanyScaleDialogOpen={setCompanyScaleDialogOpen}
@@ -878,6 +1014,7 @@ export default function ClientsMasterPage() {
                 setCompanyScaleDialogOpen(false)
               })
             }
+            onUpdateCompanyScale={(id: string) => updateMasterOption(id, 'company_scale', newCompanyScale)}
             onDeleteCompanyScale={(id: string) => deleteMasterOption(id, 'company_scale')}
             paymentTermDialogOpen={paymentTermDialogOpen}
             setPaymentTermDialogOpen={setPaymentTermDialogOpen}
@@ -891,6 +1028,7 @@ export default function ClientsMasterPage() {
                 setPaymentTermDialogOpen(false)
               })
             }
+            onUpdatePaymentTerm={(id: string) => updateMasterOption(id, 'payment_term', newPaymentTerm)}
             onDeletePaymentTerm={(id: string) => deleteMasterOption(id, 'payment_term')}
             canSave={canSave}
             saveLoading={saveLoading}

@@ -218,8 +218,8 @@ export function formatClientContact(
   row: Pick<ClientRow, 'contact_person_name' | 'email' | 'country_code' | 'mobile'>,
 ): string {
   const { name, email, mobile } = formatClientContactLines(row)
-  const parts = [name, email, mobile].filter((part) => part !== '-')
-  return parts.length > 0 ? parts.join(', ') : '-'
+  const parts = [name, email, mobile].filter((part) => part.trim().length > 0)
+  return parts.length > 0 ? parts.join(', ') : ''
 }
 
 export function formatClientContactLines(
@@ -227,8 +227,8 @@ export function formatClientContactLines(
 ): { name: string; email: string; mobile: string } {
   const phone = toContinuousText(`${row.country_code || ''} ${row.mobile || ''}`)
   return {
-    name: row.contact_person_name?.trim() ? toContinuousText(row.contact_person_name) : '-',
-    email: row.email?.trim() ? toContinuousText(row.email) : '-',
-    mobile: phone || '-',
+    name: row.contact_person_name?.trim() ? toContinuousText(row.contact_person_name) : '',
+    email: row.email?.trim() ? toContinuousText(row.email) : '',
+    mobile: phone || '',
   }
 }

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsPrimaryBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import type { SectionCompareSource } from './sectionCompareSources'
 import { formatNumber } from './testResultValues'
 
 function evaluateExpression(expr: string): number | null {
@@ -28,11 +30,14 @@ export function TestResultMiniCalculator({
   decimalPlaces,
   onInsertReading,
   onApplyReported,
+  references = [],
   className,
 }: {
   decimalPlaces: number
-  onInsertReading: (value: string) => void
+  onInsertReading?: (value: string) => void
   onApplyReported: (value: string) => void
+  /** Section test parameters / individual readings to insert into the expression. */
+  references?: SectionCompareSource[]
   className?: string
 }) {
   const [expression, setExpression] = useState('')
@@ -42,6 +47,10 @@ export function TestResultMiniCalculator({
 
   const appendToken = (token: string) => {
     setExpression((prev) => prev + token)
+  }
+
+  const insertReference = (source: SectionCompareSource) => {
+    appendToken(formatNumber(source.value, decimalPlaces))
   }
 
   const handleKey = (key: string) => {
@@ -61,26 +70,66 @@ export function TestResultMiniCalculator({
   }
 
   return (
-    <div className={cn('rounded-md border border-border/60 bg-background p-2.5 space-y-2', className)}>
+    <div
+      className={cn(
+        'space-y-2 border border-amber-500/35 bg-stone-950/40 p-2.5 text-white',
+        className,
+      )}
+    >
+      {references.length > 0 ? (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200">
+            Section references
+          </p>
+          <div className="max-h-28 space-y-1 overflow-y-auto pr-1">
+            {references.map((source) => (
+              <button
+                key={source.id}
+                type="button"
+                className="flex w-full items-center justify-between gap-2 border border-stone-500 bg-stone-800/70 px-2 py-1.5 text-left text-[11px] text-amber-50 hover:bg-amber-500/20"
+                title={`Insert ${formatNumber(source.value, decimalPlaces)}${source.unit ? ` ${source.unit}` : ''}`}
+                onClick={() => insertReference(source)}
+              >
+                <span className="min-w-0 truncate">{source.label}</span>
+                <span className="shrink-0 font-mono tabular-nums text-amber-100">
+                  {formatNumber(source.value, decimalPlaces)}
+                  {source.unit ? ` ${source.unit}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11px] text-stone-400">
+          No numeric readings in this section yet. Add individual readings to use as references.
+        </p>
+      )}
+
       <Input
         value={expression}
         onChange={(e) => setExpression(e.target.value)}
-        placeholder="Enter expression e.g. (5.2 + 4.8) / 2"
-        className="h-8 text-xs font-mono"
+        placeholder="Expression e.g. (12.1 + 11.9) / 2"
+        className={cn(limsDarkBarFieldClass, 'font-mono text-xs')}
         inputMode="decimal"
       />
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="text-muted-foreground">Result</span>
-        <span className="font-mono font-semibold tabular-nums">{formattedResult || '—'}</span>
+        <span className="text-amber-100/90">Result</span>
+        <span className="font-mono font-semibold tabular-nums text-amber-50">
+          {formattedResult || '—'}
+        </span>
       </div>
       <div className="grid grid-cols-4 gap-1">
         {KEYS.flat().map((key) => (
           <Button
             key={key}
             type="button"
-            variant={key === '=' ? 'default' : 'outline'}
+            variant="outline"
             size="sm"
-            className="h-8 text-xs px-0"
+            className={cn(
+              limsDarkBarBtnClass,
+              'h-8 px-0 text-xs',
+              key === '=' && 'border-amber-400 bg-amber-500/25 text-amber-50',
+            )}
             onClick={() => handleKey(key)}
           >
             {key}
@@ -88,24 +137,25 @@ export function TestResultMiniCalculator({
         ))}
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
+        {onInsertReading ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(limsDarkBarBtnClass, 'h-8 flex-1 text-xs')}
+            disabled={!formattedResult}
+            onClick={() => {
+              if (!formattedResult) return
+              onInsertReading(formattedResult)
+            }}
+          >
+            Add as reading
+          </Button>
+        ) : null}
         <Button
           type="button"
-          variant="outline"
           size="sm"
-          className="h-8 text-xs flex-1"
-          disabled={!formattedResult}
-          onClick={() => {
-            if (!formattedResult) return
-            onInsertReading(formattedResult)
-          }}
-        >
-          Add as reading
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="h-8 text-xs flex-1"
+          className={cn(limsPrimaryBtnClass, 'h-8 flex-1 text-xs')}
           disabled={!formattedResult}
           onClick={() => {
             if (!formattedResult) return

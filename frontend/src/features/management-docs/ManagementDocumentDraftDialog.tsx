@@ -148,7 +148,7 @@ export function ManagementDocumentDraftDialog({
         )}
       >
         <div className="relative shrink-0 bg-slate-900 px-5 py-4 text-white sm:px-6">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
             <DialogHeader className="text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
@@ -179,7 +179,7 @@ export function ManagementDocumentDraftDialog({
               <div
                 key={block.key}
                 className={cn(
-                  'flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5',
+                  'flex flex-col gap-3 overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 p-4 shadow-sm sm:p-5',
                   formBlocks.length === 1 ? 'min-h-[55vh]' : '',
                 )}
               >

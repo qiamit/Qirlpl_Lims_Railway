@@ -14,11 +14,34 @@ export const UNDER_TESTING_SUBMITTED_STATUS_LABEL: Record<UnderTestingSubmittedS
 }
 
 /**
+ * Section left "Pending for Results" (locked / later sample stages).
+ * Matches Sample Under Testing table partition.
+ */
+export function isSectionSubmittedForReview(
+  row: Pick<
+    TestAllocationRow,
+    'referredBackFromReview' | 'sampleStage' | 'resultsLocked' | 'sectionReviewApproved'
+  >,
+): boolean {
+  if (row.referredBackFromReview) return false
+  const stage = String(row.sampleStage ?? '')
+    .trim()
+    .toLowerCase()
+  // Issued / completed work must never sit in Pending for Results
+  if (stage === 'completed') return true
+  if (stage === 'report_preparation' && (row.resultsLocked || row.sectionReviewApproved)) return true
+  return Boolean(row.resultsLocked)
+}
+
+/**
  * Workflow progress for a section that has left "Pending for Results"
  * (sent for review / approved / later stages).
  */
 export function getUnderTestingSubmittedStatus(
-  row: Pick<TestAllocationRow, 'sampleStage' | 'sectionReviewApproved' | 'resultsReviewerName' | 'resultsReviewStatus'>,
+  row: Pick<
+    TestAllocationRow,
+    'sampleStage' | 'sectionReviewApproved' | 'resultsReviewerName' | 'resultsReviewStatus'
+  >,
 ): UnderTestingSubmittedStatus {
   const stage = String(row.sampleStage ?? '')
     .trim()

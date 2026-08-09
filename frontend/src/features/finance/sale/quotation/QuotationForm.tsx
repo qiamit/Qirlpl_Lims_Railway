@@ -276,7 +276,7 @@ export function QuotationFormView({
         <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
           <table className="min-w-[780px] w-full border-collapse text-sm">
             <thead>
-              <tr className="bg-muted/50">
+              <tr className="bg-stone-800">
                 <th className="border border-border px-2 py-2 text-left text-xs">Description</th>
                 <th className="border border-border px-2 py-2 text-center text-xs">HSN/SAC</th>
                 <th className="border border-border px-2 py-2 text-center text-xs">Qty</th>

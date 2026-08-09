@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -308,7 +309,7 @@ export default function UserManagementMasterPage() {
   }, [filteredUsers, page, pageSize])
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <UserManagementHeaderBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

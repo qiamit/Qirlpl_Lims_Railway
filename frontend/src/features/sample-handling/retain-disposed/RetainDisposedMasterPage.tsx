@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
@@ -242,7 +243,7 @@ export default function RetainDisposedMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <RetainDisposedHeaderBar
         search={search}
         onSearchChange={setSearch}

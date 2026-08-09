@@ -12,6 +12,7 @@ import {
   type TestReportPartBDetails,
 } from './testReportPartB'
 import {
+  REPORT_PART_HEADING_CLASS,
   REPORT_PART_INNER_CLASS,
   REPORT_PART_INNER_DIVIDE,
   REPORT_PART_OUTER_CLASS,
@@ -77,7 +78,7 @@ export function TestReportSupplementaryGrid({
 
   return (
     <div className={REPORT_PART_OUTER_CLASS}>
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
+      <h3 className={REPORT_PART_HEADING_CLASS}>
         Part B — Supplementary Information
       </h3>
       <div className={`${REPORT_PART_INNER_CLASS} text-sm`}>

@@ -62,7 +62,7 @@ export function splitIsCodeHeaderLines(
   const rev = revisionYear?.trim()
   const partMatch = num.match(/^(.*?)(\s+Part\s+[\w.-]+)$/i)
   if (partMatch) {
-    const right = rev ? `${partMatch[2].trim()} : ${rev}` : partMatch[2].trim()
+    const right = rev ? `${partMatch[2].trim()}: ${rev}` : partMatch[2].trim()
     return { left: partMatch[1].trim(), right }
   }
   if (rev) {

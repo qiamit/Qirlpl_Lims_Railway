@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { AiSettingsHeaderBar, type AiSettingsTab } from './AiSettingsHeaderBar'
 import { AiModelsPanel, type AiModelsPanelHandle } from './AiModelsPanel'
@@ -21,7 +22,7 @@ export default function AiSettingsMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <Tabs
         value={activeTab}
         onValueChange={(v) => {

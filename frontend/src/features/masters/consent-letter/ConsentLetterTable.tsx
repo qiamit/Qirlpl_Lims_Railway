@@ -40,15 +40,15 @@ export function ConsentLetterTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 overflow-hidden">
       {error ? <p className="px-4 pt-4 text-sm text-destructive">{error}</p> : null}
       {loading ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
       ) : (
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="text-xs w-10 text-center">
+            <TableRow className="bg-stone-800 hover:bg-stone-800">
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 w-10 text-center">
                 <input
                   type="checkbox"
                   aria-label="Select all"
@@ -62,19 +62,19 @@ export function ConsentLetterTable({
               <TableHead className="text-xs" style={{ width: '14%' }}>
                 Letter No
               </TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '10%' }}>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center" style={{ width: '10%' }}>
                 Date
               </TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '22%' }}>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center" style={{ width: '22%' }}>
                 Client
               </TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '18%' }}>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center" style={{ width: '18%' }}>
                 IS Code
               </TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '12%' }}>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center" style={{ width: '12%' }}>
                 Test Parameters
               </TableHead>
-              <TableHead className="text-xs text-center" style={{ width: '16%' }}>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center" style={{ width: '16%' }}>
                 Action
               </TableHead>
             </TableRow>

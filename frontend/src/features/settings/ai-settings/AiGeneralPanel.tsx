@@ -178,7 +178,7 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card px-5 py-8 text-center shadow-sm">
+      <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 px-5 py-8 text-center shadow-sm">
         <p className="text-sm text-muted-foreground">Loading settings…</p>
       </div>
     )
@@ -201,7 +201,7 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
             backgroundSize: '20px 20px',
           }}
         />
-        <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+        <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
         <div className="relative">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">AI Registry · Preferences</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">General Setting</h2>

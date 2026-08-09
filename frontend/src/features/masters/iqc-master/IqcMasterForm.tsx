@@ -1021,7 +1021,7 @@ export function IqcMasterForm({
             </div>
 
             {activeFieldForSymbols && (
-              <div className="col-span-12 bg-muted/50 border rounded-lg p-3 space-y-2">
+              <div className="col-span-12 bg-stone-800 border rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-muted-foreground">
                     Insert Symbol into{' '}

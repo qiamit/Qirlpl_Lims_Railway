@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { IqcPlanFooterBar } from './IqcPlanFooterBar'
 import { IqcPlanHeaderBar } from './IqcPlanHeaderBar'
 import { IqcPlanRecordDialog } from './IqcPlanRecordDialog'
@@ -167,7 +168,7 @@ export default function IqcPlanMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <IqcPlanHeaderBar
         search={search}
         onSearchChange={(value) => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
 import {
@@ -12,9 +13,10 @@ import {
 } from './TestReportReferbackToReviewDialog'
 import { referbackSectionFromReportPreparation } from './referbackFromReportPreparation'
 import { getSampleWorkflowStatusLabel } from '@/features/sample-handling/sampleWorkflowStatus'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import type { SampleStage } from '@/features/sample-handling/types'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
 import { isSampleVisibleInReportPreparation } from './sampleReportReadiness'
@@ -224,9 +226,10 @@ export default function TestReportPreparationMasterPage() {
           .in('id', isIds)
         for (const c of Array.isArray(isData) ? isData : []) {
           const row = c as { id: string; is_number?: string; revision_year?: string | null }
-          const label = row.revision_year
-            ? `${row.is_number ?? ''} : ${row.revision_year}`
-            : (row.is_number ?? row.id)
+          const label =
+            formatIsCodeLabelFromParts(row.is_number, row.revision_year) ||
+            row.is_number ||
+            row.id
           isMap.set(row.id, label)
         }
       }
@@ -774,7 +777,7 @@ export default function TestReportPreparationMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <TestReportPreparationHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -927,35 +930,60 @@ export default function TestReportPreparationMasterPage() {
           setResultsViewOpen(o)
         }}
       >
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Test Results — {resultsViewRow ? fmt(resultsViewRow.srfNumber) : '—'}
-            </DialogTitle>
-          </DialogHeader>
-          {resultsViewRow && (
-            <div className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                Client: <span className="font-medium text-foreground">{fmt(resultsViewRow.clientName)}</span>
-                {' · '}
-                IS Code: <span className="font-medium text-foreground">{fmt(resultsViewRow.isCodeLabel)}</span>
-              </p>
-              {resultsViewLoading ? (
-                <p className="text-muted-foreground">Loading completed test results…</p>
-              ) : resultsViewRows.length === 0 ? (
-                <p className="text-muted-foreground">No completed test parameter results for this SRF.</p>
-              ) : (
-                <ReportResultsTable
-                  rows={resultsViewRows}
-                  showScope
-                  groupBySectionCode
-                  sampleId={resultsViewRow.id}
-                  sectionCodeEditable
-                  onSectionCodeUpdated={handleResultsViewSectionCodeUpdated}
-                />
-              )}
-            </div>
+        <DialogContent
+          persistOnFocusLoss
+          aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'flex max-h-[90vh] w-[min(96vw,72rem)] max-w-6xl flex-col',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
           )}
+        >
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <DialogTitle className="min-w-0 shrink text-base font-semibold tracking-tight text-white sm:text-lg">
+                  Test Results — {resultsViewRow ? fmt(resultsViewRow.srfNumber) : '—'}
+                </DialogTitle>
+                {resultsViewRow ? (
+                  <p className="ml-auto max-w-full text-right text-xs text-stone-300">
+                    Client: <span className="font-medium text-amber-100">{fmt(resultsViewRow.clientName)}</span>
+                    {' · '}
+                    IS Code: <span className="font-medium text-amber-100">{fmt(resultsViewRow.isCodeLabel)}</span>
+                  </p>
+                ) : null}
+              </div>
+            </DialogHeader>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/90 to-stone-50 px-4 py-4 sm:px-5">
+            {resultsViewRow && (
+              <div className="space-y-3 text-sm">
+                {resultsViewLoading ? (
+                  <p className="text-stone-600">Loading completed test results…</p>
+                ) : resultsViewRows.length === 0 ? (
+                  <p className="rounded-none border border-dashed border-stone-400 bg-stone-50 px-3 py-6 text-center text-stone-500">
+                    No completed test parameter results for this SRF.
+                  </p>
+                ) : (
+                  <ReportResultsTable
+                    rows={resultsViewRows}
+                    showScope
+                    groupBySectionCode
+                    sampleId={resultsViewRow.id}
+                    sectionCodeEditable
+                    onSectionCodeUpdated={handleResultsViewSectionCodeUpdated}
+                  />
+                )}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

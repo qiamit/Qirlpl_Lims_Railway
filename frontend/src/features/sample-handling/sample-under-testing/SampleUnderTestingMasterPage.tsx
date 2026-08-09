@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import type { TestAllocationRow } from '../types'
 import type { UnderTestingFormState } from './SampleUnderTestingForm'
 import { SampleUnderTestingTable } from './SampleUnderTestingTable'
+import { SampleUnderTestingHeaderBar } from './SampleUnderTestingHeaderBar'
+import { SampleUnderTestingFooterBar } from './SampleUnderTestingFooterBar'
 import {
   SectionResultsEntryDialog,
   type SectionResultsDraft,
@@ -18,19 +22,14 @@ import {
 } from './insertAllocatedTestsIntoSection'
 import { SampleUnderTestingForm } from './SampleUnderTestingForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
   deleteTestAllocationsForSections,
 } from '@/features/sample-handling/shared/deleteSampleRecords'
-import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/SampleHandlingDeleteButton'
-import { isDepartmentTestingEngineer, type UserAccessContext } from '@/lib/moduleAccess'
-import { SampleUnderTestingAssistant } from './SampleUnderTestingAssistant'
 import { sortParametersByClause } from './sectionParameterRows'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 import { TestParameterViewDialog } from '../shared/TestParameterViewDialog'
@@ -40,7 +39,7 @@ import {
   isParameterSentForReview,
   shouldHideFromSampleUnderTesting,
   buildLegacyResultsReviewSampleIds,
-  fetchSentForReviewTestAllocationIds,
+  collectSentForReviewAllocationIds,
 } from './sampleUnderTestingVisibility'
 import {
   isActiveReviewerName,
@@ -48,16 +47,14 @@ import {
   RESULTS_REVIEW_STATUS_UNDER_REVIEW,
 } from '../results-under-review/resultsUnderReviewPartitions'
 import { pickTestAllocationPerSection } from '../shared/pickTestAllocationPerSection'
-import { fetchByIdChunks } from '../shared/fetchByIdChunks'
+import { fetchByIdChunks, fetchAllByRange } from '../shared/fetchByIdChunks'
 import {
-  buildAssignmentFilterHiddenEntries,
   buildLoadDiagnostics,
-  mergeDiagnosticEntries,
   type SampleUnderTestingLoadDiagnostics,
 } from './sampleUnderTestingDiagnostics'
-import { HiddenSrfsDiagnosticBadge } from './HiddenSrfsDiagnosticBadge'
 import { syncSampleReportPreparationStage } from '@/features/sample-handling/report-preparation/sampleReportReadiness'
 import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
+import { isSectionSubmittedForReview } from './underTestingSectionStatus'
 
 type ReviewUser = { id: string; name: string; designation: string; departmentName: string }
 
@@ -84,16 +81,15 @@ type LoadedTestAlloc = {
 }
 
 export default function SampleUnderTestingMasterPage() {
-  const { user, profileName, designation, departmentName, profileReady } = useAuth()
+  const { user, profileName, designation, profileReady } = useAuth()
   const showDelete = canDeleteSampleHandlingRecords(designation)
-  const access: UserAccessContext = { designation, departmentName }
-  const forceOwnAssignmentsOnly = isDepartmentTestingEngineer(access)
   const [rows, setRows] = useState<TestAllocationRow[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
+  const [jumpTo, setJumpTo] = useState('')
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   const [formOpen, setFormOpen] = useState(false)
@@ -136,8 +132,6 @@ export default function SampleUnderTestingMasterPage() {
   const [reviewUsersLoading, setReviewUsersLoading] = useState(false)
   const [reviewSubmitLoading, setReviewSubmitLoading] = useState(false)
   const [reviewSubmitError, setReviewSubmitError] = useState<string | null>(null)
-  /** Off for Lab Director (can show all). On for everyone else — only Test Allocation rows where Select Employee = you. */
-  const [onlyMyAssignments, setOnlyMyAssignments] = useState(false)
   const [loadDiagnostics, setLoadDiagnostics] = useState<SampleUnderTestingLoadDiagnostics | null>(
     null,
   )
@@ -151,15 +145,18 @@ export default function SampleUnderTestingMasterPage() {
     setListError(null)
     setListLoading(true)
     try {
-      const { data: testAllocData, error: taErr } = await supabase
-        .from('test_allocations')
-        .select(
-          'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing, referred_back_from_review',
-        )
-        .eq('sent_for_testing', true)
-        .order('created_at', { ascending: false })
-      if (taErr) throw taErr
-      const testAllocsRaw = Array.isArray(testAllocData) ? testAllocData : []
+      const testAllocsRaw = await fetchAllByRange(async (from, to) => {
+        const { data, error } = await supabase
+          .from('test_allocations')
+          .select(
+            'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, test_parameter_ids, sent_for_testing, referred_back_from_review',
+          )
+          .eq('sent_for_testing', true)
+          .order('id', { ascending: true })
+          .range(from, to)
+        if (error) throw error
+        return Array.isArray(data) ? data : []
+      })
       if (testAllocsRaw.length === 0) {
         setRows([])
         setLoadDiagnostics({
@@ -171,49 +168,79 @@ export default function SampleUnderTestingMasterPage() {
         })
         return
       }
-      const allocIds = testAllocsRaw.map((t: { sample_allocation_id: string }) => t.sample_allocation_id)
-      const { data: allocData, error: allocErr } = await supabase
-        .from('sample_allocations')
-        .select('id, sample_id, section_code, allocation_date, department, designation')
-        .in('id', allocIds)
-      if (allocErr) throw allocErr
-      const allocations = Array.isArray(allocData) ? allocData : []
+      const allocIds = [
+        ...new Set(
+          testAllocsRaw
+            .map((t: { sample_allocation_id: string }) => t.sample_allocation_id)
+            .filter(Boolean),
+        ),
+      ]
+      const allocations = await fetchByIdChunks(allocIds, 100, async (chunkIds) => {
+        const { data: allocData, error: allocErr } = await supabase
+          .from('sample_allocations')
+          .select('id, sample_id, section_code, allocation_date, department, designation')
+          .in('id', chunkIds)
+        if (allocErr) throw allocErr
+        return Array.isArray(allocData) ? allocData : []
+      })
       const allocMap = new Map(allocations.map((a: { id: string }) => [a.id, a]))
       const sampleIds = [...new Set(allocations.map((a: { sample_id: string }) => a.sample_id))]
-      const { data: sampleData, error: sampleErr } = await supabase
-        .from('samples')
-        .select(
-          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, stage, sample_description, sample_declaration',
-        )
-        .in('id', sampleIds)
-      if (sampleErr) throw sampleErr
+      const allocationIds = Array.from(new Set(testAllocsRaw.map((t: { id: string }) => t.id)))
+
+      // Samples + parameters in parallel (largest cost); IS codes after samples.
+      const [sampleData, paramRowsRaw] = await Promise.all([
+        fetchByIdChunks(sampleIds, 100, async (chunkIds) => {
+          const { data, error } = await supabase
+            .from('samples')
+            .select(
+              'id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, stage, sample_description, sample_declaration',
+            )
+            .in('id', chunkIds)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        }),
+        allocationIds.length === 0
+          ? Promise.resolve([] as Record<string, unknown>[])
+          : fetchByIdChunks(allocationIds, 60, async (chunkIds) => {
+              const { data: paramData, error: paramErr } = await supabase
+                .from('test_allocation_parameters')
+                .select(
+                  'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, results_reviewer_id, results_reviewer_name, results_review_status, specific_requirement',
+                )
+                .in('test_allocation_id', chunkIds)
+              if (paramErr) throw paramErr
+              return Array.isArray(paramData) ? paramData : []
+            }),
+      ])
+
       const isCodeIds = [
         ...new Set(
-          (Array.isArray(sampleData) ? sampleData : [])
+          sampleData
             .map((s: { test_report_is_code_id?: string | null }) => s.test_report_is_code_id)
             .filter(Boolean),
         ),
       ] as string[]
       let isCodeMap = new Map<string, string>()
       if (isCodeIds.length > 0) {
-        const { data: isCodeData } = await supabase
-          .from('is_codes')
-          .select('id, is_number, revision_year')
-          .in('id', isCodeIds)
-        const isCodes = Array.isArray(isCodeData) ? isCodeData : []
+        const isCodes = await fetchByIdChunks(isCodeIds, 100, async (chunkIds) => {
+          const { data: isCodeData, error } = await supabase
+            .from('is_codes')
+            .select('id, is_number, revision_year')
+            .in('id', chunkIds)
+          if (error) throw error
+          return Array.isArray(isCodeData) ? isCodeData : []
+        })
         isCodeMap = new Map(
           isCodes.map(
             (c: { id: string; is_number?: string; revision_year?: string | null }) => [
               c.id,
-              c.revision_year ? `${c.is_number ?? ''} : ${c.revision_year}` : (c.is_number ?? c.id),
+              formatIsCodeLabelFromParts(c.is_number, c.revision_year) || (c.is_number ?? c.id),
             ],
           ),
         )
       }
       const samplesMap = new Map(
-        (
-          Array.isArray(sampleData) ? sampleData : []
-        ).map(
+        sampleData.map(
           (s: {
             id: string
             srf_number?: string
@@ -240,9 +267,15 @@ export default function SampleUnderTestingMasterPage() {
           ],
         ),
       )
-      const allocationIds = Array.from(new Set(testAllocsRaw.map((t: { id: string }) => t.id)))
 
-      const sentForReviewAllocIds = await fetchSentForReviewTestAllocationIds(allocationIds)
+      const sentForReviewAllocIds = collectSentForReviewAllocationIds(
+        paramRowsRaw as Array<{
+          test_allocation_id?: string | null
+          results_reviewer_id?: string | null
+          results_reviewer_name?: string | null
+          results_review_status?: string | null
+        }>,
+      )
 
       const sampleIdBySampleAllocationId = new Map(
         allocations.map((a: { id: string; sample_id: string }) => [a.id, a.sample_id]),
@@ -257,33 +290,9 @@ export default function SampleUnderTestingMasterPage() {
         sentForReviewAllocIds,
       )
 
-      let paramsByAllocationId = new Map<string, {
-        id: string
-        test_allocation_id: string
-        test_parameter_id: string | null
-        test_label: string
-        test_start_date: string | null
-        test_end_date: string | null
-        results: string | null
-        results_reviewer_id: string | null
-        results_reviewer_name: string | null
-        results_review_status: string | null
-        specific_requirement: string | null
-      }[]>()
-      if (allocationIds.length > 0) {
-        // Chunk by allocation id — a single .in() can exceed PostgREST max-rows (~1000)
-        // and drop results for later sections (they then look empty / Pending).
-        const paramRows = await fetchByIdChunks(allocationIds, 40, async (chunkIds) => {
-          const { data: paramData, error: paramErr } = await supabase
-            .from('test_allocation_parameters')
-            .select(
-              'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, results_reviewer_id, results_reviewer_name, results_review_status, specific_requirement',
-            )
-            .in('test_allocation_id', chunkIds)
-          if (paramErr) throw paramErr
-          return Array.isArray(paramData) ? paramData : []
-        })
-        const map = new Map<string, {
+      let paramsByAllocationId = new Map<
+        string,
+        {
           id: string
           test_allocation_id: string
           test_parameter_id: string | null
@@ -295,8 +304,26 @@ export default function SampleUnderTestingMasterPage() {
           results_reviewer_name: string | null
           results_review_status: string | null
           specific_requirement: string | null
-        }[]>()
-        for (const p of paramRows as {
+        }[]
+      >()
+      if (paramRowsRaw.length > 0) {
+        const map = new Map<
+          string,
+          {
+            id: string
+            test_allocation_id: string
+            test_parameter_id: string | null
+            test_label: string
+            test_start_date: string | null
+            test_end_date: string | null
+            results: string | null
+            results_reviewer_id: string | null
+            results_reviewer_name: string | null
+            results_review_status: string | null
+            specific_requirement: string | null
+          }[]
+        >()
+        for (const p of paramRowsRaw as {
           id: string
           test_allocation_id?: string | null
           test_parameter_id?: string | null
@@ -352,11 +379,15 @@ export default function SampleUnderTestingMasterPage() {
         { name: string; specificRequirement: string | null; clauseNo: string | null }
       >()
       if (tpIdsForLookup.size > 0) {
-        const { data: tpMetaRows } = await supabase
-          .from('test_parameters')
-          .select('id, item_name, specific_requirement, clause_no')
-          .in('id', [...tpIdsForLookup])
-        for (const row of Array.isArray(tpMetaRows) ? tpMetaRows : []) {
+        const tpMetaRows = await fetchByIdChunks([...tpIdsForLookup], 100, async (chunkIds) => {
+          const { data, error } = await supabase
+            .from('test_parameters')
+            .select('id, item_name, specific_requirement, clause_no')
+            .in('id', chunkIds)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        })
+        for (const row of tpMetaRows) {
           const r = row as {
             id: string
             item_name?: string | null
@@ -605,20 +636,11 @@ export default function SampleUnderTestingMasterPage() {
     void loadRows()
   }, [user?.id, profileReady])
 
-  useEffect(() => {
-    if (!profileReady) return
-    if (isLaboratoryDirector(designation)) {
-      setOnlyMyAssignments(false)
-    } else {
-      setOnlyMyAssignments(true)
-    }
-  }, [profileReady, designation])
-
   const restrictToOwnAssignments = useMemo(() => {
     if (!profileReady) return false
-    if (isLaboratoryDirector(designation)) return onlyMyAssignments
-    return forceOwnAssignmentsOnly || onlyMyAssignments || true
-  }, [profileReady, designation, onlyMyAssignments, forceOwnAssignmentsOnly])
+    if (isLaboratoryDirector(designation)) return false
+    return true
+  }, [profileReady, designation])
 
   const rowsForAssignmentFilter = useMemo(() => {
     if (!restrictToOwnAssignments || !user?.id) return rows
@@ -627,39 +649,41 @@ export default function SampleUnderTestingMasterPage() {
 
   const srfDiagnostics = useMemo(() => {
     if (!loadDiagnostics || !isLaboratoryDirector(designation)) return null
-    if (!onlyMyAssignments || rows.length === 0) return loadDiagnostics
-    const assignmentHidden = buildAssignmentFilterHiddenEntries(rows, rowsForAssignmentFilter)
-    if (assignmentHidden.length === 0) return loadDiagnostics
-    return mergeDiagnosticEntries(loadDiagnostics, assignmentHidden)
-  }, [loadDiagnostics, designation, onlyMyAssignments, rows, rowsForAssignmentFilter])
+    return loadDiagnostics
+  }, [loadDiagnostics, designation])
 
-  const filteredRows = useMemo(() => {
+  const submittedForReviewRows = useMemo(
+    () => rowsForAssignmentFilter.filter((r) => isSectionSubmittedForReview(r)),
+    [rowsForAssignmentFilter],
+  )
+
+  const pendingRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return rowsForAssignmentFilter
-    return rowsForAssignmentFilter.filter(
-      (r) =>
-        [
-          r.sectionCode,
-          r.department,
-          r.srfNumber,
-          r.testParameterSummary,
-          r.results,
-          r.sampleDescription,
-          r.declaredValue,
-          r.isCodeLabel,
-          r.assignedEmployeeName,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-          .includes(q),
+    const pending = rowsForAssignmentFilter.filter((r) => !isSectionSubmittedForReview(r))
+    if (!q) return pending
+    return pending.filter((r) =>
+      [
+        r.sectionCode,
+        r.department,
+        r.srfNumber,
+        r.testParameterSummary,
+        r.results,
+        r.sampleDescription,
+        r.declaredValue,
+        r.isCodeLabel,
+        r.assignedEmployeeName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
     )
   }, [rowsForAssignmentFilter, search])
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const pageCount = Math.max(1, Math.ceil(pendingRows.length / pageSize))
   const pagedRows = useMemo(
-    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
-    [filteredRows, page, pageSize],
+    () => pendingRows.slice((page - 1) * pageSize, page * pageSize),
+    [pendingRows, page, pageSize],
   )
 
   const handleEdit = (row: TestAllocationRow) => {
@@ -701,7 +725,7 @@ export default function SampleUnderTestingMasterPage() {
   const toggleAll = (checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      filteredRows.forEach((r) => (checked ? next.add(r.sampleAllocationId) : next.delete(r.sampleAllocationId)))
+      pagedRows.forEach((r) => (checked ? next.add(r.sampleAllocationId) : next.delete(r.sampleAllocationId)))
       return next
     })
   }
@@ -1093,7 +1117,7 @@ export default function SampleUnderTestingMasterPage() {
   const sendForReviewSectionOptions = useMemo(() => {
     const seen = new Set<string>()
     const out: { sampleAllocationId: string; label: string }[] = []
-    for (const r of filteredRows) {
+    for (const r of pendingRows) {
       if (seen.has(r.sampleAllocationId)) continue
       seen.add(r.sampleAllocationId)
       out.push({
@@ -1102,7 +1126,7 @@ export default function SampleUnderTestingMasterPage() {
       })
     }
     return out.sort((a, b) => a.label.localeCompare(b.label))
-  }, [filteredRows])
+  }, [pendingRows])
 
   const norm = (s: string) => (s ?? '').trim().toLowerCase()
 
@@ -1377,9 +1401,8 @@ export default function SampleUnderTestingMasterPage() {
           .maybeSingle()
         if (isRow) {
           const r = isRow as { is_number?: string; revision_year?: string | null }
-          isCodeLabel = r.revision_year
-            ? `${r.is_number ?? ''} : ${r.revision_year}`
-            : (r.is_number ?? isCodeId)
+          isCodeLabel =
+            formatIsCodeLabelFromParts(r.is_number, r.revision_year) || r.is_number || isCodeId
         }
       }
 
@@ -1399,90 +1422,34 @@ export default function SampleUnderTestingMasterPage() {
     }
   }
 
-  const displayName = profileName || user?.email || 'User'
-  const displayDepartment = departmentName?.trim() ? departmentName.trim() : '—'
-  const displayDesignation = designation?.trim() ? designation : '—'
-
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-md border bg-muted/30 px-4 py-3">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
-          <h1 className="text-2xl font-semibold text-foreground whitespace-nowrap">
-            Sample Under Testing
-          </h1>
-          <div className="md:w-[40%]">
-            <Input
-              placeholder="Search section, SRF, results..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="w-28">
-            <Select
-              value={String(pageSize)}
-              onValueChange={(v) => {
-                setPageSize(Number(v))
-                setPage(1)
-              }}
-            >
-              <SelectTrigger aria-label="Rows per page">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 / Page</SelectItem>
-                <SelectItem value="10">10 / Page</SelectItem>
-                <SelectItem value="20">20 / Page</SelectItem>
-                <SelectItem value="50">50 / Page</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {!forceOwnAssignmentsOnly && isLaboratoryDirector(designation) && (
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground shrink-0">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-input"
-                checked={onlyMyAssignments}
-                onChange={(e) => {
-                  setOnlyMyAssignments(e.target.checked)
-                  setPage(1)
-                }}
-                aria-label="Only my assignments"
-              />
-              <span>Only my assignments</span>
-            </label>
-          )}
-          {isLaboratoryDirector(designation) ? (
-            <HiddenSrfsDiagnosticBadge diagnostics={srfDiagnostics} loading={listLoading} />
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-3 shrink-0">
-          <SampleUnderTestingAssistant rows={filteredRows} search={search} />
-          <p className="text-sm text-muted-foreground">
-            Logged in as: <span className="font-medium text-foreground">{displayName}</span>
-            {displayDepartment !== '—' && (
-              <>
-                {' · '}
-                <span className="font-medium text-foreground">{displayDepartment}</span>
-              </>
-            )}
-            {displayDesignation !== '—' && (
-              <>
-                {' · '}
-                <span className="font-medium text-foreground">{displayDesignation}</span>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
+    <div className={limsPageShellClass}>
+      <SampleUnderTestingHeaderBar
+        search={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        showDiagnostics={isLaboratoryDirector(designation)}
+        diagnostics={srfDiagnostics}
+        diagnosticsLoading={listLoading}
+        assistantRows={pendingRows}
+        submittedForReviewRows={submittedForReviewRows}
+      />
 
       <SampleUnderTestingTable
-        rows={filteredRows}
+        rows={pagedRows}
         loading={listLoading}
         error={listError}
         emptyStateMessage={
           restrictToOwnAssignments
-            ? 'No sections sent for testing are assigned to you. Ask your Technical Manager to use Send for Testing in Test Allocation.'
-            : 'No sections sent for testing. Use Send for Testing in Test Allocation, or check the error above.'
+            ? 'No sections pending results assigned to you. Use Submitted for Review in the header for sent sections, or ask your Technical Manager to use Send for Testing in Test Allocation.'
+            : 'No sections pending results. Use Submitted for Review in the header to view sections already sent for review.'
         }
         selectedIds={selectedIds}
         onToggle={toggleRow}
@@ -1521,44 +1488,24 @@ export default function SampleUnderTestingMasterPage() {
         }
       />
 
-      <div className="rounded-md border bg-muted/30 px-4 py-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            {showDelete ? (
-              <SampleHandlingDeleteButton
-                disabled={listLoading || selectedIds.size === 0}
-                onClick={handleDeleteSelected}
-              />
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            {saveMessage && <p className="text-sm text-emerald-700">{saveMessage}</p>}
-            <span className="text-xs text-muted-foreground">
-              Page {page} / {pageCount} · {filteredRows.length} allocation(s)
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={16} />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              disabled={page >= pageCount || listLoading}
-              aria-label="Next page"
-            >
-              <ChevronRight size={16} />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <SampleUnderTestingFooterBar
+        page={page}
+        pageCount={pageCount}
+        jumpTo={jumpTo}
+        onJumpToChange={setJumpTo}
+        onJump={() => {
+          const n = Number(jumpTo)
+          if (Number.isFinite(n) && n > 0) setPage(Math.min(pageCount, Math.max(1, Math.floor(n))))
+          setJumpTo('')
+        }}
+        onPrev={() => setPage((p) => Math.max(1, p - 1))}
+        onNext={() => setPage((p) => Math.min(pageCount, p + 1))}
+        selectedCount={selectedIds.size}
+        saveMessage={saveMessage}
+        loading={listLoading}
+        showDelete={showDelete}
+        onDeleteSelected={handleDeleteSelected}
+      />
 
       <Dialog
         open={formOpen}
@@ -1630,7 +1577,7 @@ export default function SampleUnderTestingMasterPage() {
                     applySendForReviewRow(null)
                     return
                   }
-                  const row = filteredRows.find((r) => r.sampleAllocationId === v) ?? null
+                  const row = pendingRows.find((r) => r.sampleAllocationId === v) ?? null
                   applySendForReviewRow(row)
                 }}
               >

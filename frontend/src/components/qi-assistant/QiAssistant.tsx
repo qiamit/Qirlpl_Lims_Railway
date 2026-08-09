@@ -54,6 +54,7 @@ export function QiAssistant({
   activeRecordTable,
   welcomeMessage,
   triggerVariant = 'default',
+  triggerClassName,
   onDataChanged,
   enablePdfImport = false,
   pdfAttachHint = 'IS standard PDF',
@@ -69,6 +70,8 @@ export function QiAssistant({
   activeRecordTable?: string
   welcomeMessage?: string
   triggerVariant?: 'default' | 'icon'
+  /** Optional classes for the dialog trigger button */
+  triggerClassName?: string
   onDataChanged?: () => void
   enablePdfImport?: boolean
   /** Label for PDF attach button, e.g. "test request PDF" */
@@ -330,13 +333,25 @@ export function QiAssistant({
             type="button"
             variant="outline"
             size="sm"
-            className="border-slate-300 hover:bg-teal-50"
+            className={cn(
+              'rounded-none border-amber-500/45 bg-stone-800/80 text-amber-200 shadow-none hover:bg-amber-500/20 hover:text-amber-100',
+              triggerClassName,
+            )}
             aria-label={`Ask AI Assistant about ${pageTitle}`}
           >
-            <Sparkles size={14} className="text-teal-600" />
+            <Sparkles size={14} className="text-current" />
           </Button>
         ) : (
-          <Button type="button" variant="outline" className="gap-2" aria-label="Open QI Assistant">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+              'gap-1.5 rounded-none border border-amber-500/40 bg-stone-800/80 text-amber-100 shadow-none hover:bg-amber-500/20 hover:text-amber-50',
+              triggerClassName,
+            )}
+            aria-label="Open QI Assistant"
+          >
             <Sparkles size={16} className="text-primary" />
             QI Assistant
           </Button>
@@ -345,21 +360,20 @@ export function QiAssistant({
       <DialogContent
         className="flex max-h-[88vh] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:max-w-xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
       >
-        <div className="relative bg-slate-900 px-5 py-4 text-white">
+        <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-4 text-white">
           <div
-            className="pointer-events-none absolute inset-0 opacity-[0.12]"
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
             style={{
               backgroundImage:
-                'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-              backgroundSize: '24px 24px',
+                'radial-gradient(circle at 12% 20%, rgba(217,119,6,0.45), transparent 42%), radial-gradient(circle at 88% 0%, rgba(251,191,36,0.25), transparent 35%)',
             }}
           />
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative space-y-1.5 pr-8 text-left">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">AI · Lab Assistant</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber-200/90">AI · Lab Assistant</p>
             <DialogTitle className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
-              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-teal-400/20 ring-1 ring-teal-400/30">
-                <Sparkles size={16} className="text-teal-200" />
+              <span className="flex h-8 w-8 items-center justify-center rounded-none bg-amber-400/20 ring-1 ring-amber-400/30">
+                <Sparkles size={16} className="text-amber-200" />
               </span>
               {assistantDialogTitle(activeRecordTable, effectiveIsCodeId, page)}
             </DialogTitle>

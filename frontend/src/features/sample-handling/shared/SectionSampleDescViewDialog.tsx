@@ -1,9 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { BookMarked, FileText, Files, ScrollText } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+} from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { formatIsCodeLabelFromParts, normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
 import type { TestAllocationRow } from '../types'
 import { loadIsCodeFiles, type IsCodeFileLink } from './fetchSampleSrfViewDetails'
 
@@ -21,17 +26,17 @@ type IsCodeDetails = {
 
 function formatIsCodeLabel(d: IsCodeDetails | null, fallback: string | null | undefined): string {
   if (d?.isNumber?.trim()) {
-    const rev = d.revisionYear?.trim()
-    return rev ? `${d.isNumber.trim()} : ${rev}` : d.isNumber.trim()
+    return formatIsCodeLabelFromParts(d.isNumber, d.revisionYear) || d.isNumber.trim()
   }
-  return fmt(fallback)
+  const normalized = normalizeIsCodeLabel(fallback)
+  return normalized || '—'
 }
 
 function MetaChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-md border border-border/60 bg-background px-3 py-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 truncate text-sm font-semibold text-foreground" title={value}>
+    <div className="min-w-0 border border-amber-500/35 bg-stone-900/50 px-3 py-2 text-center">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200/90">{label}</p>
+      <p className="mt-0.5 truncate text-sm font-semibold text-amber-50" title={value}>
         {value}
       </p>
     </div>
@@ -51,11 +56,11 @@ function SectionBlock({
 }) {
   return (
     <section className={cn('space-y-2.5', className)}>
-      <div className="flex items-center gap-2 border-b border-border/60 pb-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+      <div className="flex items-center gap-2 border-b border-stone-500 pb-2">
+        <span className="flex h-7 w-7 items-center justify-center border border-stone-500 bg-stone-800 text-amber-200">
           <Icon className="h-3.5 w-3.5" aria-hidden />
         </span>
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h4>
+        <h4 className="text-[11px] font-bold uppercase tracking-[0.14em] text-stone-700">{title}</h4>
       </div>
       {children}
     </section>
@@ -64,8 +69,8 @@ function SectionBlock({
 
 function ProsePanel({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-muted/20 px-3.5 py-3 text-sm leading-relaxed text-foreground">
-      <p className="whitespace-pre-wrap break-words">{children}</p>
+    <div className="border border-stone-500 bg-[#fffcf7] px-3.5 py-3 text-sm leading-relaxed text-[#1c1917] shadow-sm ring-1 ring-amber-700/10">
+      <p className="break-words whitespace-pre-wrap">{children}</p>
     </div>
   )
 }
@@ -74,12 +79,12 @@ function DetailItem({ label, value, wide }: { label: string; value: string; wide
   return (
     <div
       className={cn(
-        'min-w-0 rounded-md border border-border/50 bg-background px-3 py-2',
+        'min-w-0 border border-stone-500 bg-stone-50 px-3 py-2 shadow-sm ring-1 ring-amber-700/10',
         wide && 'sm:col-span-2',
       )}
     >
-      <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-sm font-medium leading-snug text-foreground whitespace-pre-wrap break-words">
+      <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-600">{label}</dt>
+      <dd className="mt-1 break-words text-sm font-medium leading-snug whitespace-pre-wrap text-[#1c1917]">
         {value}
       </dd>
     </div>
@@ -89,30 +94,30 @@ function DetailItem({ label, value, wide }: { label: string; value: string; wide
 function IsCodeFilesList({ files }: { files: IsCodeFileLink[] }) {
   if (files.length === 0) {
     return (
-      <p className="rounded-md border border-dashed border-border/70 bg-muted/10 px-3 py-4 text-center text-sm text-muted-foreground">
+      <p className="border border-dashed border-stone-500 bg-stone-50 px-3 py-4 text-center text-sm text-[#57534e]">
         No files uploaded for this IS Code.
       </p>
     )
   }
   return (
-    <ul className="divide-y divide-border/50 overflow-hidden rounded-md border border-border/60 bg-background">
+    <ul className="divide-y divide-[#e7e0d4] overflow-hidden border-2 border-stone-500 bg-[#f7f3eb] shadow-sm ring-1 ring-amber-700/20">
       {files.map((f) => (
         <li key={f.file_name} className="flex items-center justify-between gap-3 px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
-            <Files className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="truncate text-sm">{f.file_name}</span>
+            <Files className="h-3.5 w-3.5 shrink-0 text-amber-800" aria-hidden />
+            <span className="truncate text-sm text-[#1c1917]">{f.file_name}</span>
           </div>
           {f.url ? (
             <a
               href={f.url}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 rounded-md border border-border/60 px-2.5 py-1 text-xs font-medium text-primary hover:bg-muted/50"
+              className={cn(limsOutlineBtnClass, 'inline-flex h-7 items-center px-2.5 text-xs font-semibold')}
             >
               View
             </a>
           ) : (
-            <span className="shrink-0 text-xs text-muted-foreground">—</span>
+            <span className="shrink-0 text-xs text-[#a8a29e]">—</span>
           )}
         </li>
       ))}
@@ -212,31 +217,29 @@ export function SectionSampleDescViewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[88vh] gap-0 overflow-hidden p-0">
-        <DialogHeader className="space-y-3 border-b border-border/60 bg-muted/20 px-6 py-4 pr-14 text-left">
-          <div className="flex flex-wrap items-center gap-2">
-            <DialogTitle className="text-lg font-semibold tracking-tight">Sample Details</DialogTitle>
-            {row?.sectionCode?.trim() ? (
-              <Badge variant="secondary" className="font-medium">
-                Section {sectionCode}
-              </Badge>
+      <DialogContent
+        layer="nested"
+        className={cn(limsDialogClass, 'max-h-[88vh] max-w-3xl overflow-hidden p-0')}
+        aria-describedby={undefined}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative space-y-3 pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Sample Details
+            </DialogTitle>
+            {row ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <MetaChip label="Section Code" value={sectionCode} />
+                <MetaChip label="Department" value={department} />
+              </div>
             ) : null}
-            {row?.department?.trim() ? (
-              <Badge variant="outline" className="font-medium">
-                {department}
-              </Badge>
-            ) : null}
-          </div>
-          {row ? (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <MetaChip label="Section Code" value={sectionCode} />
-              <MetaChip label="Department" value={department} />
-            </div>
-          ) : null}
-        </DialogHeader>
+          </DialogHeader>
+        </div>
 
         {row ? (
-          <div className="max-h-[calc(88vh-9rem)] space-y-6 overflow-y-auto px-6 py-5">
+          <div className="max-h-[calc(88vh-8rem)] space-y-5 overflow-y-auto bg-[#f7f3eb] px-4 py-4 sm:px-5">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <SectionBlock icon={FileText} title="Sample Description">
                 <ProsePanel>{fmt(row.sampleDescription)}</ProsePanel>
@@ -248,22 +251,22 @@ export function SectionSampleDescViewDialog({
 
             <SectionBlock icon={BookMarked} title="IS Code">
               {isCodeLoading ? (
-                <p className="rounded-md border border-dashed border-border/70 px-3 py-6 text-center text-sm text-muted-foreground">
+                <p className="border border-dashed border-stone-500 bg-stone-50 px-3 py-6 text-center text-sm text-[#57534e]">
                   Loading IS Code details…
                 </p>
               ) : (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background px-3.5 py-3">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="space-y-3 overflow-hidden border-2 border-stone-500 bg-[#f7f3eb] p-3 shadow-sm ring-1 ring-amber-700/20">
+                  <div className="flex flex-wrap items-center gap-2 border border-stone-500 bg-stone-50 px-3.5 py-3 shadow-sm ring-1 ring-amber-700/10">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-600">
                       Code
                     </span>
-                    <span className="text-base font-semibold tracking-tight text-foreground">
+                    <span className="text-base font-semibold tracking-tight text-[#1c1917]">
                       {isCodeLabel}
                     </span>
                     {isCodeDetails?.aspect?.trim() ? (
-                      <Badge variant="outline" className="ml-auto font-medium">
+                      <span className="ml-auto border border-amber-700/45 bg-[#f7f3eb] px-2 py-0.5 text-[11px] font-semibold text-[#92400e]">
                         {isCodeDetails.aspect.trim()}
-                      </Badge>
+                      </span>
                     ) : null}
                   </div>
 
@@ -275,7 +278,7 @@ export function SectionSampleDescViewDialog({
                   </dl>
 
                   <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-600">
                       IS Code Files
                     </p>
                     <IsCodeFilesList files={isCodeFiles} />

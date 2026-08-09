@@ -57,6 +57,24 @@ export async function addMeasurementUnit(name: string): Promise<UnitRow> {
   return row
 }
 
+export async function updateMeasurementUnit(id: string, name: string): Promise<UnitRow> {
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error('Unit name is required')
+
+  const { data, error } = await supabase
+    .from('test_parameter_units')
+    .update({ name: trimmed })
+    .eq('id', id)
+    .select('id, name, created_at')
+    .single()
+
+  if (error) throw error
+  const row = data as UnitRow
+  cache = (cache ?? []).map((unit) => (unit.id === id ? row : unit)).sort((a, b) => a.name.localeCompare(b.name))
+  notify()
+  return row
+}
+
 export async function deleteMeasurementUnit(id: string): Promise<string | undefined> {
   const removed = cache?.find((unit) => unit.id === id)
   const { error } = await supabase.from('test_parameter_units').delete().eq('id', id)

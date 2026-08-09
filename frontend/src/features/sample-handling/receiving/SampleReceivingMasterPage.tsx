@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
@@ -16,6 +18,7 @@ import { SampleReceivingTable } from './SampleReceivingTable'
 import { SampleReceivingDetailsViewDialog } from './SampleReceivingDetailsViewDialog'
 import { SampleReceivingTableFooterBar } from './SampleReceivingFooterBar'
 import { buildSampleReceivingAssistantContext } from './buildSampleReceivingAssistantContext'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   isSampleReceivingEditLocked,
   SAMPLE_RECEIVING_EDIT_LOCKED_TITLE,
@@ -123,7 +126,7 @@ export default function SampleReceivingMasterPage() {
       const list = Array.isArray(data) ? (data as Array<{ id: string; is_number: string; revision_year: string | null }>) : []
       setIsCodeOptions(list.map((r) => ({
         id: r.id,
-        label: r.revision_year ? `${r.is_number ?? ''} : ${r.revision_year}` : (r.is_number ?? r.id),
+        label: formatIsCodeLabelFromParts(r.is_number, r.revision_year) || r.id,
       })))
     } catch {
       setIsCodeOptions([])
@@ -157,6 +160,16 @@ export default function SampleReceivingMasterPage() {
 
   const onAddReceivingOption = async (category: string, label: string) => {
     const { error } = await supabase.from('sample_receiving_options').insert({ category, label: label.trim() })
+    if (error) throw error
+    await loadReceivingOptions()
+  }
+
+  const onUpdateReceivingOption = async (category: string, id: string, label: string) => {
+    const { error } = await supabase
+      .from('sample_receiving_options')
+      .update({ label: label.trim() })
+      .eq('id', id)
+      .eq('category', category)
     if (error) throw error
     await loadReceivingOptions()
   }
@@ -652,7 +665,7 @@ export default function SampleReceivingMasterPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <SampleReceivingHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -663,64 +676,96 @@ export default function SampleReceivingMasterPage() {
         onAssistantDataChanged={() => void loadRows()}
       />
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
-        <DialogContent persistOnFocusLoss className="w-[62.5vw] max-w-[62.5vw] max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Receive New Sample</DialogTitle>
-          </DialogHeader>
-          {saveMessage && <div className="text-sm text-destructive">{saveMessage}</div>}
-          <SampleReceivingForm
-            form={form}
-            onChange={setForm}
-            onSave={handleSave}
-            onClear={handleClear}
-            onGoToReview={() => setActiveTab('review')}
-            canSave={canSave}
-            saveLoading={saveLoading}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            clientOptions={clientOptions}
-            isCodeOptions={isCodeOptions}
-            testRequiredOptions={receivingOptions.test_required}
-            modeOfDisposalOptions={receivingOptions.mode_of_disposal}
-            natureOfSampleOptions={receivingOptions.nature_of_sample}
-            sampleReceivingStatusOptions={[
-              'Received',
-              'Under Review',
-              'Rejected',
-              'Returned',
-              ...receivingOptions.sample_receiving_status.map((o) => o.label).filter((l) => !['Received', 'Under Review', 'Rejected', 'Returned'].includes(l)),
-            ]}
-            onAddClient={() => setAddClientOpen(true)}
-            onAddIsCode={() => setAddIsCodeOpen(true)}
-            onFileSelect={setClientReferencesFile}
-            clientReferencesFileName={clientReferencesFile?.name}
-            editingSampleId={editingId}
-            srfSearchRows={rows}
-            onReportTypeChange={handleReportTypeChange}
-            onSelectReferencedSrf={handleSelectReferencedSrf}
-            onDateOfSampleReceivingChange={async (newDate) => {
-              const tent = addDays(newDate, 10)
-              if (form.receivingReportType === RECEIVING_REPORT_TYPES[0]) {
-                const srf = await generateNextSrfNumber(newDate)
-                setForm((prev) => ({
-                  ...prev,
-                  dateOfSampleReceiving: newDate,
-                  srfNumber: srf,
-                  tentativeDateRequired: tent,
-                  tentativeDateByLab: tent,
-                }))
-              } else {
-                setForm((prev) => ({
-                  ...prev,
-                  dateOfSampleReceiving: newDate,
-                  tentativeDateRequired: tent,
-                  tentativeDateByLab: tent,
-                }))
-              }
-            }}
-            onAddReceivingOption={onAddReceivingOption}
-            onDeleteReceivingOption={onDeleteReceivingOption}
-          />
+        <DialogContent
+          persistOnFocusLoss
+          aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'left-0 top-0 z-50 flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none',
+            'md:left-[268px] md:h-[100dvh] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          )}
+        >
+          <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 text-white sm:px-6">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                {editingId ? 'Edit Sample' : 'Receive New Sample'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-stone-100/90 to-stone-50">
+            {saveMessage && (
+              <p
+                className={cn(
+                  'shrink-0 px-4 pt-3 text-sm sm:px-6',
+                  saveMessage.toLowerCase().includes('success') || saveMessage.toLowerCase().includes('saved')
+                    ? 'text-emerald-700'
+                    : 'text-red-700',
+                )}
+              >
+                {saveMessage}
+              </p>
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+              <SampleReceivingForm
+                form={form}
+                onChange={setForm}
+                onSave={handleSave}
+                onClear={handleClear}
+                onGoToReview={() => setActiveTab('review')}
+                canSave={canSave}
+                saveLoading={saveLoading}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                clientOptions={clientOptions}
+                isCodeOptions={isCodeOptions}
+                testRequiredOptions={receivingOptions.test_required}
+                modeOfDisposalOptions={receivingOptions.mode_of_disposal}
+                natureOfSampleOptions={receivingOptions.nature_of_sample}
+                sampleReceivingStatusOptions={[
+                  'Received',
+                  'Under Review',
+                  'Rejected',
+                  'Returned',
+                  ...receivingOptions.sample_receiving_status.map((o) => o.label).filter((l) => !['Received', 'Under Review', 'Rejected', 'Returned'].includes(l)),
+                ]}
+                onAddClient={() => setAddClientOpen(true)}
+                onAddIsCode={() => setAddIsCodeOpen(true)}
+                onFileSelect={setClientReferencesFile}
+                clientReferencesFileName={clientReferencesFile?.name}
+                editingSampleId={editingId}
+                srfSearchRows={rows}
+                onReportTypeChange={handleReportTypeChange}
+                onSelectReferencedSrf={handleSelectReferencedSrf}
+                onDateOfSampleReceivingChange={async (newDate) => {
+                  const tent = addDays(newDate, 10)
+                  if (form.receivingReportType === RECEIVING_REPORT_TYPES[0]) {
+                    const srf = await generateNextSrfNumber(newDate)
+                    setForm((prev) => ({
+                      ...prev,
+                      dateOfSampleReceiving: newDate,
+                      srfNumber: srf,
+                      tentativeDateRequired: tent,
+                      tentativeDateByLab: tent,
+                    }))
+                  } else {
+                    setForm((prev) => ({
+                      ...prev,
+                      dateOfSampleReceiving: newDate,
+                      tentativeDateRequired: tent,
+                      tentativeDateByLab: tent,
+                    }))
+                  }
+                }}
+                onAddReceivingOption={onAddReceivingOption}
+                onUpdateReceivingOption={onUpdateReceivingOption}
+                onDeleteReceivingOption={onDeleteReceivingOption}
+              />
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
       <SampleReceivingTable

@@ -1,13 +1,12 @@
 import { supabase } from '@/lib/supabaseClient'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 
 export function formatIsCodeLabel(
   isNumber?: string | null,
   revisionYear?: string | null,
 ): string | null {
-  const num = isNumber?.trim()
-  if (!num) return null
-  const year = revisionYear?.trim()
-  return year ? `${num} : ${year}` : num
+  const label = formatIsCodeLabelFromParts(isNumber, revisionYear)
+  return label || null
 }
 
 export async function fetchIsCodeLabelMap(ids: string[]): Promise<Map<string, string>> {

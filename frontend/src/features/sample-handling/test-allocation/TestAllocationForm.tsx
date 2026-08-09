@@ -5,12 +5,39 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Pencil, FileText, FolderOpen, Plus } from 'lucide-react'
+import { Pencil, FileText, FolderOpen, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarFieldClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsOutlineBtnClass,
+  limsPanelClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
-import { openAddTestParameterWindow } from '@/features/masters/test-parameter/openAddTestParameterWindow'
+import { AddTestParameterNestedDialog } from '@/features/masters/test-parameter/AddTestParameterNestedDialog'
+import { normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
+import { IsCodeFilesViewDialog } from '@/features/sample-handling/shared/IsCodeFilesViewDialog'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 import { saveSectionSpecificRequirement } from '../shared/saveSectionSpecificRequirement'
 import type { TestAllocationRow } from '../types'
+
+const fieldLabelClass = 'text-[11px] font-semibold uppercase tracking-wide text-stone-600'
+const readonlyBoxClass =
+  'rounded-none border border-stone-500 bg-stone-50 px-3 py-2 text-sm text-stone-900 shadow-none'
+const thClass = cn(limsTableHeadClass, 'border border-stone-700 !p-1.5')
+const tdClass = 'border border-[#e7e0d4] !p-1.5 align-middle text-xs text-[#292524]'
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/70 hover:bg-[#fde68a]/80'
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 accent-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
 
 export type TestAllocationFormState = {
   sampleAllocationId: string
@@ -43,26 +70,34 @@ export function TestAllocationForm({
   form,
   onChange,
   onSave,
-  onClose,
   saveLoading = false,
   testParamOptions,
   employeesFiltered,
   designationOptions = [],
+  onRefreshTestParams,
+  onTestParamAdded,
 }: {
   row: TestAllocationRow
   form: TestAllocationFormState
   onChange: (next: TestAllocationFormState) => void
   onSave: () => void
-  onClose: () => void
   saveLoading?: boolean
   testParamOptions: TestParamOption[]
   employeesFiltered: EmployeeOption[]
   designationOptions?: string[]
+  onRefreshTestParams?: () => void | Promise<void>
+  onTestParamAdded?: (param: TestParamOption) => void
 }) {
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(() => new Set(form.testParameterIds))
   const [testParamSearch, setTestParamSearch] = useState('')
+  const [pageSize, setPageSize] = useState(10)
+  const [page, setPage] = useState(1)
+  const [jumpTo, setJumpTo] = useState('')
   const selectAllHeaderRef = useRef<HTMLInputElement>(null)
+  const autoSelectedForAllocRef = useRef<string | null>(null)
 
+  const [addTestParameterOpen, setAddTestParameterOpen] = useState(false)
+  const [viewFilesOpen, setViewFilesOpen] = useState(false)
   const [editSpecOpen, setEditSpecOpen] = useState(false)
   const [editSpecParamId, setEditSpecParamId] = useState<string | null>(null)
   const [editSpecValue, setEditSpecValue] = useState('')
@@ -88,6 +123,29 @@ export function TestAllocationForm({
     return matchIsCode && matchDept
   })
 
+  // Default: select all matching test parameters when Allot Tests opens (empty selection).
+  useEffect(() => {
+    const allocId = form.sampleAllocationId
+    if (autoSelectedForAllocRef.current === allocId) return
+    if (filteredTestParamOptions.length === 0) return
+
+    if ((form.testParameterIds?.length ?? 0) > 0) {
+      autoSelectedForAllocRef.current = allocId
+      return
+    }
+
+    autoSelectedForAllocRef.current = allocId
+    const ids = filteredTestParamOptions.map((o) => o.id)
+    const labels = filteredTestParamOptions.map((o) => o.label).filter(Boolean)
+    setLocalSelectedIds(new Set(ids))
+    onChange({
+      ...form,
+      testParameterIds: ids,
+      testParameterSummary: labels.join(', '),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per allocation when options are ready
+  }, [form.sampleAllocationId, filteredTestParamOptions.length, testParamOptions])
+
   const searchFilteredOptions = testParamSearch.trim()
     ? filteredTestParamOptions.filter((opt) => {
         const q = testParamSearch.trim().toLowerCase()
@@ -97,6 +155,17 @@ export function TestAllocationForm({
         return label.includes(q) || spec.includes(q) || accr.includes(q)
       })
     : filteredTestParamOptions
+
+  const pageCount = Math.max(1, Math.ceil(searchFilteredOptions.length / pageSize))
+  const pagedOptions = searchFilteredOptions.slice((page - 1) * pageSize, page * pageSize)
+
+  useEffect(() => {
+    setPage(1)
+  }, [testParamSearch, pageSize, form.sampleAllocationId, row.isCodeId, row.department])
+
+  useEffect(() => {
+    setPage((p) => Math.min(p, pageCount))
+  }, [pageCount])
 
   const toggleTestParam = (id: string) => {
     const next = new Set(localSelectedIds)
@@ -226,90 +295,54 @@ export function TestAllocationForm({
 
   const fmtDetail = (v: string | null | undefined) => (v != null && String(v).trim() !== '' ? String(v).trim() : '—')
 
-  const IS_CODE_FILES_BUCKET = 'is-code-files'
-
-  const getSignedUrlForIsCodeFile = async (storagePath: string): Promise<string | undefined> => {
-    try {
-      const { data, error } = await supabase.storage.from(IS_CODE_FILES_BUCKET).createSignedUrl(storagePath, 60 * 10)
-      if (error) throw error
-      return data?.signedUrl
-    } catch {
-      return undefined
-    }
+  const openAddTestParameterDirectory = () => {
+    setAddTestParameterOpen(true)
   }
 
-  const openAddTestParameterDirectory = () => {
-    openAddTestParameterWindow({
-      isCodeId: row.isCodeId,
-      isCodeLabel: row.isCodeLabel,
-      department: row.department,
-      designation: form.designation,
+  const handleTestParameterAdded = (param: {
+    id: string
+    label: string
+    specificRequirement: string
+    underAccreditation: string
+    clauseNo: string | null
+    unitValue: string | null
+    uncertaintyMu: string | null
+    isCodeId: string | null
+    department: string | null
+  }) => {
+    onTestParamAdded?.(param)
+    if (!onTestParamAdded) void onRefreshTestParams?.()
+    const nextIds = Array.from(new Set([...form.testParameterIds, param.id]))
+    const labels = nextIds
+      .map((tid) => (tid === param.id ? param.label : testParamOptions.find((o) => o.id === tid)?.label))
+      .filter(Boolean) as string[]
+    setLocalSelectedIds(new Set(nextIds))
+    onChange({
+      ...form,
+      testParameterIds: nextIds,
+      testParameterSummary: labels.join(', '),
     })
   }
 
-  const openViewFilesWindow = async () => {
-    if (!row.isCodeId || !row.isCodeLabel) return
-    const win = window.open('', '_blank', 'width=700,height=500')
-    if (!win) return
-    const esc = (s: string) =>
-      String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>IS Code Files</title><style>body{font-family:ui-sans-serif,system-ui,sans-serif;margin:16px;}h1{font-size:18px;} .muted{color:#64748b;font-size:12px;margin-bottom:12px;} .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;} .name{flex:1;} .btn{padding:6px 12px;border-radius:8px;background:#0f172a;color:white;text-decoration:none;font-size:12px;} .btn:hover{background:#1e293b;} .empty{color:#64748b;padding:18px;border:1px dashed #cbd5e1;border-radius:8px;}</style></head><body><h1>IS Code Files</h1><div class="muted">${esc(row.isCodeLabel)}</div><div class="muted">Loading…</div></body></html>`)
-    win.document.close()
-
-    const { data: fileList, error } = await supabase
-      .from('is_code_files')
-      .select('id, file_name, storage_path')
-      .eq('is_code_id', row.isCodeId)
-      .order('created_at', { ascending: false })
-    if (error) {
-      win.document.open()
-      win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>IS Code Files</title></head><body><h1>IS Code Files</h1><p>Failed to load files.</p></body></html>`)
-      win.document.close()
-      return
-    }
-    const list = Array.isArray(fileList) ? fileList : []
-    const withUrls: { file_name: string; url?: string }[] = []
-    for (const f of list) {
-      const url = await getSignedUrlForIsCodeFile((f as { storage_path: string }).storage_path)
-      withUrls.push({ file_name: (f as { file_name: string }).file_name, url })
-    }
-    const items =
-      withUrls.length === 0
-        ? '<div class="empty">No files in IS Code directory for this code.</div>'
-        : withUrls
-            .map(
-              (f) =>
-                `<div class="row"><span class="name">${esc(f.file_name)}</span>${f.url ? `<a class="btn" href="${esc(f.url)}" target="_blank" rel="noreferrer">View</a>` : '<span class="muted">—</span>'}</div>`,
-            )
-            .join('')
-    win.document.open()
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>IS Code Files</title><style>body{font-family:ui-sans-serif,system-ui,sans-serif;margin:16px;}h1{font-size:18px;} .muted{color:#64748b;font-size:12px;margin-bottom:12px;} .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;} .name{flex:1;} .btn{padding:6px 12px;border-radius:8px;background:#0f172a;color:white;text-decoration:none;font-size:12px;} .btn:hover{background:#1e293b;} .empty{color:#64748b;padding:18px;border:1px dashed #cbd5e1;border-radius:8px;}</style></head><body><h1>IS Code Files</h1><div class="muted">${esc(row.isCodeLabel)}</div>${items}</body></html>`)
-    win.document.close()
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="space-y-2">
-          <Label>Section Code</Label>
-          <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">{row.sectionCode}</div>
+    <div className={cn(limsRegistryFormClass, 'flex min-h-0 flex-col gap-4')}>
+      <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-start">
+        <div className="min-w-0 space-y-2">
+          <Label className={fieldLabelClass}>Section Code</Label>
+          <div className={readonlyBoxClass}>{row.sectionCode}</div>
         </div>
-        <div className="space-y-2">
-          <Label>IS Code</Label>
-          <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">{row.isCodeLabel ?? '-'}</div>
+        <div className="min-w-0 space-y-2">
+          <Label className={fieldLabelClass}>IS Code</Label>
+          <div className={readonlyBoxClass}>
+            {normalizeIsCodeLabel(row.isCodeLabel) || '-'}
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label>Department</Label>
-          <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">{row.department ?? '-'}</div>
+        <div className="min-w-0 space-y-2">
+          <Label className={fieldLabelClass}>Department</Label>
+          <div className={readonlyBoxClass}>{row.department ?? '-'}</div>
         </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Designation</Label>
+        <div className="min-w-0 space-y-2">
+          <Label className={fieldLabelClass}>Designation</Label>
           <Select
             value={form.designation ?? ''}
             onValueChange={(value) =>
@@ -321,8 +354,8 @@ export function TestAllocationForm({
               })
             }
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select designation (User Management)" />
+            <SelectTrigger className={limsFieldClass}>
+              <SelectValue placeholder="Select designation" />
             </SelectTrigger>
             <SelectContent>
               {designationOptions.map((d) => (
@@ -333,11 +366,13 @@ export function TestAllocationForm({
             </SelectContent>
           </Select>
           {designationOptions.length === 0 && row.department && (
-            <p className="text-xs text-muted-foreground">No designations in User Management for this department.</p>
+            <p className="text-xs text-stone-500">No designations for this department.</p>
           )}
         </div>
-        <div className="space-y-2">
-          <Label>Select Employee</Label>
+        <div className="min-w-0 space-y-2">
+          <Label className={fieldLabelClass}>
+            Select Employee <span className="text-red-600" aria-hidden>*</span>
+          </Label>
           <Select
             value={form.assignedEmployeeId || ''}
             onValueChange={(value) => {
@@ -350,11 +385,11 @@ export function TestAllocationForm({
             }}
             disabled={!form.designation?.trim()}
           >
-            <SelectTrigger>
+            <SelectTrigger className={limsFieldClass}>
               <SelectValue
                 placeholder={
                   form.designation?.trim()
-                    ? 'Select employee (User Management)'
+                    ? 'Select Employee Name'
                     : 'Select designation first'
                 }
               />
@@ -368,66 +403,81 @@ export function TestAllocationForm({
             </SelectContent>
           </Select>
           {form.designation?.trim() && employeesFiltered.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              No active employees in User Management match department &quot;{row.department ?? '-'}&quot; and designation
-              &quot;{form.designation}&quot;.
+            <p className="text-xs text-stone-500">
+              No matching employees for this department/designation.
             </p>
           )}
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <Label className="text-sm font-medium shrink-0">Test Parameters</Label>
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={openAddTestParameterDirectory}
-              title="Add a new test parameter in Test Parameter directory"
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              Add Test Parameter
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={openViewFilesWindow}
-              disabled={!row.isCodeId}
-              title={row.isCodeId ? `View files for ${row.isCodeLabel ?? 'IS Code'}` : 'Select a section with IS Code to view files'}
-            >
-              <FolderOpen className="mr-1 h-4 w-4" />
-              View Files
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={openSampleDetails}
-            >
-              <FileText className="mr-1 h-4 w-4" />
-              View Sample Details
-            </Button>
-          </div>
+      <div className="flex min-h-0 flex-col gap-2">
+        <div className="flex h-9 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto [&_button]:!h-9 [&_button]:min-h-9 [&_button]:px-3 [&_button[role=combobox]]:!h-9 [&_input]:!h-9">
+          <Button
+            type="button"
+            size="sm"
+            className={cn(limsPrimaryBtnClass, 'shrink-0 gap-1')}
+            onClick={openAddTestParameterDirectory}
+            title="Add a new test parameter in Test Parameter directory"
+          >
+            <Plus className="h-4 w-4" />
+            Add Test Parameter
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(limsOutlineBtnClass, 'shrink-0')}
+            onClick={() => setViewFilesOpen(true)}
+            disabled={!row.isCodeId}
+            title={
+              row.isCodeId
+                ? `View files for ${normalizeIsCodeLabel(row.isCodeLabel) || 'IS Code'}`
+                : 'Select a section with IS Code to view files'
+            }
+          >
+            <FolderOpen className="mr-1 h-4 w-4" />
+            View Files
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(limsOutlineBtnClass, 'shrink-0')}
+            onClick={openSampleDetails}
+          >
+            <FileText className="mr-1 h-4 w-4" />
+            View Sample Details
+          </Button>
           <Input
-            placeholder="Search in table..."
+            placeholder="Search in Table"
             value={testParamSearch}
             onChange={(e) => setTestParamSearch(e.target.value)}
-            className="w-full max-w-xs h-9"
+            className={cn(limsFieldClass, 'ml-auto w-[11rem] min-w-[9rem] shrink-0 sm:w-[14rem]')}
           />
+          <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+            <SelectTrigger className={cn(limsFieldClass, 'w-[7rem] shrink-0')} aria-label="Rows per page">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="5">5 / Page</SelectItem>
+              <SelectItem value="10">10 / Page</SelectItem>
+              <SelectItem value="20">20 / Page</SelectItem>
+              <SelectItem value="50">50 / Page</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Add opens Test Parameter master in a new tab with this IS Code and department pre-filled. Return here and refresh the list after saving.
-        </p>
-        <div className="max-h-[min(52vh,640px)] overflow-auto rounded-md border">
+        <div className={cn(limsPanelClass, 'flex w-full flex-col overflow-hidden bg-[#f7f3eb]')}>
+          <div>
           {filteredTestParamOptions.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-2 text-center">No test parameters for this IS Code &amp; Department.</p>
+            <div className="m-3 border border-dashed border-[#d6d3d1] bg-[#fffcf7] p-4 text-center sm:m-4">
+              <p className="text-sm text-[#57534e]">No test parameters for this IS Code &amp; Department.</p>
+            </div>
           ) : searchFilteredOptions.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-2 text-center">No matches for &quot;{testParamSearch.trim()}&quot;.</p>
+            <div className="m-3 border border-dashed border-[#d6d3d1] bg-[#fffcf7] p-4 text-center sm:m-4">
+              <p className="text-sm text-[#57534e]">No matches for &quot;{testParamSearch.trim()}&quot;.</p>
+            </div>
           ) : (
-            <table className="w-full table-fixed text-sm border-collapse">
+            <table className={cn(limsTableClass, 'table-fixed')}>
               <colgroup>
                 <col className="w-9" />
                 <col className="w-[22%]" />
@@ -437,58 +487,70 @@ export function TestAllocationForm({
                 <col className="w-[20%]" />
               </colgroup>
               <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="w-9 shrink-0 p-2 font-medium">
+                <tr className="border-stone-700 bg-stone-800">
+                  <th className={cn(thClass, 'w-9')}>
                     <div className="flex justify-center">
                       <input
                         ref={selectAllHeaderRef}
                         type="checkbox"
+                        className={checkboxClass}
                         aria-label="Select all test parameters"
                         checked={allFilteredSelected}
                         onChange={toggleSelectAll}
                       />
                     </div>
                   </th>
-                  <th className="p-2 font-medium text-left align-top">Test Name</th>
-                  <th className="p-2 px-3 font-medium text-center align-top">Clause Number</th>
-                  <th className="p-2 font-medium text-center align-top">Specified Requirement</th>
-                  <th className="p-2 px-3 font-medium text-center align-top">Uncertainty of Measurement</th>
-                  <th className="p-2 px-3 font-medium text-center align-top">Under Accreditation</th>
+                  <th className={cn(thClass, 'text-left')}>Test Name</th>
+                  <th className={thClass}>Clause Number</th>
+                  <th className={thClass}>Specified Requirement</th>
+                  <th className={thClass}>Uncertainty of Measurement</th>
+                  <th className={thClass}>Under Accreditation</th>
                 </tr>
               </thead>
               <tbody>
-                {searchFilteredOptions.map((opt) => (
+                {pagedOptions.map((opt, index) => {
+                  const selected = localSelectedIds.has(opt.id)
+                  return (
                   <tr
                     key={opt.id}
-                    className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer"
+                    className={cn(
+                      'cursor-pointer',
+                      selected ? rowSelectedClass : index % 2 === 0 ? rowEvenClass : rowOddClass,
+                    )}
                     onClick={() => toggleTestParam(opt.id)}
                   >
-                    <td className="w-9 shrink-0 p-2 align-top">
+                    <td className={cn(tdClass, 'w-9')}>
                       <div className="flex justify-center">
                         <input
                           type="checkbox"
-                          checked={localSelectedIds.has(opt.id)}
+                          className={checkboxClass}
+                          checked={selected}
                           onChange={() => toggleTestParam(opt.id)}
                           onClick={(e) => e.stopPropagation()}
                         />
                       </div>
                     </td>
-                    <td className="p-2 text-left align-top break-words whitespace-normal">
-                      {opt.label || '-'}
+                    <td className={cn(tdClass, 'text-left text-[12.5px] font-semibold tracking-tight')}>
+                      <span className="line-clamp-2 break-words" title={opt.label || undefined}>
+                        {opt.label || '-'}
+                      </span>
                     </td>
-                    <td className="p-2 px-3 text-center align-top text-muted-foreground break-words whitespace-normal">
+                    <td className={cn(tdClass, 'text-center break-words whitespace-normal text-[#57534e]')}>
                       {opt.clauseNo?.trim() || '-'}
                     </td>
-                    <td className="p-2 align-top text-muted-foreground break-words whitespace-normal">
-                      <div className="flex items-start w-full gap-1">
-                        <span className="flex-1 min-w-0 break-words whitespace-pre-wrap text-center">
+                    <td className={cn(tdClass, 'break-words whitespace-normal text-[#57534e]')}>
+                      <div className="flex w-full items-center gap-1">
+                        <span
+                          className="line-clamp-2 min-w-0 flex-1 break-words text-center"
+                          title={displaySpecificRequirement(opt)}
+                        >
                           {displaySpecificRequirement(opt)}
                         </span>
                         <Button
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 shrink-0 ml-auto"
+                          className="ml-auto h-7 w-7 shrink-0 rounded-none text-amber-800 hover:bg-amber-500/15 hover:text-amber-950"
                           aria-label="Edit specified requirement"
                           onClick={(e) => {
                             e.stopPropagation()
@@ -499,100 +561,227 @@ export function TestAllocationForm({
                         </Button>
                       </div>
                     </td>
-                    <td className="p-2 px-3 text-center align-top text-muted-foreground break-words whitespace-normal">
+                    <td className={cn(tdClass, 'text-center break-words whitespace-normal text-[#57534e]')}>
                       {opt.uncertaintyMu?.trim() || '-'}
                     </td>
-                    <td className="p-2 px-3 text-center align-top break-words whitespace-normal">
+                    <td className={cn(tdClass, 'text-center break-words whitespace-normal font-medium text-[#1c1917]')}>
                       {opt.underAccreditation ?? '-'}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}
+          </div>
+          <div className="relative shrink-0 overflow-hidden border-t-2 border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-2 text-white sm:px-4">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <div className="relative flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <span className="text-xs text-stone-300">
+                Selected: {localSelectedIds.size}
+                {searchFilteredOptions.length > 0
+                  ? ` · Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, searchFilteredOptions.length)} of ${searchFilteredOptions.length}`
+                  : ''}
+              </span>
+              <div className="flex h-8 flex-wrap items-center gap-2 [&_button]:!h-8 [&_button]:min-h-8 [&_input]:!h-8">
+                {searchFilteredOptions.length > 0 ? (
+                  <>
+                    <Input
+                      className={cn(limsDarkBarFieldClass, '!h-8 w-20')}
+                      placeholder="Page"
+                      value={jumpTo}
+                      onChange={(e) => setJumpTo(e.target.value.replace(/[^0-9]/g, ''))}
+                      aria-label="Jump to page"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={cn(limsDarkBarBtnClass, '!h-8')}
+                      onClick={() => {
+                        const n = Number(jumpTo)
+                        if (Number.isFinite(n) && n > 0) {
+                          setPage(Math.min(pageCount, Math.max(1, Math.floor(n))))
+                        }
+                        setJumpTo('')
+                      }}
+                    >
+                      Jump
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className={cn(limsDarkBarBtnClass, '!h-8 !w-8')}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={16} />
+                    </Button>
+                    <span className="text-xs font-medium leading-8 text-stone-300">
+                      Page {page} / {pageCount}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className={cn(limsDarkBarBtnClass, '!h-8 !w-8')}
+                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                      disabled={page >= pageCount}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={16} />
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  type="button"
+                  className={cn(limsPrimaryBtnClass, 'ml-auto !h-8 min-w-[8.5rem] lg:ml-2')}
+                  onClick={onSave}
+                  disabled={saveLoading}
+                >
+                  {saveLoading ? 'Saving…' : 'Save & Close'}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onClose} disabled={saveLoading}>
-          Cancel
-        </Button>
-        <Button type="button" onClick={onSave} disabled={saveLoading}>
-          {saveLoading ? 'Saving…' : 'Save'}
-        </Button>
-      </div>
-
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Specified Requirement — Section {form.sectionCode || row.sectionCode}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
+        <DialogContent className={cn(limsDialogClass, '!max-w-md !gap-0 !p-0')}>
+          <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold text-white">
+                Edit Specified Requirements — Section {form.sectionCode || row.sectionCode}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="space-y-4 bg-[#f7f3eb] p-5">
+            <p className="text-xs text-stone-500">
               Applies only to this section code. Test Parameter master and other sections are not changed.
             </p>
             <div className="space-y-2">
-              <Label htmlFor="edit-spec-value">Specified Requirement</Label>
+              <Label htmlFor="edit-spec-value" className={fieldLabelClass}>
+                Specified Requirement
+              </Label>
               <Textarea
                 id="edit-spec-value"
                 rows={3}
                 value={editSpecValue}
                 onChange={(e) => setEditSpecValue(e.target.value)}
                 placeholder="e.g. 0.30 Maximum"
+                className="rounded-none border-stone-500 bg-stone-50 shadow-none focus-visible:border-amber-600 focus-visible:ring-amber-500/20"
               />
             </div>
-            {editSpecError && (
-              <p className="text-sm text-destructive">{editSpecError}</p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setEditSpecOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={() => void saveEditSpec()} disabled={editSpecSaving}>
-                {editSpecSaving ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
+            {editSpecError && <p className="text-sm text-red-700">{editSpecError}</p>}
+          </div>
+          <div className="relative flex justify-end gap-2 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3">
+            <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <Button
+              type="button"
+              className={cn(limsPrimaryBtnClass, 'relative min-w-[8.5rem]')}
+              onClick={() => void saveEditSpec()}
+              disabled={editSpecSaving}
+            >
+              {editSpecSaving ? 'Saving…' : 'Save & Close'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={sampleDetailsOpen} onOpenChange={setSampleDetailsOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Sample Details</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {sampleDetailsLoading && (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            )}
-            {sampleDetailsError && (
-              <p className="text-sm text-destructive">{sampleDetailsError}</p>
-            )}
+        <DialogContent
+          persistOnFocusLoss
+          layer="nested"
+          aria-describedby={undefined}
+          className={cn(
+            limsDialogClass,
+            'left-1/2 top-1/2 max-w-lg -translate-x-1/2 -translate-y-1/2 p-0',
+          )}
+        >
+          <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative text-left">
+              <DialogTitle className="text-base font-semibold text-white">Sample Details</DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="space-y-3 bg-[#f7f3eb] p-5">
+            {sampleDetailsLoading && <p className="text-sm text-stone-600">Loading…</p>}
+            {sampleDetailsError && <p className="text-sm text-red-700">{sampleDetailsError}</p>}
             {!sampleDetailsLoading && !sampleDetailsError && sampleDetails && (
-              <div className="grid gap-4 text-sm">
-                <div className="space-y-2">
-                  <h5 className="font-medium text-foreground">Sample Description &amp; Sample Declaration</h5>
-                  <div className="grid grid-cols-[120px_1fr] gap-2 items-baseline">
-                    <span className="text-muted-foreground">Sample Description</span>
-                    <span className="whitespace-pre-wrap">{fmtDetail(sampleDetails.sample_description)}</span>
-                  </div>
-                  <div className="grid grid-cols-[120px_1fr] gap-2 items-start">
-                    <span className="text-muted-foreground pt-0.5">Sample Declaration</span>
-                    <span className="whitespace-pre-wrap">{fmtDetail(sampleDetails.sample_declaration)}</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <h5 className="font-medium text-foreground">Any Other Information</h5>
-                  <div className="grid grid-cols-[120px_1fr] gap-2 items-start">
-                    <span className="text-muted-foreground pt-0.5">Details</span>
-                    <span className="whitespace-pre-wrap">{fmtDetail(sampleDetails.any_other_information)}</span>
-                  </div>
-                </div>
+              <div className="space-y-3 text-sm text-stone-800">
+                <article className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
+                  <header className="border-b border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5">
+                    <h5 className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Sample Description &amp; Sample Declaration
+                    </h5>
+                  </header>
+                  <dl className="divide-y divide-stone-200">
+                    <div className="grid gap-1 px-4 py-3 sm:grid-cols-[9rem_1fr] sm:gap-4">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                        Sample Description
+                      </dt>
+                      <dd className="whitespace-pre-wrap break-words font-medium leading-relaxed text-stone-900">
+                        {fmtDetail(sampleDetails.sample_description)}
+                      </dd>
+                    </div>
+                    <div className="grid gap-1 px-4 py-3 sm:grid-cols-[9rem_1fr] sm:gap-4">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                        Sample Declaration
+                      </dt>
+                      <dd className="whitespace-pre-wrap break-words font-medium leading-relaxed text-stone-900">
+                        {fmtDetail(sampleDetails.sample_declaration)}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+
+                <article className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
+                  <header className="border-b border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5">
+                    <h5 className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Any Other Information
+                    </h5>
+                  </header>
+                  <dl>
+                    <div className="grid gap-1 px-4 py-3 sm:grid-cols-[9rem_1fr] sm:gap-4">
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                        Details
+                      </dt>
+                      <dd className="whitespace-pre-wrap break-words font-medium leading-relaxed text-stone-900">
+                        {fmtDetail(sampleDetails.any_other_information)}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
               </div>
             )}
           </div>
         </DialogContent>
       </Dialog>
+
+      <AddTestParameterNestedDialog
+        open={addTestParameterOpen}
+        onOpenChange={setAddTestParameterOpen}
+        prefill={{
+          isCodeId: row.isCodeId,
+          isCodeLabel: row.isCodeLabel,
+          department: row.department,
+          designation: form.designation,
+        }}
+        onSaved={handleTestParameterAdded}
+      />
+
+      <IsCodeFilesViewDialog
+        open={viewFilesOpen}
+        onOpenChange={setViewFilesOpen}
+        isCodeId={row.isCodeId}
+        isCodeLabel={row.isCodeLabel}
+      />
     </div>
   )
 }

@@ -50,12 +50,12 @@ export function UserManagementTable(props: UserManagementTableProps) {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 overflow-hidden">
       {props.users.length > 0 ? (
         <Table className={GRID_TABLE}>
           <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="text-xs text-center w-14">
+            <TableRow className="bg-stone-800 hover:bg-stone-800">
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center w-14">
                 <input
                   type="checkbox"
                   className={checkboxClass}
@@ -67,11 +67,11 @@ export function UserManagementTable(props: UserManagementTableProps) {
                   aria-label="Select all users"
                 />
               </TableHead>
-              <TableHead className="text-xs text-center">Name</TableHead>
-              <TableHead className="text-xs text-center">Contact Details</TableHead>
-              <TableHead className="text-xs text-center">Division & Department</TableHead>
-              <TableHead className="text-xs text-center">Status</TableHead>
-              <TableHead className="text-xs text-center">Actions</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Name</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Contact Details</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Division & Department</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Status</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

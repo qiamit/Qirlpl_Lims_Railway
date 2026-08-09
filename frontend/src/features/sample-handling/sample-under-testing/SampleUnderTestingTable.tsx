@@ -1,107 +1,53 @@
 import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import type { TestAllocationRow } from '../types'
-import { groupRowsBySrf } from '../test-allocation/sortTestAllocationRows'
 import { countFilledResults, getSectionParametersForEntry } from './sectionParameterRows'
-import { ClipboardList, Eye, Undo2, FileCheck } from 'lucide-react'
-import { isActiveReviewerName } from '../results-under-review/resultsUnderReviewPartitions'
+import { ClipboardList, Undo2, FileCheck } from 'lucide-react'
+import { isSectionSubmittedForReview } from './underTestingSectionStatus'
 import {
-  getUnderTestingSubmittedStatus,
-  isSectionApprovedForDisplay,
-  UNDER_TESTING_SUBMITTED_STATUS_LABEL,
-} from './underTestingSectionStatus'
+  limsPanelClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
-const COLUMN_COUNT = 6
+/** checkbox + SRF + Section + Department + IS Code + Results + Action */
+const COLUMN_COUNT = 7
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '—')
 
-function isSectionSubmittedForReview(row: TestAllocationRow): boolean {
-  if (row.referredBackFromReview) return false
-  const stage = String(row.sampleStage ?? '')
-    .trim()
-    .toLowerCase()
-  // Issued / completed work must never sit in Pending for Results
-  if (stage === 'completed') return true
-  if (stage === 'report_preparation' && (row.resultsLocked || row.sectionReviewApproved)) return true
-  return Boolean(row.resultsLocked)
+const thClass = cn(limsTableHeadClass, 'border border-stone-700 !p-2')
+const tdClass = 'border border-[#e7e0d4] !p-2 align-middle text-xs text-[#292524]'
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 accent-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
+const actionBtnClass =
+  'h-8 w-8 rounded-none border border-amber-700/50 bg-[#fde68a]/70 text-[#78350f] shadow-none hover:bg-amber-700 hover:text-white hover:border-amber-800'
+const sectionLinkClass =
+  'max-w-full truncate text-center text-[12.5px] font-semibold tracking-tight text-amber-800 underline-offset-2 hover:text-amber-950 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
+
+/** Red (0%) → green (100%) for Enter Results progress. */
+function resultsProgressButtonStyle(filled: number, total: number): {
+  backgroundColor: string
+  borderColor: string
+  color: string
+} {
+  const ratio = total <= 0 ? 0 : Math.min(1, Math.max(0, filled / total))
+  const r = Math.round(185 + (22 - 185) * ratio)
+  const g = Math.round(28 + (163 - 28) * ratio)
+  const b = Math.round(28 + (74 - 28) * ratio)
+  const bg = `rgb(${r}, ${g}, ${b})`
+  return { backgroundColor: bg, borderColor: bg, color: '#ffffff' }
 }
 
-function partitionRowsByResultsStatus(rows: TestAllocationRow[]) {
-  const pending: TestAllocationRow[] = []
-  const submittedForReview: TestAllocationRow[] = []
-  rows.forEach((row) => {
-    if (isSectionSubmittedForReview(row)) submittedForReview.push(row)
-    else pending.push(row)
+function sortRowsBySrf(rows: TestAllocationRow[]): TestAllocationRow[] {
+  return [...rows].sort((a, b) => {
+    const srf = (a.srfNumber ?? '').localeCompare(b.srfNumber ?? '', undefined, { sensitivity: 'base' })
+    if (srf !== 0) return srf
+    return (a.sectionCode ?? '').localeCompare(b.sectionCode ?? '', undefined, { sensitivity: 'base' })
   })
-  return { pending, submittedForReview }
-}
-
-function SrfGroupHeader({
-  srfNumber,
-  totalSections,
-  pendingSections,
-}: {
-  srfNumber: string
-  totalSections: number
-  pendingSections: number
-}) {
-  return (
-    <TableRow className="bg-muted/30 hover:bg-muted/30">
-      <TableCell colSpan={COLUMN_COUNT} className="px-4 py-1.5">
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="font-medium text-foreground">SRF: {srfNumber}</span>
-          <div className="flex flex-wrap items-center justify-end gap-1.5 text-muted-foreground">
-            <span>
-              {totalSections} section{totalSections === 1 ? '' : 's'}
-            </span>
-            {pendingSections > 0 ? (
-              <Badge variant="warning" className="h-5 px-1.5 text-[10px] font-medium">
-                {pendingSections} pending
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-      </TableCell>
-    </TableRow>
-  )
-}
-
-function SectionGroupHeader({
-  title,
-  count,
-  variant,
-}: {
-  title: string
-  count: number
-  variant: 'pending' | 'submitted'
-}) {
-  const styles =
-    variant === 'pending'
-      ? 'bg-amber-50/80 border-amber-200/80 text-amber-950'
-      : 'bg-sky-50/80 border-sky-200/80 text-sky-950'
-
-  return (
-    <TableRow className={`${styles} border-y-2 hover:bg-inherit`}>
-      <TableCell colSpan={COLUMN_COUNT} className="px-4 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide">{title}</span>
-          <span className="text-[11px] font-medium opacity-80">
-            {count} section{count === 1 ? '' : 's'}
-          </span>
-        </div>
-      </TableCell>
-    </TableRow>
-  )
-}
-
-function SectionGroupDivider() {
-  return (
-    <TableRow className="hover:bg-transparent pointer-events-none">
-      <TableCell colSpan={COLUMN_COUNT} className="p-0 h-3 bg-muted/50 border-y-2 border-border" />
-    </TableRow>
-  )
 }
 
 export function SampleUnderTestingTable({
@@ -129,177 +75,40 @@ export function SampleUnderTestingTable({
   onReferback: (row: TestAllocationRow) => void
   onSendForReview: (row: TestAllocationRow) => void
   emptyStateMessage?: string
-  /** Laboratory Director view — group section rows under SRF headers. */
+  /** Laboratory Director view — sort sections by SRF. */
   groupBySrf?: boolean
 }) {
-  const uniqueAllocationIds = [...new Set(rows.map((r) => r.sampleAllocationId))]
-  const allChecked = uniqueAllocationIds.length > 0 && uniqueAllocationIds.every((id) => selectedIds.has(id))
+  /** Main table: pending results only — submitted rows live under header button dialog. */
+  const pendingRows = useMemo(() => {
+    const pending = rows.filter((r) => !isSectionSubmittedForReview(r))
+    return groupBySrf ? sortRowsBySrf(pending) : pending
+  }, [rows, groupBySrf])
+
+  const uniqueAllocationIds = [...new Set(pendingRows.map((r) => r.sampleAllocationId))]
+  const allChecked =
+    uniqueAllocationIds.length > 0 && uniqueAllocationIds.every((id) => selectedIds.has(id))
   const someChecked = uniqueAllocationIds.some((id) => selectedIds.has(id))
-  const { pending, submittedForReview } = useMemo(() => partitionRowsByResultsStatus(rows), [rows])
-
-  const srfStatsBySampleId = useMemo(() => {
-    const map = new Map<string, { total: number; pending: number }>()
-    for (const r of rows) {
-      const id = r.sampleId?.trim()
-      if (!id) continue
-      if (!map.has(id)) map.set(id, { total: 0, pending: 0 })
-      const stat = map.get(id)!
-      stat.total += 1
-      if (!isSectionSubmittedForReview(r)) stat.pending += 1
-    }
-    return map
-  }, [rows])
-
-  const renderDataRow = (r: TestAllocationRow) => {
-    const locked = Boolean(r.resultsLocked)
-    const approved = isSectionApprovedForDisplay(r)
-    const submittedStatus = locked ? getUnderTestingSubmittedStatus(r) : null
-    const submittedStatusLabel = submittedStatus
-      ? UNDER_TESTING_SUBMITTED_STATUS_LABEL[submittedStatus]
-      : null
-    const entries = getSectionParametersForEntry(r)
-    const { filled, total } = countFilledResults(entries)
-    const allFilled = total > 0 && filled === total
-
-    const badgeLabel =
-      submittedStatus === 'test_report_issued'
-        ? 'Issued'
-        : approved
-          ? 'Approved'
-          : 'Under Review'
-
-    return (
-      <TableRow key={r.sampleAllocationId}>
-        <TableCell className="text-center">
-          <input
-            type="checkbox"
-            aria-label={`Select section ${r.sectionCode}`}
-            checked={selectedIds.has(r.sampleAllocationId)}
-            onChange={() => onToggle(r.sampleAllocationId)}
-          />
-        </TableCell>
-        <TableCell className="text-left pl-4">
-          <div className="font-medium truncate">{fmt(r.sectionCode)}</div>
-          <div className="text-xs text-muted-foreground truncate">{fmt(r.department)}</div>
-        </TableCell>
-        <TableCell className="text-center text-xs truncate" title={r.isCodeLabel ?? undefined}>
-          {fmt(r.isCodeLabel)}
-        </TableCell>
-        <TableCell className="text-center">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5"
-            aria-label={`View sample description for section ${r.sectionCode}`}
-            title="View sample description and declared value"
-            onClick={() => onViewSampleDetails(r)}
-          >
-            <Eye size={14} />
-            View
-          </Button>
-        </TableCell>
-        <TableCell className="text-center">
-          <div className="flex flex-col items-center gap-1">
-            <Button
-              type="button"
-              size="sm"
-              variant={locked ? 'outline' : 'secondary'}
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => onOpenResults(r)}
-            >
-              <ClipboardList size={14} />
-              {locked ? 'View Results' : 'Enter Results'}
-            </Button>
-            <span className="text-[11px] text-muted-foreground">
-              {filled}/{total} result{total === 1 ? '' : 's'}
-              {allFilled ? ' · complete' : ''}
-            </span>
-          </div>
-        </TableCell>
-        <TableCell className="text-right pr-4">
-          {locked ? (
-            <div className="inline-flex flex-col items-end gap-1 min-w-[148px]">
-              <Badge variant="secondary" className="text-[10px] font-medium">
-                {badgeLabel}
-              </Badge>
-              <span className="text-[10px] text-muted-foreground text-right line-clamp-2 max-w-[160px]">
-                {submittedStatusLabel}
-              </span>
-              {!approved && isActiveReviewerName(r.resultsReviewerName) ? (
-                <span className="text-[10px] text-muted-foreground text-right line-clamp-2 max-w-[160px]">
-                  {r.resultsReviewerName}
-                </span>
-              ) : null}
-            </div>
-          ) : (
-            <div className="inline-flex items-center justify-end gap-1">
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                aria-label={`Send results for review — section ${fmt(r.sectionCode)}`}
-                title="Send for Review"
-                onClick={() => onSendForReview(r)}
-              >
-                <FileCheck size={16} />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                aria-label={`Refer back section ${fmt(r.sectionCode)} to Test Allocation`}
-                title="Refer Back"
-                onClick={() => onReferback(r)}
-              >
-                <Undo2 size={16} className="text-amber-700 dark:text-amber-500" />
-              </Button>
-            </div>
-          )}
-        </TableCell>
-      </TableRow>
-    )
-  }
-
-  const renderSectionRows = (sectionRows: TestAllocationRow[]) => {
-    if (!groupBySrf) return sectionRows.map(renderDataRow)
-
-    return groupRowsBySrf(sectionRows).flatMap((group) => {
-      const srfLabel = group[0]?.srfNumber?.trim() || group[0]?.sectionCode || '—'
-      const sampleId = group[0]?.sampleId?.trim() ?? ''
-      const srfStats = srfStatsBySampleId.get(sampleId)
-      const groupKey = `srf-${sampleId}-${srfLabel}`
-      return [
-        <SrfGroupHeader
-          key={groupKey}
-          srfNumber={srfLabel}
-          totalSections={srfStats?.total ?? group.length}
-          pendingSections={srfStats?.pending ?? 0}
-        />,
-        ...group.map(renderDataRow),
-      ]
-    })
-  }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-      {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
+    <div className={cn(limsPanelClass, 'overflow-hidden bg-[#f7f3eb]')}>
+      {error ? <p className="px-4 pt-4 text-sm text-red-700 sm:px-5">{error}</p> : null}
       {loading ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">
-          {emptyStateMessage ??
-            'No section codes or test parameters assigned to you in Test Allocation (Select Employee).'}
-        </p>
+        <p className="px-4 py-6 text-sm text-[#78716c] sm:px-5">Loading…</p>
+      ) : pendingRows.length === 0 ? (
+        <div className="m-3 border border-dashed border-[#d6d3d1] bg-[#fffcf7] p-4 text-center sm:m-4 sm:p-6">
+          <p className="text-sm text-[#57534e]">
+            {emptyStateMessage ??
+              'No sections pending results. Use Submitted for Review in the header to view sent sections.'}
+          </p>
+        </div>
       ) : (
-        <Table className="min-w-[900px]">
+        <Table className={cn(limsTableClass, 'min-w-[980px]')}>
           <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="text-xs w-[44px] text-center">
+            <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+              <TableHead className={cn(thClass, 'w-[44px] text-center')}>
                 <input
                   type="checkbox"
+                  className={checkboxClass}
                   aria-label="Select all"
                   checked={allChecked}
                   ref={(el) => {
@@ -308,39 +117,110 @@ export function SampleUnderTestingTable({
                   onChange={(e) => onToggleAll(e.target.checked)}
                 />
               </TableHead>
-              <TableHead className="text-xs text-left w-[140px]">Section Code</TableHead>
-              <TableHead className="text-xs text-center w-[140px]">IS Code</TableHead>
-              <TableHead className="text-xs text-center w-[120px]">Sample Details</TableHead>
-              <TableHead className="text-xs text-center w-[180px]">Submitted Results</TableHead>
-              <TableHead className="text-xs text-right pr-4 w-[90px]">Action</TableHead>
+              <TableHead className={cn(thClass, 'w-[150px] text-left')}>SRF Number</TableHead>
+              <TableHead className={cn(thClass, 'w-[140px]')}>Section Code</TableHead>
+              <TableHead className={cn(thClass, 'w-[120px]')}>Department</TableHead>
+              <TableHead className={cn(thClass, 'w-[140px]')}>IS Code</TableHead>
+              <TableHead className={cn(thClass, 'w-[160px]')}>Results</TableHead>
+              <TableHead className={cn(thClass, 'w-[110px]')}>Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <SectionGroupHeader title="Pending for Results" count={pending.length} variant="pending" />
-            {pending.length > 0 ? (
-              renderSectionRows(pending)
-            ) : (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={COLUMN_COUNT} className="px-4 py-3 text-center text-xs text-muted-foreground">
-                  No sections pending results entry
-                </TableCell>
-              </TableRow>
-            )}
-            <SectionGroupDivider />
-            <SectionGroupHeader
-              title="Submitted for Review"
-              count={submittedForReview.length}
-              variant="submitted"
-            />
-            {submittedForReview.length > 0 ? (
-              renderSectionRows(submittedForReview)
-            ) : (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={COLUMN_COUNT} className="px-4 py-3 text-center text-xs text-muted-foreground">
-                  No sections submitted for review yet
-                </TableCell>
-              </TableRow>
-            )}
+            {pendingRows.map((r, index) => {
+              const entries = getSectionParametersForEntry(r)
+              const { filled, total } = countFilledResults(entries)
+              const allFilled = total > 0 && filled === total
+              const sectionLabel = fmt(r.sectionCode)
+
+              return (
+                <TableRow
+                  key={r.sampleAllocationId}
+                  className={index % 2 === 0 ? rowEvenClass : rowOddClass}
+                >
+                  <TableCell className={cn(tdClass, 'text-center')}>
+                    <input
+                      type="checkbox"
+                      className={checkboxClass}
+                      aria-label={`Select section ${r.sectionCode}`}
+                      checked={selectedIds.has(r.sampleAllocationId)}
+                      onChange={() => onToggle(r.sampleAllocationId)}
+                    />
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'pl-3 text-left font-medium')}>
+                    {fmt(r.srfNumber)}
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'text-center')}>
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        className={sectionLinkClass}
+                        aria-label={`View sample details for section ${sectionLabel}`}
+                        title="View sample description and declared value"
+                        onClick={() => onViewSampleDetails(r)}
+                      >
+                        {sectionLabel}
+                      </button>
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'text-center')}>{fmt(r.department)}</TableCell>
+                  <TableCell
+                    className={cn(tdClass, 'text-center text-xs')}
+                    title={r.isCodeLabel ?? undefined}
+                  >
+                    {fmt(r.isCodeLabel)}
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'text-center')}>
+                    <div className="flex flex-col items-center gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 rounded-none border text-xs text-white shadow-none hover:opacity-90 hover:text-white"
+                        style={resultsProgressButtonStyle(filled, total)}
+                        aria-label={`Enter results — ${filled} of ${total} filled`}
+                        title={
+                          allFilled
+                            ? 'All results filled'
+                            : filled === 0
+                              ? 'No results entered yet'
+                              : `${filled}/${total} results filled`
+                        }
+                        onClick={() => onOpenResults(r)}
+                      >
+                        <ClipboardList size={14} />
+                        Enter Results
+                      </Button>
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn(tdClass, 'text-center')}>
+                    <div className="inline-flex items-center justify-center gap-1.5">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className={actionBtnClass}
+                        aria-label={`Send results for review — section ${sectionLabel}`}
+                        title="Send for Review"
+                        onClick={() => onSendForReview(r)}
+                      >
+                        <FileCheck size={17} strokeWidth={2.35} />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className={actionBtnClass}
+                        aria-label={`Refer back section ${sectionLabel} to Test Allocation`}
+                        title="Refer Back"
+                        onClick={() => onReferback(r)}
+                      >
+                        <Undo2 size={17} strokeWidth={2.35} />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       )}

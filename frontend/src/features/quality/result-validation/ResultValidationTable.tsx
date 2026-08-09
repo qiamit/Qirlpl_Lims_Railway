@@ -47,7 +47,7 @@ export function ResultValidationTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-card overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
       {loading ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
@@ -59,7 +59,7 @@ export function ResultValidationTable({
         <div className="overflow-x-auto [&>div]:overflow-visible">
           <Table className="w-full table-auto">
             <TableHeader>
-              <TableRow className="bg-muted/50">
+              <TableRow className="bg-stone-800 hover:bg-stone-800">
                 <TableHead className={cn(compactCol, 'px-1 text-center text-xs')}>
                   <input
                     type="checkbox"
@@ -74,8 +74,8 @@ export function ResultValidationTable({
                 </TableHead>
                 <TableHead className={cn(compactCol, 'text-xs')}>Ref</TableHead>
                 <TableHead className={cn(compactCol, 'text-xs')}>Date</TableHead>
-                <TableHead className="text-left text-xs">Check Type</TableHead>
-                <TableHead className="text-left text-xs">Title / Summary</TableHead>
+                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Check Type</TableHead>
+                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Title / Summary</TableHead>
                 <TableHead className={cn(compactCol, 'text-xs')}>SRF</TableHead>
                 <TableHead className={cn(compactCol, 'text-xs text-center')}>Status</TableHead>
                 <TableHead className={cn(compactCol, 'text-xs')}>Performed By</TableHead>

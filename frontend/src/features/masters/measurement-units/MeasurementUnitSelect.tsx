@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter as UiDialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  limsAddLinkClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
-import { addMeasurementUnit, deleteMeasurementUnit } from './measurementUnitApi'
+import {
+  addMeasurementUnit,
+  deleteMeasurementUnit,
+  updateMeasurementUnit,
+} from './measurementUnitApi'
 import { useMeasurementUnits } from './useMeasurementUnits'
+
+const manageListItemClass =
+  'flex items-center justify-between rounded-none border border-stone-500 bg-stone-50 px-3 py-1.5 text-sm text-stone-900'
 
 export function MeasurementUnitSelect({
   id,
@@ -44,6 +52,7 @@ export function MeasurementUnitSelect({
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [newUnitName, setNewUnitName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,14 +72,30 @@ export function MeasurementUnitSelect({
   const totalOptions = filteredUnits.length + (showAddUnitAction ? 1 : 0)
   const resolvedPlaceholder =
     placeholder ?? (units.length > 0 ? 'Select unit' : 'Add units to use them here')
+  const unitInputId = `${id ?? 'unit'}-new`
 
   useEffect(() => {
     setHighlight((prev) => (totalOptions === 0 ? 0 : Math.min(prev, totalOptions - 1)))
   }, [totalOptions])
 
+  useEffect(() => {
+    if (!dialogOpen) {
+      setEditingId(null)
+      setNewUnitName('')
+      setError(null)
+    }
+  }, [dialogOpen])
+
   const pickUnit = (name: string) => {
     onChange(name)
     setOpen(false)
+  }
+
+  const openManageDialog = (prefill?: string) => {
+    setEditingId(null)
+    setNewUnitName(prefill?.trim() ?? '')
+    setError(null)
+    setDialogOpen(true)
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -94,25 +119,32 @@ export function MeasurementUnitSelect({
       if (highlight < filteredUnits.length) {
         pickUnit(filteredUnits[highlight].name)
       } else if (showAddUnitAction) {
-        setNewUnitName(value.trim())
-        setDialogOpen(true)
+        openManageDialog(value)
         setOpen(false)
       }
     }
   }
 
-  const handleAddUnit = async () => {
+  const handleSaveAndClose = async () => {
     const name = newUnitName.trim()
     if (!name) return
     setSaving(true)
     setError(null)
     try {
-      const row = await addMeasurementUnit(name)
-      onChange(row.name)
-      setNewUnitName('')
+      if (editingId) {
+        const prevName = units.find((u) => u.id === editingId)?.name
+        const row = await updateMeasurementUnit(editingId, name)
+        if (prevName && value === prevName) onChange(row.name)
+        else if (!value.trim()) onChange(row.name)
+      } else {
+        const row = await addMeasurementUnit(name)
+        onChange(row.name)
+      }
       setDialogOpen(false)
+      setEditingId(null)
+      setNewUnitName('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to add measurement unit')
+      setError(err instanceof Error ? err.message : 'Unable to save measurement unit')
     } finally {
       setSaving(false)
     }
@@ -123,6 +155,10 @@ export function MeasurementUnitSelect({
     try {
       const removedName = await deleteMeasurementUnit(unitId)
       if (removedName && value === removedName) onChange('')
+      if (editingId === unitId) {
+        setEditingId(null)
+        setNewUnitName('')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to delete measurement unit')
     }
@@ -130,28 +166,12 @@ export function MeasurementUnitSelect({
 
   return (
     <>
-      <div className={cn(showLabel || showManageButton ? 'space-y-2' : '', className)}>
-        {(showLabel || showManageButton) && (
-          <div className="flex min-h-6 items-center justify-between gap-2">
-            {showLabel && label ? (
-              <Label htmlFor={id} className={labelClassName}>
-                {label}
-              </Label>
-            ) : showManageButton ? (
-              <span />
-            ) : null}
-            {showManageButton ? (
-              <button
-                type="button"
-                className="text-xs font-medium text-primary flex items-center gap-1 hover:underline"
-                onClick={() => setDialogOpen(true)}
-              >
-                <Plus size={12} />
-                Add New
-              </button>
-            ) : null}
-          </div>
-        )}
+      <div className={cn(showLabel ? 'space-y-2' : '', className)}>
+        {showLabel && label ? (
+          <Label htmlFor={id} className={labelClassName}>
+            {label}
+          </Label>
+        ) : null}
 
         <div className="relative">
           <Input
@@ -169,11 +189,27 @@ export function MeasurementUnitSelect({
             onKeyDown={handleKeyDown}
             placeholder={resolvedPlaceholder}
             autoComplete="off"
-            className={inputClassName}
+            className={cn(limsFieldClass, showManageButton && 'pr-9', inputClassName)}
           />
+          {showManageButton ? (
+            <button
+              type="button"
+              className={cn(
+                limsAddLinkClass,
+                'absolute inset-y-0 right-0 z-10 inline-flex w-8 items-center justify-center hover:no-underline',
+              )}
+              onClick={() => openManageDialog()}
+              onMouseDown={(e) => e.preventDefault()}
+              aria-label="Add measurement unit"
+              title="Add New"
+              disabled={disabled}
+            >
+              <Plus size={14} />
+            </button>
+          ) : null}
           {(filteredUnits.length > 0 || showAddUnitAction) && open && !disabled && (
             <div
-              className="absolute z-30 mt-1 w-full rounded-md border border-border bg-popover shadow-lg"
+              className="absolute z-30 mt-1 w-full rounded-none border border-stone-500 bg-white shadow-lg"
               tabIndex={-1}
             >
               <ul className="max-h-56 overflow-auto text-sm">
@@ -182,7 +218,7 @@ export function MeasurementUnitSelect({
                     <button
                       type="button"
                       tabIndex={-1}
-                      className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-muted font-semibold' : 'hover:bg-muted'}`}
+                      className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
                       onMouseDown={(e) => e.preventDefault()}
                       onMouseEnter={() => setHighlight(index)}
                       onClick={() => pickUnit(unit.name)}
@@ -196,14 +232,13 @@ export function MeasurementUnitSelect({
                     <button
                       type="button"
                       tabIndex={-1}
-                      className={`w-full px-3 py-2 text-left text-primary ${
-                        highlight === filteredUnits.length ? 'bg-muted font-semibold' : 'hover:bg-muted'
+                      className={`w-full px-3 py-2 text-left text-amber-800 ${
+                        highlight === filteredUnits.length ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
                       }`}
                       onMouseDown={(e) => e.preventDefault()}
                       onMouseEnter={() => setHighlight(filteredUnits.length)}
                       onClick={() => {
-                        setNewUnitName(value.trim())
-                        setDialogOpen(true)
+                        openManageDialog(value)
                         setOpen(false)
                       }}
                     >
@@ -218,63 +253,92 @@ export function MeasurementUnitSelect({
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Add Measurement Unit</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
+        <DialogContent
+          persistOnFocusLoss
+          layer="stacked"
+          aria-describedby={undefined}
+          className={cn(limsDialogClass, 'max-w-lg p-0')}
+        >
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                {editingId ? 'Edit Measurement Unit' : 'Add Measurement Unit'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor={`${id ?? 'unit'}-new`}>Unit Name</Label>
+              <Label
+                htmlFor={unitInputId}
+                className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+              >
+                {editingId ? 'Edit Unit Name' : 'Unit Name'}
+              </Label>
               <Input
-                id={`${id ?? 'unit'}-new`}
+                id={unitInputId}
                 placeholder="e.g., kN"
                 value={newUnitName}
                 onChange={(e) => setNewUnitName(e.target.value)}
+                className={limsFieldClass}
               />
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Existing Units</p>
-              <div className="space-y-1 max-h-40 overflow-auto">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+                Existing Units
+              </p>
+              <div className="max-h-40 space-y-1 overflow-auto">
                 {units.length > 0 ? (
                   units.map((unit) => (
-                    <div
-                      key={unit.id}
-                      className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                    >
-                      <span>{unit.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteUnit(unit.id)}
-                        className="text-destructive hover:text-destructive/80"
-                        aria-label={`Delete ${unit.name}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                    <div key={unit.id} className={manageListItemClass}>
+                      <span className="min-w-0 truncate">{unit.name}</span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(unit.id)
+                            setNewUnitName(unit.name)
+                            setError(null)
+                            window.requestAnimationFrame(() => {
+                              document.getElementById(unitInputId)?.focus()
+                            })
+                          }}
+                          className="text-amber-800 hover:text-amber-950"
+                          aria-label={`Edit ${unit.name}`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteUnit(unit.id)}
+                          className="text-red-600 hover:text-red-800"
+                          aria-label={`Delete ${unit.name}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-muted-foreground">No units added yet.</p>
+                  <p className="text-xs text-stone-500">No units added yet.</p>
                 )}
               </div>
             </div>
-            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+            {error ? <p className="text-xs text-red-700">{error}</p> : null}
           </div>
-          <UiDialogFooter>
+
+          <DialogFooter className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
             <Button
               type="button"
-              variant="secondary"
-              onClick={() => {
-                setDialogOpen(false)
-                setNewUnitName('')
-                setError(null)
-              }}
+              className={cn(limsPrimaryBtnClass, 'min-w-[8.5rem]')}
+              onClick={() => void handleSaveAndClose()}
+              disabled={!newUnitName.trim() || saving}
             >
-              Cancel
+              {saving ? 'Saving…' : 'Save & Close'}
             </Button>
-            <Button type="button" onClick={() => void handleAddUnit()} disabled={!newUnitName.trim() || saving}>
-              {saving ? 'Saving…' : 'Save Unit'}
-            </Button>
-          </UiDialogFooter>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

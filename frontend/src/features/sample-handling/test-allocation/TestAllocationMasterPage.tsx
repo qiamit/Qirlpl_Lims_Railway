@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
@@ -21,6 +23,7 @@ import {
   type TestAllocationSortKey,
 } from './sortTestAllocationRows'
 import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   confirmDestructiveDelete,
   deleteTestAllocationsForSections,
@@ -37,7 +40,7 @@ export default function TestAllocationMasterPage() {
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState<TestAllocationSortKey>('srfSection')
+  const [sortKey, setSortKey] = useState<TestAllocationSortKey>('srfNumber')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
@@ -204,7 +207,7 @@ export default function TestAllocationMasterPage() {
         isCodeMap = new Map(
           isCodes.map((c: { id: string; is_number?: string; revision_year?: string | null }) => [
             c.id,
-            c.revision_year ? `${c.is_number ?? ''} : ${c.revision_year}` : (c.is_number ?? c.id),
+            formatIsCodeLabelFromParts(c.is_number, c.revision_year) || c.id,
           ]),
         )
       }
@@ -380,18 +383,14 @@ export default function TestAllocationMasterPage() {
     () => sortedFiltered.filter((r) => !r.sentForTesting && !isPendingTestAllocationRow(r)),
     [sortedFiltered],
   )
-  const sentRows = useMemo(
-    () => sortedFiltered.filter((r) => r.sentForTesting),
-    [sortedFiltered],
+  const workRows = useMemo(
+    () => [...pendingAllotmentRows, ...pendingTestingRows],
+    [pendingAllotmentRows, pendingTestingRows],
   )
-  const pageCount = Math.max(1, Math.ceil(sentRows.length / pageSize))
-  const pagedSentRows = useMemo(
-    () => sentRows.slice((page - 1) * pageSize, page * pageSize),
-    [sentRows, page, pageSize],
-  )
+  const pageCount = Math.max(1, Math.ceil(workRows.length / pageSize))
   const tableRows = useMemo(
-    () => [...pendingAllotmentRows, ...pendingTestingRows, ...pagedSentRows],
-    [pendingAllotmentRows, pendingTestingRows, pagedSentRows],
+    () => workRows.slice((page - 1) * pageSize, page * pageSize),
+    [workRows, page, pageSize],
   )
 
   const handleSort = (key: TestAllocationSortKey) => {
@@ -741,8 +740,18 @@ export default function TestAllocationMasterPage() {
     })()
   }
 
+  const sentForTestingRows = useMemo(
+    () =>
+      sortTestAllocationRows(
+        departmentScopedRows.filter((r) => r.sentForTesting),
+        'srfNumber',
+        'asc',
+      ),
+    [departmentScopedRows],
+  )
+
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <TestAllocationHeaderBar
         search={search}
         onSearchChange={setSearch}
@@ -758,6 +767,11 @@ export default function TestAllocationMasterPage() {
         onAssistantDataChanged={() => {
           void loadRows()
           void loadTestParams()
+        }}
+        sentForTestingRows={sentForTestingRows}
+        onViewSentParameters={(row) => {
+          setParamsViewRow(row)
+          setParamsViewOpen(true)
         }}
       />
 
@@ -818,37 +832,68 @@ export default function TestAllocationMasterPage() {
       }}>
         <DialogContent
           persistOnFocusLoss
-          className="left-0 top-0 flex h-[100dvh] w-[100vw] max-h-[100dvh] max-w-[100vw] translate-x-0 translate-y-0 flex-col gap-4 overflow-hidden rounded-none border-0 p-4 sm:p-6"
-        >
-          <DialogHeader>
-            <DialogTitle>
-              {formRow && isPendingTestAllocationRow(formRow) ? 'Allot Tests' : 'Edit Test Parameter'}
-            </DialogTitle>
-          </DialogHeader>
-          {saveMessage && (
-            <p className={`text-sm ${saveMessage === 'Test allocation saved.' ? 'text-green-600' : 'text-destructive'}`}>
-              {saveMessage}
-            </p>
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'left-0 top-0 z-50 flex h-[100dvh] w-full max-h-[100dvh] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none',
+            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
           )}
-          {formRow && form ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <TestAllocationForm
-                row={formRow}
-                form={form}
-                onChange={setForm}
-                onSave={handleSaveForm}
-                saveLoading={saveLoading}
-                onClose={() => {
-                  setFormOpen(false)
-                  setFormRow(null)
-                  setForm(null)
-                }}
-                testParamOptions={testParamOptions}
-                employeesFiltered={employeesFilteredForRow}
-                designationOptions={designationOptionsForForm}
-              />
-            </div>
-          ) : null}
+        >
+          <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 text-white sm:px-6">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                {formRow && isPendingTestAllocationRow(formRow) ? 'Allot Tests' : 'Edit Test Parameter'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-stone-100/90 to-stone-50">
+            {saveMessage && (
+              <p
+                className={cn(
+                  'shrink-0 px-4 pt-3 text-sm sm:px-6',
+                  saveMessage === 'Test allocation saved.' ? 'text-emerald-700' : 'text-red-700',
+                )}
+              >
+                {saveMessage}
+              </p>
+            )}
+            {formRow && form ? (
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+                <TestAllocationForm
+                  row={formRow}
+                  form={form}
+                  onChange={setForm}
+                  onSave={handleSaveForm}
+                  saveLoading={saveLoading}
+                  testParamOptions={testParamOptions}
+                  employeesFiltered={employeesFilteredForRow}
+                  designationOptions={designationOptionsForForm}
+                  onTestParamAdded={(param) => {
+                    setTestParamOptions((prev) => {
+                      if (prev.some((p) => p.id === param.id)) return prev
+                      return [
+                        ...prev,
+                        {
+                          id: param.id,
+                          label: param.label,
+                          specificRequirement: param.specificRequirement,
+                          underAccreditation: param.underAccreditation,
+                          clauseNo: param.clauseNo,
+                          unitValue: param.unitValue,
+                          uncertaintyMu: param.uncertaintyMu,
+                          isCodeId: param.isCodeId,
+                          department: param.department,
+                        },
+                      ].sort((a, b) => a.label.localeCompare(b.label))
+                    })
+                    void loadTestParams()
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

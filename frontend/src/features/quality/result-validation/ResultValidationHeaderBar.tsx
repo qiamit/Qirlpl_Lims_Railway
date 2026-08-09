@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsPrimaryBtnClass, limsDarkBarSearchClass, limsDarkBarFieldClass, limsDarkBarBtnClass, limsAiTriggerClass } from '@/lib/limsThemeUi'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,16 +31,16 @@ export function ResultValidationHeaderBar({
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between app-card px-4 py-4 sm:px-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-amber-200/80">
               Validating the Results
             </p>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground whitespace-nowrap">
+            <h1 className="text-lg font-semibold tracking-tight text-white whitespace-nowrap">
               {module.label}
             </h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p className="mt-0.5 text-xs text-stone-300">
               ISO 17025 Clause {module.clause} — {module.description}
             </p>
           </div>
@@ -46,7 +48,7 @@ export function ResultValidationHeaderBar({
             <Input
               placeholder="Search ref, title, SRF…"
               value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
+              onChange={(e) => onSearchChange(e.target.value)} className={limsDarkBarSearchClass}
             />
           </div>
           <div className="w-36">
@@ -64,7 +66,7 @@ export function ResultValidationHeaderBar({
           </div>
           <div className="w-28">
             <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-              <SelectTrigger aria-label="Rows per page">
+              <SelectTrigger className={cn(limsDarkBarFieldClass, 'w-full')} aria-label="Rows per page">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -76,15 +78,15 @@ export function ResultValidationHeaderBar({
             </Select>
           </div>
         </div>
-        <Button type="button" className="gap-1.5 shrink-0" onClick={onNewCheck}>
+        <Button type="button" className={cn('gap-1.5 shrink-0', limsPrimaryBtnClass)} onClick={onNewCheck}>
           <Plus size={16} />
           New Check
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border/70 bg-card px-4 py-3">
-        <p className="text-xs text-muted-foreground">{module.clause}</p>
-        <p className="text-sm font-medium mt-0.5">{recordCount} record(s) in this module</p>
+      <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-3">
+        <p className="text-xs text-amber-200/80">{module.clause}</p>
+        <p className="mt-0.5 text-sm font-medium text-white">{recordCount} record(s) in this module</p>
       </div>
     </div>
   )

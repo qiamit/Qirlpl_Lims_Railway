@@ -56,7 +56,7 @@ export function ReportSpecifiedRequirementEditDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            Edit Specified Requirement — Section {target?.sectionCode?.trim() || '—'}
+            Edit Specified Requirements — Section {target?.sectionCode?.trim() || '—'}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-1">

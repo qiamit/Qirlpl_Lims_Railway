@@ -1,11 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
-  DialogFooter as UiDialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -15,8 +13,19 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { ClientManageDialogContent } from '@/features/masters/clients/ClientManageDialogContent'
+import {
+  limsAddLinkClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import type { AccreditationBodyRow, TestParameterForm } from './types'
 import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
+import { normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
 
 const SCIENTIFIC_SYMBOLS = [
   '±', 'µ', 'Ω', 'Δ', '∑', '√', '≤', '≥', '≈', '≠', '≡', '∝', '∫', '∂', '∇',
@@ -50,7 +59,6 @@ export function TestParameterForm({
   canSave,
   saveLoading,
   onSave,
-  onClear,
   isCodes = [],
   accreditationBodies = [],
   accreditationDialogOpen,
@@ -58,6 +66,7 @@ export function TestParameterForm({
   newAccreditationBody,
   setNewAccreditationBody,
   onAddAccreditationBody,
+  onUpdateAccreditationBody,
   onDeleteAccreditationBody,
   onOpenAddIsCodeForm,
   departments = [],
@@ -69,7 +78,6 @@ export function TestParameterForm({
   canSave: boolean
   saveLoading: boolean
   onSave: () => void
-  onClear: () => void
   isCodes?: Array<{ id: string; displayCode: string; searchLabel: string; defaultTestMethod: string }>
   accreditationBodies?: AccreditationBodyRow[]
   accreditationDialogOpen: boolean
@@ -77,6 +85,7 @@ export function TestParameterForm({
   newAccreditationBody: string
   setNewAccreditationBody: (value: string) => void
   onAddAccreditationBody: () => void
+  onUpdateAccreditationBody: (id: string) => void
   onDeleteAccreditationBody: (id: string) => void
   onOpenAddIsCodeForm: (typedCode: string) => void
   departments?: string[]
@@ -140,9 +149,11 @@ export function TestParameterForm({
   }, [isCodeOptions, form.testMethod])
 
   const showAddIsCodeAction = useMemo(() => {
-    const typed = form.isCodeLabel.trim()
+    const typed = normalizeIsCodeLabel(form.isCodeLabel)
     if (!typed) return false
-    return !isCodeOptions.some((code) => code.displayCode.toLowerCase() === typed.toLowerCase())
+    return !isCodeOptions.some(
+      (code) => normalizeIsCodeLabel(code.displayCode).toLowerCase() === typed.toLowerCase(),
+    )
   }, [form.isCodeLabel, isCodeOptions])
 
   const totalIsCodeOptions = filteredIsCodesByCode.length + (showAddIsCodeAction ? 1 : 0)
@@ -307,8 +318,7 @@ export function TestParameterForm({
   }
 
   return (
-    <Card className="shadow-sm">
-      <CardContent className="space-y-6 pt-5">
+    <div className={cn(limsRegistryFormClass, 'space-y-6')}>
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 md:col-span-3 space-y-2">
             <Label htmlFor={`is-code-${pickerId}`}>IS Code</Label>
@@ -322,16 +332,17 @@ export function TestParameterForm({
                 onKeyDown={handleIsCodeKeyDown}
                 placeholder="IS 1786: 2008"
                 autoComplete="off"
+                className={limsFieldClass}
               />
               {isCodeOpen && (filteredIsCodesByCode.length > 0 || showAddIsCodeAction) && (
-                <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg" tabIndex={-1}>
+                <div className="absolute z-20 mt-1 w-full rounded-none border border-stone-500 bg-white shadow-lg" tabIndex={-1}>
                   <ul className="max-h-56 overflow-auto text-sm">
                     {filteredIsCodesByCode.map((code, index) => (
                       <li key={code.id}>
                         <button
                           type="button"
                           tabIndex={-1}
-                          className={`w-full px-3 py-2 text-left ${index === isCodeHighlight ? 'bg-muted font-semibold' : 'hover:bg-muted'}`}
+                          className={`w-full px-3 py-2 text-left ${index === isCodeHighlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
                           onMouseDown={(e) => e.preventDefault()}
                           onMouseEnter={() => setIsCodeHighlight(index)}
                           onClick={() => syncSelectionFromIsCode(code)}
@@ -345,8 +356,8 @@ export function TestParameterForm({
                         <button
                           type="button"
                           tabIndex={-1}
-                          className={`w-full px-3 py-2 text-left text-primary ${
-                            isCodeHighlight === filteredIsCodesByCode.length ? 'bg-muted font-semibold' : 'hover:bg-muted'
+                          className={`w-full px-3 py-2 text-left text-amber-800 ${
+                            isCodeHighlight === filteredIsCodesByCode.length ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
                           }`}
                           onMouseDown={(e) => e.preventDefault()}
                           onMouseEnter={() => setIsCodeHighlight(filteredIsCodesByCode.length)}
@@ -458,36 +469,80 @@ export function TestParameterForm({
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="text-xs font-medium text-primary flex items-center gap-1 hover:underline"
+                    className={cn(limsAddLinkClass, 'flex items-center gap-1')}
                   >
                     <Sparkles size={12} />
                     Insert Symbol
                   </button>
                 </DialogTrigger>
-                <DialogContent aria-describedby={undefined} className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Insert Symbol</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="symbol-search">Search</Label>
+                <DialogContent
+                  persistOnFocusLoss
+                  layer="stacked"
+                  aria-describedby={undefined}
+                  className={cn(
+                    limsDialogClass,
+                    'flex max-h-[min(72vh,560px)] w-[calc(100%-1.5rem)] max-w-xl flex-col p-0 sm:w-full',
+                  )}
+                >
+                  <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                      style={limsDarkBarGlowStyle}
+                    />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                    <DialogHeader className="relative pr-10 text-left">
+                      <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                        Insert Symbol
+                      </DialogTitle>
+                    </DialogHeader>
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-stone-100/90 to-stone-50">
+                    <div className="shrink-0 space-y-2 border-b border-stone-200 px-4 py-3">
+                      <Label
+                        htmlFor="symbol-search"
+                        className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                      >
+                        Search
+                      </Label>
                       <Input
                         id="symbol-search"
                         placeholder="Search symbols..."
                         value={symbolSearch}
                         onChange={(e) => setSymbolSearch(e.target.value)}
                         autoFocus
+                        className={limsFieldClass}
                       />
                     </div>
-                    {symbolRecents.length > 0 && (
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
+                      {symbolRecents.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+                            Recent
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {symbolRecents.map((sym, index) => (
+                              <button
+                                key={`recent-${index}`}
+                                type="button"
+                                className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
+                                onClick={() => handleInsertSymbol(sym)}
+                              >
+                                {sym}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Recent</p>
-                        <div className="flex flex-wrap gap-2">
-                          {symbolRecents.map((sym, index) => (
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+                          Scientific
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {filteredScientificSymbols.map((sym, index) => (
                             <button
-                              key={`recent-${index}`}
+                              key={`scientific-${index}`}
                               type="button"
-                              className="rounded border border-border bg-muted/50 px-3 py-1.5 text-sm hover:bg-muted"
+                              className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
                               onClick={() => handleInsertSymbol(sym)}
                             >
                               {sym}
@@ -495,35 +550,22 @@ export function TestParameterForm({
                           ))}
                         </div>
                       </div>
-                    )}
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">Scientific</p>
-                      <div className="flex flex-wrap gap-2">
-                        {filteredScientificSymbols.map((sym, index) => (
-                          <button
-                            key={`scientific-${index}`}
-                            type="button"
-                            className="rounded border border-border bg-muted/50 px-3 py-1.5 text-sm hover:bg-muted"
-                            onClick={() => handleInsertSymbol(sym)}
-                          >
-                            {sym}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">Other</p>
-                      <div className="flex flex-wrap gap-2">
-                        {filteredOtherSymbols.map((sym, index) => (
-                          <button
-                            key={`other-${index}`}
-                            type="button"
-                            className="rounded border border-border bg-muted/50 px-3 py-1.5 text-sm hover:bg-muted"
-                            onClick={() => handleInsertSymbol(sym)}
-                          >
-                            {sym}
-                          </button>
-                        ))}
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+                          Other
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {filteredOtherSymbols.map((sym, index) => (
+                            <button
+                              key={`other-${index}`}
+                              type="button"
+                              className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
+                              onClick={() => handleInsertSymbol(sym)}
+                            >
+                              {sym}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -545,64 +587,30 @@ export function TestParameterForm({
               <Label htmlFor="under-accreditation">Under Accreditation</Label>
               <Dialog open={accreditationDialogOpen} onOpenChange={setAccreditationDialogOpen}>
                 <DialogTrigger asChild>
-                  <button className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
-                    <Plus size={12} />
-                    Add New
+                  <button
+                    type="button"
+                    className={cn(limsAddLinkClass, 'inline-flex h-6 w-6 items-center justify-center')}
+                    aria-label="Add accreditation body"
+                    title="Add New"
+                  >
+                    <Plus size={14} />
                   </button>
                 </DialogTrigger>
-                <DialogContent aria-describedby={undefined}>
-                  <DialogHeader>
-                    <DialogTitle>Add Accreditation Body</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="new-accreditation">Body Name</Label>
-                      <Input
-                        id="new-accreditation"
-                        placeholder="e.g., NABL"
-                        value={newAccreditationBody}
-                        onChange={(e) => setNewAccreditationBody(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Existing Bodies</p>
-                      <div className="space-y-1 max-h-40 overflow-auto">
-                        {accreditationBodyOptions.length > 0 ? (
-                          accreditationBodyOptions.map((b) => (
-                            <div key={b.id} className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm">
-                              <span>{b.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => onDeleteAccreditationBody(b.id)}
-                                className="text-destructive hover:text-destructive/80"
-                                aria-label={`Delete ${b.name}`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-xs text-muted-foreground">No bodies added yet.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <UiDialogFooter>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setAccreditationDialogOpen(false)
-                        setNewAccreditationBody('')
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="button" onClick={onAddAccreditationBody} disabled={!newAccreditationBody.trim()}>
-                      Save Body
-                    </Button>
-                  </UiDialogFooter>
-                </DialogContent>
+                <ClientManageDialogContent
+                  open={accreditationDialogOpen}
+                  title="Add Accreditation Body"
+                  addLabel="Body Name"
+                  inputId="new-accreditation"
+                  placeholder="e.g., NABL"
+                  value={newAccreditationBody}
+                  onValueChange={setNewAccreditationBody}
+                  onSave={onAddAccreditationBody}
+                  onUpdate={onUpdateAccreditationBody}
+                  saveDisabled={!newAccreditationBody.trim()}
+                  items={accreditationBodyOptions.map((b) => ({ id: b.id, label: b.name }))}
+                  canDelete={() => true}
+                  onDelete={onDeleteAccreditationBody}
+                />
               </Dialog>
             </div>
 
@@ -727,17 +735,17 @@ export function TestParameterForm({
             )}
           </div>
         </div>
-      </CardContent>
 
-      <CardFooter className="flex items-center justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onClear} disabled={saveLoading} className="w-28">
-          Clear
+      <div className="flex items-center justify-end border-t border-stone-300 pt-4">
+        <Button
+          type="button"
+          onClick={onSave}
+          disabled={!canSave}
+          className={cn(limsPrimaryBtnClass, 'min-w-[8.5rem]')}
+        >
+          {saveLoading ? 'Saving…' : 'Save & Close'}
         </Button>
-        <Button type="button" onClick={onSave} disabled={!canSave} className="w-28">
-          {saveLoading ? 'Saving…' : 'Save'}
-        </Button>
-      </CardFooter>
-
-    </Card>
+      </div>
+    </div>
   )
 }

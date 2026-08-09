@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react'
-import { BookMarked, ClipboardList, FileText, Files, Gauge, Pencil } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { ClipboardList, FileText, Files } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+} from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import type { TestAllocationParameterRow } from '../types'
 import { resolveSectionSpecificRequirement } from './resolveSectionSpecificRequirement'
@@ -32,11 +35,11 @@ function SectionBlock({
 }) {
   return (
     <section className="space-y-2.5">
-      <div className="flex items-center gap-2 border-b border-border/60 pb-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+      <div className="flex items-center gap-2 border-b border-stone-500 pb-2">
+        <span className="flex h-7 w-7 items-center justify-center border border-stone-500 bg-stone-800 text-amber-200">
           <Icon className="h-3.5 w-3.5" aria-hidden />
         </span>
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h4>
+        <h4 className="text-[11px] font-bold uppercase tracking-[0.14em] text-stone-700">{title}</h4>
         {action ? <div className="ml-auto">{action}</div> : null}
       </div>
       {children}
@@ -44,67 +47,33 @@ function SectionBlock({
   )
 }
 
-function DetailTile({
-  label,
-  value,
-  wide,
-  children,
-}: {
-  label: string
-  value?: string
-  wide?: boolean
-  children?: ReactNode
-}) {
-  return (
-    <div
-      className={cn(
-        'min-w-0 rounded-md border border-border/50 bg-background px-3 py-2',
-        wide && 'sm:col-span-2',
-      )}
-    >
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <div className="mt-1 text-sm font-medium leading-snug text-foreground whitespace-pre-wrap break-words">
-        {children ?? value}
-      </div>
-    </div>
-  )
-}
-
-function ProsePanel({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-muted/20 px-3.5 py-3 text-sm leading-relaxed">
-      <p className="whitespace-pre-wrap break-words">{children}</p>
-    </div>
-  )
-}
-
 function IsCodeFilesList({ files }: { files: IsCodeFileLink[] }) {
   if (files.length === 0) {
     return (
-      <p className="rounded-md border border-dashed border-border/70 bg-muted/10 px-3 py-4 text-center text-sm text-muted-foreground">
+      <p className="border border-dashed border-stone-500 bg-stone-50 px-3 py-4 text-center text-sm text-[#57534e]">
         No files uploaded for this IS Code.
       </p>
     )
   }
   return (
-    <ul className="divide-y divide-border/50 overflow-hidden rounded-md border border-border/60 bg-background">
+    <ul className="divide-y divide-[#e7e0d4] overflow-hidden border-2 border-stone-500 bg-[#f7f3eb] shadow-sm ring-1 ring-amber-700/20">
       {files.map((f) => (
         <li key={f.file_name} className="flex items-center justify-between gap-3 px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
-            <Files className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="truncate text-sm">{f.file_name}</span>
+            <Files className="h-3.5 w-3.5 shrink-0 text-amber-800" aria-hidden />
+            <span className="truncate text-sm text-[#1c1917]">{f.file_name}</span>
           </div>
           {f.url ? (
             <a
               href={f.url}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 rounded-md border border-border/60 px-2.5 py-1 text-xs font-medium text-primary hover:bg-muted/50"
+              className={cn(limsOutlineBtnClass, 'inline-flex h-7 items-center px-2.5 text-xs font-semibold')}
             >
               View
             </a>
           ) : (
-            <span className="shrink-0 text-xs text-muted-foreground">—</span>
+            <span className="shrink-0 text-xs text-[#a8a29e]">—</span>
           )}
         </li>
       ))}
@@ -114,40 +83,13 @@ function IsCodeFilesList({ files }: { files: IsCodeFileLink[] }) {
 
 function SampleAndIsCodeSection({ extras }: { extras: TestParameterViewExtras }) {
   return (
-    <SectionBlock icon={BookMarked} title="Sample & IS Code">
+    <SectionBlock icon={Files} title="IS Code Files">
       {extras.loading ? (
-        <p className="rounded-md border border-dashed border-border/70 px-3 py-6 text-center text-sm text-muted-foreground">
-          Loading sample details…
+        <p className="border border-dashed border-stone-500 bg-stone-50 px-3 py-6 text-center text-sm text-[#57534e]">
+          Loading IS code files…
         </p>
       ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background px-3.5 py-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              IS Code
-            </span>
-            <span className="text-base font-semibold tracking-tight">{fmt(extras.isCodeLabel)}</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Sample Description
-              </p>
-              <ProsePanel>{fmt(extras.sampleDescription)}</ProsePanel>
-            </div>
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Declared Value
-              </p>
-              <ProsePanel>{fmt(extras.declaredValue)}</ProsePanel>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              IS Code Files
-            </p>
-            <IsCodeFilesList files={extras.isCodeFiles} />
-          </div>
-        </div>
+        <IsCodeFilesList files={extras.isCodeFiles} />
       )}
     </SectionBlock>
   )
@@ -156,12 +98,11 @@ function SampleAndIsCodeSection({ extras }: { extras: TestParameterViewExtras })
 export function TestParameterViewDialog({
   open,
   onOpenChange,
-  label,
+  label: _label,
   parameters,
   extras,
   sectionParameters,
-  sectionCode,
-  onEditSpecificRequirement,
+  sectionCode: _sectionCode,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -170,32 +111,29 @@ export function TestParameterViewDialog({
   extras: TestParameterViewExtras
   sectionParameters?: TestAllocationParameterRow[] | null
   sectionCode?: string | null
-  onEditSpecificRequirement?: (tp: Record<string, unknown>) => void
 }) {
-  const titleLabel = label.trim() || '—'
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[88vh] gap-0 overflow-hidden p-0">
-        <DialogHeader className="space-y-2 border-b border-border/60 bg-muted/20 px-6 py-4 pr-14 text-left">
-          <div className="flex flex-wrap items-center gap-2">
-            <DialogTitle className="text-lg font-semibold tracking-tight">Test Parameter</DialogTitle>
-            <Badge variant="secondary" className="max-w-full truncate font-medium">
-              {titleLabel}
-            </Badge>
-            {sectionCode?.trim() ? (
-              <Badge variant="outline" className="font-medium">
-                Section {sectionCode.trim()}
-              </Badge>
-            ) : null}
-          </div>
-        </DialogHeader>
+      <DialogContent
+        layer="nested"
+        className={cn(limsDialogClass, 'max-h-[88vh] max-w-3xl overflow-hidden p-0')}
+        aria-describedby={undefined}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative space-y-0 pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Test Parameter
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
-        <div className="max-h-[calc(88vh-6rem)] space-y-5 overflow-y-auto px-6 py-5">
+        <div className="max-h-[calc(88vh-4.5rem)] space-y-4 overflow-y-auto bg-[#f7f3eb] px-4 py-4 sm:px-5">
           {parameters.length === 0 ? (
             <>
               {!extras.loading ? (
-                <p className="rounded-md border border-dashed border-border/70 px-3 py-4 text-center text-sm text-muted-foreground">
+                <p className="border border-dashed border-stone-500 bg-stone-50 px-3 py-4 text-center text-sm text-[#57534e]">
                   No matching test parameter found in Test Parameter directory.
                 </p>
               ) : null}
@@ -220,57 +158,68 @@ export function TestParameterViewDialog({
               return (
                 <div
                   key={tpId || idx}
-                  className="overflow-hidden rounded-lg border border-border/60 bg-background"
+                  className="overflow-hidden border-2 border-stone-500 bg-[#f7f3eb] shadow-sm ring-1 ring-amber-700/20"
                 >
-                  <div className="space-y-3 border-b border-border/60 bg-muted/15 px-4 py-3.5">
+                  <div className="space-y-3 border-b border-stone-500 bg-stone-800 px-4 py-3.5 text-white">
                     <div className="flex flex-wrap items-start gap-2">
-                      <h3 className="text-base font-semibold tracking-tight text-foreground">
-                        {itemName}
-                      </h3>
+                      <h3 className="text-base font-semibold tracking-tight text-amber-100">{itemName}</h3>
                     </div>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      <DetailTile label="IS Code" value={isCode} />
-                      <DetailTile label="Test Method" value={method} />
-                      <DetailTile label="Clause" value={clause} />
-                      <DetailTile label="Unit" value={unit} />
+                      <div className="min-w-0 border border-amber-500/35 bg-stone-900/50 px-3 py-2 text-center">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200/90">
+                          IS Code
+                        </p>
+                        <p className="mt-1 break-words text-sm font-medium text-amber-50">{isCode}</p>
+                      </div>
+                      <div className="min-w-0 border border-amber-500/35 bg-stone-900/50 px-3 py-2 text-center">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200/90">
+                          Test Method
+                        </p>
+                        <p className="mt-1 break-words text-sm font-medium text-amber-50">{method}</p>
+                      </div>
+                      <div className="min-w-0 border border-amber-500/35 bg-stone-900/50 px-3 py-2 text-center">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200/90">
+                          Clause
+                        </p>
+                        <p className="mt-1 break-words text-sm font-medium text-amber-50">{clause}</p>
+                      </div>
+                      <div className="min-w-0 border border-amber-500/35 bg-stone-900/50 px-3 py-2 text-center">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200/90">
+                          Unit
+                        </p>
+                        <p className="mt-1 break-words text-sm font-medium text-amber-50">{unit}</p>
+                      </div>
                     </div>
                   </div>
 
                   <div className="space-y-5 px-4 py-4">
                     <SampleAndIsCodeSection extras={extras} />
 
-                    <SectionBlock
-                      icon={ClipboardList}
-                      title="Requirements"
-                      action={
-                        onEditSpecificRequirement && tpId ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-8 gap-1.5"
-                            aria-label="Edit specified requirement for this section"
-                            title="Section-only override (does not change Test Parameter master)"
-                            onClick={() => onEditSpecificRequirement(tp)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Edit Requirement
-                          </Button>
-                        ) : onEditSpecificRequirement ? (
-                          <span className="text-[11px] text-muted-foreground">
-                            Link test parameter to enable edit
-                          </span>
-                        ) : null
-                      }
-                    >
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <DetailTile label="Specified Requirement" value={displaySpecificRequirement} wide />
-                        <DetailTile label="Acceptance Criteria" value={fmt(tp.acceptance_criteria)} wide />
+                    <SectionBlock icon={ClipboardList} title="Requirements">
+                      <div className="overflow-hidden border-2 border-stone-500 bg-[#f7f3eb] shadow-sm ring-1 ring-amber-700/20">
+                        <div className="grid grid-cols-3 border-b border-stone-700 bg-stone-800">
+                          <div className="border-r border-stone-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200 last:border-r-0">
+                            Specified Requirement
+                          </div>
+                          <div className="border-r border-stone-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200 last:border-r-0">
+                            Acceptance Criteria
+                          </div>
+                          <div className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                            Uncertainty (MU)
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 bg-[#f7f3eb]">
+                          <div className="border-r border-[#e7e0d4] px-3 py-2.5 text-center text-sm font-medium text-[#1c1917]">
+                            {displaySpecificRequirement}
+                          </div>
+                          <div className="border-r border-[#e7e0d4] px-3 py-2.5 text-center text-sm font-medium text-[#1c1917]">
+                            {fmt(tp.acceptance_criteria)}
+                          </div>
+                          <div className="px-3 py-2.5 text-center text-sm font-medium text-[#1c1917]">
+                            {fmt(tp.uncertainty_mu)}
+                          </div>
+                        </div>
                       </div>
-                    </SectionBlock>
-
-                    <SectionBlock icon={Gauge} title="Uncertainty">
-                      <DetailTile label="Uncertainty (MU)" value={fmt(tp.uncertainty_mu)} />
                     </SectionBlock>
                   </div>
                 </div>

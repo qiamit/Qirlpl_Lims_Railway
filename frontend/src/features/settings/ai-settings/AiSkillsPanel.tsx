@@ -173,21 +173,21 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
       )}
 
       {loading ? (
-        <div className="rounded-xl border border-border bg-card px-5 py-8 text-center shadow-sm">
+        <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 px-5 py-8 text-center shadow-sm">
           <p className="text-sm text-muted-foreground">Loading skills…</p>
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
             {pagedRows.length > 0 ? (
               <Table className={GRID_TABLE}>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="text-xs text-center">Name</TableHead>
-                    <TableHead className="text-xs text-center">Description</TableHead>
-                    <TableHead className="text-xs text-center">Keywords</TableHead>
-                    <TableHead className="text-xs text-center">Status</TableHead>
-                    <TableHead className="text-xs text-center w-[100px]">Actions</TableHead>
+                  <TableRow className="bg-stone-800 hover:bg-stone-800">
+                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Name</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Description</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Keywords</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Status</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -277,7 +277,7 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
           aria-describedby={undefined}
         >
           <div className="relative bg-slate-900 px-6 py-5 text-white">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-8 text-left">
               <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
                 AI Registry · {editId ? 'Edit Entry' : 'New Entry'}

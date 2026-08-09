@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsPrimaryBtnClass, limsDarkBarSearchClass, limsDarkBarFieldClass, limsDarkBarBtnClass, limsAiTriggerClass } from '@/lib/limsThemeUi'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,15 +28,15 @@ export function TestParameterHeaderBar({
   isCodeOptions?: QiAssistantIsCodeOption[]
 }) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-xl border border-border bg-card px-5 py-4 shadow-sm">
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-5 py-4 shadow-sm">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground whitespace-nowrap">{title}</h1>
+        <h1 className="text-lg font-semibold tracking-tight text-white whitespace-nowrap">{title}</h1>
         <div className="md:w-[40%]">
-          <Input placeholder="Search..." value={search} onChange={(e) => onSearchChange(e.target.value)} />
+          <Input placeholder="Search..." value={search} onChange={(e) => onSearchChange(e.target.value)} className={limsDarkBarSearchClass} />
         </div>
         <div className="w-28">
           <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger aria-label="Rows per page">
+            <SelectTrigger className={cn(limsDarkBarFieldClass, 'w-full')} aria-label="Rows per page">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -63,8 +65,10 @@ export function TestParameterHeaderBar({
             welcomeMessage="Select an **IS Code** below (PDFs from IS Code Master are read automatically). Tap **!** to activate a **Skill**, then ask me to **extract and add test parameters** (item name, clause, unit, requirement, test method) into Test Parameter Master."
             onDataChanged={onAssistantDataChanged}
             enablePdfImport={false}
+            triggerVariant="icon"
+            triggerClassName={limsAiTriggerClass}
           />
-          <Button type="button" className="gap-2" onClick={onNew}>
+          <Button type="button" className={cn('gap-2', limsPrimaryBtnClass)} onClick={onNew}>
             <Plus size={16} />
             Add New Test Parameter
           </Button>

@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,9 +58,9 @@ export function CalibrationJobStageFooterBar({
   onJumpToGo: () => void
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card px-3 py-3 shadow-sm sm:px-4">
+    <div className="flex flex-col gap-2 relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-3 py-3 shadow-sm sm:px-4">
       {message ? (
-        <p className="text-xs text-muted-foreground sm:text-sm">{message}</p>
+        <p className="text-xs text-stone-300 sm:text-sm">{message}</p>
       ) : null}
       <div
         className={`flex flex-wrap items-center gap-2 ${showBulkActions ? 'justify-between' : 'justify-end'}`}
@@ -69,7 +71,7 @@ export function CalibrationJobStageFooterBar({
               <Button
                 type="button"
                 size="sm"
-                className="gap-1.5 bg-teal-600 text-white hover:bg-teal-500"
+                className="gap-1.5 rounded-none bg-amber-700 text-white hover:bg-amber-800"
                 disabled={!canMoveNext || loading || !nextStageLabel}
                 onClick={onMoveNext}
                 aria-label={nextStageLabel ? `Forward to ${nextStageLabel}` : 'Forward'}
@@ -82,8 +84,7 @@ export function CalibrationJobStageFooterBar({
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                className="gap-1.5 border-amber-600/40 text-amber-900 hover:bg-amber-50"
+                variant="outline" className={cn('gap-1.5 border-amber-600/40 text-amber-900 hover:bg-amber-50', limsDarkBarBtnClass)}
                 disabled={!canReferbackBulk || loading}
                 onClick={onReferbackBulk}
                 aria-label={`Referback to ${previousStageLabel}`}
@@ -92,7 +93,7 @@ export function CalibrationJobStageFooterBar({
                 Referback ({selectedCount})
               </Button>
             ) : null}
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-stone-300">
               {selectedCount} selected · {totalCount} total
             </span>
           </div>
@@ -103,7 +104,7 @@ export function CalibrationJobStageFooterBar({
             value={String(pageSize)}
             onValueChange={(v) => onPageSizeChange(Number.parseInt(v, 10))}
           >
-            <SelectTrigger className="h-8 w-[72px]" aria-label="Page size">
+            <SelectTrigger className={cn(limsDarkBarFieldClass, 'h-8 w-[72px]')} aria-label="Page size">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -125,7 +126,7 @@ export function CalibrationJobStageFooterBar({
           >
             <ChevronLeft size={14} />
           </Button>
-          <span className="text-xs tabular-nums text-muted-foreground">
+          <span className="text-xs tabular-nums text-stone-300">
             {page} / {Math.max(pageCount, 1)}
           </span>
           <Button

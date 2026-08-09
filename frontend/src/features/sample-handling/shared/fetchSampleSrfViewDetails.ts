@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 
 export const IS_CODE_FILES_BUCKET = 'is-code-files'
 export const CLIENT_REFERENCES_BUCKET = 'sample-client-references'
@@ -171,9 +172,8 @@ export async function fetchSampleSrfViewDetails(
       .maybeSingle()
     if (isRow) {
       const r = isRow as { is_number?: string; revision_year?: string | null }
-      isCodeLabel = r.revision_year
-        ? `${r.is_number ?? ''} : ${r.revision_year}`
-        : (r.is_number ?? isCodeId)
+      isCodeLabel =
+        formatIsCodeLabelFromParts(r.is_number, r.revision_year) || r.is_number || isCodeId
     }
   }
 

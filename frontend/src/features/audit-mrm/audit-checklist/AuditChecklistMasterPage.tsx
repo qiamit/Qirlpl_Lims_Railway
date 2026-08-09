@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { normalizeTeamRows, type AuditPlanRow, type AuditType } from '@/features/audit-mrm/audit-plan/types'
@@ -309,7 +310,7 @@ export default function AuditChecklistMasterPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:space-y-5 sm:p-4 md:p-6">
+    <div className={limsPageShellClass}>
       <AuditChecklistHeaderBar search={search} onSearchChange={setSearch} />
 
       <AuditChecklistDialog

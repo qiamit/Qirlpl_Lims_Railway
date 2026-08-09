@@ -9,6 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { AlertTriangle, Info } from 'lucide-react'
+import { limsDarkBarBtnClass, limsDialogClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import {
   diagnosticReasonLabel,
   partitionDiagnosticEntries,
@@ -104,77 +106,79 @@ export function HiddenSrfsDiagnosticBadge({
         type="button"
         variant="outline"
         size="sm"
-        className="h-8 gap-1.5 border-amber-200/90 bg-amber-50/60 text-amber-950 hover:bg-amber-50 hover:text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/25 dark:text-amber-100 dark:hover:bg-amber-950/40"
+        className={cn(limsDarkBarBtnClass, 'h-8 gap-1.5')}
         onClick={() => setOpen(true)}
         aria-label="Open SRF diagnostics"
         title="Why sent-for-testing SRF counts may differ from this table"
       >
         <AlertTriangle size={14} className="shrink-0" />
         <span className="text-xs font-medium">SRF diagnostics</span>
-        <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-semibold">
+        <Badge className="h-5 rounded-none border border-amber-500/40 bg-stone-900/60 px-1.5 text-[10px] font-semibold text-amber-100">
           {summary}
         </Badge>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Info size={18} className="text-muted-foreground" />
+        <DialogContent className={cn(limsDialogClass, 'max-h-[85vh] max-w-lg overflow-y-auto')}>
+          <DialogHeader className="border-b border-stone-200 bg-[#f7f3eb] px-5 py-4">
+            <DialogTitle className="flex items-center gap-2 text-[#1c1917]">
+              <Info size={18} className="text-amber-700" />
               Sample Under Testing — SRF diagnostics
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-[#57534e]">
               Sent for testing from Test Allocation vs what appears in this table. Use this when an
               SRF seems missing.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-md border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
-            <p>
-              <span className="font-medium text-foreground">{diagnostics.totalSentSrfs}</span> SRF
-              {diagnostics.totalSentSrfs === 1 ? '' : 's'} ·{' '}
-              <span className="font-medium text-foreground">{diagnostics.totalSentSections}</span>{' '}
-              section{diagnostics.totalSentSections === 1 ? '' : 's'} sent for testing
-            </p>
-            <p>
-              <span className="font-medium text-foreground">
-                {diagnostics.visibleSrfsAfterVisibility}
-              </span>{' '}
-              SRF{diagnostics.visibleSrfsAfterVisibility === 1 ? '' : 's'} ·{' '}
-              <span className="font-medium text-foreground">
-                {diagnostics.visibleSectionsAfterVisibility}
-              </span>{' '}
-              section{diagnostics.visibleSectionsAfterVisibility === 1 ? '' : 's'} shown in this
-              table
-            </p>
-            {mismatch ? (
-              <p className="text-amber-800 dark:text-amber-200">
-                Counts differ — review hidden entries and notices below.
+          <div className="space-y-4 px-5 py-4">
+            <div className="space-y-1 border border-stone-500 bg-[#f7f3eb] px-3 py-2.5 text-xs text-[#57534e]">
+              <p>
+                <span className="font-medium text-[#1c1917]">{diagnostics.totalSentSrfs}</span> SRF
+                {diagnostics.totalSentSrfs === 1 ? '' : 's'} ·{' '}
+                <span className="font-medium text-[#1c1917]">{diagnostics.totalSentSections}</span>{' '}
+                section{diagnostics.totalSentSections === 1 ? '' : 's'} sent for testing
               </p>
+              <p>
+                <span className="font-medium text-[#1c1917]">
+                  {diagnostics.visibleSrfsAfterVisibility}
+                </span>{' '}
+                SRF{diagnostics.visibleSrfsAfterVisibility === 1 ? '' : 's'} ·{' '}
+                <span className="font-medium text-[#1c1917]">
+                  {diagnostics.visibleSectionsAfterVisibility}
+                </span>{' '}
+                section{diagnostics.visibleSectionsAfterVisibility === 1 ? '' : 's'} shown in this
+                table
+              </p>
+              {mismatch ? (
+                <p className="text-amber-800">
+                  Counts differ — review hidden entries and notices below.
+                </p>
+              ) : null}
+            </div>
+
+            {hidden.length > 0 ? (
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[#1c1917]">
+                  Not shown in this table
+                </h3>
+                <DiagnosticEntryList entries={hidden} variant="hidden" />
+              </div>
+            ) : null}
+
+            {notices.length > 0 ? (
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[#1c1917]">
+                  Shown below — needs attention
+                </h3>
+                <DiagnosticEntryList entries={notices} variant="notice" />
+              </div>
+            ) : null}
+
+            {hidden.length === 0 && notices.length === 0 ? (
+              <p className="text-sm text-[#57534e]">No SRF diagnostic issues detected.</p>
             ) : null}
           </div>
-
-          {hidden.length > 0 ? (
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                Not shown in this table
-              </h3>
-              <DiagnosticEntryList entries={hidden} variant="hidden" />
-            </div>
-          ) : null}
-
-          {notices.length > 0 ? (
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                Shown below — needs attention
-              </h3>
-              <DiagnosticEntryList entries={notices} variant="notice" />
-            </div>
-          ) : null}
-
-          {hidden.length === 0 && notices.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No SRF diagnostic issues detected.</p>
-          ) : null}
         </DialogContent>
       </Dialog>
     </>

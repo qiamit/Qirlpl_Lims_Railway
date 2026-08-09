@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
@@ -508,7 +509,7 @@ export function CalibrationJobStageMasterPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 p-3 sm:space-y-5 sm:p-4 md:p-6">
+    <div className={limsPageShellClass}>
       <CalibrationJobStageHeaderBar
         stage={stage}
         titleOverride={titleOverride}

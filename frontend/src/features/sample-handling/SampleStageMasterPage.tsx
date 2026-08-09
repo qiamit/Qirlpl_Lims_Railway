@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -148,8 +149,8 @@ export default function SampleStageMasterPage({ stage, title, nextStage }: Props
   const someChecked = pagedRows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-md border bg-muted/30 px-4 py-3">
+    <div className={limsPageShellClass}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
           <h1 className="text-2xl font-semibold text-foreground whitespace-nowrap">{title}</h1>
           <div className="md:w-[40%]">
@@ -184,7 +185,7 @@ export default function SampleStageMasterPage({ stage, title, nextStage }: Props
           ) : (
             <div className="rounded-md border overflow-x-auto">
               <div className="w-full">
-                <div className="grid grid-cols-[44px_1.2fr_1.5fr_1fr_1fr_96px] bg-muted/50 text-xs font-semibold divide-x divide-border">
+                <div className="grid grid-cols-[44px_1.2fr_1.5fr_1fr_1fr_96px] bg-stone-800 text-xs font-semibold divide-x divide-border">
                   <div className="p-3 flex items-center justify-center">
                     <input type="checkbox" aria-label="Select all" checked={allChecked} ref={(el) => { if (el) el.indeterminate = !allChecked && someChecked }} onChange={(e) => toggleAll(e.target.checked)} />
                   </div>
@@ -215,7 +216,7 @@ export default function SampleStageMasterPage({ stage, title, nextStage }: Props
         </CardContent>
       </Card>
 
-      <div className="rounded-md border bg-muted/30 px-4 py-3">
+      <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" disabled><FileUp size={16} /> Import</Button>

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
-import { cn } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
+import { limsOutlineBtnClass, limsPrimaryBtnClass, limsRegistryFormClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import {
   RECEIVING_REPORT_TYPES,
   type SampleReceivingForm as FormType,
@@ -43,6 +44,7 @@ export function SampleReceivingForm({
   srfSearchRows = [],
   editingSampleId = null,
   onAddReceivingOption,
+  onUpdateReceivingOption,
   onDeleteReceivingOption = async () => {},
 }: {
   form: FormType
@@ -70,6 +72,7 @@ export function SampleReceivingForm({
   srfSearchRows?: SrfSearchOption[]
   editingSampleId?: string | null
   onAddReceivingOption?: (category: string, label: string) => Promise<void>
+  onUpdateReceivingOption?: (category: string, id: string, label: string) => Promise<void>
   onDeleteReceivingOption?: (category: string, id: string) => Promise<void>
 }) {
   const yesNo = (key: keyof FormType, value: boolean) =>
@@ -147,11 +150,10 @@ export function SampleReceivingForm({
   }
 
   return (
-    <Card>
-      <CardContent className="pt-6">
+    <div className={cn(limsRegistryFormClass, 'space-y-0')}>
         <Tabs value={activeTab} onValueChange={onTabChange}>
           <div
-            className="grid h-10 w-full grid-cols-2 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground"
+            className="grid h-10 w-full grid-cols-2 items-center justify-center rounded-none border border-stone-500 bg-stone-200/80 p-1 text-stone-600"
             role="tablist"
             aria-label="Sample receiving sections"
           >
@@ -161,10 +163,10 @@ export function SampleReceivingForm({
               tabIndex={-1}
               aria-selected={activeTab === 'details'}
               className={cn(
-                'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                'inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
                 activeTab === 'details'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground',
+                  ? 'bg-stone-800 text-amber-100 shadow-sm'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
               )}
               onClick={() => onTabChange('details')}
             >
@@ -176,10 +178,10 @@ export function SampleReceivingForm({
               tabIndex={-1}
               aria-selected={activeTab === 'review'}
               className={cn(
-                'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                'inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
                 activeTab === 'review'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground',
+                  ? 'bg-stone-800 text-amber-100 shadow-sm'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
               )}
               onClick={() => onTabChange('review')}
             >
@@ -188,7 +190,6 @@ export function SampleReceivingForm({
           </div>
 
           <TabsContent value="details" tabIndex={-1} className="space-y-5 mt-4 outline-none">
-            <h3 className="text-sm font-semibold">Customer & Sample Details</h3>
             {/* Row 1: Report Type 20%, SRF 20%, Date 20%, Customer 40% */}
             <div className="grid gap-4 grid-cols-1 md:grid-cols-[1fr_1fr_1fr_2fr] md:items-end">
               <div className="space-y-2 min-w-0">
@@ -300,7 +301,7 @@ export function SampleReceivingForm({
                   }}
                   open={clientDropdownOpen}
                   onOpenChange={setClientDropdownOpen}
-                  placeholder="Select client"
+                  placeholder="Select Client"
                   listId="receiving-client-combobox"
                   extraActions={
                     onAddClient
@@ -353,7 +354,7 @@ export function SampleReceivingForm({
               </div>
               <div className="space-y-2 md:col-span-1">
                 <Label>Client Reference</Label>
-                <Input value={form.clientReference} onChange={(e) => onChange({ ...form, clientReference: e.target.value })} placeholder="Client reference" className="w-full" />
+                <Input value={form.clientReference} onChange={(e) => onChange({ ...form, clientReference: e.target.value })} placeholder="Client Reference" className="w-full" />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Sample Quantity</Label>
@@ -363,11 +364,11 @@ export function SampleReceivingForm({
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-2">
                 <Label>Sample Code</Label>
-                <Input value={form.sampleCode} onChange={(e) => onChange({ ...form, sampleCode: e.target.value })} placeholder="Sample code" />
+                <Input value={form.sampleCode} onChange={(e) => onChange({ ...form, sampleCode: e.target.value })} placeholder="Sample Code" />
               </div>
               <div className="space-y-2">
                 <Label>Sample QR Code</Label>
-                <Input value={form.sampleQrCode} onChange={(e) => onChange({ ...form, sampleQrCode: e.target.value })} placeholder="QR code" />
+                <Input value={form.sampleQrCode} onChange={(e) => onChange({ ...form, sampleQrCode: e.target.value })} placeholder="QR Code" />
               </div>
               <div className="space-y-2">
                 <Label>Shelf-Life</Label>
@@ -382,8 +383,9 @@ export function SampleReceivingForm({
                     options={testRequiredOptions}
                     category="test_required"
                     onAddOption={onAddReceivingOption}
+                    onUpdateOption={onUpdateReceivingOption}
                     onDeleteOption={onDeleteReceivingOption}
-                    placeholder="Select or type"
+                    placeholder="Select or Type"
                   />
                 ) : (
                   <Select value={form.testRequired ?? ''} onValueChange={(v) => onChange({ ...form, testRequired: v })}>
@@ -453,8 +455,9 @@ export function SampleReceivingForm({
                     options={modeOfDisposalOptions}
                     category="mode_of_disposal"
                     onAddOption={onAddReceivingOption}
+                    onUpdateOption={onUpdateReceivingOption}
                     onDeleteOption={onDeleteReceivingOption}
-                    placeholder="Select or type"
+                    placeholder="Select or Type"
                   />
                 ) : (
                   <>
@@ -479,8 +482,9 @@ export function SampleReceivingForm({
                     options={natureOfSampleOptions}
                     category="nature_of_sample"
                     onAddOption={onAddReceivingOption}
+                    onUpdateOption={onUpdateReceivingOption}
                     onDeleteOption={onDeleteReceivingOption}
-                    placeholder="Select or type"
+                    placeholder="Select or Type"
                   />
                 ) : (
                   <>
@@ -497,13 +501,17 @@ export function SampleReceivingForm({
                 )}
               </div>
             </div>
-            <div className="flex gap-2 justify-end">
-              <button type="button" className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-10 px-4 py-2 hover:bg-accent" onClick={onClear}>Clear</button>
-              <button type="button" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-4 py-2 hover:bg-primary/90" onClick={goToReviewTab}>Go to Review</button>
+            <div className="flex justify-end gap-2 border-t border-stone-300 pt-3">
+              <Button type="button" variant="outline" className={limsOutlineBtnClass} onClick={onClear}>
+                Clear
+              </Button>
+              <Button type="button" className={limsPrimaryBtnClass} onClick={goToReviewTab}>
+                Go to Review
+              </Button>
             </div>
           </TabsContent>
 
-          <TabsContent value="review" tabIndex={-1} className="space-y-5 mt-4 outline-none">
+          <TabsContent value="review" tabIndex={-1} className="mt-4 space-y-5 outline-none">
             {/* 4 fields in a single row at top */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
@@ -571,15 +579,21 @@ export function SampleReceivingForm({
                 </div>
               ))}
             </div>
-            <div className="flex gap-2">
-              <button type="button" className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-10 px-4 py-2 hover:bg-accent" onClick={onClear}>Clear</button>
-              <button type="button" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-4 py-2 hover:bg-primary/90 disabled:opacity-50" onClick={onSave} disabled={!canSave || saveLoading}>
-                {saveLoading ? 'Saving…' : 'Save'}
-              </button>
+            <div className="flex justify-end gap-2 border-t border-stone-300 pt-3">
+              <Button type="button" variant="outline" className={limsOutlineBtnClass} onClick={onClear}>
+                Clear
+              </Button>
+              <Button
+                type="button"
+                className={cn(limsPrimaryBtnClass, 'min-w-[8.5rem]')}
+                onClick={onSave}
+                disabled={!canSave || saveLoading}
+              >
+                {saveLoading ? 'Saving…' : 'Save & Close'}
+              </Button>
             </div>
           </TabsContent>
         </Tabs>
-      </CardContent>
-    </Card>
+    </div>
   )
 }

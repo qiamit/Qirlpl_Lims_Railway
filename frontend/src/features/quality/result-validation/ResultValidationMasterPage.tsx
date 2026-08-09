@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { ResultValidationFooterBar } from './ResultValidationFooterBar'
 import { ResultValidationHeaderBar } from './ResultValidationHeaderBar'
 import { ResultValidationRecordDialog } from './ResultValidationRecordDialog'
@@ -191,7 +192,7 @@ export default function ResultValidationMasterPage({ module }: { module: ResultV
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={limsPageShellClass}>
       <ResultValidationHeaderBar
         module={module}
         search={search}

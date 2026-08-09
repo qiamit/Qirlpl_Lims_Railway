@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LayoutTemplate, PenLine, Printer, Save, Settings2, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { type ReportScopeKind, REPORT_SCOPE_SUFFIX } from './reportScope'
 import { getApplicableReportScopes, filterReportRowsByScope, type ReportResultRow } from './reportResultRows'
 import { TestReportResultsSection } from './TestReportResultsSection'
@@ -136,150 +143,176 @@ export function TestReportPrepareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            Test Report for SRF Number
-            {active?.srfNumber?.trim() ? ` — ${fmt(active.srfNumber)}` : ''}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        persistOnFocusLoss
+        aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          'left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col border-0',
+          'md:left-[268px] md:h-[100dvh] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+        )}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Test Report for SRF Number
+              {active?.srfNumber?.trim() ? ` — ${fmt(active.srfNumber)}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
-        {active && (
-          <div className="space-y-4">
-            {saveMessage && <p className="text-sm text-muted-foreground">{saveMessage}</p>}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/90 to-stone-50 px-4 py-4 sm:px-5">
+          {active && (
+            <div className="space-y-4">
+              {saveMessage && <p className="text-sm text-stone-600">{saveMessage}</p>}
 
-            {coverLoading ? (
-              <p className="text-sm text-muted-foreground">Loading report cover details…</p>
-            ) : liveCoverDetails ? (
-              <div className="space-y-4">
-                <TestReportCoverDetailsGrid
-                  details={liveCoverDetails}
-                  reportNumber={reportNumber}
-                  onReportNumberChange={onReportNumberChange}
-                  testReportPrefix={testReportPrefix}
-                  reportNumberLoading={reportNumberLoading}
-                  nablUlrNumber={nablUlrNumber}
-                  onNablUlrNumberChange={onNablUlrNumberChange}
-                  ulrPrefix={ulrPrefix}
-                  ulrPrefixLoading={ulrPrefixLoading}
-                  activeScope={activeReportScope}
-                  disabled={coverLoading || saveLoading || issueLoading}
-                />
-                {liveCoverDetails.partB && (
-                  <TestReportSupplementaryGrid
-                    details={liveCoverDetails.partB}
-                    onChange={onPartBDetailsChange}
+              {coverLoading ? (
+                <p className="text-sm text-stone-600">Loading report cover details…</p>
+              ) : liveCoverDetails ? (
+                <div className="space-y-4">
+                  <TestReportCoverDetailsGrid
+                    details={liveCoverDetails}
+                    reportNumber={reportNumber}
+                    onReportNumberChange={onReportNumberChange}
+                    testReportPrefix={testReportPrefix}
+                    reportNumberLoading={reportNumberLoading}
+                    nablUlrNumber={nablUlrNumber}
+                    onNablUlrNumberChange={onNablUlrNumberChange}
+                    ulrPrefix={ulrPrefix}
+                    ulrPrefixLoading={ulrPrefixLoading}
+                    activeScope={activeReportScope}
                     disabled={coverLoading || saveLoading || issueLoading}
                   />
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Unable to load report cover details.</p>
-            )}
+                  {liveCoverDetails.partB && (
+                    <TestReportSupplementaryGrid
+                      details={liveCoverDetails.partB}
+                      onChange={onPartBDetailsChange}
+                      disabled={coverLoading || saveLoading || issueLoading}
+                    />
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-stone-600">Unable to load report cover details.</p>
+              )}
 
-            <TestReportResultsSection
-              resultsLoading={resultsLoading}
-              applicableScopes={applicableScopes}
-              activeScope={activeReportScope}
-              onActiveScopeChange={setActiveReportScope}
+              <TestReportResultsSection
+                resultsLoading={resultsLoading}
+                applicableScopes={applicableScopes}
+                activeScope={activeReportScope}
+                onActiveScopeChange={setActiveReportScope}
+                resultRows={resultRows}
+                reportNumber={reportNumber}
+                onReportNumberChange={onReportNumberChange}
+                testReportPrefix={testReportPrefix}
+                reportNumberLoading={reportNumberLoading}
+                nablUlrNumber={nablUlrNumber}
+                onNablUlrNumberChange={onNablUlrNumberChange}
+                ulrPrefix={ulrPrefix}
+                ulrPrefixLoading={ulrPrefixLoading}
+                letterheadOptions={letterheadOptions}
+                letterheadsByScope={letterheadsByScope}
+                onLetterheadChange={onLetterheadChange}
+                onRemarkChange={onRemarkChange}
+                disabled={saveLoading || issueLoading}
+                sampleId={sampleId}
+                sectionCodeEditable={sectionCodeEditable}
+                onSectionCodeUpdated={onSectionCodeUpdated}
+                specifiedRequirementEditable={specifiedRequirementEditable}
+                onSpecifiedRequirementUpdated={onSpecifiedRequirementUpdated}
+              />
+
+              <TestReportRemarksSection
+                remarks={draftNotes}
+                onRemarksChange={onDraftNotesChange}
+                isCodeLabel={active?.isCodeLabel ?? liveCoverDetails?.isDetails ?? null}
+                disabled={saveLoading || issueLoading}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="relative shrink-0 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 sm:px-5">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <TestReportPrepareDialogAssistant
+              row={active}
+              coverDetails={liveCoverDetails}
+              partBDetails={partBDetails}
               resultRows={resultRows}
               reportNumber={reportNumber}
-              onReportNumberChange={onReportNumberChange}
-              testReportPrefix={testReportPrefix}
-              reportNumberLoading={reportNumberLoading}
               nablUlrNumber={nablUlrNumber}
-              onNablUlrNumberChange={onNablUlrNumberChange}
-              ulrPrefix={ulrPrefix}
-              ulrPrefixLoading={ulrPrefixLoading}
-              letterheadOptions={letterheadOptions}
-              letterheadsByScope={letterheadsByScope}
-              onLetterheadChange={onLetterheadChange}
-              onRemarkChange={onRemarkChange}
-              disabled={saveLoading || issueLoading}
-              sampleId={sampleId}
-              sectionCodeEditable={sectionCodeEditable}
-              onSectionCodeUpdated={onSectionCodeUpdated}
-              specifiedRequirementEditable={specifiedRequirementEditable}
-              onSpecifiedRequirementUpdated={onSpecifiedRequirementUpdated}
+              draftNotes={draftNotes}
+              disabled={coverLoading || saveLoading || issueLoading}
+              prepareDialogOpen={open}
             />
-
-            <TestReportRemarksSection
-              remarks={draftNotes}
-              onRemarksChange={onDraftNotesChange}
-              isCodeLabel={active?.isCodeLabel ?? liveCoverDetails?.isDetails ?? null}
-              disabled={saveLoading || issueLoading}
-            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPrintSettingOpen(true)}
+                disabled={coverLoading || saveLoading || issueLoading}
+                className={cn('gap-2', limsDarkBarBtnClass)}
+              >
+                <Settings2 size={16} />
+                Print Setting
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPageSettingOpen(true)}
+                disabled={coverLoading || saveLoading || issueLoading}
+                className={cn('gap-2', limsDarkBarBtnClass)}
+              >
+                <LayoutTemplate size={16} />
+                Page Setting
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSignatureSettingOpen(true)}
+                disabled={coverLoading || saveLoading || issueLoading}
+                className={cn('gap-2', limsDarkBarBtnClass)}
+              >
+                <PenLine size={16} />
+                Signatures
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                id={`print-${activeReportScope}`}
+                onClick={() => onPrintScope(activeReportScope)}
+                disabled={printDraftDisabled}
+                className={cn('gap-2', limsDarkBarBtnClass)}
+              >
+                <Printer size={16} />
+                Print {REPORT_SCOPE_SUFFIX[activeReportScope]} Draft
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className={cn('gap-2', limsDarkBarBtnClass)}
+                onClick={onSaveDraft}
+                disabled={!active || saveLoading}
+              >
+                <Save size={16} />
+                {saveLoading ? 'Saving…' : 'Save Draft'}
+              </Button>
+              <Button
+                type="button"
+                className={cn('h-8 gap-1.5', limsPrimaryBtnClass)}
+                onClick={onIssueReports}
+                disabled={!active || issueLoading || applicableScopes.length === 0}
+              >
+                <CheckCircle size={16} />
+                {issueLoading ? 'Issuing…' : 'Issue Test Report'}
+              </Button>
+            </div>
           </div>
-        )}
-
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <TestReportPrepareDialogAssistant
-            row={active}
-            coverDetails={liveCoverDetails}
-            partBDetails={partBDetails}
-            resultRows={resultRows}
-            reportNumber={reportNumber}
-            nablUlrNumber={nablUlrNumber}
-            draftNotes={draftNotes}
-            disabled={coverLoading || saveLoading || issueLoading}
-            prepareDialogOpen={open}
-          />
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPrintSettingOpen(true)}
-              disabled={coverLoading || saveLoading || issueLoading}
-              className="gap-2"
-            >
-              <Settings2 size={16} />
-              Print Setting
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPageSettingOpen(true)}
-              disabled={coverLoading || saveLoading || issueLoading}
-              className="gap-2"
-            >
-              <LayoutTemplate size={16} />
-              Page Setting
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setSignatureSettingOpen(true)}
-              disabled={coverLoading || saveLoading || issueLoading}
-              className="gap-2"
-            >
-              <PenLine size={16} />
-              Signatures
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              id={`print-${activeReportScope}`}
-              onClick={() => onPrintScope(activeReportScope)}
-              disabled={printDraftDisabled}
-              className="gap-2 border-primary/30 hover:bg-primary/5"
-            >
-              <Printer size={16} />
-              Print {REPORT_SCOPE_SUFFIX[activeReportScope]} Draft
-            </Button>
-            <Button type="button" variant="secondary" onClick={onSaveDraft} disabled={!active || saveLoading}>
-              <Save size={16} className="mr-2" />
-              {saveLoading ? 'Saving…' : 'Save Draft'}
-            </Button>
-            <Button
-              type="button"
-              onClick={onIssueReports}
-              disabled={!active || issueLoading || applicableScopes.length === 0}
-            >
-              <CheckCircle size={16} className="mr-2" />
-              {issueLoading ? 'Issuing…' : 'Issue Test Report'}
-            </Button>
-          </div>
-        </DialogFooter>
+        </div>
 
         <TestReportPrintSettingDialog
           open={printSettingOpen}

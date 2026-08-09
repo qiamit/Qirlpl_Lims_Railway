@@ -1,34 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
+import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import type { TestAllocationRow } from '../types'
 import { ResultsUnderReviewTable } from './ResultsUnderReviewTable'
-import { ResultsUnderReviewAssistant } from './ResultsUnderReviewAssistant'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ResultsUnderReviewHeaderBar } from './ResultsUnderReviewHeaderBar'
+import { ResultsUnderReviewFooterBar } from './ResultsUnderReviewFooterBar'
+import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import { useLocation } from 'react-router-dom'
 import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
   deleteTestAllocationsForSections,
 } from '@/features/sample-handling/shared/deleteSampleRecords'
-import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/SampleHandlingDeleteButton'
 import { loadResultsUnderReviewRowsForDirector } from './loadResultsUnderReviewRowsForDirector'
 import { resolveUserDepartment } from '@/features/sample-handling/shared/resolveUserDepartment'
 import { ensureTestAllocationParameterRows } from '@/features/sample-handling/shared/ensureTestAllocationParameterRows'
 import { ResultsUnderReviewReferbackDialog } from './ResultsUnderReviewReferbackDialog'
-import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 import { TestParameterViewDialog } from '../shared/TestParameterViewDialog'
 import { SectionResultsEntryDialog } from '../sample-under-testing/SectionResultsEntryDialog'
 import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
-import { RESULTS_REVIEW_STATUS_APPROVED } from './resultsUnderReviewPartitions'
+import {
+  isSectionAssignedToResultsReviewer,
+  partitionResultsUnderReviewRows,
+  RESULTS_REVIEW_STATUS_APPROVED,
+} from './resultsUnderReviewPartitions'
 import {
   isSampleReadyForReportPreparation,
   sampleStillHasResultsInReview,
@@ -41,14 +39,15 @@ export default function ResultsUnderReviewMasterPage() {
   const [rows, setRows] = useState<TestAllocationRow[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
-  const [resolvedDepartment, setResolvedDepartment] = useState('')
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
+  const [jumpTo, setJumpTo] = useState('')
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [sampleDescViewRow, setSampleDescViewRow] = useState<TestAllocationRow | null>(null)
   const showDelete = canDeleteSampleHandlingRecords(designation)
+  const isDirector = isLaboratoryDirector(designation)
 
   const [testParamViewOpen, setTestParamViewOpen] = useState(false)
   const [testParamViewRow, setTestParamViewRow] = useState<TestAllocationRow | null>(null)
@@ -70,12 +69,6 @@ export default function ResultsUnderReviewMasterPage() {
     isCodeFiles: [],
   })
 
-  const [editSpecOpen, setEditSpecOpen] = useState(false)
-  const [editSpecParamId, setEditSpecParamId] = useState<string | null>(null)
-  const [editSpecValue, setEditSpecValue] = useState('')
-  const [editSpecSaving, setEditSpecSaving] = useState(false)
-  const [editSpecError, setEditSpecError] = useState<string | null>(null)
-
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
   const [reviewDialogRow, setReviewDialogRow] = useState<TestAllocationRow | null>(null)
 
@@ -95,24 +88,16 @@ export default function ResultsUnderReviewMasterPage() {
     setListError(null)
     setListLoading(true)
     try {
-      if (isLaboratoryDirector(designation)) {
-        setResolvedDepartment(departmentName.trim() || 'Administration')
+      // Laboratory Director — all sections in results-review workflow.
+      if (isDirector) {
         const list = await loadResultsUnderReviewRowsForDirector()
         setRows(list)
         void refreshRowsAfterStageSync(list, undefined)
         return
       }
 
-      const userDept = await resolveUserDepartment(user, departmentName)
-      setResolvedDepartment(userDept)
-      if (!userDept) {
-        setListError(
-          'Department is not set on your user profile. Update it in User Management (Department field), then refresh this page.',
-        )
-        setRows([])
-        return
-      }
-
+      // Others — only sections allotted to them via Send for Review (employee).
+      const userDept = (await resolveUserDepartment(user, departmentName))?.trim() || null
       const scope = {
         department: userDept,
         designation: designation?.trim() || null,
@@ -130,7 +115,7 @@ export default function ResultsUnderReviewMasterPage() {
 
   const refreshRowsAfterStageSync = async (
     initialList: TestAllocationRow[],
-    scope?: { department: string; designation: string | null; reviewerUserId: string },
+    scope?: { department: string | null; designation: string | null; reviewerUserId: string },
   ) => {
     const sampleIds = [
       ...new Set(initialList.map((r) => r.sampleId?.trim()).filter(Boolean)),
@@ -150,10 +135,23 @@ export default function ResultsUnderReviewMasterPage() {
     void loadRows()
   }, [user?.id, departmentName, designation, profileReady, location.pathname])
 
-  const filteredRows = useMemo(() => {
+  /** Non-directors only see sections allotted to them as results reviewer. */
+  const rowsForAssignmentFilter = useMemo(() => {
+    if (isDirector || !user?.id) return rows
+    return rows.filter((r) =>
+      isSectionAssignedToResultsReviewer(r, user.id, profileName ?? ''),
+    )
+  }, [rows, isDirector, user?.id, profileName])
+
+  const { pending: pendingRows, reviewed: reviewedRows } = useMemo(
+    () => partitionResultsUnderReviewRows(rowsForAssignmentFilter),
+    [rowsForAssignmentFilter],
+  )
+
+  const filteredPendingRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(
+    if (!q) return pendingRows
+    return pendingRows.filter(
       (r) =>
         [
           r.sectionCode,
@@ -169,13 +167,21 @@ export default function ResultsUnderReviewMasterPage() {
           .toLowerCase()
           .includes(q),
     )
-  }, [rows, search])
+  }, [pendingRows, search])
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const pageCount = Math.max(1, Math.ceil(filteredPendingRows.length / pageSize))
   const pagedRows = useMemo(
-    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
-    [filteredRows, page, pageSize],
+    () => filteredPendingRows.slice((page - 1) * pageSize, page * pageSize),
+    [filteredPendingRows, page, pageSize],
   )
+
+  useEffect(() => {
+    setPage((p) => Math.min(p, pageCount))
+  }, [pageCount])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, pageSize])
 
   const toggleRow = (sampleAllocationId: string) => {
     setSelectedIds((prev) => {
@@ -321,9 +327,8 @@ export default function ResultsUnderReviewMasterPage() {
           .maybeSingle()
         if (isRow) {
           const r = isRow as { is_number?: string; revision_year?: string | null }
-          isCodeLabel = r.revision_year
-            ? `${r.is_number ?? ''} : ${r.revision_year}`
-            : (r.is_number ?? isCodeId)
+          isCodeLabel =
+            formatIsCodeLabelFromParts(r.is_number, r.revision_year) || r.is_number || isCodeId
         }
       }
 
@@ -340,105 +345,6 @@ export default function ResultsUnderReviewMasterPage() {
     } catch {
       setTestParamViewData([])
       setTestParamViewExtras((prev) => ({ ...prev, loading: false }))
-    }
-  }
-
-  const openEditSpecificRequirement = (tp: Record<string, unknown>) => {
-    const id = typeof tp.id === 'string' ? tp.id : null
-    if (!id || !testParamViewRow) return
-    const sectionParam = testParamViewRow.parameters?.find((p) => p.testParameterId === id)
-    const current = resolveSectionSpecificRequirement(
-      sectionParam?.sectionSpecOverride,
-      String(tp.specific_requirement ?? ''),
-    )
-    setEditSpecParamId(id)
-    setEditSpecValue(current ?? '')
-    setEditSpecError(null)
-    setEditSpecOpen(true)
-  }
-
-  const saveEditSpecificRequirement = async () => {
-    if (!editSpecParamId || !testParamViewRow?.testAllocationId) return
-    setEditSpecSaving(true)
-    setEditSpecError(null)
-    const nextValue = editSpecValue.trim() || null
-    const testAllocationId = testParamViewRow.testAllocationId
-    const label =
-      testParamViewRow.parameters?.find((p) => p.testParameterId === editSpecParamId)?.testLabel ??
-      testParamViewLabel
-    try {
-      const masterValue = String(
-        testParamViewData.find((tp) => typeof tp.id === 'string' && tp.id === editSpecParamId)
-          ?.specific_requirement ?? '',
-      )
-      const resolvedDisplay = resolveSectionSpecificRequirement(nextValue, masterValue)
-      const sectionParam = testParamViewRow.parameters?.find((p) => p.testParameterId === editSpecParamId)
-      const paramRowId = sectionParam?.id && !sectionParam.id.startsWith('local-') ? sectionParam.id : null
-
-      if (paramRowId) {
-        const { error } = await supabase
-          .from('test_allocation_parameters')
-          .update({ specific_requirement: nextValue })
-          .eq('id', paramRowId)
-          .eq('test_allocation_id', testAllocationId)
-        if (error) throw error
-      } else {
-        const { data: existing } = await supabase
-          .from('test_allocation_parameters')
-          .select('id')
-          .eq('test_allocation_id', testAllocationId)
-          .eq('test_parameter_id', editSpecParamId)
-          .maybeSingle()
-        if (existing?.id) {
-          const { error } = await supabase
-            .from('test_allocation_parameters')
-            .update({ specific_requirement: nextValue })
-            .eq('id', existing.id)
-          if (error) throw error
-        } else {
-          const { error } = await supabase.from('test_allocation_parameters').insert({
-            test_allocation_id: testAllocationId,
-            test_parameter_id: editSpecParamId,
-            test_label: label,
-            specific_requirement: nextValue,
-          })
-          if (error) throw error
-        }
-      }
-
-      setRows((prev) =>
-        prev.map((row) => {
-          if (row.testAllocationId !== testAllocationId) return row
-          return {
-            ...row,
-            parameters: row.parameters?.map((p) =>
-              p.testParameterId === editSpecParamId
-                ? { ...p, sectionSpecOverride: nextValue, specificRequirement: resolvedDisplay }
-                : p,
-            ),
-          }
-        }),
-      )
-      setTestParamViewRow((prev) =>
-        prev && prev.testAllocationId === testAllocationId
-          ? {
-              ...prev,
-              parameters: prev.parameters?.map((p) =>
-                p.testParameterId === editSpecParamId
-                  ? { ...p, sectionSpecOverride: nextValue, specificRequirement: resolvedDisplay }
-                  : p,
-              ),
-            }
-          : prev,
-      )
-      setEditSpecOpen(false)
-      setEditSpecParamId(null)
-      setEditSpecValue('')
-      setSaveMessage(`Specified requirement updated for section ${testParamViewRow.sectionCode} only.`)
-    } catch (err) {
-      setEditSpecError(err instanceof Error ? err.message : 'Update failed')
-    } finally {
-      setEditSpecSaving(false)
     }
   }
 
@@ -597,67 +503,19 @@ export default function ResultsUnderReviewMasterPage() {
     }
   }
 
-  const displayName = profileName || user?.email || 'User'
-  const displayDepartment =
-    resolvedDepartment.trim() || departmentName?.trim() || '—'
-  const displayDesignation = designation?.trim() ? designation : '—'
-
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-md border bg-muted/30 px-4 py-3">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
-          <h1 className="text-2xl font-semibold text-foreground whitespace-nowrap">
-            Results Under Review
-          </h1>
-          <div className="md:w-[40%]">
-            <Input
-              placeholder="Search section, SRF, results..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="w-28">
-            <Select
-              value={String(pageSize)}
-              onValueChange={(v) => {
-                setPageSize(Number(v))
-                setPage(1)
-              }}
-            >
-              <SelectTrigger aria-label="Rows per page">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 / Page</SelectItem>
-                <SelectItem value="10">10 / Page</SelectItem>
-                <SelectItem value="20">20 / Page</SelectItem>
-                <SelectItem value="50">50 / Page</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-3 shrink-0">
-          <ResultsUnderReviewAssistant rows={filteredRows} search={search} />
-          <p className="text-sm text-muted-foreground">
-            Logged in as: <span className="font-medium text-foreground">{displayName}</span>
-            {displayDepartment !== '—' && (
-              <>
-                {' · '}
-                <span className="font-medium text-foreground">{displayDepartment}</span>
-              </>
-            )}
-            {displayDesignation !== '—' && (
-              <>
-                {' · '}
-                <span className="font-medium text-foreground">{displayDesignation}</span>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
+    <div className={limsPageShellClass}>
+      <ResultsUnderReviewHeaderBar
+        search={search}
+        onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        assistantRows={filteredPendingRows}
+        reviewedRows={reviewedRows}
+      />
 
       <ResultsUnderReviewTable
-        rows={filteredRows}
+        rows={pagedRows}
         loading={listLoading}
         error={listError}
         onReferback={openReferbackDialog}
@@ -672,10 +530,13 @@ export default function ResultsUnderReviewMasterPage() {
         onToggleSelection={toggleRow}
         onToggleAllSelection={toggleAllOnPage}
         groupBySrf
+        reviewScopeRows={filteredPendingRows}
         emptyStateMessage={
-          isLaboratoryDirector(designation)
-            ? 'No sections in results review, report preparation, or issued (completed). Items appear when testing sends results for review or after sections are approved.'
-            : 'No section codes allotted to your department are in results review, report preparation, or issued. Pending and reviewed sections appear here after testing sends results for review.'
+          reviewedRows.length > 0
+            ? 'No sections pending review. Open Results Reviewed in the header to view approved SRFs.'
+            : isDirector
+              ? 'No sections pending results review. Items appear when testing sends results for review.'
+              : 'No sections allotted to you for review. Items appear here after Sample Under Testing sends results to your Department / Designation / Employee.'
         }
       />
 
@@ -704,44 +565,26 @@ export default function ResultsUnderReviewMasterPage() {
         }
       />
 
-      <div className="rounded-md border bg-muted/30 px-4 py-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            {showDelete ? (
-              <SampleHandlingDeleteButton
-                disabled={listLoading || selectedIds.size === 0}
-                onClick={handleDeleteSelected}
-              />
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            {saveMessage && <p className="text-sm text-emerald-700">{saveMessage}</p>}
-            <span className="text-xs text-muted-foreground">
-              Page {page} / {pageCount} · {filteredRows.length} allocation(s)
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={16} />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              disabled={page >= pageCount || listLoading}
-              aria-label="Next page"
-            >
-              <ChevronRight size={16} />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <ResultsUnderReviewFooterBar
+        page={page}
+        pageCount={pageCount}
+        jumpTo={jumpTo}
+        onJumpToChange={setJumpTo}
+        onJump={() => {
+          const n = Number(jumpTo)
+          if (Number.isFinite(n) && n > 0) {
+            setPage(Math.min(pageCount, Math.max(1, Math.floor(n))))
+          }
+          setJumpTo('')
+        }}
+        onPrev={() => setPage((p) => Math.max(1, p - 1))}
+        onNext={() => setPage((p) => Math.min(pageCount, p + 1))}
+        selectedCount={selectedIds.size}
+        saveMessage={saveMessage}
+        loading={listLoading}
+        showDelete={showDelete}
+        onDeleteSelected={handleDeleteSelected}
+      />
 
       <TestParameterViewDialog
         open={testParamViewOpen}
@@ -751,42 +594,7 @@ export default function ResultsUnderReviewMasterPage() {
         extras={testParamViewExtras}
         sectionParameters={testParamViewRow?.parameters}
         sectionCode={testParamViewRow?.sectionCode}
-        onEditSpecificRequirement={openEditSpecificRequirement}
       />
-
-      <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Edit Specific Requirement — Section {testParamViewRow?.sectionCode ?? '—'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Applies only to this section code. Test Parameter master and other sections are not changed.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="review-edit-spec">Specific Requirement</Label>
-              <Textarea
-                id="review-edit-spec"
-                rows={3}
-                value={editSpecValue}
-                onChange={(e) => setEditSpecValue(e.target.value)}
-                placeholder="e.g. 410 Minimum"
-              />
-            </div>
-            {editSpecError && <p className="text-sm text-destructive">{editSpecError}</p>}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setEditSpecOpen(false)} disabled={editSpecSaving}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={() => void saveEditSpecificRequirement()} disabled={editSpecSaving}>
-                {editSpecSaving ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <ResultsUnderReviewReferbackDialog
         open={referbackDialogOpen}

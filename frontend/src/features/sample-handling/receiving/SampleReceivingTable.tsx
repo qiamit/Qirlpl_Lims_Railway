@@ -34,12 +34,12 @@ function SortableHead({
     <TableHead className={className}>
       <button
         type="button"
-        className="inline-flex w-full items-center justify-center gap-1 text-xs font-medium hover:text-foreground transition-colors"
+        className="inline-flex w-full items-center justify-center gap-1 text-xs font-medium hover:text-amber-100 transition-colors text-amber-200"
         onClick={() => onSort(columnKey)}
         aria-label={`Sort by ${label}${active ? `, ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
       >
         <span>{label}</span>
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-amber-300' : 'text-amber-200/60'}`} />
       </button>
     </TableHead>
   )
@@ -79,7 +79,7 @@ export function SampleReceivingTable({
   const allocationSampleIds = sampleIdsInAllocation ?? new Set<string>()
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 overflow-hidden">
       {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
       {loading ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
@@ -90,8 +90,8 @@ export function SampleReceivingTable({
       ) : (
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="text-xs w-[36px] text-center">
+            <TableRow className="bg-stone-800 hover:bg-stone-800">
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 w-[36px] text-center">
                 <input
                   type="checkbox"
                   aria-label="Select all"
@@ -134,7 +134,7 @@ export function SampleReceivingTable({
                 onSort={onSort}
                 className="text-xs text-center"
               />
-              <TableHead className="text-xs text-center">Sample Details</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Sample Details</TableHead>
               <SortableHead
                 label="Date for Reporting"
                 columnKey="reportingDate"
@@ -151,7 +151,7 @@ export function SampleReceivingTable({
                 onSort={onSort}
                 className="text-xs text-center"
               />
-              <TableHead className="text-xs text-center">Action</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

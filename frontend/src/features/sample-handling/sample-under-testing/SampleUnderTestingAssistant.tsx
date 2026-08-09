@@ -12,6 +12,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useShowAiAssistant } from '@/hooks/useShowAiAssistant'
 import { QiAssistantChatPanel } from '@/components/qi-assistant/QiAssistantChatPanel'
+import { limsAiTriggerClass, limsDialogClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import type { TestAllocationRow } from '../types'
 import {
   buildSampleUnderTestingListAssistantContext,
@@ -77,15 +79,21 @@ export function SampleUnderTestingAssistant({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" className="gap-2 shrink-0" aria-label="Open QI Assistant">
-          <Sparkles size={16} className="text-primary" />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(limsAiTriggerClass, 'h-8 gap-2 shrink-0')}
+          aria-label="Open QI Assistant"
+        >
+          <Sparkles size={16} />
           QI Assistant
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-xl">
-        <DialogHeader className="border-b border-border px-5 py-4">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Bot size={20} className="text-primary" />
+      <DialogContent className={cn(limsDialogClass, 'flex max-h-[88vh] flex-col sm:max-w-xl')}>
+        <DialogHeader className="border-b border-stone-200 bg-[#f7f3eb] px-5 py-4">
+          <DialogTitle className="flex items-center gap-2 text-base text-[#1c1917]">
+            <Bot size={20} className="text-amber-700" />
             Sample Under Testing Assistant
           </DialogTitle>
           <DialogDescription>

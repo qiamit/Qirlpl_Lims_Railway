@@ -1,15 +1,19 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { FlaskConical, ShieldCheck, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { signIn } from '@/hooks/useAuth'
+import { signIn, useAuth } from '@/hooks/useAuth'
+import { resolvePostAuthTarget } from '@/lib/routePersistence'
 
 export default function AuthPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { user, loading: authLoading } = useAuth()
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
+  const redirectedRef = useRef(false)
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -22,6 +26,18 @@ export default function AuthPage() {
     return Boolean(email.trim() && password.trim())
   }, [email, password])
 
+  const goAfterAuth = () => {
+    if (redirectedRef.current) return
+    redirectedRef.current = true
+    const from = (location.state as { from?: string } | null)?.from
+    navigate(resolvePostAuthTarget(from), { replace: true })
+  }
+
+  useEffect(() => {
+    if (authLoading || !user) return
+    goAfterAuth()
+  }, [authLoading, user, location.state, navigate])
+
   const handleSubmit = async () => {
     setLoading(true)
     setError(null)
@@ -29,7 +45,7 @@ export default function AuthPage() {
     try {
       const { error: loginError } = await signIn(email.trim(), password)
       if (loginError) throw loginError
-      navigate('/', { replace: true })
+      goAfterAuth()
     } catch (err) {
       const isObject = typeof err === 'object' && err !== null
       const name = isObject && 'name' in err ? String((err as { name?: unknown }).name) : ''

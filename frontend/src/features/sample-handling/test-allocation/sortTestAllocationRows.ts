@@ -1,10 +1,13 @@
 import type { TestAllocationRow } from '../types'
 
 export type TestAllocationSortKey =
-  | 'srfSection'
+  | 'srfNumber'
+  | 'sectionCode'
+  | 'department'
   | 'isCode'
   | 'testParameters'
   | 'employeeName'
+  | 'designation'
 
 export function sortTestAllocationRows(
   rows: TestAllocationRow[],
@@ -15,13 +18,18 @@ export function sortTestAllocationRows(
   return [...rows].sort((a, b) => {
     let cmp = 0
     switch (key) {
-      case 'srfSection': {
+      case 'srfNumber':
         cmp = (a.srfNumber ?? '').localeCompare(b.srfNumber ?? '', undefined, { numeric: true })
         if (cmp === 0) {
           cmp = (a.sectionCode ?? '').localeCompare(b.sectionCode ?? '', undefined, { numeric: true })
         }
         break
-      }
+      case 'sectionCode':
+        cmp = (a.sectionCode ?? '').localeCompare(b.sectionCode ?? '', undefined, { numeric: true })
+        break
+      case 'department':
+        cmp = (a.department ?? '').localeCompare(b.department ?? '', undefined, { numeric: true })
+        break
       case 'isCode':
         cmp = (a.isCodeLabel ?? '').localeCompare(b.isCodeLabel ?? '', undefined, { numeric: true })
         break
@@ -34,6 +42,9 @@ export function sortTestAllocationRows(
         cmp = (a.assignedEmployeeName ?? '').localeCompare(b.assignedEmployeeName ?? '', undefined, {
           numeric: true,
         })
+        break
+      case 'designation':
+        cmp = (a.designation ?? '').localeCompare(b.designation ?? '', undefined, { numeric: true })
         break
     }
     return cmp * mul

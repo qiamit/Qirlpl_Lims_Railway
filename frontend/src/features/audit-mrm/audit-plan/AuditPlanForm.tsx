@@ -404,7 +404,7 @@ export function AuditPlanForm({
         <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
           <table className="min-w-[980px] w-full border-collapse text-sm">
             <thead>
-              <tr className="bg-muted/50">
+              <tr className="bg-stone-800">
                 <th className="border border-border px-2 py-2 text-center text-xs min-w-[220px]">
                   Auditee
                 </th>

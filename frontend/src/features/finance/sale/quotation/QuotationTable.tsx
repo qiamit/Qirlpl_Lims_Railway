@@ -54,7 +54,7 @@ export function QuotationTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+    <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
       {error ? <p className="px-3 pt-3 text-sm text-destructive sm:px-5 sm:pt-4">{error}</p> : null}
 
       {loading ? (
@@ -73,8 +73,8 @@ export function QuotationTable({
       ) : (
         <Table className={GRID_TABLE}>
           <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="sticky left-0 z-10 w-12 bg-muted/50 text-center text-xs sm:w-14">
+            <TableRow className="bg-stone-800 hover:bg-stone-800">
+              <TableHead className="sticky left-0 z-10 w-12 bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 sm:w-14">
                 <input
                   type="checkbox"
                   className={checkboxClass}
@@ -86,7 +86,7 @@ export function QuotationTable({
                   onChange={(e) => onToggleAll(e.target.checked)}
                 />
               </TableHead>
-              <TableHead className="sticky left-12 z-10 min-w-[140px] bg-muted/50 text-left text-xs sm:left-14">
+              <TableHead className="sticky left-12 z-10 min-w-[140px] bg-stone-800 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 sm:left-14">
                 Quotation No.
               </TableHead>
               <TableHead className="min-w-[100px] text-center text-xs">Date</TableHead>

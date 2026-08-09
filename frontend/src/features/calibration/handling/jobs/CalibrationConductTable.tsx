@@ -99,7 +99,7 @@ function JobDetailsDialog({
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-12 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               Calibration Conduct · Details
@@ -218,7 +218,7 @@ export function CalibrationConductTable({
 
   if (loading) {
     return (
-      <p className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+      <p className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 px-4 py-8 text-center text-sm text-muted-foreground">
         Loading…
       </p>
     )
@@ -286,11 +286,11 @@ export function CalibrationConductTable({
           {sheetOpenError}
         </p>
       ) : null}
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
         <div className="overflow-x-auto">
           <Table className={GRID_TABLE}>
             <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableRow className="bg-stone-800 hover:bg-stone-800">
                 <TableHead className="w-12 text-center text-xs sm:w-14">
                   <input
                     type="checkbox"

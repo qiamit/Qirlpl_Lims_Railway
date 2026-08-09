@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { ChevronLeft, ChevronRight, Download, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,18 +45,17 @@ export function QuotationFooterBar({
   const to = Math.min(page * pageSize, totalCount)
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-3 py-3 shadow-sm sm:px-5 sm:py-4">
+    <div className="flex flex-col gap-3 relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-3 py-3 shadow-sm sm:px-5 sm:py-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onExport} disabled={loading}>
+          <Button type="button" variant="outline" size="sm" className={cn('gap-1.5', limsDarkBarBtnClass)} onClick={onExport} disabled={loading}>
             <Download size={14} />
             <span className="hidden sm:inline">Export</span>
           </Button>
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="gap-1.5"
+            size="sm" className={cn('gap-1.5', limsDarkBarBtnClass)}
             onClick={onPrintSelected}
             disabled={loading}
           >
@@ -63,9 +64,7 @@ export function QuotationFooterBar({
           </Button>
           <Button
             type="button"
-            variant="destructive"
-            size="sm"
-            className="gap-1.5"
+            variant="destructive" size="sm" className={limsDeleteBtnClass}
             onClick={onDeleteSelected}
             disabled={loading || selectionDisabled}
           >
@@ -73,14 +72,14 @@ export function QuotationFooterBar({
             <span className="hidden sm:inline">Delete</span>
           </Button>
           {selectedCount > 0 ? (
-            <span className="text-xs text-muted-foreground">Selected: {selectedCount}</span>
+            <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
           ) : null}
           {message ? (
             <p
               className={
                 message.toLowerCase().includes('saved') || message.toLowerCase().includes('deleted')
-                  ? 'w-full text-sm text-emerald-700 sm:w-auto'
-                  : 'w-full text-sm text-destructive sm:w-auto'
+                  ? 'w-full text-sm text-emerald-300 sm:w-auto'
+                  : 'w-full text-sm text-red-300 sm:w-auto'
               }
             >
               {message}
@@ -89,13 +88,13 @@ export function QuotationFooterBar({
         </div>
 
         <div className="flex flex-nowrap items-center justify-start gap-2 overflow-x-auto overscroll-x-contain pb-0.5 sm:justify-end sm:gap-3">
-          <p className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
-            Showing <span className="font-medium text-foreground">{from}</span>–
-            <span className="font-medium text-foreground">{to}</span> of{' '}
-            <span className="font-medium text-foreground">{totalCount}</span>
+          <p className="shrink-0 whitespace-nowrap text-sm text-stone-300">
+            Showing <span className="font-medium text-white">{from}</span>–
+            <span className="font-medium text-white">{to}</span> of{' '}
+            <span className="font-medium text-white">{totalCount}</span>
           </p>
           <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger className="h-9 w-[118px] shrink-0" aria-label="Rows per page">
+            <SelectTrigger className={cn(limsDarkBarFieldClass, 'w-[110px] shrink-0')} aria-label="Rows per page">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -108,23 +107,19 @@ export function QuotationFooterBar({
           </Select>
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 w-9 shrink-0 px-0"
+            variant="outline" size="sm" className={cn('h-8 w-8 shrink-0 px-0', limsDarkBarBtnClass)}
             disabled={page <= 1 || loading}
             onClick={onPrevPage}
             aria-label="Previous page"
           >
             <ChevronLeft size={14} />
           </Button>
-          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+          <span className="shrink-0 text-sm tabular-nums text-stone-300">
             {page} / {Math.max(pageCount, 1)}
           </span>
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 w-9 shrink-0 px-0"
+            variant="outline" size="sm" className={cn('h-8 w-8 shrink-0 px-0', limsDarkBarBtnClass)}
             disabled={page >= pageCount || loading}
             onClick={onNextPage}
             aria-label="Next page"
@@ -132,12 +127,12 @@ export function QuotationFooterBar({
             <ChevronRight size={14} />
           </Button>
           <Input
-            className="h-9 w-14 shrink-0"
+            className={cn(limsDarkBarFieldClass, 'w-14 shrink-0')}
             value={jumpTo}
             onChange={(e) => onJumpToChange(e.target.value)}
             aria-label="Jump to page"
           />
-          <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={onJumpToGo}>
+          <Button type="button" variant="outline" size="sm" className={cn('shrink-0', limsDarkBarBtnClass)} onClick={onJumpToGo}>
             Go
           </Button>
         </div>

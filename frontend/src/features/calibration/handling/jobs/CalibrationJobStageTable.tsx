@@ -42,7 +42,7 @@ const checkboxClass =
 
 /** Solid icon actions — Forward (teal) / Refer back (blue); pair with variant="ghost" to avoid primary bg */
 const forwardIconBtnClass =
-  'h-9 w-9 rounded-md bg-teal-600 text-white shadow-sm hover:bg-teal-700 hover:text-white disabled:bg-teal-600/40 disabled:text-white/90 disabled:opacity-100'
+  'h-9 w-9 rounded-none bg-amber-700 text-white shadow-sm hover:bg-amber-800 hover:text-white disabled:bg-amber-700/40 disabled:text-white/90 disabled:opacity-100'
 const referBackIconBtnClass =
   'h-9 w-9 rounded-md bg-blue-600 text-white shadow-sm hover:bg-blue-700 hover:text-white disabled:bg-blue-600/40 disabled:text-white/90 disabled:opacity-100'
 
@@ -384,7 +384,7 @@ function DucEquipmentDetailsDialog({
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-10 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               {contextLabel} · Equipment (DUC)
@@ -556,7 +556,7 @@ function DucAllocationDialog({
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-12 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               Job Allocation · Equipment
@@ -576,7 +576,7 @@ function DucAllocationDialog({
           <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
             <Table className={DUC_GRID}>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-stone-800 hover:bg-stone-800">
                   <TableHead className="w-12 text-center text-xs sm:w-14">
                     <input
                       type="checkbox"
@@ -778,7 +778,7 @@ function SrfCertificatesListDialog({
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-teal-400 via-cyan-500 to-transparent" />
+          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-12 text-left">
             <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
               Certificates · Equipment
@@ -838,7 +838,7 @@ function SrfCertificatesListDialog({
           <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
             <Table className={DUC_GRID}>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-stone-800 hover:bg-stone-800">
                   <TableHead className="w-10 text-center">
                     <input
                       type="checkbox"
@@ -1083,7 +1083,7 @@ export function CalibrationJobStageTable({
 
   if (loading) {
     return (
-      <p className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+      <p className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 px-4 py-8 text-center text-sm text-muted-foreground">
         Loading…
       </p>
     )
@@ -1129,12 +1129,12 @@ export function CalibrationJobStageTable({
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
         <div className="overflow-x-auto">
           {isReviewData ? (
             <Table className={reviewGrid}>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-stone-800 hover:bg-stone-800">
                   {selectAllHeader}
                   <TableHead className="min-w-[120px] text-center text-xs">SRF Number</TableHead>
                   <TableHead className="min-w-[160px] text-left text-xs">Equipment (DUC)</TableHead>
@@ -1274,7 +1274,7 @@ export function CalibrationJobStageTable({
           ) : isCertificatePrep ? (
             <Table className={certPrepGrid}>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-stone-800 hover:bg-stone-800">
                   {selectAllHeader}
                   <TableHead className="min-w-[120px] text-center text-xs">SRF Number</TableHead>
                   <TableHead className="min-w-[160px] text-left text-xs">Equipment Details</TableHead>
@@ -1387,7 +1387,7 @@ export function CalibrationJobStageTable({
           ) : (
             <Table className={GRID_TABLE}>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-stone-800 hover:bg-stone-800">
                   {selectAllHeader}
                   <TableHead className="min-w-[120px] text-center text-xs">SRF Number</TableHead>
                   <TableHead className="min-w-[200px] text-left text-xs">Client</TableHead>
