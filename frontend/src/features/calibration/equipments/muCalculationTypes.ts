@@ -436,11 +436,13 @@ function parseSheetColumn(raw: unknown): RawDataSheetColumn | null {
   const type = isColumnType(row.type) ? row.type : 'number'
   const formula =
     type === 'formula' ? (parseColumnFormula(row.formula) ?? emptyColumnFormula()) : undefined
+  const certRaw = row.requiredInCertificate ?? row.required_in_certificate
   return {
     key,
     label,
     type,
-    required: type === 'formula' ? false : Boolean(row.required),
+    required: typeof row.required === 'boolean' ? row.required : true,
+    requiredInCertificate: certRaw == null ? undefined : Boolean(certRaw),
     ...(formula ? { formula } : {}),
   }
 }
@@ -763,7 +765,8 @@ function serializeColumn(col: RawDataSheetColumn): RawDataSheetColumn {
     key: col.key.trim() || newRawDataColumnKey(),
     label: col.label.trim(),
     type,
-    required: type === 'formula' ? false : Boolean(col.required),
+    required: Boolean(col.required),
+    requiredInCertificate: col.requiredInCertificate !== false,
   }
   if (type === 'formula') {
     const f = col.formula ?? emptyColumnFormula()
@@ -830,7 +833,7 @@ export function serializeMuCalculationTemplate(
 }
 
 export function emptyMuSheetColumn(): RawDataSheetColumn {
-  return emptyRawDataSheetColumn()
+  return { ...emptyRawDataSheetColumn(), required: true }
 }
 
 /** Formula autocomplete source — column plus optional parent component/table label. */

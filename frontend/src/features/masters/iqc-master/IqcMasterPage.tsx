@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -94,7 +95,7 @@ function buildIqcPrintHtml(
       <td>${item.current_location || '-'}</td>
       <td>${employeeMap[item.custodian_employee_id || ''] || '-'}</td>
       <td>${item.equipment_status || '-'}</td>
-      <td>${item.next_calibration_due ? new Date(item.next_calibration_due).toLocaleDateString('en-GB') : '-'}</td>
+      <td>${item.next_calibration_due ? formatDate(item.next_calibration_due) : '-'}</td>
     </tr>
   `
     )

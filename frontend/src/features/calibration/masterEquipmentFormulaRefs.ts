@@ -10,6 +10,7 @@ export type MasterFormulaRefSource = {
   manufacturer?: string | null
   model_number?: string | null
   serial_number?: string | null
+  current_location?: string | null
   range_capacity?: string | null
   resolution_least_count?: string | null
   accuracy_acceptance_criteria?: string | null
@@ -53,6 +54,11 @@ const MASTER_FORMULA_REFS: RefDef[] = [
     key: `${MASTER_FORMULA_REF_PREFIX}serial_number`,
     label: 'Serial Number',
     getValue: (m) => m.serial_number ?? '',
+  },
+  {
+    key: `${MASTER_FORMULA_REF_PREFIX}current_location`,
+    label: 'Location',
+    getValue: (m) => m.current_location ?? '',
   },
   {
     key: `${MASTER_FORMULA_REF_PREFIX}range_capacity`,
@@ -137,7 +143,7 @@ export function isMasterFormulaRefKey(key: string): boolean {
 /** Virtual refs for Selected Master Calibration Points table column headers. */
 export const POINTS_FORMULA_REF_PREFIX = 'pt:'
 
-function pointsHeaderSlug(header: string): string {
+export function pointsHeaderSlug(header: string): string {
   return header
     .trim()
     .toLowerCase()

@@ -1,4 +1,4 @@
-/** Wait for images/fonts before print or html2pdf capture. */
+/** Wait for images/fonts before print or Playwright PDF capture. */
 export async function waitForPrintDocumentReady(
   doc: Document,
   timeoutMs = 10000,

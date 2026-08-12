@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { limsOutlineBtnClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import type { MaintenanceCheckpointRow } from './maintenanceChecklist'
 import {
   generateMaintenanceChecklist,
@@ -42,7 +44,7 @@ export function ConductMaintenanceAssistant({
       type="button"
       size="sm"
       variant="outline"
-      className="h-8 gap-1.5"
+      className={cn('h-8 gap-1.5', limsOutlineBtnClass)}
       disabled={disabled || loading}
       onClick={() => void handleGenerate()}
       aria-label="Generate maintenance checklist with AI"

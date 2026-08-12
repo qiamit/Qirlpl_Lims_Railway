@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
@@ -18,6 +19,7 @@ import {
   rowToForm,
   type EquipmentForCalibrationForm as FormState,
   type EquipmentForCalibrationRow,
+  type EquipmentMasterVariant,
   type EquipmentScheduleSection,
 } from './types'
 import { withComputedCalibrationPointFormulas } from './calibrationPointsFormula'
@@ -27,6 +29,57 @@ import {
 } from '@/features/settings/lab-settings/brandMark'
 import { LAB_SETTINGS_SINGLETON_ID } from '@/features/settings/lab-settings/labSettingsDb'
 
+function formatSearchDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  const iso = dateStr.slice(0, 10)
+  const parts = iso.split('-')
+  if (parts.length === 3 && parts[0]!.length === 4) {
+    const [year, month, day] = parts
+    return `${iso} ${day}-${month}-${year} ${day}/${month}/${year}`
+  }
+  return dateStr
+}
+
+function equipmentSearchBlob(r: EquipmentForCalibrationRow): string {
+  return [
+    r.asset_code,
+    r.equipment_name,
+    r.manufacturer,
+    r.model_number,
+    r.serial_number,
+    r.current_location,
+    r.equipment_status,
+    r.range_capacity,
+    r.resolution_least_count,
+    r.accuracy_acceptance_criteria,
+    r.calibration_certificate_number,
+    r.calibration_frequency,
+    r.intermediate_check_frequency,
+    r.maintenance_schedule_frequency,
+    r.maintenance_done_by,
+    r.external_calibration_agency_name,
+    r.mode_of_calibration,
+    r.class_of_instrument,
+    r.remarks,
+    formatSearchDate(r.last_calibration_date),
+    formatSearchDate(r.next_calibration_due),
+    formatSearchDate(r.last_intermediate_check_date),
+    formatSearchDate(r.next_intermediate_check_date),
+    formatSearchDate(r.last_maintenance_date),
+    formatSearchDate(r.next_maintenance_date),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function matchesEquipmentSearch(r: EquipmentForCalibrationRow, query: string): boolean {
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return true
+  const blob = equipmentSearchBlob(r)
+  return tokens.every((token) => blob.includes(token))
+}
+
 function formatSupabaseError(err: unknown) {
   if (!err || typeof err !== 'object') return 'Unknown error'
   const anyErr = err as { message?: string; details?: string; hint?: string; code?: string }
@@ -35,7 +88,13 @@ function formatSupabaseError(err: unknown) {
 
 const SELECT_COLS = '*'
 
-export default function EquipmentForCalibrationMasterPage() {
+export default function EquipmentForCalibrationMasterPage({
+  variant = 'master',
+}: {
+  variant?: EquipmentMasterVariant
+}) {
+  const isIqc = variant === 'iqc'
+  const moduleTitle = isIqc ? 'Masters for IQC' : 'Master Equipments'
   const { session, loading: authLoading } = useAuth()
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [saveLoading, setSaveLoading] = useState(false)
@@ -49,8 +108,6 @@ export default function EquipmentForCalibrationMasterPage() {
       setInitialSection(null)
     }
   })
-  const importInputRef = useRef<HTMLInputElement | null>(null)
-
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<EquipmentForCalibrationRow[]>([])
   const [listLoading, setListLoading] = useState(false)
@@ -73,11 +130,17 @@ export default function EquipmentForCalibrationMasterPage() {
     normalizeText(form.assetCode).length > 0 &&
     normalizeText(form.equipmentName).length > 0
 
-  /** Peer standards offered as reference during an intermediate check (never the row itself). */
-  const masterEquipmentOptions = useMemo(
-    () => rows.filter((r) => r.id !== editingId),
-    [rows, editingId],
-  )
+  const [iqcMasterRows, setIqcMasterRows] = useState<EquipmentForCalibrationRow[]>([])
+
+  /** IQC standards first; if none exist yet, Master Equipments remain searchable. */
+  const masterEquipmentOptions = useMemo(() => {
+    const notSelf = (r: EquipmentForCalibrationRow) => r.id !== editingId
+    const iqcSource = isIqc ? rows : iqcMasterRows
+    const iqc = iqcSource.filter(notSelf)
+    if (iqc.length > 0) return iqc
+    if (isIqc) return []
+    return rows.filter(notSelf)
+  }, [isIqc, rows, iqcMasterRows, editingId])
 
   const loadLabName = useCallback(async () => {
     try {
@@ -145,12 +208,17 @@ export default function EquipmentForCalibrationMasterPage() {
       } = await supabase.auth.getSession()
       if (!activeSession?.access_token) {
         setRows([])
-        setListError('Please sign in to view equipment for calibration.')
+        setListError(
+          isIqc
+            ? 'Please sign in to view Masters for IQC.'
+            : 'Please sign in to view equipment for calibration.',
+        )
         return
       }
       const { data, error } = await supabase
         .from('equipment_for_calibration')
         .select(SELECT_COLS)
+        .eq('is_iqc_master', isIqc)
         .order('asset_code', { ascending: true })
       if (error) throw error
       setRows((data ?? []) as EquipmentForCalibrationRow[])
@@ -160,6 +228,20 @@ export default function EquipmentForCalibrationMasterPage() {
     } finally {
       setListLoading(false)
     }
+  }, [isIqc])
+
+  const loadIqcMasterRows = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('equipment_for_calibration')
+        .select(SELECT_COLS)
+        .eq('is_iqc_master', true)
+        .order('asset_code', { ascending: true })
+      if (error) throw error
+      setIqcMasterRows((data ?? []) as EquipmentForCalibrationRow[])
+    } catch {
+      setIqcMasterRows([])
+    }
   }, [])
 
   useEffect(() => {
@@ -168,7 +250,16 @@ export default function EquipmentForCalibrationMasterPage() {
     void loadClients()
     void loadEmployees()
     void loadRows()
-  }, [authLoading, session?.access_token, loadLabName, loadClients, loadEmployees, loadRows])
+    void loadIqcMasterRows()
+  }, [
+    authLoading,
+    session?.access_token,
+    loadLabName,
+    loadClients,
+    loadEmployees,
+    loadRows,
+    loadIqcMasterRows,
+  ])
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -188,29 +279,13 @@ export default function EquipmentForCalibrationMasterPage() {
   }, [])
 
   const makeNextCode = useCallback(
-    () => nextAssetCode(labName, rows.map((r) => r.asset_code)),
-    [labName, rows],
+    () => nextAssetCode(labName, rows.map((r) => r.asset_code), variant),
+    [labName, rows, variant],
   )
 
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) =>
-      [
-        r.asset_code,
-        r.equipment_name,
-        r.manufacturer,
-        r.model_number,
-        r.serial_number,
-        r.current_location,
-        r.equipment_status,
-        r.calibration_certificate_number,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(q),
-    )
+    if (!search.trim()) return rows
+    return rows.filter((r) => matchesEquipmentSearch(r, search))
   }, [rows, search])
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
@@ -226,7 +301,9 @@ export default function EquipmentForCalibrationMasterPage() {
 
   const assistantContext = useMemo(() => {
     const lines = [
-      'Module: Calibration LIMS / Equipment for Calibration (standards used TO calibrate)',
+      isIqc
+        ? 'Module: Calibration LIMS / Masters for IQC (standards used for intermediate checks)'
+        : 'Module: Calibration LIMS / Master Equipments (standards used TO calibrate)',
       `Total: ${rows.length}`,
       '',
     ]
@@ -234,7 +311,7 @@ export default function EquipmentForCalibrationMasterPage() {
       lines.push(`- ${r.asset_code} | ${r.equipment_name} | next cal ${r.next_calibration_due ?? '-'}`)
     }
     return lines.join('\n')
-  }, [rows])
+  }, [isIqc, rows])
 
   const updateForm = (next: FormState) => {
     formRef.current = next
@@ -277,7 +354,10 @@ export default function EquipmentForCalibrationMasterPage() {
     setSaveLoading(true)
     setSaveMessage(null)
     try {
-      const payload = formToPayload(withComputedCalibrationPointFormulas(snapshot))
+      const payload = {
+        ...formToPayload(withComputedCalibrationPointFormulas(snapshot)),
+        is_iqc_master: isIqc,
+      }
       if (editingId) {
         const { error } = await supabase
           .from('equipment_for_calibration')
@@ -292,6 +372,7 @@ export default function EquipmentForCalibrationMasterPage() {
       setShowForm(false)
       setEditingId(null)
       await loadRows()
+      await loadIqcMasterRows()
     } catch (err) {
       setSaveMessage(formatSupabaseError(err))
     } finally {
@@ -336,92 +417,57 @@ export default function EquipmentForCalibrationMasterPage() {
     }
   }
 
-  const handleExport = () => {
-    const source =
-      selectedIds.size > 0 ? filteredRows.filter((r) => selectedIds.has(r.id)) : filteredRows
-    const headers = [
-      'asset_code',
-      'equipment_name',
-      'manufacturer',
-      'model_number',
-      'serial_number',
-      'location',
-      'status',
-      'next_calibration_due',
-      'next_ic_due',
-      'next_maint_due',
-      'certificate_number',
-    ]
-    const lines = [
-      headers.join(','),
-      ...source.map((r) =>
-        [
-          r.asset_code,
-          r.equipment_name,
-          r.manufacturer ?? '',
-          r.model_number ?? '',
-          r.serial_number ?? '',
-          r.current_location ?? '',
-          r.equipment_status ?? '',
-          r.next_calibration_due ?? '',
-          r.next_intermediate_check_date ?? '',
-          r.next_maintenance_date ?? '',
-          r.calibration_certificate_number ?? '',
-        ]
-          .map((v) => {
-            const s = String(v)
-            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-          })
-          .join(','),
-      ),
-    ]
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'equipment_for_calibration.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
     <div className={limsPageShellClass}>
       <EquipmentForCalibrationHeaderBar
+        title={moduleTitle}
+        searchPlaceholder={isIqc ? 'Search IQC masters…' : 'Search master equipments…'}
+        searchAriaLabel={isIqc ? 'Search IQC masters' : 'Search master equipments'}
+        assistantPage={isIqc ? 'masters-for-iqc' : 'equipment-for-calibration'}
         search={search}
         onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onNew={openNew}
         assistantContext={assistantContext}
-        onAssistantDataChanged={() => void loadRows()}
+        onAssistantDataChanged={() => {
+          void loadRows()
+          void loadIqcMasterRows()
+        }}
       />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            '!flex z-50 h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none sm:rounded-none',
+            'left-0 top-0',
+            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            'border-stone-600 ring-1 ring-amber-700/20',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+          )}
         >
-          <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }}
-            />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId
-                  ? 'Equipment for Calibration · Edit Entry'
-                  : 'Equipment for Calibration · New Entry'}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
-                {editingId ? 'Edit Equipment' : 'Add Equipment for Calibration'}
+                  ? isIqc
+                    ? 'Edit IQC Master'
+                    : 'Edit Equipment'
+                  : isIqc
+                    ? 'Add New IQC Master'
+                    : 'Add New Equipment'}
               </DialogTitle>
             </DialogHeader>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
             {saveMessage && showForm ? (
               <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {saveMessage}
@@ -439,6 +485,7 @@ export default function EquipmentForCalibrationMasterPage() {
               onSave={(latest) => void handleSave(latest)}
               assetCodeLocked={!editingId}
               initialSection={initialSection}
+              moduleVariant={variant}
             />
           </div>
         </DialogContent>
@@ -460,16 +507,8 @@ export default function EquipmentForCalibrationMasterPage() {
         message={showForm ? null : saveMessage}
         loading={listLoading || saveLoading}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={safePage}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
-        onImport={() => importInputRef.current?.click()}
-        onExport={handleExport}
         onPrintSelected={() => setSaveMessage('Use browser print from the table view for now.')}
         onDeleteSelected={() => void handleDeleteSelected()}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
@@ -480,17 +519,6 @@ export default function EquipmentForCalibrationMasterPage() {
           const n = Number.parseInt(jumpTo, 10)
           if (!Number.isFinite(n)) return
           setPage(Math.min(pageCount, Math.max(1, n)))
-        }}
-      />
-
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={() => {
-          setSaveMessage('CSV import for this module will be enabled in a follow-up.')
-          if (importInputRef.current) importInputRef.current.value = ''
         }}
       />
     </div>

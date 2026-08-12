@@ -1,10 +1,15 @@
-import { SaleModulePlaceholder } from '../SaleModulePlaceholder'
+import { SaleDocumentMasterPage } from '../shared/SaleDocumentMasterPage'
 
 export default function CreditNotePage() {
   return (
-    <SaleModulePlaceholder
-      title="Credit Note"
-      description="Record credit notes against invoices for adjustments and returns."
+    <SaleDocumentMasterPage
+      config={{
+        title: 'Credit Note',
+        documentKind: 'creditNote',
+        addLabel: 'Add New Credit Note',
+        emptyHint: 'No credit notes added yet.',
+        numberColumnLabel: 'Credit Note No.',
+      }}
     />
   )
 }

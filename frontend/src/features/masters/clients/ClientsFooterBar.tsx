@@ -1,7 +1,6 @@
 import { ChevronLeft, ChevronRight, Download, FileUp, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { clientDeleteBtnClass, clientPanelClass } from './clientsFormUi'
 import { limsDarkBarBtnClass, limsDarkBarFieldClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
@@ -13,11 +12,8 @@ export function ClientsTableFooterBar({
   message,
   loading,
   selectedCount,
-  totalCount,
   page,
   pageCount,
-  pageSize,
-  onPageSizeChange,
   onImport,
   onExport,
   onPrintSelected,
@@ -31,11 +27,8 @@ export function ClientsTableFooterBar({
   message: string | null
   loading: boolean
   selectedCount: number
-  totalCount: number
   page: number
   pageCount: number
-  pageSize: number
-  onPageSizeChange: (size: number) => void
   onImport: () => void
   onExport: () => void
   onPrintSelected: () => void
@@ -47,8 +40,6 @@ export function ClientsTableFooterBar({
   onJumpToGo: () => void
 }) {
   const selectionDisabled = selectedCount === 0
-  const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
-  const to = Math.min(page * pageSize, totalCount)
 
   return (
     <div className={cn(clientPanelClass)}>
@@ -62,85 +53,77 @@ export function ClientsTableFooterBar({
         />
         <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
 
-        <div className="relative flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
+          <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className={cn('gap-1.5', footerBtnClass)}
+              className={cn('h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs', footerBtnClass)}
               onClick={onImport}
               disabled={loading}
+              title="Import"
             >
               <FileUp size={14} />
-              <span className="hidden sm:inline">Import</span>
+              <span className="hidden lg:inline">Import</span>
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className={cn('gap-1.5', footerBtnClass)}
+              className={cn('h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs', footerBtnClass)}
               onClick={onExport}
               disabled={loading}
+              title="Export"
             >
               <Download size={14} />
-              <span className="hidden sm:inline">Export</span>
+              <span className="hidden lg:inline">Export</span>
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className={cn('gap-1.5', footerBtnClass)}
+              className={cn('h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs', footerBtnClass)}
               onClick={onPrintSelected}
               disabled={loading}
+              title="Print"
             >
               <Printer size={14} />
-              <span className="hidden sm:inline">Print</span>
+              <span className="hidden lg:inline">Print</span>
             </Button>
             <Button
               type="button"
               variant="destructive"
               size="sm"
-              className={clientDeleteBtnClass}
+              className={cn(clientDeleteBtnClass, 'h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs')}
               onClick={onDeleteSelected}
               disabled={loading || selectionDisabled}
+              title="Delete"
             >
               <Trash2 size={14} />
-              <span className="hidden sm:inline">Delete</span>
+              <span className="hidden lg:inline">Delete</span>
             </Button>
             {selectedCount > 0 ? (
-              <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
+              <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
+                Selected: {selectedCount}
+              </span>
             ) : null}
             {message ? (
               <p
-                className={
+                className={cn(
+                  'min-w-0 max-w-[8rem] truncate text-[10px] sm:max-w-[12rem] sm:text-xs md:max-w-[16rem]',
                   message.toLowerCase().includes('saved') || message.toLowerCase().includes('deleted')
-                    ? 'w-full text-sm text-emerald-300 sm:w-auto'
-                    : 'w-full text-sm text-red-300 sm:w-auto'
-                }
+                    ? 'text-emerald-300'
+                    : 'text-red-300',
+                )}
+                title={message}
               >
                 {message}
               </p>
             ) : null}
           </div>
 
-          <div className="flex flex-nowrap items-center justify-start gap-1.5 overflow-x-auto overscroll-x-contain sm:justify-end sm:gap-2 [-webkit-overflow-scrolling:touch]">
-            <p className="shrink-0 whitespace-nowrap text-sm text-stone-300">
-              Showing <span className="font-medium text-white">{from}</span>–
-              <span className="font-medium text-white">{to}</span> of{' '}
-              <span className="font-medium text-white">{totalCount}</span>
-            </p>
-            <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-              <SelectTrigger className={cn(footerFieldClass, 'w-[110px] shrink-0')} aria-label="Rows per page">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 / Page</SelectItem>
-                <SelectItem value="10">10 / Page</SelectItem>
-                <SelectItem value="20">20 / Page</SelectItem>
-                <SelectItem value="50">50 / Page</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1 overflow-x-auto overscroll-x-contain sm:gap-1.5 md:gap-2 [-webkit-overflow-scrolling:touch]">
             <Input
               aria-label="Jump to page"
               placeholder="Page"
@@ -149,14 +132,14 @@ export function ClientsTableFooterBar({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') onJumpToGo()
               }}
-              className={cn(footerFieldClass, 'w-14 shrink-0 sm:w-16')}
+              className={cn(footerFieldClass, 'h-7 w-10 shrink-0 text-[11px] sm:h-8 sm:w-12 sm:text-xs md:w-14')}
               inputMode="numeric"
             />
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className={cn('shrink-0', footerBtnClass)}
+              className={cn('hidden h-7 shrink-0 sm:inline-flex sm:h-8', footerBtnClass)}
               onClick={onJumpToGo}
               disabled={loading}
             >
@@ -166,21 +149,22 @@ export function ClientsTableFooterBar({
               type="button"
               variant="outline"
               size="icon"
-              className={cn('h-8 w-8 shrink-0', footerBtnClass)}
+              className={cn('h-7 w-7 shrink-0 sm:h-8 sm:w-8', footerBtnClass)}
               onClick={onPrevPage}
               disabled={loading || page <= 1}
             >
               <ChevronLeft size={16} />
               <span className="sr-only">Previous page</span>
             </Button>
-            <span className="min-w-[4.5rem] shrink-0 whitespace-nowrap text-center text-xs font-medium text-stone-300">
-              Page {page} / {pageCount}
+            <span className="shrink-0 whitespace-nowrap text-center text-[10px] font-medium text-stone-300 sm:min-w-[4.5rem] sm:text-xs md:min-w-[5.5rem]">
+              <span className="hidden sm:inline">Page </span>
+              {page}/{pageCount}
             </span>
             <Button
               type="button"
               variant="outline"
               size="icon"
-              className={cn('h-8 w-8 shrink-0', footerBtnClass)}
+              className={cn('h-7 w-7 shrink-0 sm:h-8 sm:w-8', footerBtnClass)}
               onClick={onNextPage}
               disabled={loading || page >= pageCount}
             >

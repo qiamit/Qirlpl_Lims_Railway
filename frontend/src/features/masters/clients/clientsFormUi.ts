@@ -28,8 +28,10 @@ export const clientRegistryFormClass = limsRegistryFormClass
 
 export const clientAddLinkClass = limsAddLinkClass
 
-export const clientVerifyLinkClass =
-  'inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 hover:text-amber-950 hover:underline'
+export {
+  limsFieldAddBtnClass as clientFieldAddBtnClass,
+  limsFieldWithAddShellClass as clientFieldWithAddShellClass,
+} from '@/lib/limsThemeUi'
 
 /** Client Directory page shell — matches Client Form stone/amber theme */
 export const clientPageShellClass = limsPageShellClass

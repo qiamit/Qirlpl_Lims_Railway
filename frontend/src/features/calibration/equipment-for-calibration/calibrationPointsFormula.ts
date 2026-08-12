@@ -34,6 +34,7 @@ function formToMasterFormulaRef(form: EquipmentForCalibrationForm): MasterFormul
     manufacturer: form.manufacturer,
     model_number: form.modelNumber,
     serial_number: form.serialNumber,
+    current_location: form.currentLocation,
     range_capacity: form.rangeCapacity,
     resolution_least_count: form.resolutionLeastCount,
     accuracy_acceptance_criteria: form.accuracyAcceptanceCriteria,

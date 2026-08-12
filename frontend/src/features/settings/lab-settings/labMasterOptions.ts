@@ -80,6 +80,7 @@ export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionI
     { value: 'gbp', label: 'GBP (£) - British Pound' },
   ],
   date_format: [
+    { value: 'dd-mmm-yy', label: 'DD-Mmm-YY' },
     { value: 'dd-mm-yyyy', label: 'DD-MM-YYYY' },
     { value: 'mm-dd-yyyy', label: 'MM-DD-YYYY' },
     { value: 'yyyy-mm-dd', label: 'YYYY-MM-DD' },
@@ -172,6 +173,25 @@ export async function deleteLabMasterOption(
     .delete()
     .eq('category', category)
     .eq('value', value)
+  if (error) throw error
+}
+
+/** Update label (and value when provided). Keeps value stable when newValue omitted. */
+export async function updateLabMasterOption(
+  category: LabMasterOptionCategory,
+  oldValue: string,
+  label: string,
+  newValue?: string,
+): Promise<void> {
+  const payload: { label: string; value?: string } = { label: label.trim() }
+  if (newValue !== undefined) {
+    payload.value = newValue.trim()
+  }
+  const { error } = await supabase
+    .from('lab_master_options')
+    .update(payload)
+    .eq('category', category)
+    .eq('value', oldValue)
   if (error) throw error
 }
 

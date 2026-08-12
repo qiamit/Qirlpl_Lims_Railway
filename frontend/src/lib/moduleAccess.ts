@@ -44,6 +44,7 @@ export const SAMPLE_INCHARGE_ALLOWED_PATHS = [
   '/calibration/handling',
   '/calibration/handling/service-request',
   '/calibration/equipment-for-calibration',
+  '/calibration/masters-for-iqc',
 ] as const
 
 /** Routes Mechanical Technical Manager may open (nav + direct URL). */
@@ -236,6 +237,8 @@ function isEquipmentIqcOrResultValidationPath(pathname: string | undefined): boo
     path.startsWith('/calibration/handling/') ||
     path === '/calibration/equipment-for-calibration' ||
     path.startsWith('/calibration/equipment-for-calibration/') ||
+    path === '/calibration/masters-for-iqc' ||
+    path.startsWith('/calibration/masters-for-iqc/') ||
     path === '/masters/iqc' ||
     path.startsWith('/masters/iqc/') ||
     path === '/samples/result-validation' ||

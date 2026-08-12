@@ -38,7 +38,13 @@ import {
   Undo2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +56,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
 import { sendQiAssistantMessage } from '@/components/qi-assistant/qiAssistantApi'
 import {
   extractSectionHtmlFromAiReply,
@@ -755,7 +769,7 @@ function SelectField({
       <Label htmlFor={id}>{label}</Label>
       <select
         id={id}
-        className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(limsFieldClass, 'flex w-full px-3 text-sm')}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -1357,20 +1371,36 @@ export function DraftSectionRichEditor({
 
       {/* AI options window — no chat */}
       <Dialog open={aiOpen} onOpenChange={setAiOpen}>
-        <DialogContent layer="stacked" className="w-[min(520px,96vw)] max-w-none gap-0 overflow-hidden p-0">
-          <div className="relative bg-slate-900 px-5 py-4 text-white">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                QI Assist
-              </p>
-              <DialogTitle className="text-lg font-semibold text-white">AI Writing Options</DialogTitle>
-              <p className="text-sm text-slate-300">
-                Text &amp; tables — returns HTML the editor can insert
-              </p>
+        <DialogContent
+          layer="stacked"
+          aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'w-[min(520px,96vw)] max-w-none',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:!-translate-x-1/2 md:!-translate-y-1/2',
+          )}
+        >
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                AI Writing Options
+              </DialogTitle>
             </DialogHeader>
           </div>
-          <div className="space-y-4 bg-[#fafbfc] px-5 py-4">
+
+          <div
+            className={cn(
+              limsRegistryFormClass,
+              'space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5',
+            )}
+          >
             <div className="grid gap-3 sm:grid-cols-2">
               <SelectField
                 id={`${id}-ai-lang`}
@@ -1425,35 +1455,34 @@ export function DraftSectionRichEditor({
               <Label htmlFor={`${id}-ai-topic`}>Topic / focus (optional)</Label>
               <Input
                 id={`${id}-ai-topic`}
+                className={limsFieldClass}
                 value={aiOptions.topic}
                 onChange={(e) => setAiOptions((o) => ({ ...o, topic: e.target.value }))}
-                placeholder={
-                  aiOptions.action === 'create_table' || aiOptions.action === 'update_table'
-                    ? 'e.g. Records table: Name, ID, Retention, Responsibility'
-                    : 'e.g. Impartiality clause for testing lab'
-                }
               />
             </div>
-            {(aiOptions.action === 'create_table' || aiOptions.action === 'update_table') && (
-              <p className="rounded-md border border-teal-200 bg-teal-50/80 px-3 py-2 text-[12px] text-teal-900">
-                Table actions use the app&apos;s <strong>Level 1–4 Management Documents</strong>{' '}
-                register for Doc No / Title. Invented documents are not allowed.
-              </p>
-            )}
-            <p className="text-[11px] text-slate-500">
-              On Generate, AI loads all Level 1 / 2 / 3 / 4 documents from the system and uses only
-              those as references in text and tables.
-            </p>
             {aiError ? <p className="text-sm text-destructive">{aiError}</p> : null}
           </div>
-          <div className="flex justify-end gap-2 border-t border-border bg-white px-5 py-3">
-            <Button type="button" size="sm" variant="outline" onClick={() => setAiOpen(false)}>
+
+          <DialogFooter className="border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:justify-end sm:px-5">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={cn('h-9', limsOutlineBtnClass)}
+              onClick={() => setAiOpen(false)}
+            >
               Cancel
             </Button>
-            <Button type="button" size="sm" disabled={aiLoading} onClick={() => void runAi()}>
+            <Button
+              type="button"
+              size="sm"
+              className={cn('h-9 gap-1.5', limsPrimaryBtnClass)}
+              disabled={aiLoading}
+              onClick={() => void runAi()}
+            >
               {aiLoading ? 'Generating…' : 'Generate'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -6,7 +6,6 @@ import { IsCodeSearchPicker } from './IsCodeSearchPicker'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -358,7 +357,13 @@ export function QiAssistant({
         )}
       </DialogTrigger>
       <DialogContent
-        className="flex max-h-[88vh] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:max-w-xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+        aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          'flex max-h-[88vh] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:max-w-xl sm:rounded-lg',
+          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          '[&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100',
+        )}
       >
         <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-4 text-white">
           <div
@@ -370,24 +375,12 @@ export function QiAssistant({
           />
           <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative space-y-1.5 pr-8 text-left">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber-200/90">AI · Lab Assistant</p>
             <DialogTitle className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
               <span className="flex h-8 w-8 items-center justify-center rounded-none bg-amber-400/20 ring-1 ring-amber-400/30">
                 <Sparkles size={16} className="text-amber-200" />
               </span>
               {assistantDialogTitle(activeRecordTable, effectiveIsCodeId, page)}
             </DialogTitle>
-            <DialogDescription className="text-sm text-slate-300">
-              {page === 'samples/receiving' && enablePdfImport
-                ? `${pageTitle} — attach Test Request PDF, then ask to register the sample`
-                : showIsCodePicker
-                  ? `${pageTitle} — select IS Code, ! for skills, then ask to import test parameters from PDF`
-                  : activeRecordTable === 'test_parameters'
-                    ? `${pageTitle} — type ! to activate a skill; Q&A and edits`
-                    : effectiveIsCodeId
-                      ? `${pageTitle} — type ! to activate a skill; PDF Q&A and edits`
-                      : `${pageTitle} — type ! for skills; Q&A and data changes`}
-            </DialogDescription>
           </DialogHeader>
         </div>
 

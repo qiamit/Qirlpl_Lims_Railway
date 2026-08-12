@@ -2,10 +2,21 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { FileText } from 'lucide-react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
 import {
   fetchManagementDocLetterhead,
   formatNablCertificateNo,
@@ -23,6 +34,16 @@ import {
   ensureCertificateNotesMinLoadToken,
   formatCertificateMinLoadDisplay,
 } from '@/features/calibration/handling/certificate-preparation/certificateDraftTypes'
+
+const FULLSCREEN_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
 
 /** Lab Settings → Letter Head Templates (calibration certificate). */
 const CALIBRATION_LETTERHEAD_HEADER = 'NABL Letter Head for Calibration'
@@ -979,38 +1000,27 @@ export function CertificateFormatDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!flex fixed inset-0 z-[70] h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-[#e8eaed] p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+        persistOnFocusLoss
         layer="nested"
+        overlayClassName={FULLSCREEN_OVERLAY}
+        className={FULLSCREEN_DIALOG_CLASS}
         aria-describedby={undefined}
       >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-rose-400 via-teal-400 to-transparent" />
-          <DialogHeader className="relative pr-12 text-left">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <DialogTitle className="text-xl font-semibold tracking-tight text-white">
-                  Certificate Format
-                  {equipmentName?.trim() ? ` — ${equipmentName.trim()}` : ''}
-                </DialogTitle>
-                <p className="mt-1 text-xs text-slate-300">
-                  Changes apply only to this equipment. Other equipment (e.g. Universal Testing
-                  Machine) keep their own certificate format.
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 bg-teal-600 text-xs text-white hover:bg-teal-500"
-                onClick={handleDone}
-                aria-label="Apply certificate format"
-              >
-                Done
-              </Button>
-            </div>
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Certificate Format
+              {equipmentName?.trim() ? ` — ${equipmentName.trim()}` : ''}
+            </DialogTitle>
           </DialogHeader>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-6 sm:py-5">
+        <div className="min-h-0 flex-1 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
           <CertificateFormatPreview
             template={draft}
             equipmentName={equipmentName ?? ''}
@@ -1019,6 +1029,17 @@ export function CertificateFormatDialog({
             onChange={setDraft}
           />
         </div>
+
+        <DialogFooter className="shrink-0 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={handleDone}
+            aria-label="Save certificate format and close"
+          >
+            Save & Close
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -1027,16 +1048,21 @@ export function CertificateFormatDialog({
 export function CertificateFormatButton({
   configured,
   onClick,
+  className,
 }: {
   configured?: boolean
   onClick: () => void
+  className?: string
 }) {
   return (
     <Button
       type="button"
       variant="outline"
       size="sm"
-      className="relative h-9 shrink-0 border-rose-600/40 text-rose-900 hover:bg-rose-50"
+      className={cn(
+        'relative h-8 shrink-0 rounded-none border-stone-500 bg-stone-50 text-stone-800 hover:bg-stone-100 hover:text-stone-900',
+        className,
+      )}
       onClick={onClick}
       aria-label="Certificate Format"
     >
@@ -1044,7 +1070,7 @@ export function CertificateFormatButton({
       Certificate Format
       {configured ? (
         <span
-          className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-rose-500"
+          className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-600"
           aria-hidden
           title="Certificate format configured"
         />

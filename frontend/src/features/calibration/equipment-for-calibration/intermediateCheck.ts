@@ -3,6 +3,12 @@ import {
   DEFAULT_INTERMEDIATE_TEMPERATURE,
   type IntermediateCheckReadingItem,
 } from '@/features/masters/equipment-master/intermediateCheckHistory'
+import {
+  emptyCalibrationPointRow,
+  normalizeCalibrationPointsColumn,
+  type CalibrationPointRow,
+  type CalibrationPointsColumn,
+} from './types'
 
 export type IntermediateCheckReading = IntermediateCheckReadingItem
 export type IntermediateCheckStatus = 'Satisfactory' | 'Unsatisfactory' | 'N/A'
@@ -14,6 +20,40 @@ export type IntermediateCheckDraft = {
   masterIds: string[]
   temperature: string
   humidity: string
+  envColumns: CalibrationPointsColumn[]
+  envRows: CalibrationPointRow[]
+  checkColumns: CalibrationPointsColumn[]
+  checkRows: CalibrationPointRow[]
+}
+
+function parseStoredTable(raw: unknown): {
+  columns: CalibrationPointsColumn[]
+  rows: CalibrationPointRow[]
+} {
+  if (!raw || typeof raw !== 'object') return { columns: [], rows: [] }
+  const o = raw as Record<string, unknown>
+  const colsRaw = Array.isArray(o.columns) ? o.columns : []
+  const columns = colsRaw.map((item, index) =>
+    normalizeCalibrationPointsColumn(
+      (item && typeof item === 'object' ? item : {}) as Record<string, unknown>,
+      index,
+    ),
+  )
+  const rowsRaw = Array.isArray(o.rows) ? o.rows : []
+  const rows: CalibrationPointRow[] = rowsRaw.map((item) => {
+    const row = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
+    const valuesRaw =
+      row.values && typeof row.values === 'object' && !Array.isArray(row.values)
+        ? (row.values as Record<string, unknown>)
+        : {}
+    const values: Record<string, string> = {}
+    for (const col of columns) values[col.id] = String(valuesRaw[col.id] ?? '')
+    return { id: String(row.id ?? `ic-${Math.random().toString(36).slice(2, 8)}`), values }
+  })
+  return {
+    columns,
+    rows: columns.length === 0 ? [] : rows.length > 0 ? rows : [emptyCalibrationPointRow(columns)],
+  }
 }
 
 export function emptyIntermediateCheckReading(): IntermediateCheckReading {
@@ -67,6 +107,8 @@ export function decodeIntermediateCheckResult(
     try {
       const parsed = JSON.parse(match[1]) as Record<string, unknown>
       if (Array.isArray(parsed.readings)) {
+        const env = parseStoredTable(parsed.envTable)
+        const check = parseStoredTable(parsed.checkTable)
         return {
           readings: parsed.readings.map(normalizeReading),
           doneBy: String(parsed.doneBy ?? '').trim() || fallbackDoneBy,
@@ -76,6 +118,10 @@ export function decodeIntermediateCheckResult(
           temperature:
             String(parsed.temperature ?? '').trim() || DEFAULT_INTERMEDIATE_TEMPERATURE,
           humidity: String(parsed.humidity ?? '').trim() || DEFAULT_INTERMEDIATE_HUMIDITY,
+          envColumns: env.columns,
+          envRows: env.rows,
+          checkColumns: check.columns,
+          checkRows: check.rows,
           isLegacy: false,
         }
       }
@@ -90,6 +136,10 @@ export function decodeIntermediateCheckResult(
     masterIds: [],
     temperature: DEFAULT_INTERMEDIATE_TEMPERATURE,
     humidity: DEFAULT_INTERMEDIATE_HUMIDITY,
+    envColumns: [],
+    envRows: [],
+    checkColumns: [],
+    checkRows: [],
     isLegacy: text.trim().length > 0 && !text.includes('[DATA:'),
   }
 }
@@ -148,6 +198,14 @@ export function encodeIntermediateCheckResult(
     masters: draft.masterIds,
     temperature: draft.temperature || DEFAULT_INTERMEDIATE_TEMPERATURE,
     humidity: draft.humidity || DEFAULT_INTERMEDIATE_HUMIDITY,
+    envTable:
+      draft.envColumns.length > 0
+        ? { columns: draft.envColumns, rows: draft.envRows }
+        : undefined,
+    checkTable:
+      draft.checkColumns.length > 0
+        ? { columns: draft.checkColumns, rows: draft.checkRows }
+        : undefined,
     combinedErrorRSS: rssError.toFixed(4),
   })}]`
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Package, Plus, Settings2, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Plus, Settings2, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,12 @@ import {
 } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { clientRegistryFormClass } from '@/features/masters/clients/clientsFormUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import {
   FilterCombobox,
@@ -37,7 +43,8 @@ import {
   type CalibrationPointRow,
 } from '@/features/calibration/equipment-for-calibration/types'
 import { FREQUENCIES } from '@/features/calibration/equipment-for-calibration/types'
-import { PHYSICAL_CONDITIONS, type PhysicalCondition } from './types'
+import { PhysicalConditionSelect } from './PhysicalConditionSelect'
+import type { PhysicalCondition } from './types'
 
 export type SelectableCalibrationEquipment = {
   id: string
@@ -419,8 +426,7 @@ function parseEntriesFromDescription(
     const methodNotesMatch = chunk.match(/method\s*notes\s+([^·]+)/i)
 
     const physicalRaw = physicalMatch?.[1]?.trim() ?? ''
-    const physicalCondition: PhysicalCondition =
-      physicalRaw === 'Ok' || physicalRaw === 'Not Ok' ? physicalRaw : base.physicalCondition
+    const physicalCondition: PhysicalCondition = physicalRaw || base.physicalCondition
 
     const tabs = matchedOpt
       ? cloneMasterPointsTabs(matchedOpt.masterPointsTabs)
@@ -462,7 +468,7 @@ function parseEntriesFromDescription(
 }
 
 const GRID_TABLE =
-  'min-w-[980px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'w-full table-fixed border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -512,11 +518,11 @@ function EquipmentNameTypeahead({
         // Only restore label when closing — never wipe typed text on open.
         if (!next) setQuery(displayName)
       }}
-      placeholder="Type to search equipment…"
+      placeholder="Type or Search"
       listId={`srf-eq-name-${rowId}`}
       dropdownPlacement="bottom"
-      inputClassName="h-9"
-      className="min-w-[160px]"
+      inputClassName="!h-8 min-w-0 !py-0 px-2"
+      className="min-w-0 w-full"
     />
   )
 }
@@ -526,6 +532,7 @@ export function SelectCalibrationEquipmentDialog({
   onOpenChange,
   selectedDescription,
   onConfirm,
+  embedded = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -536,6 +543,8 @@ export function SelectCalibrationEquipmentDialog({
     equipmentIds: string[]
     methodNotes: string
   }) => void
+  /** Render the picker table inline (no fullscreen dialog). */
+  embedded?: boolean
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -543,7 +552,16 @@ export function SelectCalibrationEquipmentDialog({
   const [entries, setEntries] = useState<EntryRow[]>(() => [emptyEntryRow()])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [detailsRowId, setDetailsRowId] = useState<string | null>(null)
+  const [pointsPanelOpen, setPointsPanelOpen] = useState(false)
   const [masterLabelById, setMasterLabelById] = useState<Record<string, string>>({})
+  useEffect(() => {
+    setPointsPanelOpen(false)
+  }, [detailsRowId])
+
+  const lastPushedDescription = useRef<string | null>(null)
+  const onConfirmRef = useRef(onConfirm)
+  onConfirmRef.current = onConfirm
+  const active = embedded || open
 
   const loadCatalog = useCallback(async () => {
     setLoading(true)
@@ -589,12 +607,15 @@ export function SelectCalibrationEquipmentDialog({
   }, [])
 
   useEffect(() => {
-    if (!open) return
+    if (!active) return
     void loadCatalog()
-  }, [open, loadCatalog])
+  }, [active, loadCatalog])
 
   useEffect(() => {
-    if (!open) return
+    if (!active) return
+    if (lastPushedDescription.current !== null && selectedDescription === lastPushedDescription.current) {
+      return
+    }
     if (catalog.length === 0 && !selectedDescription.trim()) {
       setEntries([emptyEntryRow()])
       setSelectedIds(new Set())
@@ -606,7 +627,7 @@ export function SelectCalibrationEquipmentDialog({
     setSelectedIds(
       new Set(next.filter((r) => r.equipmentId.trim()).map((r) => r.rowId)),
     )
-  }, [open, catalog, selectedDescription])
+  }, [active, catalog, selectedDescription])
 
   const equipmentNameOptions = useMemo<FilterComboboxOption[]>(
     () =>
@@ -836,10 +857,6 @@ export function SelectCalibrationEquipmentDialog({
     detailsTabs.find((t) => t.id === detailsRow?.activeMasterTabId) ?? detailsTabs[0] ?? null
   const detailsActiveTable =
     detailsActiveTab?.calibrationPointsTable ?? { columns: [], rows: [] }
-  const detailsTotalPoints = detailsTabs.reduce(
-    (sum, tab) => sum + countFilledPointRows(tab.calibrationPointsTable),
-    0,
-  )
 
   const handleConfirm = () => {
     const toApply = selectedFilledEntries
@@ -865,52 +882,58 @@ export function SelectCalibrationEquipmentDialog({
       ),
     ].join('; ')
 
+    lastPushedDescription.current = description
     onConfirm({
       description,
       quantity: Math.max(totalQty, 1),
       equipmentIds: toApply.map((r) => r.equipmentId),
       methodNotes,
     })
-    onOpenChange(false)
+    if (!embedded) onOpenChange(false)
   }
 
-  return (
-    <>
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          setDetailsRowId(null)
-          setSelectedIds(new Set())
-        }
-        onOpenChange(next)
-      }}
-    >
-      <DialogContent
-        layer="nested"
-        persistOnFocusLoss
-        className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
-        aria-describedby={undefined}
-      >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-8 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Service Request · Equipment
-            </p>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
-              Select Calibration Equipment
-            </DialogTitle>
-            <p className="mt-1 text-xs text-slate-300">
-              Add equipment rows and choose details for each item
-            </p>
-          </DialogHeader>
-        </div>
+  useEffect(() => {
+    if (!embedded || loading) return
+    if (catalog.length === 0 && selectedDescription.trim()) return
+    const toApply = entries.filter(
+      (r) => r.equipmentId.trim().length > 0 && selectedIds.has(r.rowId),
+    )
+    const description = toApply
+      .map((row) => {
+        const eq = catalogById.get(row.equipmentId)
+        if (!eq) return null
+        return formatEntryLine(eq, row)
+      })
+      .filter(Boolean)
+      .join('; ')
+    if (description === lastPushedDescription.current) return
+    const totalQty = toApply.reduce((sum, row) => {
+      const n = Number.parseInt(row.quantity, 10)
+      return sum + (Number.isFinite(n) && n > 0 ? n : 1)
+    }, 0)
+    const methodNotes = [
+      ...new Set(toApply.map((r) => r.methodProcedureNotes.trim()).filter(Boolean)),
+    ].join('; ')
+    lastPushedDescription.current = description
+    onConfirmRef.current({
+      description,
+      quantity: Math.max(totalQty, 1),
+      equipmentIds: toApply.map((r) => r.equipmentId),
+      methodNotes,
+    })
+  }, [embedded, loading, catalog.length, entries, selectedIds, selectedDescription, catalogById])
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+  const equipmentTable = (
+          <>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-          <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-200 bg-white">
+          <div
+            className={
+              embedded
+                ? 'overflow-hidden border-2 border-stone-500 bg-white [&>div]:overflow-visible'
+                : 'min-h-0 flex-1 overflow-auto rounded-md border border-slate-200 bg-white'
+            }
+          >
             {loading ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">Loading…</p>
             ) : catalog.length === 0 ? (
@@ -921,7 +944,7 @@ export function SelectCalibrationEquipmentDialog({
               <Table className={GRID_TABLE}>
                 <TableHeader>
                   <TableRow className="bg-stone-800 hover:bg-stone-800">
-                    <TableHead className="w-12 text-center text-xs sm:w-14">
+                    <TableHead className="h-8 w-10 px-1 text-center text-xs sm:w-12">
                       <input
                         type="checkbox"
                         className={checkboxClass}
@@ -933,19 +956,19 @@ export function SelectCalibrationEquipmentDialog({
                         onChange={(e) => toggleAll(e.target.checked)}
                       />
                     </TableHead>
-                    <TableHead className="min-w-[180px] text-left text-xs">
+                    <TableHead className="h-8 w-[22%] px-2 text-left text-xs">
                       Name of Equipment
                     </TableHead>
-                    <TableHead className="min-w-[200px] text-center text-xs">
+                    <TableHead className="h-8 w-[20%] px-2 text-center text-xs">
                       Range / Least Count
                     </TableHead>
-                    <TableHead className="min-w-[110px] text-center text-xs">Make</TableHead>
-                    <TableHead className="min-w-[110px] text-center text-xs">Model Number</TableHead>
-                    <TableHead className="min-w-[110px] text-center text-xs">Serial Number</TableHead>
-                    <TableHead className="min-w-[110px] text-center text-xs">Customer ID</TableHead>
-                    <TableHead className="min-w-[90px] text-center text-xs">Quantity</TableHead>
-                    <TableHead className="min-w-[100px] text-center text-xs">Details</TableHead>
-                    <TableHead className="min-w-[72px] text-center text-xs">Action</TableHead>
+                    <TableHead className="h-8 w-[12%] px-2 text-center text-xs">Make</TableHead>
+                    <TableHead className="h-8 w-[12%] px-2 text-center text-xs">Model Number</TableHead>
+                    <TableHead className="h-8 w-[14%] px-2 text-center text-xs">Serial Number</TableHead>
+                    <TableHead className="h-8 w-[88px] px-1 text-center text-xs">Details</TableHead>
+                    <TableHead className="h-8 w-10 px-0 text-center text-xs">
+                      <span className="sr-only">Action</span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -968,7 +991,7 @@ export function SelectCalibrationEquipmentDialog({
 
                     return (
                       <TableRow key={row.rowId} data-state={selected ? 'selected' : undefined}>
-                        <TableCell className="align-middle text-center">
+                        <TableCell className="px-1 py-1 align-middle text-center">
                           <input
                             type="checkbox"
                             className={checkboxClass}
@@ -977,7 +1000,7 @@ export function SelectCalibrationEquipmentDialog({
                             onChange={(e) => toggleRow(row.rowId, e.target.checked)}
                           />
                         </TableCell>
-                        <TableCell className="align-middle text-left">
+                        <TableCell className="min-w-0 px-1.5 py-1 align-middle text-left">
                           <EquipmentNameTypeahead
                             rowId={row.rowId}
                             equipment={eq}
@@ -985,7 +1008,7 @@ export function SelectCalibrationEquipmentDialog({
                             onPick={(equipmentId) => assignEquipment(row.rowId, equipmentId)}
                           />
                         </TableCell>
-                        <TableCell className="align-middle text-center">
+                        <TableCell className="min-w-0 px-1.5 py-1 align-middle text-center">
                           {!hasEquipment || rangeOptions.length === 0 ? (
                             <span className="text-sm text-muted-foreground">—</span>
                           ) : (
@@ -1000,7 +1023,7 @@ export function SelectCalibrationEquipmentDialog({
                               }}
                             >
                               <SelectTrigger
-                                className="mx-auto h-9 min-w-[180px] max-w-[280px]"
+                                className="!h-8 w-full min-w-0 !py-0 px-2 [&>span]:truncate"
                                 aria-label="Range / Least Count"
                               >
                                 <SelectValue placeholder="Select range / LC" />
@@ -1026,9 +1049,9 @@ export function SelectCalibrationEquipmentDialog({
                             </Select>
                           )}
                         </TableCell>
-                        <TableCell className="align-middle text-center">
+                        <TableCell className="min-w-0 px-1.5 py-1 align-middle text-center">
                           <Input
-                            className="mx-auto h-9 w-[120px] text-center"
+                            className="!h-8 w-full min-w-0 !py-0 px-2 text-center"
                             value={row.make}
                             disabled={!hasEquipment}
                             placeholder="Make"
@@ -1036,9 +1059,9 @@ export function SelectCalibrationEquipmentDialog({
                             aria-label="Make"
                           />
                         </TableCell>
-                        <TableCell className="align-middle text-center">
+                        <TableCell className="min-w-0 px-1.5 py-1 align-middle text-center">
                           <Input
-                            className="mx-auto h-9 w-[120px] text-center"
+                            className="!h-8 w-full min-w-0 !py-0 px-2 text-center"
                             value={row.modelNumber}
                             disabled={!hasEquipment}
                             placeholder="Model"
@@ -1048,9 +1071,9 @@ export function SelectCalibrationEquipmentDialog({
                             aria-label="Model number"
                           />
                         </TableCell>
-                        <TableCell className="align-middle text-center">
+                        <TableCell className="min-w-0 px-1.5 py-1 align-middle text-center">
                           <Input
-                            className="mx-auto h-9 w-[120px] text-center"
+                            className="!h-8 w-full min-w-0 !py-0 px-2 text-center"
                             value={row.serialNumber}
                             disabled={!hasEquipment}
                             placeholder="Serial no."
@@ -1060,39 +1083,12 @@ export function SelectCalibrationEquipmentDialog({
                             aria-label="Serial number"
                           />
                         </TableCell>
-                        <TableCell className="align-middle text-center">
-                          <Input
-                            className="mx-auto h-9 w-[110px] text-center"
-                            value={row.customerId}
-                            disabled={!hasEquipment}
-                            placeholder="Cust. ID"
-                            onChange={(e) =>
-                              patchEntry(row.rowId, { customerId: e.target.value })
-                            }
-                            aria-label="Customer ID"
-                          />
-                        </TableCell>
-                        <TableCell className="align-middle text-center">
-                          <Input
-                            className="mx-auto h-9 w-[80px] text-center"
-                            type="number"
-                            min={1}
-                            inputMode="numeric"
-                            value={row.quantity}
-                            disabled={!hasEquipment}
-                            placeholder="Qty"
-                            onChange={(e) =>
-                              patchEntry(row.rowId, { quantity: e.target.value })
-                            }
-                            aria-label="Quantity"
-                          />
-                        </TableCell>
-                        <TableCell className="align-middle text-center">
+                        <TableCell className="px-1 py-1 align-middle text-center">
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-9 gap-1.5 border-slate-300 px-2.5 text-xs text-slate-700 hover:bg-teal-50 hover:text-teal-800"
+                            className="h-8 gap-1 rounded-none border-stone-400 px-1.5 text-xs text-stone-700 hover:bg-stone-100"
                             disabled={!hasEquipment}
                             onClick={() => {
                               void openDetailsWithSyncedPoints(row.rowId)
@@ -1103,13 +1099,13 @@ export function SelectCalibrationEquipmentDialog({
                             Details
                           </Button>
                         </TableCell>
-                        <TableCell className="align-middle text-center">
+                        <TableCell className="px-0 py-1 align-middle text-center">
                           {isLast ? (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-9 w-9 border-teal-600/40 px-0 text-teal-800 hover:bg-teal-50"
+                              className="h-8 w-8 border-amber-600/40 px-0 text-amber-900 hover:bg-amber-50"
                               onClick={addRow}
                               aria-label="Add equipment row"
                             >
@@ -1120,7 +1116,7 @@ export function SelectCalibrationEquipmentDialog({
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="h-9 w-9 px-0 text-destructive hover:bg-destructive/10"
+                              className="h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
                               onClick={() => removeRow(row.rowId)}
                               aria-label="Delete equipment row"
                             >
@@ -1135,31 +1131,76 @@ export function SelectCalibrationEquipmentDialog({
               </Table>
             )}
           </div>
+          </>
+  )
 
-          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 pt-3">
-            <p className="text-xs text-muted-foreground">
-              {selectedFilledEntries.length} of {filledEntries.length} equipment row(s) selected
-            </p>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className="bg-teal-600 text-white hover:bg-teal-500"
-                onClick={handleConfirm}
-                disabled={selectedFilledEntries.length === 0}
-              >
-                Apply Selection
-                {selectedFilledEntries.length > 0
-                  ? ` (${selectedFilledEntries.length})`
-                  : ''}
-              </Button>
-            </div>
-          </div>
+  return (
+    <>
+      {embedded ? (
+        <div className="space-y-2">
+          <Label htmlFor="srf-equipment-select">Equipment / Item for Calibration</Label>
+          <div id="srf-equipment-select">{equipmentTable}</div>
         </div>
-      </DialogContent>
-    </Dialog>
+      ) : (
+        <Dialog
+          open={open}
+          onOpenChange={(next) => {
+            if (!next) {
+              setDetailsRowId(null)
+              setSelectedIds(new Set())
+            }
+            onOpenChange(next)
+          }}
+        >
+          <DialogContent
+            layer="nested"
+            persistOnFocusLoss
+            className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+            aria-describedby={undefined}
+          >
+            <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+              <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <DialogHeader className="relative pr-8 text-left">
+                <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
+                  Service Request · Equipment
+                </p>
+                <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                  Select Calibration Equipment
+                </DialogTitle>
+                <p className="mt-1 text-xs text-slate-300">
+                  Add equipment rows and choose details for each item
+                </p>
+              </DialogHeader>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-3 bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+              {equipmentTable}
+
+              <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                <p className="text-xs text-muted-foreground">
+                  {selectedFilledEntries.length} of {filledEntries.length} equipment row(s) selected
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    className="bg-teal-600 text-white hover:bg-teal-500"
+                    onClick={handleConfirm}
+                    disabled={selectedFilledEntries.length === 0}
+                  >
+                    Apply Selection
+                    {selectedFilledEntries.length > 0
+                      ? ` (${selectedFilledEntries.length})`
+                      : ''}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog
         open={Boolean(detailsRow)}
@@ -1170,16 +1211,24 @@ export function SelectCalibrationEquipmentDialog({
         <DialogContent
           layer="nested"
           persistOnFocusLoss
-          className="max-h-[min(92vh,820px)] max-w-4xl gap-0 overflow-hidden p-0"
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'max-h-[min(92vh,820px)] max-w-4xl gap-0 overflow-hidden p-0',
+            'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
+            'md:left-[calc(268px+(100vw-268px)/2)]',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-red-700',
+          )}
           aria-describedby={undefined}
         >
-          <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                Equipment · Calibration Details
-              </p>
-              <DialogTitle className="text-lg font-semibold tracking-tight text-white">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 text-white sm:px-5">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {detailsEquipment
                   ? formatEquipmentLabel(detailsEquipment)
                   : 'Calibration Details'}
@@ -1188,8 +1237,38 @@ export function SelectCalibrationEquipmentDialog({
           </div>
 
           {detailsRow ? (
-            <div className="lab-registry-form max-h-[calc(min(92vh,820px)-78px)] space-y-4 overflow-y-auto bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5 [&_label]:text-[12px] [&_label]:font-medium [&_label]:text-slate-600">
+            <div
+              className={cn(
+                clientRegistryFormClass,
+                'max-h-[calc(min(92vh,820px)-64px)] space-y-4 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5 sm:py-5',
+              )}
+            >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2">
+                  <Label htmlFor={`eq-cust-id-${detailsRow.rowId}`}>Customer ID</Label>
+                  <Input
+                    id={`eq-cust-id-${detailsRow.rowId}`}
+                    value={detailsRow.customerId}
+                    placeholder="Cust. ID"
+                    onChange={(e) =>
+                      patchEntry(detailsRow.rowId, { customerId: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`eq-qty-${detailsRow.rowId}`}>Quantity</Label>
+                  <Input
+                    id={`eq-qty-${detailsRow.rowId}`}
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    value={detailsRow.quantity}
+                    placeholder="Qty"
+                    onChange={(e) =>
+                      patchEntry(detailsRow.rowId, { quantity: e.target.value })
+                    }
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor={`eq-acc-${detailsRow.rowId}`}>Accuracy</Label>
                   <Input
@@ -1221,6 +1300,9 @@ export function SelectCalibrationEquipmentDialog({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Condition of DUC</Label>
                   <Select
@@ -1241,31 +1323,13 @@ export function SelectCalibrationEquipmentDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Physical Conditions</Label>
-                  <Select
-                    value={detailsRow.physicalCondition || undefined}
-                    onValueChange={(v) =>
-                      patchEntry(detailsRow.rowId, {
-                        physicalCondition: v as PhysicalCondition,
-                      })
-                    }
-                  >
-                    <SelectTrigger aria-label="Physical conditions">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PHYSICAL_CONDITIONS.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <PhysicalConditionSelect
+                  id={`eq-physical-${detailsRow.rowId}`}
+                  value={detailsRow.physicalCondition}
+                  onChange={(v) =>
+                    patchEntry(detailsRow.rowId, { physicalCondition: v })
+                  }
+                />
                 <div className="space-y-2">
                   <Label htmlFor={`eq-method-${detailsRow.rowId}`}>Calibration Method</Label>
                   <Input
@@ -1274,45 +1338,26 @@ export function SelectCalibrationEquipmentDialog({
                     readOnly
                     placeholder="From Equipment Master"
                     title={detailsRow.calibrationMethod || 'Not set in Equipment Master'}
-                    className="bg-slate-50"
+                    className="bg-stone-100"
                     aria-label="Calibration method from equipment master"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`eq-method-notes-${detailsRow.rowId}`}>
-                    Method / Procedure Notes
-                  </Label>
-                  <Input
-                    id={`eq-method-notes-${detailsRow.rowId}`}
-                    value={detailsRow.methodProcedureNotes}
-                    placeholder="Selected calibration method / procedure reference"
-                    onChange={(e) =>
-                      patchEntry(detailsRow.rowId, {
-                        methodProcedureNotes: e.target.value,
-                      })
-                    }
                   />
                 </div>
               </div>
 
-              <div className="space-y-3 border-t border-slate-200 pt-4">
+              <div className="space-y-3 border-t border-stone-300 pt-4">
                 <div>
                   <Label>Calibration Points</Label>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    Points are grouped by Master Equipment for this range
-                    {detailsTotalPoints > 0 ? ` · ${detailsTotalPoints} point(s) total` : ''}.
-                  </p>
                 </div>
 
                 {detailsTabs.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-stone-300 pb-2">
                     {detailsTabs.map((tab, index) => {
                       const label =
                         masterLabelById[tab.masterEquipmentId] ||
                         (tab.masterEquipmentId
                           ? tab.masterEquipmentId
                           : `Master ${index + 1}`)
-                      const active = tab.id === detailsActiveTab?.id
+                      const active = pointsPanelOpen && tab.id === detailsActiveTab?.id
                       const pointCount = countFilledPointRows(tab.calibrationPointsTable)
                       return (
                         <Button
@@ -1321,20 +1366,33 @@ export function SelectCalibrationEquipmentDialog({
                           variant="outline"
                           size="sm"
                           className={cn(
-                            'h-8 max-w-[240px]',
+                            'h-8 max-w-[240px] rounded-none',
                             active
-                              ? 'border-teal-600/50 bg-teal-50 text-teal-900 hover:bg-teal-50 hover:text-teal-900'
-                              : 'border-slate-300 text-slate-700 hover:bg-slate-50',
+                              ? 'border-amber-600/50 bg-stone-800 text-amber-100 hover:bg-stone-800 hover:text-amber-100'
+                              : 'border-stone-400 bg-stone-50 text-stone-700 hover:bg-stone-100',
                           )}
-                          onClick={() =>
+                          onClick={() => {
+                            if (pointsPanelOpen && tab.id === detailsActiveTab?.id) {
+                              setPointsPanelOpen(false)
+                              return
+                            }
                             patchEntry(detailsRow!.rowId, { activeMasterTabId: tab.id })
-                          }
+                            setPointsPanelOpen(true)
+                          }}
                           aria-pressed={active}
+                          aria-expanded={active}
                           title={label}
                         >
                           <span className="truncate">{label}</span>
                           {pointCount > 0 ? (
-                            <span className="ml-1.5 rounded-full bg-teal-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">
+                            <span
+                              className={cn(
+                                'ml-1.5 rounded-none px-1.5 py-0.5 text-[10px] font-semibold',
+                                active
+                                  ? 'bg-amber-500/25 text-amber-200'
+                                  : 'bg-amber-500/20 text-amber-900',
+                              )}
+                            >
                               {pointCount}
                             </span>
                           ) : null}
@@ -1344,24 +1402,29 @@ export function SelectCalibrationEquipmentDialog({
                   </div>
                 ) : null}
 
-                {detailsActiveTable.columns.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-xs text-muted-foreground">
+                {pointsPanelOpen && detailsActiveTable.columns.length === 0 ? (
+                  <div className="rounded-none border border-dashed border-stone-400 bg-stone-50 px-4 py-6 text-center text-xs text-stone-500">
                     No calibration points table is configured for this master on the selected
                     range. Open Calibration Equipments → Points, then reopen Details.
                   </div>
-                ) : (
-                  <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                ) : pointsPanelOpen ? (
+                  <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white">
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[560px] text-sm">
-                        <thead className="bg-slate-50 text-left text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                      <table className="w-full min-w-[560px] border-collapse text-sm">
+                        <thead>
                           <tr>
-                            <th className="w-12 px-3 py-2 text-center">#</th>
+                            <th className="w-12 border border-stone-700 bg-stone-800 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-[0.08em] text-amber-200">
+                              #
+                            </th>
                             {detailsActiveTable.columns.map((column) => (
-                              <th key={column.id} className="min-w-[150px] px-3 py-2">
+                              <th
+                                key={column.id}
+                                className="min-w-[150px] border border-stone-700 bg-stone-800 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-[0.08em] text-amber-200"
+                              >
                                 {column.header}
                               </th>
                             ))}
-                            <th className="w-14 px-2 py-2" />
+                            <th className="w-14 border border-stone-700 bg-stone-800 px-2 py-2" />
                           </tr>
                         </thead>
                         <tbody>
@@ -1369,12 +1432,12 @@ export function SelectCalibrationEquipmentDialog({
                             (pointRow: CalibrationPointRow, index) => {
                               const isLast = index === detailsActiveTable.rows.length - 1
                               return (
-                              <tr key={pointRow.id} className="border-t border-slate-100">
-                                <td className="px-3 py-2 text-center text-slate-500">
+                              <tr key={pointRow.id}>
+                                <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1 text-center text-stone-500">
                                   {index + 1}
                                 </td>
                                 {detailsActiveTable.columns.map((column) => (
-                                  <td key={column.id} className="px-3 py-2">
+                                  <td key={column.id} className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1">
                                     <Label
                                       htmlFor={`srf-cal-point-${pointRow.id}-${column.id}`}
                                       className="sr-only"
@@ -1383,7 +1446,7 @@ export function SelectCalibrationEquipmentDialog({
                                     </Label>
                                     <Input
                                       id={`srf-cal-point-${pointRow.id}-${column.id}`}
-                                      className="h-9"
+                                      className="!h-8 !py-0 px-2 text-center"
                                       value={pointRow.values[column.id] ?? ''}
                                       placeholder={column.header}
                                       onChange={(e) =>
@@ -1397,13 +1460,13 @@ export function SelectCalibrationEquipmentDialog({
                                     />
                                   </td>
                                 ))}
-                                <td className="px-2 py-2 text-right">
+                                <td className="border border-[#e7e0d4] bg-[#fffcf7] px-1 py-1 text-right">
                                   {isLast ? (
                                     <Button
                                       type="button"
                                       variant="outline"
                                       size="sm"
-                                      className="h-9 w-9 border-teal-600/40 px-0 text-teal-800 hover:bg-teal-50"
+                                      className="h-8 w-8 rounded-none border-amber-600/40 px-0 text-amber-900 hover:bg-amber-50"
                                       onClick={() =>
                                         addCalibrationPointRow(detailsRow!.rowId)
                                       }
@@ -1416,7 +1479,7 @@ export function SelectCalibrationEquipmentDialog({
                                       type="button"
                                       variant="ghost"
                                       size="sm"
-                                      className="h-9 w-9 px-0 text-destructive hover:bg-destructive/10"
+                                      className="h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
                                       onClick={() =>
                                         removeCalibrationPointRow(
                                           detailsRow!.rowId,
@@ -1437,13 +1500,13 @@ export function SelectCalibrationEquipmentDialog({
                       </table>
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
 
-              <div className="flex justify-end border-t border-slate-200 pt-3">
+              <div className="flex justify-end border-t border-stone-300 pt-3">
                 <Button
                   type="button"
-                  className="bg-teal-600 text-white hover:bg-teal-500"
+                  className={limsPrimaryBtnClass}
                   onClick={() => setDetailsRowId(null)}
                 >
                   Save & Close
@@ -1464,67 +1527,15 @@ export function CalibrationEquipmentSelectButton({
   value: string
   onApply: (payload: { description: string; quantity: string; methodNotes: string }) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const hasValue = value.trim().length > 0
-  const itemCount = useMemo(
-    () =>
-      value
-        .split(';')
-        .map((s) => s.trim())
-        .filter(Boolean).length,
-    [value],
-  )
-  const buttonLabel = hasValue
-    ? itemCount > 1
-      ? `${itemCount} equipment selected`
-      : value.trim()
-    : 'Select equipment…'
-
   return (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor="srf-equipment-select">Equipment / Item for Calibration</Label>
-        <div className="flex h-10 items-stretch gap-1 border-b border-slate-300">
-          <button
-            id="srf-equipment-select"
-            type="button"
-            className={cn(
-              'flex min-w-0 flex-1 items-center gap-2 bg-transparent px-2.5 text-left text-sm outline-none transition-colors',
-              'hover:bg-teal-50/60 focus-visible:border-teal-600',
-              hasValue ? 'text-slate-800' : 'text-muted-foreground',
-            )}
-            onClick={() => setOpen(true)}
-            aria-label="Select calibration equipment"
-          >
-            <Package size={16} className="shrink-0 text-teal-700" aria-hidden />
-            <span className="min-w-0 flex-1 truncate">{buttonLabel}</span>
-            {hasValue && itemCount > 1 ? (
-              <span className="shrink-0 rounded-full bg-teal-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">
-                {itemCount}
-              </span>
-            ) : null}
-          </button>
-          {hasValue ? (
-            <button
-              type="button"
-              className="shrink-0 px-2 text-xs font-medium text-slate-500 hover:text-destructive"
-              onClick={() => onApply({ description: '', quantity: '1', methodNotes: '' })}
-              aria-label="Clear equipment selection"
-            >
-              Clear
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      <SelectCalibrationEquipmentDialog
-        open={open}
-        onOpenChange={setOpen}
-        selectedDescription={value}
-        onConfirm={({ description, quantity, methodNotes }) => {
-          onApply({ description, quantity: String(quantity), methodNotes })
-        }}
-      />
-    </>
+    <SelectCalibrationEquipmentDialog
+      embedded
+      open
+      onOpenChange={() => undefined}
+      selectedDescription={value}
+      onConfirm={({ description, quantity, methodNotes }) => {
+        onApply({ description, quantity: String(quantity), methodNotes })
+      }}
+    />
   )
 }

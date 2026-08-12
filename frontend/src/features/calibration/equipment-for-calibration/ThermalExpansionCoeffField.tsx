@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  formatThermalExpansionDisplay,
   formatThermalExpansionStored,
   parseThermalExpansion,
   toSuperscriptExponent,
-  thermalExpansionToNumber,
 } from './thermalExpansion'
 
 type Props = {
@@ -24,7 +22,7 @@ type Props = {
  */
 export function ThermalExpansionCoeffField({
   id = 'efc-cte',
-  label = 'Coefficient of Thermal Expansion',
+  label = 'Thermal Expansion',
   value,
   onChange,
   disabled,
@@ -53,11 +51,6 @@ export function ThermalExpansionCoeffField({
   }
 
   const expNum = Number.parseInt(exponentText.trim(), 10)
-  const previewParts =
-    mantissa.trim() && Number.isFinite(expNum)
-      ? { mantissa: mantissa.trim(), exponent: expNum }
-      : null
-  const numeric = previewParts ? thermalExpansionToNumber(previewParts) : null
 
   return (
     <div className="space-y-2">
@@ -112,14 +105,6 @@ export function ThermalExpansionCoeffField({
           /°C
         </span>
       </div>
-      {previewParts && numeric != null ? (
-        <p className="text-[11px] text-slate-500">
-          {formatThermalExpansionDisplay(previewParts)}
-          {' · '}α = {numeric}
-        </p>
-      ) : (
-        <p className="text-[11px] text-slate-400">e.g. 11.5 × 10⁻⁶/°C</p>
-      )}
     </div>
   )
 }

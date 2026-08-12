@@ -5,7 +5,7 @@ import { printHtmlDocument } from '@/features/sample-handling/report-preparation
 export async function outputSrfDocument(html: string, filenameBase: string): Promise<void> {
   const settings = await fetchSrfPrintSettings()
 
-  if (settings.pdfOutputMode === 'html2pdf') {
+  if (settings.pdfOutputMode === 'playwright') {
     const { downloadHtmlAsPdf } = await import(
       '@/features/sample-handling/report-preparation/downloadHtmlAsPdf'
     )

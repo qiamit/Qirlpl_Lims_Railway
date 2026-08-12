@@ -169,6 +169,7 @@ export type EquipmentForCalibrationRow = {
   maintenance_history?: MaintenanceHistoryRecord[] | null
   calibration_points: CalibrationPointsStored | CalibrationPoint[] | null
   remarks: string | null
+  is_iqc_master?: boolean | null
   created_at?: string
   updated_at?: string
 }
@@ -229,6 +230,18 @@ export function newCalibrationColumnId(): string {
   return `col-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/** Required checkbox in Create Table: checked → show in generated table. Formula columns always show. */
+export function isCalibrationPointsColumnVisible(col: CalibrationPointsColumn): boolean {
+  if ((col.type || 'number') === 'formula') return true
+  return Boolean(col.required)
+}
+
+export function visibleCalibrationPointsColumns(
+  columns: CalibrationPointsColumn[],
+): CalibrationPointsColumn[] {
+  return columns.filter(isCalibrationPointsColumnVisible)
+}
+
 export function emptyCalibrationPointRow(
   columns: CalibrationPointsColumn[],
 ): CalibrationPointRow {
@@ -254,7 +267,7 @@ export function emptyCalibrationPointsColumn(
     id: newCalibrationColumnId(),
     header,
     type,
-    required: false,
+    required: true,
     ...(type === 'formula' ? { formula: emptyColumnFormula() } : {}),
   }
 }
@@ -432,7 +445,7 @@ export function emptyEquipmentForCalibrationForm(): EquipmentForCalibrationForm 
     calibrationTemperature: '',
     calibrationHumidity: '',
     coefficientOfThermalExpansion: '',
-    intermediateCheckFrequency: '',
+    intermediateCheckFrequency: 'Quarterly',
     lastIntermediateCheckDate: '',
     nextIntermediateCheckDate: '',
     intermediateCheckResult: '',
@@ -467,10 +480,16 @@ export function calculateNextDueDate(lastDateStr: string, frequency: Frequency):
   return calcNext(lastDateStr, frequency as EqFrequency)
 }
 
-/** Next code: {Company2Initials}-EQ-0001 (e.g. Quality Engineering → QE-EQ-0001) */
-export function nextAssetCode(labName: string, existing: string[]): string {
+export type EquipmentMasterVariant = 'master' | 'iqc'
+
+/** Next code: {Company2Initials}-EQ-0001 or {Company2Initials}-IQC-0001 */
+export function nextAssetCode(
+  labName: string,
+  existing: string[],
+  variant: EquipmentMasterVariant = 'master',
+): string {
   const initials = companyTwoWordInitials(labName)
-  const prefix = `${initials}-EQ-`
+  const prefix = `${initials}-${variant === 'iqc' ? 'IQC' : 'EQ'}-`
   const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`, 'i')
   let max = 0
   for (const code of existing) {
@@ -514,7 +533,8 @@ export function rowToForm(
     calibrationTemperature: row.calibration_temperature ?? '',
     calibrationHumidity: row.calibration_humidity ?? '',
     coefficientOfThermalExpansion: row.coefficient_of_thermal_expansion ?? '',
-    intermediateCheckFrequency: parseStoredFrequency(row.intermediate_check_frequency),
+    intermediateCheckFrequency:
+      parseStoredFrequency(row.intermediate_check_frequency) || 'Quarterly',
     lastIntermediateCheckDate: row.last_intermediate_check_date?.slice(0, 10) ?? '',
     nextIntermediateCheckDate: row.next_intermediate_check_date?.slice(0, 10) ?? '',
     intermediateCheckResult: row.intermediate_check_result ?? '',

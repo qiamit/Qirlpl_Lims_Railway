@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "npm run dev --prefix frontend",
+    "pdf:dev": "npm run dev --prefix pdf-service",
+    "pdf:install": "npm install --prefix pdf-service && npm run install-browser --prefix pdf-service",
     "build": "npm run build --prefix frontend",
     "typecheck": "npm run typecheck --prefix frontend",
     "lint": "npm run lint --prefix frontend",

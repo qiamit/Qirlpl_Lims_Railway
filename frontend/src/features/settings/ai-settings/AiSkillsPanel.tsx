@@ -20,6 +20,9 @@ import { emptyAiSkillForm, type AiSkillForm, type AiSkillRow } from './types'
 const GRID_TABLE =
   'w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
+const checkboxClass =
+  'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
 const fieldControlClass =
   'h-10 rounded-none border-0 border-b border-slate-300 bg-transparent px-0 shadow-none text-slate-900 placeholder:text-slate-400 focus-visible:border-teal-600 focus-visible:ring-0'
 
@@ -53,12 +56,14 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       setRows(await fetchAiSkills())
+      setSelectedIds(new Set())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load skills')
     } finally {
@@ -135,6 +140,32 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
     })()
   }
 
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkDelete = () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`Delete ${ids.length} selected skill${ids.length === 1 ? '' : 's'}?`)) return
+    void (async () => {
+      try {
+        for (const id of ids) {
+          await deleteAiSkill(id)
+        }
+        setMessage(ids.length === 1 ? 'Skill deleted.' : `${ids.length} skills deleted.`)
+        await load()
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : 'Unable to delete selected skills')
+      }
+    })()
+  }
+
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return rows
@@ -162,6 +193,21 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, page, pageSize])
 
+  const allPagedChecked =
+    pagedRows.length > 0 && pagedRows.every((r) => selectedIds.has(r.id))
+  const somePagedChecked = pagedRows.some((r) => selectedIds.has(r.id))
+
+  const toggleAllPaged = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const r of pagedRows) {
+        if (checked) next.add(r.id)
+        else next.delete(r.id)
+      }
+      return next
+    })
+  }
+
   const messageIsError =
     !!message && (message.toLowerCase().includes('unable') || message.toLowerCase().includes('required'))
 
@@ -178,27 +224,81 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
         </div>
       ) : (
         <>
+          {selectedIds.size > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 overflow-hidden rounded-none border-2 border-stone-500 bg-white px-4 py-3 shadow-sm ring-1 ring-amber-700/20">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{selectedIds.size}</span> selected
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleBulkDelete}
+              >
+                <Trash2 size={14} />
+                Delete selected
+              </Button>
+            </div>
+          ) : null}
+
           <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
             {pagedRows.length > 0 ? (
               <Table className={GRID_TABLE}>
                 <TableHeader>
                   <TableRow className="bg-stone-800 hover:bg-stone-800">
-                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Name</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Description</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Keywords</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Status</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center w-[100px]">Actions</TableHead>
+                    <TableHead className="w-12 text-center text-xs sm:w-14">
+                      <input
+                        type="checkbox"
+                        className={checkboxClass}
+                        aria-label="Select all on this page"
+                        checked={allPagedChecked}
+                        ref={(el) => {
+                          if (el) el.indeterminate = !allPagedChecked && somePagedChecked
+                        }}
+                        onChange={(e) => toggleAllPaged(e.target.checked)}
+                      />
+                    </TableHead>
+                    <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Name
+                    </TableHead>
+                    <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Description
+                    </TableHead>
+                    <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Keywords
+                    </TableHead>
+                    <TableHead className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Status
+                    </TableHead>
+                    <TableHead className="w-[88px] text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pagedRows.map((r) => (
-                    <TableRow key={r.id}>
+                    <TableRow
+                      key={r.id}
+                      data-state={selectedIds.has(r.id) ? 'selected' : undefined}
+                    >
+                      <TableCell className="text-center align-middle">
+                        <input
+                          type="checkbox"
+                          className={checkboxClass}
+                          aria-label={`Select ${r.name}`}
+                          checked={selectedIds.has(r.id)}
+                          onChange={() => toggleRow(r.id)}
+                        />
+                      </TableCell>
                       <TableCell className="align-middle text-left font-medium">{r.name}</TableCell>
-                      <TableCell className="align-middle text-center text-sm text-muted-foreground max-w-[240px]">
+                      <TableCell className="max-w-[240px] align-middle text-center text-sm text-muted-foreground">
                         <span className="line-clamp-2">{r.description || '—'}</span>
                       </TableCell>
                       <TableCell className="align-middle text-center text-xs text-muted-foreground">
-                        {(r.trigger_keywords ?? []).length > 0 ? (r.trigger_keywords ?? []).join(', ') : '—'}
+                        {(r.trigger_keywords ?? []).length > 0
+                          ? (r.trigger_keywords ?? []).join(', ')
+                          : '—'}
                       </TableCell>
                       <TableCell className="text-center align-middle">
                         <span
@@ -213,25 +313,28 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
                         </span>
                       </TableCell>
                       <TableCell className="text-center align-middle">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="mr-1"
-                          aria-label={`Edit ${r.name}`}
-                          onClick={() => openEdit(r)}
-                        >
-                          <Pencil size={16} />
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`Delete ${r.name}`}
-                          onClick={() => handleDelete(r)}
-                        >
-                          <Trash2 size={16} className="text-destructive" />
-                        </Button>
+                        <div className="inline-flex flex-nowrap items-center justify-center gap-0.5">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 rounded-none"
+                            aria-label={`Edit ${r.name}`}
+                            onClick={() => openEdit(r)}
+                          >
+                            <Pencil size={16} />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 rounded-none"
+                            aria-label={`Delete ${r.name}`}
+                            onClick={() => handleDelete(r)}
+                          >
+                            <Trash2 size={16} className="text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -243,7 +346,9 @@ export const AiSkillsPanel = forwardRef<AiSkillsPanelHandle, AiSkillsPanelProps>
                   {searchQuery.trim() ? 'No skills match your search.' : 'No skills added yet.'}
                 </p>
                 {!searchQuery.trim() && (
-                  <p className="mt-1 text-xs text-muted-foreground">Use &quot;Add Skill&quot; to create the first skill.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Use &quot;Add Skill&quot; to create the first skill.
+                  </p>
                 )}
               </div>
             )}

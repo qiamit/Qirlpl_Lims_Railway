@@ -8,7 +8,7 @@ import {
   limsDarkBarGlowStyle,
   limsDialogClass,
 } from '@/lib/limsThemeUi'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import {
   fetchSampleSrfViewDetails,
   type SampleSrfViewDetails,
@@ -18,8 +18,7 @@ import type { SampleStage } from '@/features/sample-handling/types'
 import { SampleReceivingEditDialog } from '@/features/sample-handling/receiving/SampleReceivingEditDialog'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
-const fmtDate = (v: string | null | undefined) =>
-  v ? new Date(v).toISOString().slice(0, 10) : '—'
+const fmtDate = (v: string | null | undefined) => formatDate(v)
 
 function fmtStage(details: SampleSrfViewDetails): string {
   return getSampleWorkflowStatusLabel({

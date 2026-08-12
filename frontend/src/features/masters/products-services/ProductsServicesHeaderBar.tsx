@@ -1,25 +1,58 @@
 import { cn } from '@/lib/utils'
-import { limsPrimaryBtnClass, limsDarkBarSearchClass, limsDarkBarFieldClass, limsDarkBarBtnClass, limsAiTriggerClass } from '@/lib/limsThemeUi'
+import {
+  limsPrimaryBtnClass,
+  limsDarkBarSearchClass,
+  limsDarkBarFieldClass,
+  limsAiTriggerClass,
+} from '@/lib/limsThemeUi'
 import { Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 
 export function ProductsServicesHeaderBar({
   search,
   onSearchChange,
+  pageSize,
+  onPageSizeChange,
   onNew,
   assistantContext,
   onAssistantDataChanged,
 }: {
   search: string
   onSearchChange: (value: string) => void
+  pageSize: number
+  onPageSizeChange: (size: number) => void
   onNew: () => void
   assistantContext: string
   onAssistantDataChanged?: () => void
 }) {
+  const pageSizeSelect = (
+    <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
+      <SelectTrigger
+        className={cn(limsDarkBarFieldClass, 'h-9 w-[6.5rem] shrink-0 sm:w-[7.5rem]')}
+        aria-label="Rows per page"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="5">5 / Page</SelectItem>
+        <SelectItem value="10">10 / Page</SelectItem>
+        <SelectItem value="20">20 / Page</SelectItem>
+        <SelectItem value="50">50 / Page</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+
   return (
-    <div className="flex flex-col gap-3 relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-3 py-3 shadow-sm sm:px-5 sm:py-4">
+    <div className="relative flex flex-col gap-3 overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-3 text-white shadow-sm ring-1 ring-amber-700/20 sm:px-5 sm:py-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-4">
           <h1 className="shrink-0 text-base font-semibold tracking-tight text-white sm:text-lg">
@@ -39,6 +72,7 @@ export function ProductsServicesHeaderBar({
               aria-label="Search products and services"
             />
           </div>
+          <div className="hidden sm:block">{pageSizeSelect}</div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -54,7 +88,7 @@ export function ProductsServicesHeaderBar({
             ]}
             onDataChanged={onAssistantDataChanged}
             triggerVariant="icon"
-          triggerClassName={limsAiTriggerClass}
+            triggerClassName={limsAiTriggerClass}
           />
           <Button
             type="button"
@@ -70,19 +104,22 @@ export function ProductsServicesHeaderBar({
         </div>
       </div>
 
-      <div className="relative w-full sm:hidden">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
-          aria-hidden
-        />
-        <Input
-          type="search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search products & services…"
-          className={cn(limsDarkBarSearchClass, 'pl-9')}
-          aria-label="Search products and services"
-        />
+      <div className="flex w-full items-center gap-2 sm:hidden">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search products & services…"
+            className={cn(limsDarkBarSearchClass, 'pl-9')}
+            aria-label="Search products and services"
+          />
+        </div>
+        {pageSizeSelect}
       </div>
     </div>
   )

@@ -65,6 +65,25 @@ export const limsDialogClass = cn(
 export const limsAddLinkClass =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-amber-800 hover:text-amber-950 hover:underline'
 
+/** + button attached to the right edge of an input/select (Client Master field strip) */
+export const limsFieldAddBtnClass =
+  'inline-flex h-full w-9 shrink-0 items-center justify-center border-l border-stone-500 bg-stone-100 text-amber-800 transition-colors hover:bg-amber-500/15 hover:text-amber-950 disabled:pointer-events-none'
+
+/** Outer shell that wraps a control + limsFieldAddBtnClass button */
+export const limsFieldWithAddShellClass =
+  'flex h-10 min-w-0 items-stretch overflow-hidden rounded-none border border-stone-500 bg-stone-50 focus-within:border-amber-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-amber-500/20'
+
+/** Strip borders from nested input/select when inside limsFieldWithAddShellClass */
+export const limsFieldWithAddControlClass = cn(
+  'min-w-0 flex-1',
+  '[&_input]:h-full [&_input]:rounded-none [&_input]:border-0 [&_input]:bg-transparent [&_input]:shadow-none',
+  '[&_input]:focus-visible:border-transparent [&_input]:focus-visible:bg-transparent [&_input]:focus-visible:ring-0',
+  '[&_button[role=combobox]]:h-full [&_button[role=combobox]]:w-full [&_button[role=combobox]]:rounded-none',
+  '[&_button[role=combobox]]:border-0 [&_button[role=combobox]]:bg-transparent [&_button[role=combobox]]:shadow-none',
+  '[&_button[role=combobox]]:focus:border-transparent [&_button[role=combobox]]:focus:bg-transparent',
+  '[&_button[role=combobox]]:focus:ring-0 [&_button[role=combobox]]:focus:ring-offset-0',
+)
+
 /** Soft filled form fields — registry / manage dialogs */
 export const limsRegistryFormClass = cn(
   'lims-registry-form',

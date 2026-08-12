@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -7,8 +8,9 @@ import { IsCodesHeaderBar } from './IsCodesHeaderBar'
 import { IsCodesForm } from './IsCodesForm'
 import { IsCodesTable } from './IsCodesTable'
 import { IsCodesTableFooterBar } from './IsCodesFooterBar'
+import { IsCodesFilesDialog, type IsCodeViewFile } from './IsCodesFilesDialog'
 import { buildIsCodesListAssistantContext, formatIsCodeLabel } from './buildIsCodeAssistantContext'
-import { emptyIsCodeForm, normalizeText, type IsCodeFileRow, type IsCodeForm, type IsCodeRow } from './types'
+import { emptyIsCodeForm, normalizeText, toProperTitleCase, type IsCodeFileRow, type IsCodeForm, type IsCodeRow } from './types'
 
 const BUCKET = 'is-code-files'
 
@@ -96,13 +98,17 @@ export default function IsCodesMasterPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const filesPopupRef = useRef<Window | null>(null)
-  const filesPopupIsCodeIdRef = useRef<string | null>(null)
-  const filesPopupTitleRef = useRef<string>('IS Code')
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const filesDialogFileInputBusy = useRef(false)
 
   const [showForm, setShowForm] = useState(false)
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
+  const [showFilesDialog, setShowFilesDialog] = useState(false)
+  const [filesDialogTitle, setFilesDialogTitle] = useState('IS Code')
+  const [filesDialogIsCodeId, setFilesDialogIsCodeId] = useState<string | null>(null)
+  const [filesDialogFiles, setFilesDialogFiles] = useState<IsCodeViewFile[]>([])
+  const [filesDialogLoading, setFilesDialogLoading] = useState(false)
+  const [filesDialogStatus, setFilesDialogStatus] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   const [rows, setRows] = useState<IsCodeRow[]>([])
@@ -172,6 +178,13 @@ export default function IsCodesMasterPage() {
     void loadAspects()
   }, [])
 
+  useEffect(() => {
+    if (!saveMessage) return
+    if (/^no files to delete\.?$/i.test(saveMessage) || /^no saved files found\.?$/i.test(saveMessage)) {
+      setSaveMessage(null)
+    }
+  }, [saveMessage])
+
   const deletePopupFile = async (file: { id: string; file_name: string; storage_path: string }) => {
     if (!file.storage_path) return
     const { error: stErr } = await supabase.storage.from(BUCKET).remove([file.storage_path])
@@ -184,64 +197,6 @@ export default function IsCodesMasterPage() {
       if (dbErr) throw dbErr
     }
   }
-
-  const uploadFilesFromPopupPayload = async (
-    isCodeId: string,
-    payloads: Array<{ name: string; mimeType: string; buffer: ArrayBuffer }>,
-  ) => {
-    const files = payloads.map(
-      (p) => new File([p.buffer], p.name, { type: p.mimeType || 'application/octet-stream' }),
-    )
-    await uploadFiles(isCodeId, files)
-  }
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as {
-        type?: string
-        file?: IsCodeFileRow
-        isCodeId?: string
-        files?: Array<{ name: string; mimeType: string; buffer: ArrayBuffer }>
-      } | null
-      if (!data || typeof data !== 'object') return
-      if (data.type === 'is-code-files:upload') {
-        const isCodeId = data.isCodeId ?? filesPopupIsCodeIdRef.current
-        const payloads = data.files
-        if (!isCodeId || !payloads?.length) return
-        void (async () => {
-          setSaveMessage(null)
-          setSaveLoading(true)
-          try {
-            await uploadFilesFromPopupPayload(isCodeId, payloads)
-            await refreshFilesPopup(isCodeId)
-            setSaveMessage('File(s) uploaded.')
-          } catch (err) {
-            setSaveMessage(formatSupabaseError(err))
-          } finally {
-            setSaveLoading(false)
-          }
-        })()
-        return
-      }
-      if (data.type === 'is-code-files:delete') {
-        const file = data.file
-        if (!file?.storage_path) return
-        const isCodeId = filesPopupIsCodeIdRef.current ?? editingId
-        void (async () => {
-          try {
-            await deletePopupFile(file)
-            if (isCodeId) await loadFiles(isCodeId)
-            if (isCodeId) await refreshFilesPopup(isCodeId)
-          } catch (err) {
-            setSaveMessage(formatSupabaseError(err))
-          }
-        })()
-      }
-    }
-
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [editingId])
 
   useEffect(() => {
     setPage(1)
@@ -301,11 +256,6 @@ export default function IsCodesMasterPage() {
 
   const canSave = !saveLoading && normalizeText(form.isNumber).length > 0 && normalizeText(form.title).length > 0
 
-  const handleClear = () => {
-    setSaveMessage(null)
-    setForm(emptyIsCodeForm())
-  }
-
   const handleNew = () => {
     setSaveMessage(null)
     setForm(emptyIsCodeForm())
@@ -355,6 +305,50 @@ export default function IsCodesMasterPage() {
     setForm((prev) => ({ ...prev, files }))
   }
 
+  const handleDeleteFiles = () => {
+    void (async () => {
+      const hasPending = form.files.length > 0
+      const isCodeId = editingId
+
+      if (!hasPending && !isCodeId) return
+
+      const ok = window.confirm(
+        isCodeId
+          ? 'Delete all files for this IS Code? Pending uploads will also be cleared.'
+          : 'Clear selected files for upload?',
+      )
+      if (!ok) return
+
+      setForm((prev) => ({ ...prev, files: [] }))
+
+      if (!isCodeId) return
+
+      try {
+        const { data, error } = await supabase
+          .from('is_code_files')
+          .select('id, file_name, storage_path')
+          .eq('is_code_id', isCodeId)
+        if (error) throw error
+
+        const fileRows = (Array.isArray(data) ? data : []) as Array<{
+          id: string
+          file_name: string
+          storage_path: string
+        }>
+        for (const file of fileRows) {
+          await deletePopupFile(file)
+        }
+
+        if (showFilesDialog && filesDialogIsCodeId === isCodeId) {
+          setFilesDialogFiles([])
+          setFilesDialogStatus('All files deleted.')
+        }
+      } catch (err) {
+        setSaveMessage(formatSupabaseError(err))
+      }
+    })()
+  }
+
   const handleAddAspect = () => {
     const name = normalizeText(newAspect)
     if (!name) return
@@ -373,6 +367,46 @@ export default function IsCodesMasterPage() {
           return Array.from(uniq.values()).sort((a, b) => a.label.localeCompare(b.label))
         })
         setForm((prev) => ({ ...prev, aspect: name }))
+      } catch (err) {
+        setSaveMessage(formatSupabaseError(err))
+      } finally {
+        setNewAspect('')
+        setAspectDialogOpen(false)
+      }
+    })()
+  }
+
+  const handleUpdateAspect = (id: string) => {
+    const name = normalizeText(newAspect)
+    if (!name || !id) return
+    void (async () => {
+      try {
+        const oldLabel = aspects.find((x) => x.id === id)?.label ?? ''
+        if (!id.startsWith('default-')) {
+          const { error } = await supabase
+            .from('is_code_master_options')
+            .update({ label: name, value: name })
+            .eq('id', id)
+          if (error) throw error
+        }
+
+        setAspects((prev) =>
+          [...prev.map((x) => (x.id === id ? { ...x, label: name } : x))].sort((a, b) =>
+            a.label.localeCompare(b.label),
+          ),
+        )
+
+        if (oldLabel && oldLabel !== name) {
+          const { error: isCodeErr } = await supabase
+            .from('is_codes')
+            .update({ aspect: name })
+            .eq('aspect', oldLabel)
+          if (isCodeErr) throw isCodeErr
+          setRows((prev) => prev.map((r) => (r.aspect === oldLabel ? { ...r, aspect: name } : r)))
+          setForm((prev) => (prev.aspect === oldLabel ? { ...prev, aspect: name } : prev))
+        } else {
+          setForm((prev) => ({ ...prev, aspect: name }))
+        }
       } catch (err) {
         setSaveMessage(formatSupabaseError(err))
       } finally {
@@ -421,9 +455,9 @@ export default function IsCodesMasterPage() {
     }
   }
 
-  type PopupFile = { id: string; file_name: string; storage_path: string; url?: string; error?: string }
+  type PopupFile = IsCodeViewFile
 
-  const buildPopupFilesForIsCode = async (row: IsCodeRow): Promise<PopupFile[]> => {
+  const buildPopupFilesForIsCode = async (row: IsCodeRow): Promise<IsCodeViewFile[]> => {
     const { data, error } = await supabase
       .from('is_code_files')
       .select('*')
@@ -468,219 +502,98 @@ export default function IsCodesMasterPage() {
     return fromStorage
   }
 
-  const buildLoadingPopupHtml = (title: string) => `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>IS Code Files</title>
-  <style>
-    body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:16px;}
-    .muted{color:#64748b; font-size:12px; margin-top:8px;}
-  </style>
-</head>
-<body>
-  <h1>IS Code Files</h1>
-  <div class="muted">${title}</div>
-  <div class="muted">Loading…</div>
-</body>
-</html>`
-
   const formatIsCodeDisplay = (row: Pick<IsCodeRow, 'is_number' | 'revision_year'>) =>
     formatIsCodeLabel(row)
 
-  const buildFilesPopupHtml = (
-    isCodeId: string,
-    isCodeNumber: string,
-    files: PopupFile[],
-  ) => {
-    const esc = (s: string) =>
-      String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-
-    const items = files
-      .map((f) => {
-        const viewButton = f.url
-          ? `<a class="btn" href="${esc(f.url)}" target="_blank" rel="noreferrer">View</a>`
-          : `<span class="muted">${esc(f.error || 'Missing storage policy for signed URL')}</span>`
-        return `
-<div class="row">
-  <div class="name">${esc(f.file_name)}</div>
-  <div class="actions">
-    ${viewButton}
-    <button class="btn danger" data-delete="1" data-id="${esc(f.id)}" data-name="${esc(f.file_name)}" data-path="${esc(f.storage_path)}">Delete</button>
-  </div>
-</div>`
-      })
-      .join('')
-
-    return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>IS Code Files</title>
-  <style>
-    body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:16px;}
-    h1{font-size:18px; margin:0 0 12px 0;}
-    .muted{color:#64748b; font-size:12px; margin-bottom:12px;}
-    .row{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; margin-bottom:8px;}
-    .name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-    .actions{display:flex; gap:8px;}
-    .btn{border:1px solid #94a3b8; background:white; padding:6px 10px; border-radius:8px; cursor:pointer; text-decoration:none; color:#0f172a; font-size:12px;}
-    .btn:hover{background:#f8fafc;}
-    .danger{border-color:#fecaca; color:#991b1b;}
-    .danger:hover{background:#fef2f2;}
-    .primary{background:#0f172a; color:#fff; border-color:#0f172a;}
-    .primary:hover{background:#1e293b;}
-    .toolbar{display:flex; gap:8px; margin-bottom:12px;}
-    .empty{padding:18px; border:1px dashed #cbd5e1; border-radius:8px; color:#64748b;}
-  </style>
-</head>
-<body>
-  <h1>IS Code Files</h1>
-  <div class="muted">${esc(isCodeNumber)}</div>
-  <div class="toolbar">
-    <button type="button" class="btn primary" id="add-files-btn">Add Files</button>
-    <input type="file" id="popup-file-input" multiple style="display:none" />
-  </div>
-  <div class="muted" id="upload-status" style="display:none;"></div>
-  ${files.length ? items : '<div class="empty">No files yet. Use Add Files to upload.</div>'}
-
-  <script>
-    (function(){
-      var isCodeId = ${JSON.stringify(isCodeId)};
-      var addBtn = document.getElementById('add-files-btn');
-      var fileInput = document.getElementById('popup-file-input');
-      var statusEl = document.getElementById('upload-status');
-      function setStatus(msg) {
-        if (!statusEl) return;
-        statusEl.textContent = msg;
-        statusEl.style.display = msg ? 'block' : 'none';
-      }
-      if (!window.opener) {
-        setStatus('Cannot upload: opener window not available. Close and open View Files again from the app.');
-        if (addBtn) addBtn.disabled = true;
-      }
-      if (addBtn && fileInput) {
-        addBtn.addEventListener('click', function(){
-          fileInput.click();
-        });
-        fileInput.addEventListener('change', function(){
-          var list = fileInput.files;
-          if (!list || !list.length) return;
-          if (!window.opener || !window.opener.postMessage) {
-            setStatus('Cannot upload: main app window not found.');
-            fileInput.value = '';
-            return;
-          }
-          setStatus('Uploading ' + list.length + ' file(s)…');
-          var payloads = [];
-          var pending = list.length;
-          var failed = false;
-          for (var i = 0; i < list.length; i++) {
-            (function(file){
-              file.arrayBuffer().then(function(buf){
-                payloads.push({ name: file.name, mimeType: file.type || 'application/octet-stream', buffer: buf });
-                pending--;
-                if (pending === 0 && !failed) {
-                  var transfer = payloads.map(function(p){ return p.buffer; });
-                  window.opener.postMessage({ type: 'is-code-files:upload', isCodeId: isCodeId, files: payloads }, '*', transfer);
-                  fileInput.value = '';
-                  setStatus('Sent to app for upload. List will refresh shortly.');
-                }
-              }).catch(function(){
-                failed = true;
-                setStatus('Failed to read selected file(s).');
-                fileInput.value = '';
-              });
-            })(list[i]);
-          }
-        });
-      }
-      window.addEventListener('click', function(e){
-        var el = e.target;
-        if (!el || !el.getAttribute) return;
-        if (el.getAttribute('data-delete') !== '1') return;
-        var name = el.getAttribute('data-name') || '';
-        var ok = window.confirm('Delete file ' + name + '?');
-        if (!ok) return;
-        var file = {
-          id: el.getAttribute('data-id'),
-          file_name: name,
-          storage_path: el.getAttribute('data-path')
-        };
-        if (window.opener && window.opener.postMessage) {
-          window.opener.postMessage({ type: 'is-code-files:delete', file: file }, '*');
-        }
-      });
-    })();
-  </script>
-</body>
-</html>`
-  }
-
-  const refreshFilesPopup = async (isCodeId: string) => {
-    const win = filesPopupRef.current
-    if (!win || win.closed) return
+  const refreshFilesDialog = async (isCodeId: string) => {
+    if (!showFilesDialog || filesDialogIsCodeId !== isCodeId) return
     const row =
       rows.find((r) => r.id === isCodeId) ??
       ({
         id: isCodeId,
-        is_number: filesPopupTitleRef.current,
+        is_number: filesDialogTitle,
         revision_year: null,
         title: '',
         aspect: 'Specification' as IsCodeRow['aspect'],
       } satisfies IsCodeRow)
     try {
       const files = await buildPopupFilesForIsCode(row)
-      const title = filesPopupTitleRef.current || formatIsCodeDisplay(row)
-      win.document.open()
-      win.document.write(buildFilesPopupHtml(isCodeId, title, files))
-      win.document.close()
+      setFilesDialogFiles(files)
+      setFilesDialogTitle(formatIsCodeDisplay(row))
     } catch {
-      // keep popup as-is on refresh failure
+      // keep dialog list as-is on refresh failure
     }
   }
 
-  const openFilesPopup = async (row: IsCodeRow) => {
+  const openFilesDialog = async (row: IsCodeRow) => {
     setSaveMessage(null)
-    setEditingId(row.id)
-    filesPopupIsCodeIdRef.current = row.id
-    filesPopupTitleRef.current = formatIsCodeDisplay(row)
+    setFilesDialogStatus(null)
+    setFilesDialogIsCodeId(row.id)
+    setFilesDialogTitle(formatIsCodeDisplay(row))
+    setFilesDialogFiles([])
+    setFilesDialogLoading(true)
+    setShowFilesDialog(true)
 
-    const win = window.open('', '_blank', 'width=900,height=600')
-    if (!win) {
-      setSaveMessage('Popup blocked. Please allow popups for this site.')
-      return
+    try {
+      const files = await buildPopupFilesForIsCode(row)
+      setFilesDialogFiles(files)
+      setFilesDialogTitle(formatIsCodeDisplay(row))
+    } catch (err) {
+      const msg = formatSupabaseError(err)
+      setFilesDialogFiles([
+        { id: 'err', file_name: 'Unable to load files', storage_path: '', error: msg },
+      ])
+      setFilesDialogStatus(msg)
+      setSaveMessage(msg)
+    } finally {
+      setFilesDialogLoading(false)
     }
-    filesPopupRef.current = win
+  }
 
-    win.document.open()
-    win.document.write(buildLoadingPopupHtml(row.is_number))
-    win.document.close()
-
+  const handleFilesDialogAdd = (picked: File[]) => {
+    const isCodeId = filesDialogIsCodeId
+    if (!isCodeId || picked.length === 0 || filesDialogFileInputBusy.current) return
+    filesDialogFileInputBusy.current = true
     void (async () => {
+      setFilesDialogStatus(`Uploading ${picked.length} file(s)…`)
+      setSaveLoading(true)
       try {
-        const files = await buildPopupFilesForIsCode(row)
-        const title = formatIsCodeDisplay(row)
-        filesPopupTitleRef.current = title
-        win.document.open()
-        win.document.write(buildFilesPopupHtml(row.id, title, files))
-        win.document.close()
+        await uploadFiles(isCodeId, picked)
+        await refreshFilesDialog(isCodeId)
+        if (editingId === isCodeId) await loadFiles(isCodeId)
+        setFilesDialogStatus('File(s) uploaded.')
       } catch (err) {
         const msg = formatSupabaseError(err)
-        const title = formatIsCodeDisplay(row)
-        win.document.open()
-        win.document.write(
-          buildFilesPopupHtml(row.id, title, [
-            { id: 'err', file_name: 'Unable to load files', storage_path: '', error: msg },
-          ]),
-        )
-        win.document.close()
+        setFilesDialogStatus(msg)
         setSaveMessage(msg)
+      } finally {
+        setSaveLoading(false)
+        filesDialogFileInputBusy.current = false
+      }
+    })()
+  }
+
+  const handleFilesDialogDelete = (file: IsCodeViewFile) => {
+    const isCodeId = filesDialogIsCodeId
+    if (!file.storage_path) return
+    const ok = window.confirm(`Delete file ${file.file_name}?`)
+    if (!ok) return
+    void (async () => {
+      setSaveLoading(true)
+      setFilesDialogStatus(null)
+      try {
+        await deletePopupFile(file)
+        if (isCodeId) {
+          await refreshFilesDialog(isCodeId)
+          if (editingId === isCodeId) await loadFiles(isCodeId)
+        }
+        setFilesDialogStatus('File deleted.')
+      } catch (err) {
+        const msg = formatSupabaseError(err)
+        setFilesDialogStatus(msg)
+        setSaveMessage(msg)
+      } finally {
+        setSaveLoading(false)
       }
     })()
   }
@@ -696,7 +609,7 @@ export default function IsCodesMasterPage() {
           revision_year: normalizeText(form.revisionYear) || null,
           reaffirmation_year: normalizeText(form.reaffirmationYear) || null,
           amendment_number: normalizeText(form.amendmentNumber) || null,
-          title: normalizeText(form.title),
+          title: toProperTitleCase(normalizeText(form.title)),
           aspect: form.aspect,
           testing_charges: form.testingCharges ? Number(form.testingCharges) : null,
           remarks: normalizeText(form.remarks) || null,
@@ -841,7 +754,7 @@ export default function IsCodesMasterPage() {
             revision_year: normalizeText(get('revision_year')) || null,
             reaffirmation_year: normalizeText(get('reaffirmation_year')) || null,
             amendment_number: normalizeText(get('amendment_number')) || null,
-            title: normalizeText(get('title')),
+            title: toProperTitleCase(normalizeText(get('title'))),
             aspect: (normalizeText(get('aspect')) || 'Specification') as IsCodeRow['aspect'],
             testing_charges: get('testing_charges') ? Number(get('testing_charges')) : null,
             remarks: normalizeText(get('remarks')) || null,
@@ -929,6 +842,11 @@ export default function IsCodesMasterPage() {
       <IsCodesHeaderBar
         search={search}
         onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onNew={handleNew}
         onOpenBIS={() => window.open('https://standards.bis.gov.in', '_blank', 'noreferrer')}
         assistantContext={assistantContext}
@@ -938,30 +856,26 @@ export default function IsCodesMasterPage() {
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="max-h-[92vh] max-w-5xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'max-h-[92vh] w-[calc(100%-1.5rem)] max-w-3xl sm:w-full',
+            // Center in main content area (sidebar 268px stays clear)
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
         >
-          <div className="relative bg-slate-900 px-6 py-5 text-white">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }}
-            />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                {editingId ? 'IS Registry · Edit Entry' : 'IS Registry · New Entry'}
-              </p>
-              <DialogTitle className="text-2xl font-semibold tracking-tight text-white">
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId ? 'Edit IS Code' : 'Add New IS Code'}
               </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="max-h-[min(72vh,720px)] overflow-y-auto bg-[#fafbfc] px-6 py-5">
+          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
             {saveMessage ? (
               <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {saveMessage}
@@ -973,7 +887,6 @@ export default function IsCodesMasterPage() {
               canSave={canSave}
               saveLoading={saveLoading}
               onSave={handleSave}
-              onClear={handleClear}
               onPickFiles={handlePickFiles}
               aspectOptions={aspects}
               aspectDialogOpen={aspectDialogOpen}
@@ -981,6 +894,7 @@ export default function IsCodesMasterPage() {
               newAspect={newAspect}
               setNewAspect={setNewAspect}
               onAddAspect={handleAddAspect}
+              onUpdateAspect={handleUpdateAspect}
               onDeleteAspect={handleDeleteAspect}
               onOpenFiles={() => {
                 const id = editingId
@@ -990,12 +904,31 @@ export default function IsCodesMasterPage() {
                 }
                 const row = rows.find((r) => r.id === id)
                 if (!row) return
-                void openFilesPopup(row)
+                void openFilesDialog(row)
               }}
+              onDeleteFiles={handleDeleteFiles}
             />
           </div>
         </DialogContent>
       </Dialog>
+
+      <IsCodesFilesDialog
+        open={showFilesDialog}
+        onOpenChange={(open) => {
+          setShowFilesDialog(open)
+          if (!open) {
+            setFilesDialogStatus(null)
+            setFilesDialogLoading(false)
+          }
+        }}
+        title={filesDialogTitle}
+        files={filesDialogFiles}
+        loading={filesDialogLoading}
+        status={filesDialogStatus}
+        busy={saveLoading}
+        onAddFiles={handleFilesDialogAdd}
+        onDeleteFile={handleFilesDialogDelete}
+      />
 
       <IsCodesTable
         rows={pagedRows}
@@ -1007,23 +940,16 @@ export default function IsCodesMasterPage() {
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
         onViewFiles={(row) => {
-          void openFilesPopup(row)
+          void openFilesDialog(row)
         }}
         onAssistantDataChanged={() => void loadIsCodes()}
       />
 
       <IsCodesTableFooterBar
-        message={saveMessage}
         loading={saveLoading}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={page}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onImport={handleImport}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}

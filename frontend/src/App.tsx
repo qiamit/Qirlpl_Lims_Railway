@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEnterTogglesCheckbox } from '@/hooks/useEnterTogglesCheckbox'
 import { RoutePersistence } from '@/components/routing/RoutePersistence'
 import { Construction } from 'lucide-react'
 import AuthPage from '@/features/auth/AuthPage'
@@ -36,6 +37,7 @@ import {
   CalibrationEquipmentsRoute,
   CalibrationServiceRequestRoute,
   EquipmentForCalibrationRoute,
+  MastersForIqcRoute,
   JobAllocationRoute,
   CalibrationConductRoute,
   CalibrationConductInsideRoute,
@@ -94,6 +96,7 @@ function ContactUsRoute() {
 }
 
 export default function App() {
+  useEnterTogglesCheckbox()
   return (
     <BrowserRouter>
       <RoutePersistence />
@@ -211,6 +214,7 @@ export default function App() {
             path="calibration/equipment-for-calibration"
             element={<EquipmentForCalibrationRoute />}
           />
+          <Route path="calibration/masters-for-iqc" element={<MastersForIqcRoute />} />
 
           {/* Finance Management · Sale */}
           <Route

@@ -94,6 +94,12 @@ function parseItems(
       : defaultInwardChecklistItems()
 }
 
+export function hasStoredChecklistItems(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const items = (value as Record<string, unknown>).items
+  return Array.isArray(items) && items.length > 0
+}
+
 export function parseConductOutsideChecklist(
   value: unknown,
   kind: ConductOutsideChecklistKind,
@@ -129,4 +135,82 @@ export function allItemsChecked(items: ConductOutsideChecklistItem[]): boolean {
 
 export function checklistKindLabel(kind: ConductOutsideChecklistKind): string {
   return kind === 'outgoing' ? 'Outgoing Checklist' : 'Inward Checklist'
+}
+
+export function newChecklistItemId(kind: ConductOutsideChecklistKind): string {
+  const prefix = kind === 'outgoing' ? 'out' : 'in'
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function emptyEquipmentChecklistItems(
+  kind: ConductOutsideChecklistKind,
+): ConductOutsideChecklistItem[] {
+  return [{ id: newChecklistItemId(kind), label: '', checked: false }]
+}
+
+export function parseEquipmentChecklistTemplate(
+  raw: unknown,
+  kind: ConductOutsideChecklistKind,
+): ConductOutsideChecklistItem[] {
+  if (!raw || typeof raw !== 'object') {
+    return emptyEquipmentChecklistItems(kind)
+  }
+  const row = raw as Record<string, unknown>
+  const source = Array.isArray(raw) ? raw : row.items
+  if (!Array.isArray(source) || source.length === 0) {
+    return emptyEquipmentChecklistItems(kind)
+  }
+  const out: ConductOutsideChecklistItem[] = []
+  for (let i = 0; i < source.length; i += 1) {
+    const item = source[i]
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const label = String(r.label ?? r.checkPoint ?? r.checkpoint ?? '').trim()
+    out.push({
+      id: String(r.id ?? newChecklistItemId(kind)),
+      label,
+      checked: Boolean(r.checked ?? r.done ?? false),
+    })
+  }
+  return out.some((i) => i.label) ? out : emptyEquipmentChecklistItems(kind)
+}
+
+export function serializeEquipmentChecklistTemplate(
+  items: ConductOutsideChecklistItem[],
+): { items: ConductOutsideChecklistItem[] } {
+  return {
+    items: items
+      .map((item) => ({
+        id: item.id,
+        label: item.label.trim(),
+        checked: Boolean(item.checked),
+      }))
+      .filter((item) => item.label.length > 0),
+  }
+}
+
+export function equipmentChecklistHasCustomItems(
+  items: ConductOutsideChecklistItem[],
+): boolean {
+  return items.some((item) => item.label.trim().length > 0)
+}
+
+/** Use equipment-master descriptions; keep ticks already saved on the job. */
+export function applyStoredChecksToTemplate(
+  template: ConductOutsideChecklistItem[],
+  stored: ConductOutsideChecklistItem[],
+): ConductOutsideChecklistItem[] {
+  const byId = new Map(stored.map((item) => [item.id, item]))
+  const byLabel = new Map(
+    stored.map((item) => [item.label.trim().toLowerCase(), item]),
+  )
+  return template
+    .filter((item) => item.label.trim().length > 0)
+    .map((item) => {
+      const hit = byId.get(item.id) ?? byLabel.get(item.label.trim().toLowerCase())
+      return { ...item, checked: Boolean(hit?.checked) }
+    })
 }

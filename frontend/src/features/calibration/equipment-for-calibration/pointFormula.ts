@@ -1,37 +1,14 @@
+import {
+  COLUMN_FORMULA_HELP_ROWS,
+  evaluateMathExpression,
+  validateMathExpression,
+} from '@/features/calibration/rawDataSheetTypes'
+
 /**
  * Safe scientific formula evaluator for calibration point generation.
- * Supports: x, ^ / **, + − * /, parentheses, and common Math functions.
+ * Supports: x, ^ / **, + − * /, parentheses, and the same function catalog
+ * as Column Calculation (AVERAGE, SUM, IF, …) plus scientific extras.
  */
-
-const ALLOWED_IDENTIFIERS = new Set([
-  'x',
-  'pi',
-  'e',
-  'sqrt',
-  'cbrt',
-  'abs',
-  'sin',
-  'cos',
-  'tan',
-  'asin',
-  'acos',
-  'atan',
-  'sinh',
-  'cosh',
-  'tanh',
-  'ln',
-  'log',
-  'log10',
-  'log2',
-  'exp',
-  'pow',
-  'floor',
-  'ceil',
-  'round',
-  'min',
-  'max',
-  'sign',
-])
 
 /** Normalize user formula: ^ → **, unicode operators, whitespace. */
 export function normalizePointFormula(expr: string): string {
@@ -43,6 +20,13 @@ export function normalizePointFormula(expr: string): string {
     .replace(/\^/g, '**')
 }
 
+/** Bare `pi` / `e` → `pi()` / `e()` without touching scientific notation (1.2e-3). */
+function rewriteBareConstants(expr: string): string {
+  return expr
+    .replace(/\bpi\b(?!\s*\()/gi, 'pi()')
+    .replace(/(?<![\d.])\be\b(?!\s*\()(?![\d])/gi, 'e()')
+}
+
 /**
  * Validate that the expression only contains safe tokens.
  * Returns null if valid, otherwise an error message.
@@ -50,120 +34,41 @@ export function normalizePointFormula(expr: string): string {
 export function validatePointFormula(expr: string): string | null {
   const normalized = normalizePointFormula(expr)
   if (!normalized) return 'Formula is empty.'
-
-  // Strip string-safe numeric literals including scientific e-notation (1.2e-3)
-  let rest = normalized.replace(/\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, ' ')
-  // Strip operators / punctuation
-  rest = rest.replace(/[+\-*/().,\s]/g, ' ')
-  // Remaining should only be allowed identifiers
-  const tokens = rest.split(/\s+/).filter(Boolean)
-  for (const tok of tokens) {
-    if (!ALLOWED_IDENTIFIERS.has(tok.toLowerCase())) {
-      return `Unknown symbol "${tok}". Use x, pi, e, or functions like sqrt, sin, log, pow.`
-    }
-  }
-  return null
+  const body = rewriteBareConstants(normalized.replace(/\bx\b/gi, '1'))
+  const issue = validateMathExpression(body)
+  if (!issue) return null
+  return issue.replace(
+    'Use names in [brackets], numbers, + − × ÷, & "text", or AVERAGE/SUM/MIN/MAX/MEDIAN/MODE/STDEV/VAR/ABS/SQRT.',
+    'Use x, numbers, + − × ÷, or functions from the Formula list (AVERAGE, SIN, SQRT, …).',
+  )
 }
 
-function buildEvaluator(expr: string): ((x: number) => number) | null {
-  const normalized = normalizePointFormula(expr)
-  if (!normalized) return null
-  if (validatePointFormula(normalized) != null) return null
-
-  // Map friendly names → scoped locals (already provided as params)
-  const body = normalized
-    .replace(/\bln\b/gi, 'ln')
-    .replace(/\blog10\b/gi, 'log10')
-    .replace(/\blog2\b/gi, 'log2')
-    .replace(/\blog\b/gi, 'log10') // log = log10 by default (calculator style)
-    .replace(/\bPI\b/g, 'pi')
-    .replace(/\bE\b/g, 'e')
-    .replace(/\bX\b/g, 'x')
-
-  try {
-    // eslint-disable-next-line no-new-func -- sandboxed arithmetic; tokens validated above
-    const fn = new Function(
-      'x',
-      'pi',
-      'e',
-      'sqrt',
-      'cbrt',
-      'abs',
-      'sin',
-      'cos',
-      'tan',
-      'asin',
-      'acos',
-      'atan',
-      'sinh',
-      'cosh',
-      'tanh',
-      'ln',
-      'log',
-      'log10',
-      'log2',
-      'exp',
-      'pow',
-      'floor',
-      'ceil',
-      'round',
-      'min',
-      'max',
-      'sign',
-      `"use strict"; return (${body});`,
-    ) as (...args: unknown[]) => unknown
-
-    return (x: number) => {
-      const result = fn(
-        x,
-        Math.PI,
-        Math.E,
-        Math.sqrt,
-        Math.cbrt,
-        Math.abs,
-        Math.sin,
-        Math.cos,
-        Math.tan,
-        Math.asin,
-        Math.acos,
-        Math.atan,
-        Math.sinh,
-        Math.cosh,
-        Math.tanh,
-        Math.log,
-        Math.log10,
-        Math.log10,
-        Math.log2,
-        Math.exp,
-        Math.pow,
-        Math.floor,
-        Math.ceil,
-        Math.round,
-        Math.min,
-        Math.max,
-        Math.sign,
-      )
-      return typeof result === 'number' ? result : Number.NaN
-    }
-  } catch {
-    return null
-  }
+function preparePointExpression(expr: string, x: number): string {
+  return rewriteBareConstants(normalizePointFormula(expr).replace(/\bx\b/gi, `(${x})`))
 }
 
 /** Evaluate formula for source value x. Returns null on invalid / non-finite. */
 export function evaluatePointFormula(expr: string, x: number): number | null {
-  const fn = buildEvaluator(expr)
-  if (!fn) return null
+  if (validatePointFormula(expr) != null) return null
   try {
-    const result = fn(x)
-    return Number.isFinite(result) ? result : null
+    const result = evaluateMathExpression(preparePointExpression(expr, x))
+    return result != null && Number.isFinite(result) ? result : null
   } catch {
     return null
   }
 }
 
-export function formatFormulaResult(value: number): string {
+export function clampPointFormulaDecimals(raw: unknown, fallback = 2): number {
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(6, Math.max(0, Math.round(n)))
+}
+
+export function formatFormulaResult(value: number, decimals?: number): string {
   if (!Number.isFinite(value)) return ''
+  if (decimals != null && Number.isFinite(decimals)) {
+    return value.toFixed(clampPointFormulaDecimals(decimals, 2))
+  }
   const abs = Math.abs(value)
   const rounded =
     abs >= 1e6
@@ -175,6 +80,9 @@ export function formatFormulaResult(value: number): string {
           : Math.round(value * 1e8) / 1e8
   return String(Number(rounded.toPrecision(12)))
 }
+
+/** Synced with Column Calculation Formulas — same shared catalog. */
+export const POINT_FORMULA_HELP_ROWS = COLUMN_FORMULA_HELP_ROWS
 
 export type FormulaPadInsert =
   | { kind: 'text'; text: string; cursorBack?: number }

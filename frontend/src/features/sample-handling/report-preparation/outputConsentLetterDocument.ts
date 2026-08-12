@@ -9,7 +9,7 @@ export async function outputConsentLetterDocument(
 ): Promise<void> {
   const settings = await fetchTestReportPrintSettings()
 
-  if (settings.pdfOutputMode === 'html2pdf') {
+  if (settings.pdfOutputMode === 'playwright') {
     const { downloadHtmlAsPdf } = await import('./downloadHtmlAsPdf')
     const safeName = filenameBase.replace(/[^\w.-]+/g, '_').slice(0, 120) || 'consent-letter'
     await downloadHtmlAsPdf(html, `${safeName}.pdf`, settings.pageSize, {

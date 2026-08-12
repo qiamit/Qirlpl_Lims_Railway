@@ -12,7 +12,7 @@ import {
   limsDialogClass,
   limsTableHeadClass,
 } from '@/lib/limsThemeUi'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import type { AllocationRow } from '../types'
 import {
   areSampleAllocationActionsLocked,
@@ -21,7 +21,7 @@ import {
 } from './sampleAllocationEditLock'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '—')
-const fmtDate = (v: string | null | undefined) => (v ? v.slice(0, 10) : '—')
+const fmtDate = (v: string | null | undefined) => formatDate(v)
 const joinList = (arr: string[]) => arr.filter(Boolean).join(', ') || '—'
 
 const th = cn(limsTableHeadClass, 'border border-stone-700 px-2 py-1.5')

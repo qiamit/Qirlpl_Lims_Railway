@@ -36,16 +36,33 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+  limsTableBodyToneClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { fetchGenerateReportFeatureEnabled } from '@/features/settings/lab-settings/labSettingsDb'
 import {
   emptyCalibrationPointsTable,
   masterEquipmentIdsFromTabs,
+  nominalColumnId,
   parseGenerateReportConfig,
   parseGenerateReportRandomnessMode,
   parseMeasurementRanges,
+  parseRangeCapacitySortKey,
+  clampGenerateReportReadingToEquipmentRange,
   resolveGenerateReportRandomnessForPoint,
+  resolveGenerateReportRangeBoundsForEquipment,
+  resolveGenerateReportReferenceValueForRangePoint,
+  resolveMasterPointRefsForSheetRow,
   resolveRangeGenerateReportConfig,
   resolveRangeMuCalculationTemplate,
   resolveRangeRawDataSheetTemplate,
@@ -58,6 +75,11 @@ import {
   type MeasurementRangeStored,
 } from '@/features/calibration/equipments/types'
 import {
+  isPointsFormulaRefKey,
+  pointsHeaderSlug,
+} from '@/features/calibration/masterEquipmentFormulaRefs'
+import { computeCalibrationPointRowValuesFromMaster } from '@/features/calibration/equipment-for-calibration/calibrationPointsFormula'
+import {
   calculateNextDueDate,
   FREQUENCIES,
   formatManualDaysFrequency,
@@ -69,9 +91,9 @@ import {
 } from '@/features/calibration/equipment-for-calibration/types'
 import { resolveThermalExpansionAlphaString } from '@/features/calibration/equipment-for-calibration/thermalExpansion'
 import {
+  allRawDataSheetColumns,
   applyFormulaColumns,
   buildInitialRawDataSheetPayload,
-  computeFormulaValue,
   defaultRawDataSheetTemplate,
   EMPTY_RAW_DATA_ENVIRONMENT,
   emptyEnvironmentReadingRow,
@@ -81,9 +103,12 @@ import {
   explainFormulaCalculation,
   formatPlusMinusPairDisplay,
   formulaOpMeta,
-  isEnvStandardFieldLabel,
+  isEnvRowCalculated,
+  resolveEnvRowFieldType,
   mergeFormulasFromEquipmentTemplate,
+  isRawDataColumnRequiredInRow,
   newPayloadRowId,
+  rawDataSheetPrimaryTableName,
   parseRawDataSheetPayload,
   parseRawDataSheetTemplate,
   parseTableSettings,
@@ -106,15 +131,12 @@ import {
   fetchSrfSummaryForSheet,
   resolveEquipmentMasterForJob,
   updateCalibrationJobEquipmentDetail,
+  updateCalibrationJobLocationOfCalibration,
   updateRawDataSheetPayload,
   type EquipmentMasterForSheet,
   type MasterEquipmentForSheet,
   type SrfSummaryForSheet,
 } from './calibrationJobApi'
-import {
-  masterEquipmentFormulaRefColumns,
-  masterEquipmentFormulaRefValues,
-} from '@/features/calibration/masterEquipmentFormulaRefs'
 import { UncertaintyStepByStepDialog } from './UncertaintyStepByStepDialog'
 import { muCalculationTemplateFromRaw } from '@/features/calibration/equipments/muCalculationTypes'
 import { type CalibrationJobRow } from '../types'
@@ -128,6 +150,28 @@ import {
   MU_LEAST_COUNT_FIELD_KEY,
 } from '@/features/calibration/equipments/muCalculationTypes'
 
+const RDS_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const RDS_FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
+
+/** Nested Client Master dialogs — centered in the content area (sidebar excluded). */
+const RDS_CENTERED_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!absolute left-auto top-auto translate-x-0 translate-y-0',
+  'max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl',
+  'md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))]',
+  '[&>button]:text-white [&>button]:hover:bg-white/10',
+)
+
+const verificationCheckboxClass =
+  'h-4 w-4 shrink-0 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
 function cellText(value: string | null | undefined): string {
   const t = (value ?? '').trim()
   return t.length > 0 ? t : '—'
@@ -138,6 +182,42 @@ function cellText(value: string | null | undefined): string {
  * Uses current template formulas, clears stored formula cells, restores Generate
  * Report fills, then recomputes any formula columns that were not generated.
  */
+function rowIndexInMasterGroup(
+  rows: Array<{ masterEquipmentId?: string | null }>,
+  index: number,
+): number {
+  const masterId = (rows[index]?.masterEquipmentId ?? '').trim()
+  let n = 0
+  for (let i = 0; i < index; i++) {
+    if ((rows[i]?.masterEquipmentId ?? '').trim() === masterId) n += 1
+  }
+  return n
+}
+
+function applySheetRowFormulas(
+  columns: RawDataSheetColumn[],
+  rowValues: RawDataSheetRowValues,
+  decimalPlaces: number,
+  env: RawDataEnvironmentConditions | null | undefined,
+  master: MasterEquipmentForSheet | null | undefined,
+  range: EquipmentRangeEntry | null | undefined,
+  rowMeta: {
+    pointValue?: string | null
+    masterEquipmentId?: string | null
+    rowIndexInMaster?: number
+  },
+): RawDataSheetRowValues {
+  const refs = resolveMasterPointRefsForSheetRow(range, rowMeta)
+  return applyFormulaColumns(
+    columns,
+    { ...rowValues, ...refs.values },
+    decimalPlaces,
+    env,
+    master,
+    refs.tables,
+  )
+}
+
 function liveRowCalculationValues(
   columns: RawDataSheetColumn[],
   rowValues: RawDataSheetRowValues,
@@ -145,12 +225,26 @@ function liveRowCalculationValues(
   env: RawDataEnvironmentConditions | null | undefined,
   reportSettings?: RawDataReportGenerationSettings | null,
   master?: MasterEquipmentForSheet | null,
+  range?: EquipmentRangeEntry | null,
+  rowMeta?: {
+    pointValue?: string | null
+    masterEquipmentId?: string | null
+    rowIndexInMaster?: number
+  },
 ): RawDataSheetRowValues {
   const base: RawDataSheetRowValues = { ...rowValues }
   for (const col of columns) {
     if (col.type === 'formula') base[col.key] = ''
   }
-  let values = applyFormulaColumns(columns, base, decimalPlaces, env, master)
+  let values = applySheetRowFormulas(
+    columns,
+    base,
+    decimalPlaces,
+    env,
+    master,
+    range,
+    rowMeta ?? {},
+  )
   const preserved = new Set<string>()
   for (const key of reportSettings?.readingCols ?? []) {
     const generated = rowValues[key]
@@ -159,17 +253,16 @@ function liveRowCalculationValues(
       preserved.add(key)
     }
   }
-  const masterCols = masterEquipmentFormulaRefColumns()
-  const withMaster: RawDataSheetRowValues = {
-    ...values,
-    ...masterEquipmentFormulaRefValues(master),
-  }
-  const allCols = [...columns, ...masterCols]
-  for (const col of columns) {
-    if (col.type !== 'formula' || preserved.has(col.key)) continue
-    values[col.key] = computeFormulaValue(col, withMaster, decimalPlaces, allCols, env)
-  }
-  return values
+  if (preserved.size === 0) return values
+  return applySheetRowFormulas(
+    columns,
+    values,
+    decimalPlaces,
+    env,
+    master,
+    range,
+    rowMeta ?? {},
+  )
 }
 
 function resolveMasterForSheetRow(
@@ -214,7 +307,7 @@ function syncEnvironmentFromEquipmentTemplate(
         const label = String(tr.readingLabel ?? '').trim()
         if (!label) return null
         const prev = existingByKey.get(label.toLowerCase())
-        const isCalc = isEnvStandardFieldLabel(label)
+        const isCalc = isEnvRowCalculated(tr)
         const values: Record<string, string> = {}
         for (const col of parameterColumns) {
           const prevVal = String(prev?.values?.[col.id] ?? '').trim()
@@ -225,10 +318,11 @@ function syncEnvironmentFromEquipmentTemplate(
         const formulas = isCalc
           ? { ...(tr.formulas ?? prev?.formulas ?? {}) }
           : undefined
-        const base = emptyEnvironmentReadingRow(label)
+        const base = emptyEnvironmentReadingRow(label, tr.fieldType)
         return {
           id: prev?.id || tr.id || base.id,
           readingLabel: label,
+          fieldType: tr.fieldType ?? prev?.fieldType,
           values,
           ...(formulas && Object.keys(formulas).length > 0 ? { formulas } : {}),
         } satisfies RawDataEnvironmentReadingRow
@@ -256,13 +350,9 @@ function syncEnvironmentFromEquipmentTemplate(
   }
 }
 
-function formatDate(value: string | null | undefined): string {
-  const raw = (value ?? '').trim()
-  if (!raw) return '—'
-  const d = raw.slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return cellText(raw)
-  const [y, m, day] = d.split('-')
-  return `${day}-${m}-${y}`
+function formatDateForSheet(value: string | null | undefined): string {
+  const formatted = formatDate(value)
+  return formatted === '—' ? '' : formatted
 }
 
 /** Prefer stored next due; if blank and frequency is a preset, compute from last calibration. */
@@ -281,15 +371,6 @@ function resolveMasterNextCalDueValue(master: {
     if (computed) return formatDateForSheet(computed)
   }
   return ''
-}
-
-function formatDateForSheet(value: string | null | undefined): string {
-  const raw = (value ?? '').trim()
-  if (!raw) return ''
-  const d = raw.slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return raw
-  const [y, m, day] = d.split('-')
-  return `${day}-${m}-${y}`
 }
 
 function formatMasterUncertainty(master: MasterEquipmentForSheet): string {
@@ -538,6 +619,7 @@ function isValidGenerateReportReferenceKey(
   if (!k || k === REFERENCE_NONE) return false
   if (inputKey && k === inputKey) return false
   if (isGenerateReportEquipmentRefKey(k)) return true
+  if (isPointsFormulaRefKey(k)) return true
   return sheetColumnKeys.has(k)
 }
 
@@ -592,7 +674,16 @@ function resolveGenerateReportReferenceRaw(
   equipmentRange: MuEquipmentRangeContext | null | undefined,
   /** Extra LC sources when range context is empty (job / equipment legacy). */
   leastCountFallbacks: Array<string | null | undefined> = [],
+  matchedRange?: EquipmentRangeEntry | null,
 ): string {
+  if (isPointsFormulaRefKey(referenceKey) && matchedRange) {
+    return resolveGenerateReportReferenceValueForRangePoint(
+      referenceKey,
+      String(row.pointValue ?? '').trim(),
+      matchedRange,
+      [],
+    )
+  }
   if (isGenerateReportEquipmentRefKey(referenceKey)) {
     const builtins = buildMuBuiltinValues(row.pointValue, equipmentRange)
     if (referenceKey === MU_LEAST_COUNT_FIELD_KEY) {
@@ -631,40 +722,6 @@ function parseOptionalAbsoluteBand(raw: string | number | null | undefined): num
   return n
 }
 
-/** Parse a numeric range bound from equipment / job range text. */
-function parseRangeBoundNumber(raw: string | null | undefined): number | null {
-  const token = String(raw ?? '').trim()
-  if (!token) return null
-  const n = parseGenerateReportReferenceNumber(token)
-  if (n == null || !Number.isFinite(n)) return null
-  return n
-}
-
-/**
- * Resolve Range Min / Max / Span for Generate Report modes.
- * Prefers matched equipment range; falls back to job selected range label.
- */
-function resolveGenerateReportRangeBounds(
-  equipmentRange: MuEquipmentRangeContext | null | undefined,
-  jobRangeLabel?: string | null,
-): { rangeMin: number | null; rangeMax: number | null; rangeSpan: number | null } {
-  let min = parseRangeBoundNumber(equipmentRange?.rangeMin)
-  let max = parseRangeBoundNumber(equipmentRange?.rangeMax)
-
-  if ((min == null || max == null) && jobRangeLabel?.trim()) {
-    const split = splitRangeCapacityToMinMax(jobRangeLabel)
-    if (min == null) min = parseRangeBoundNumber(split.rangeMin)
-    if (max == null) max = parseRangeBoundNumber(split.rangeMax)
-  }
-
-  const rangeSpan =
-    min != null && max != null && Number.isFinite(min) && Number.isFinite(max)
-      ? Math.abs(max - min)
-      : null
-
-  return { rangeMin: min, rangeMax: max, rangeSpan }
-}
-
 function readingWithRandomnessDeviation(
   reference: number,
   randomnessFactor: number,
@@ -679,19 +736,36 @@ function readingWithRandomnessDeviation(
     cap?: number
     rangeSpan?: number
     rangeMax?: number
+    rangeMinBound?: number | null
+    rangeMaxBound?: number | null
   },
 ): string {
   const scaled = reference * (Number.isFinite(multiple) && multiple !== 0 ? multiple : 1)
   const signedRandom = unitSignedFromSalt(salt)
   const factor = Number.isFinite(randomnessFactor) ? randomnessFactor : 0
+  const finishReading = (raw: number): string => {
+    const clamped = clampGenerateReportReadingToEquipmentRange(
+      raw,
+      scaled,
+      options?.rangeMinBound ?? null,
+      options?.rangeMaxBound ?? null,
+    )
+    const snapped =
+      Number.isFinite(leastCount) && leastCount > 0
+        ? Math.round(clamped / leastCount) * leastCount
+        : clamped
+    const snappedClamped = clampGenerateReportReadingToEquipmentRange(
+      snapped,
+      scaled,
+      options?.rangeMinBound ?? null,
+      options?.rangeMaxBound ?? null,
+    )
+    return formatNumberInput(String(snappedClamped), decimalPlaces)
+  }
 
   // Factor 0 / unset → exact reference (snap + decimals). Never invent ±LC noise.
   if (!(factor > 0)) {
-    const snapped =
-      Number.isFinite(leastCount) && leastCount > 0
-        ? Math.round(scaled / leastCount) * leastCount
-        : scaled
-    return formatNumberInput(String(snapped), decimalPlaces)
+    return finishReading(scaled)
   }
 
   // Reference=None with intentional randomness: one signed least-count step.
@@ -729,11 +803,7 @@ function readingWithRandomnessDeviation(
   if (cap > 0) band = Math.min(band, cap)
 
   const raw = band > 0 ? scaled + band * signedRandom : scaled
-  const snapped =
-    Number.isFinite(leastCount) && leastCount > 0
-      ? Math.round(raw / leastCount) * leastCount
-      : raw
-  return formatNumberInput(String(snapped), decimalPlaces)
+  return finishReading(raw)
 }
 
 type ReportLeastCountOption = {
@@ -842,15 +912,15 @@ function DetailField({
   return (
     <div
       className={cn(
-        'min-w-0 rounded-md border border-slate-200/90 bg-white px-2.5 py-2',
+        'min-w-0 rounded-none border border-stone-500 bg-stone-50 px-2.5 py-2',
         className,
       )}
     >
-      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">{label}</p>
       <p
         className={cn(
           'mt-0.5 text-sm',
-          isEmpty ? 'text-slate-400' : 'text-slate-900',
+          isEmpty ? 'text-stone-400' : 'text-stone-900',
           multiline && !isEmpty ? 'whitespace-pre-wrap break-words' : !multiline ? 'truncate' : '',
         )}
         title={multiline || isEmpty ? undefined : value}
@@ -949,6 +1019,7 @@ function matchJobMeasurementRange(
     const label = normalizeRangeToken(rangeEntryLabel(r))
     const capacity = stripRangeUnits(r.rangeCapacity)
     const labelBare = stripRangeUnits(rangeEntryLabel(r))
+    const minMaxLabel = formatRangeMinMaxLabel(r)
     const lc = normalizeRangeToken(leastCountLabel(r))
     const lcOnly = normalizeRangeToken(r.resolutionLeastCount)
     const lcBare = stripRangeUnits(r.resolutionLeastCount)
@@ -957,6 +1028,20 @@ function matchJobMeasurementRange(
     if (selectedCapacity) {
       if (capacity === selectedCapacity || labelBare === selectedCapacity) score += 100
       else if (label === selectedRange) score += 90
+      else if (normalizeRangeToken(minMaxLabel) === selectedRange) score += 90
+    }
+    const selectedNums = parseRangeCapacitySortKey(fields.range)
+    const rangeNums = parseRangeCapacitySortKey(
+      r.rangeCapacity || minMaxLabel,
+    )
+    if (
+      Number.isFinite(selectedNums.lo) &&
+      Number.isFinite(selectedNums.hi) &&
+      selectedNums.lo !== Number.POSITIVE_INFINITY &&
+      selectedNums.lo === rangeNums.lo &&
+      selectedNums.hi === rangeNums.hi
+    ) {
+      score += 100
     }
     if (selectedLcBare || selectedLc) {
       const lcHit =
@@ -980,7 +1065,21 @@ function matchJobMeasurementRange(
   // Require at least a capacity or LC hit — don't pick an arbitrary first range.
   if (best && bestScore > 0) return best
 
-  return undefined
+  // Still use the only remaining range that has Min/Max so Generate Report can resolve.
+  const withBounds = pool.find((r) => {
+    const min = String(r.rangeMin ?? '').trim()
+    const max = String(r.rangeMax ?? '').trim()
+    const cap = String(r.rangeCapacity ?? '').trim()
+    return (min && max) || cap.includes('-') || cap.includes('–')
+  })
+  return withBounds
+}
+
+function formatRangeMinMaxLabel(range: EquipmentRangeEntry): string {
+  const min = String(range.rangeMin ?? '').trim()
+  const max = String(range.rangeMax ?? '').trim()
+  if (min && max) return `${min} - ${max}`
+  return min || max || range.rangeCapacity || ''
 }
 
 function pointsTableHasValues(table: CalibrationPointsStored | null | undefined): boolean {
@@ -1239,8 +1338,10 @@ function payloadHasUserReadings(payload: RawDataSheetPayload): boolean {
   if (Object.values(payload.verificationAnswers).some(Boolean)) return true
   if (environmentConditionsFilled(payload.environmentConditions)) return true
   for (const row of payload.rows) {
-    for (const col of payload.template.columns) {
+    for (const col of allRawDataSheetColumns(payload.template)) {
       if (col.key === 'nominal') continue
+      if (col.type === 'formula') continue
+      if (isAngleReadingInputColumn(col)) continue
       if ((row.values[col.key] ?? '').trim()) return true
     }
   }
@@ -1253,6 +1354,10 @@ function normalizeHeaderToken(value: string): string {
     .replace(/[%()]/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
+}
+
+function headerTokens(value: string): string[] {
+  return normalizeHeaderToken(value).split(/\s+/).filter(Boolean)
 }
 
 /** Loose header groups so "Load in Kn" ↔ "Load", "Indicator Reading" ↔ "Indicator", etc. */
@@ -1268,11 +1373,24 @@ const HEADER_ALIAS_GROUPS: string[][] = [
   ['error', 'deviation'],
 ]
 
+function aliasMatchesNormalized(normalized: string, alias: string): boolean {
+  const a = normalizeHeaderToken(alias)
+  if (!normalized || !a) return false
+  if (normalized === a) return true
+  const tokens = headerTokens(normalized)
+  const aliasTokens = headerTokens(a)
+  if (aliasTokens.length === 1) {
+    // Whole word only — "point" must not match "position".
+    return tokens.includes(a)
+  }
+  return normalized.includes(a)
+}
+
 function headerAliasGroup(token: string): number {
   const n = normalizeHeaderToken(token)
   if (!n) return -1
   return HEADER_ALIAS_GROUPS.findIndex((group) =>
-    group.some((alias) => n === alias || n.includes(alias) || alias.includes(n)),
+    group.some((alias) => aliasMatchesNormalized(n, alias)),
   )
 }
 
@@ -1281,10 +1399,63 @@ function headersCompatible(a: string, b: string): boolean {
   const nb = normalizeHeaderToken(b)
   if (!na || !nb) return false
   if (na === nb) return true
-  if (na.includes(nb) || nb.includes(na)) return true
+  const ta = headerTokens(a)
+  const tb = headerTokens(b)
+  const [shorter, longer] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
+  if (
+    shorter.length > 0 &&
+    shorter.join(' ').length >= 4 &&
+    shorter.every((t) => longer.includes(t))
+  ) {
+    return true
+  }
   const ga = headerAliasGroup(na)
   const gb = headerAliasGroup(nb)
   return ga >= 0 && ga === gb
+}
+
+/** Conduct entry cells (Position @ 0/120/360) — never auto-fill from master points. */
+function isAngleReadingInputColumn(col: RawDataSheetColumn): boolean {
+  if (col.type === 'formula') return false
+  const n = normalizeHeaderToken(`${col.label} ${col.key}`)
+  return /\bposition\b/.test(n) && /\d/.test(n)
+}
+
+/** Drop Position @ N cells that were copied from master Load / Indicator points. */
+function stripCopiedPointValuesFromAngleColumns(
+  rows: RawDataSheetPayloadRow[],
+  columns: RawDataSheetColumn[],
+  range: EquipmentRangeEntry | null | undefined,
+): RawDataSheetPayloadRow[] {
+  const entryCols = columns.filter(isAngleReadingInputColumn)
+  if (entryCols.length === 0) return rows
+  let anyChanged = false
+  const next = rows.map((row, index) => {
+    const refs = resolveMasterPointRefsForSheetRow(range, {
+      pointValue: row.pointValue,
+      masterEquipmentId: row.masterEquipmentId,
+      rowIndexInMaster: rowIndexInMasterGroup(rows, index),
+    })
+    const copied = new Set(
+      Object.values(refs.values)
+        .map((v) => String(v ?? '').trim())
+        .filter(Boolean),
+    )
+    let changed = false
+    const values = { ...row.values }
+    for (const col of entryCols) {
+      const raw = String(values[col.key] ?? '').trim()
+      if (!raw) continue
+      if (copied.has(raw)) {
+        values[col.key] = ''
+        changed = true
+      }
+    }
+    if (!changed) return row
+    anyChanged = true
+    return { ...row, values }
+  })
+  return anyChanged ? next : rows
 }
 
 /**
@@ -1295,7 +1466,9 @@ function mapPointsColumnsToSheetColumns(
   pointsTable: CalibrationPointsStored,
   sheetColumns: RawDataSheetColumn[],
 ): Array<{ sourceColId: string; sheetKey: string }> {
-  const fillable = sheetColumns.filter((c) => c.type !== 'formula')
+  const fillable = sheetColumns.filter(
+    (c) => c.type !== 'formula' && !isAngleReadingInputColumn(c),
+  )
   const used = new Set<string>()
   const mapping: Array<{ sourceColId: string; sheetKey: string }> = []
 
@@ -1525,7 +1698,7 @@ export function applyMasterSettingsToPayload(
   )
 
   let next = ensureAllMasterRowGroups(payload, tabs, masterNameById, decimalPlaces)
-  const columns = next.template.columns
+  const columns = allRawDataSheetColumns(next.template)
   const appliedLabelSet = new Set<string>()
   let filledCells = 0
 
@@ -1627,6 +1800,7 @@ export function applyMasterSettingsToPayload(
       if (seedValues) {
         for (const col of columns) {
           if (col.type === 'formula') continue
+          if (isAngleReadingInputColumn(col)) continue
           const raw = String(seedValues[col.key] ?? '').trim()
           if (!raw) continue
           if (values[col.key] !== raw) {
@@ -1715,7 +1889,7 @@ function rowsFromCalibrationPointsTable(
   masterMeta?: { masterEquipmentId?: string; masterLabel?: string },
 ): RawDataSheetPayloadRow[] {
   const mapping = mapPointsColumnsToSheetColumns(pointsTable, columns)
-  const firstMapped = mapping[0]
+  const nominalId = nominalColumnId(pointsTable)
   const out: RawDataSheetPayloadRow[] = []
 
   for (const row of pointsTable.rows) {
@@ -1729,9 +1903,29 @@ function rowsFromCalibrationPointsTable(
     }
     if (!hasAny) continue
 
-    values = applyFormulaColumns(columns, values, decimalPlaces)
-    const pointValue = firstMapped
-      ? String(row.values[firstMapped.sourceColId] ?? '').trim()
+    const computedPoint = computeCalibrationPointRowValuesFromMaster(
+      pointsTable.columns,
+      row.values,
+      null,
+      6,
+    )
+    const ptValues: RawDataSheetRowValues = {}
+    for (const col of pointsTable.columns) {
+      const slug = pointsHeaderSlug(col.header)
+      if (!slug) continue
+      const raw = String(computedPoint[col.id] ?? '').trim()
+      if (raw) ptValues[`pt:${slug}`] = raw
+    }
+    values = applyFormulaColumns(
+      columns,
+      { ...values, ...ptValues },
+      decimalPlaces,
+      null,
+      null,
+      [pointsTable],
+    )
+    const pointValue = nominalId
+      ? String(row.values[nominalId] ?? '').trim()
       : (Object.values(row.values)
           .map((v) => String(v ?? '').trim())
           .find((v) => v.length > 0) ?? '')
@@ -1821,7 +2015,7 @@ function ensureAllMasterRowGroups(
   )
   if (missingTabs.length > 0) {
     const extra = rowsFromMasterPointsTabs(
-      payload.template.columns,
+      allRawDataSheetColumns(payload.template),
       missingTabs,
       decimalPlaces,
       masterNameById,
@@ -1870,6 +2064,7 @@ export function RawDataSheetDialog({
   onOpenChange,
   forceReadOnly = false,
   initialOpenUncertainty = false,
+  onLocationOfCalibrationSaved,
 }: {
   job: CalibrationJobRow | null
   open: boolean
@@ -1878,6 +2073,7 @@ export function RawDataSheetDialog({
   forceReadOnly?: boolean
   /** After a usable sheet loads, open Uncertainty Step-by-Step. */
   initialOpenUncertainty?: boolean
+  onLocationOfCalibrationSaved?: (jobId: string, locationOfCalibration: string) => void
 }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -1902,7 +2098,13 @@ export function RawDataSheetDialog({
   const [manualDaysError, setManualDaysError] = useState<string | null>(null)
   const [freqSaving, setFreqSaving] = useState(false)
   const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
+  const [locationDraft, setLocationDraft] = useState('')
   const { user, profileName, designation } = useAuth()
+
+  useEffect(() => {
+    if (!open || !job) return
+    setLocationDraft((job.location_of_calibration ?? '').trim())
+  }, [open, job?.id, job?.location_of_calibration])
 
   useEffect(() => {
     if (!open) return
@@ -1983,7 +2185,7 @@ export function RawDataSheetDialog({
       const existing = parseRawDataSheetPayload(sheet.payload)
 
       if (forceReadOnly) {
-        if (!existing || existing.template.columns.length === 0) {
+        if (!existing || allRawDataSheetColumns(existing.template).length === 0) {
           setError('No Calibration Raw Data is available for this job yet.')
           return
         }
@@ -2064,10 +2266,18 @@ export function RawDataSheetDialog({
         ]),
       )
 
+      const matchedRange = matchJobMeasurementRange(
+        activeJob,
+        equipment.measurement_ranges,
+        equipment.range_capacity,
+        equipment.resolution_least_count,
+        equipment.master_equipment_id,
+      )
+
       // Keep filled drafts; still append any missing master sections.
       if (
         existing &&
-        existing.template.columns.length > 0 &&
+        allRawDataSheetColumns(existing.template).length > 0 &&
         (payloadHasUserReadings(existing) || sheet.sheet_status !== 'draft')
       ) {
         const withMasters = ensureAllMasterRowGroups(
@@ -2082,18 +2292,23 @@ export function RawDataSheetDialog({
           masterNameById,
           existing.tableSettings?.decimalPlaces ?? 2,
         )
-        setPayload(withMasters)
+        const cleanedRows = stripCopiedPointValuesFromAngleColumns(
+          withMasters.rows,
+          allRawDataSheetColumns(withMasters.template),
+          matchedRange,
+        )
+        const cleaned = { ...withMasters, rows: cleanedRows }
+        setPayload(cleaned)
+        if (cleanedRows !== withMasters.rows) {
+          await updateRawDataSheetPayload(
+            sheet.id,
+            cleaned as unknown as Record<string, unknown>,
+          )
+        }
         return
       }
 
       // Empty draft → follow matched range's format, then equipment-level fallback.
-      const matchedRange = matchJobMeasurementRange(
-        activeJob,
-        equipment.measurement_ranges,
-        equipment.range_capacity,
-        equipment.resolution_least_count,
-        equipment.master_equipment_id,
-      )
       const equipmentRawFallback =
         parseRawDataSheetTemplate(equipment.raw_data_sheet_template) ??
         defaultRawDataSheetTemplate()
@@ -2106,7 +2321,7 @@ export function RawDataSheetDialog({
       // Prefer all master tabs (Load, Indicator Reading, …) so every master’s points appear.
       if (masterTabs.length > 0) {
         const multiRows = rowsFromMasterPointsTabs(
-          initial.template.columns,
+          allRawDataSheetColumns(initial.template),
           masterTabs,
           initial.tableSettings?.decimalPlaces ?? 4,
           masterNameById,
@@ -2116,7 +2331,7 @@ export function RawDataSheetDialog({
         }
       } else if (pointsTable && pointsTable.rows.length > 0) {
         const multiRows = rowsFromCalibrationPointsTable(
-          initial.template.columns,
+          allRawDataSheetColumns(initial.template),
           pointsTable,
           initial.tableSettings?.decimalPlaces ?? 4,
         )
@@ -2124,6 +2339,11 @@ export function RawDataSheetDialog({
           initial.rows = multiRows
         }
       }
+      initial.rows = stripCopiedPointValuesFromAngleColumns(
+        initial.rows,
+        allRawDataSheetColumns(initial.template),
+        matchedRange,
+      )
       if (existing?.verificationAnswers) {
         initial.verificationAnswers = existing.verificationAnswers
       }
@@ -2304,11 +2524,36 @@ export function RawDataSheetDialog({
     return entries
   }, [masterEquipments, masterPointsTabsForView])
 
+  useEffect(() => {
+    if (!payload) return
+    const merged = mergeFormulasFromEquipmentTemplate(
+      payload.template,
+      equipmentMaster ? resolvedRawDataSheetTemplate : null,
+    )
+    const nextRows = stripCopiedPointValuesFromAngleColumns(
+      payload.rows,
+      allRawDataSheetColumns(merged),
+      matchedEquipmentRange,
+    )
+    if (nextRows === payload.rows) return
+    setPayload({ ...payload, rows: nextRows })
+  }, [payload, equipmentMaster, resolvedRawDataSheetTemplate, matchedEquipmentRange])
+
+  const persistLocationOfCalibration = async () => {
+    if (!job || readOnly || forceReadOnly) return
+    const next = locationDraft.trim()
+    const prev = (job.location_of_calibration ?? '').trim()
+    if (next === prev) return
+    await updateCalibrationJobLocationOfCalibration(job.id, next)
+    onLocationOfCalibrationSaved?.(job.id, next)
+  }
+
   const handleSave = async (asComplete = false) => {
     if (!sheetId || !payload || readOnly) return
     setSaving(true)
     setError(null)
     try {
+      await persistLocationOfCalibration()
       if (asComplete) {
         for (const item of payload.template.verification.items) {
           if (item.required && !payload.verificationAnswers[item.id]) {
@@ -2316,7 +2561,7 @@ export function RawDataSheetDialog({
           }
         }
         for (const row of payload.rows) {
-          for (const col of payload.template.columns) {
+          for (const col of allRawDataSheetColumns(payload.template)) {
             if (col.required && !(row.values[col.key] ?? '').trim()) {
               throw new Error(`Fill required column "${col.label}" on all rows`)
             }
@@ -2344,6 +2589,7 @@ export function RawDataSheetDialog({
         asComplete ? 'under_review' : 'draft',
       )
       if (asComplete) setReadOnly(false)
+      onOpenChange(false)
     } catch (err) {
       const msg =
         err && typeof err === 'object' && 'message' in err
@@ -2380,13 +2626,34 @@ export function RawDataSheetDialog({
       '',
   )
   const tableSettings = parseTableSettings(payload?.tableSettings)
-  const showGenerateReport = companyGenerateReportEnabled && generateReportConfig.enabled
+  const showGenerateReport =
+    companyGenerateReportEnabled && !forceReadOnly && !readOnly
   const jobSelectedRangeFields = parseJobSelectedRangeFields(job)
   const jobRangeSplit = splitRangeCapacityToMinMax(jobSelectedRangeFields.range)
+  const equipmentRangesForJob = equipmentMaster
+    ? parseMeasurementRanges(
+        equipmentMaster.measurement_ranges as MeasurementRangeStored[] | null,
+        equipmentMaster.range_capacity,
+        equipmentMaster.resolution_least_count,
+        equipmentMaster.master_equipment_id,
+      )
+    : []
+  const equipmentRangeBounds = resolveGenerateReportRangeBoundsForEquipment({
+    ranges: equipmentRangesForJob,
+    preferredRange: matchedEquipmentRange ?? null,
+    fallbackCapacity: equipmentMaster?.range_capacity,
+    jobRangeLabel: jobSelectedRangeFields.range,
+  })
   const muEquipmentRange = matchedEquipmentRange
     ? {
-        rangeMin: matchedEquipmentRange.rangeMin || jobRangeSplit.rangeMin,
-        rangeMax: matchedEquipmentRange.rangeMax || jobRangeSplit.rangeMax,
+        rangeMin:
+          matchedEquipmentRange.rangeMin ||
+          (equipmentRangeBounds.rangeMin != null ? String(equipmentRangeBounds.rangeMin) : '') ||
+          jobRangeSplit.rangeMin,
+        rangeMax:
+          matchedEquipmentRange.rangeMax ||
+          (equipmentRangeBounds.rangeMax != null ? String(equipmentRangeBounds.rangeMax) : '') ||
+          jobRangeSplit.rangeMax,
         leastCount: normalizeLeastCountRawToken(
           matchedEquipmentRange.resolutionLeastCount.trim() ||
             jobSelectedRangeFields.leastCount ||
@@ -2396,8 +2663,12 @@ export function RawDataSheetDialog({
       }
     : equipmentMaster
       ? {
-          rangeMin: jobRangeSplit.rangeMin,
-          rangeMax: jobRangeSplit.rangeMax,
+          rangeMin:
+            (equipmentRangeBounds.rangeMin != null ? String(equipmentRangeBounds.rangeMin) : '') ||
+            jobRangeSplit.rangeMin,
+          rangeMax:
+            (equipmentRangeBounds.rangeMax != null ? String(equipmentRangeBounds.rangeMax) : '') ||
+            jobRangeSplit.rangeMax,
           leastCount: normalizeLeastCountRawToken(
             jobSelectedRangeFields.leastCount ||
               (equipmentMaster.resolution_least_count ?? ''),
@@ -2431,7 +2702,7 @@ export function RawDataSheetDialog({
     return {
       ...env,
       rows: env.rows.map((row) => {
-        if (isEnvStandardFieldLabel(row.readingLabel)) return row
+        if (isEnvRowCalculated(row) || resolveEnvRowFieldType(row) === 'text') return row
         const values = { ...row.values }
         const keys = paramIds.length > 0 ? paramIds : Object.keys(values)
         for (const key of keys) {
@@ -2508,11 +2779,16 @@ export function RawDataSheetDialog({
     )
     const dp = tableSettings.decimalPlaces
 
+    const strippedRows = stripCopiedPointValuesFromAngleColumns(
+      payload.rows,
+      allRawDataSheetColumns(mergedTemplate),
+      matchedEquipmentRange,
+    )
     let nextPayload: RawDataSheetPayload = {
       ...payload,
       template: mergedTemplate,
       environmentConditions: syncedEnv,
-      rows: payload.rows.map((r) => {
+      rows: strippedRows.map((r, index) => {
         // Keep input cells; clear stale formula cell values before recompute.
         const values = { ...r.values }
         for (const col of mergedTemplate.columns) {
@@ -2520,12 +2796,18 @@ export function RawDataSheetDialog({
         }
         return {
           ...r,
-          values: applyFormulaColumns(
+          values: applySheetRowFormulas(
             mergedTemplate.columns,
             values,
             dp,
             syncedEnv,
             resolveMasterForSheetRow(r, masterEquipments),
+            matchedEquipmentRange,
+            {
+              pointValue: r.pointValue,
+              masterEquipmentId: r.masterEquipmentId,
+              rowIndexInMaster: rowIndexInMasterGroup(payload.rows, index),
+            },
           ),
         }
       }),
@@ -2548,14 +2830,20 @@ export function RawDataSheetDialog({
       nextPayload = ensureAllMasterRowGroups(nextPayload, masterTabs, masterNameById, dp)
       nextPayload = {
         ...nextPayload,
-        rows: nextPayload.rows.map((r) => ({
+        rows: nextPayload.rows.map((r, index) => ({
           ...r,
-          values: applyFormulaColumns(
-            nextPayload.template.columns,
+          values: applySheetRowFormulas(
+            allRawDataSheetColumns(nextPayload.template),
             r.values,
             dp,
             syncedEnv,
             resolveMasterForSheetRow(r, masterEquipments),
+            matchedEquipmentRange,
+            {
+              pointValue: r.pointValue,
+              masterEquipmentId: r.masterEquipmentId,
+              rowIndexInMaster: rowIndexInMasterGroup(nextPayload.rows, index),
+            },
           ),
         })),
       }
@@ -2575,7 +2863,7 @@ export function RawDataSheetDialog({
         ...payload.rows,
         {
           id: newPayloadRowId(),
-          values: emptyValuesForColumns(payload.template.columns),
+          values: emptyValuesForColumns(allRawDataSheetColumns(payload.template)),
         },
       ],
     })
@@ -2583,25 +2871,43 @@ export function RawDataSheetDialog({
 
   const updateCellValue = (rowId: string, colKey: string, value: string) => {
     if (!payload) return
-    const evalColumns = mergeFormulasFromEquipmentTemplate(
-      payload.template,
-      equipmentMaster ? resolvedRawDataSheetTemplate : null,
-    ).columns
-    const nextRows = payload.rows.map((r) => {
+    const evalColumns = allRawDataSheetColumns(
+      mergeFormulasFromEquipmentTemplate(
+        payload.template,
+        equipmentMaster ? resolvedRawDataSheetTemplate : null,
+      ),
+    )
+    const nextRows = payload.rows.map((r, index) => {
       if (r.id !== rowId) return r
       let values = { ...r.values, [colKey]: value }
-      values = applyFormulaColumns(
+      values = applySheetRowFormulas(
         evalColumns,
         values,
         tableSettings.decimalPlaces,
         environment,
+        resolveMasterForSheetRow(r, masterEquipments),
+        matchedEquipmentRange,
+        {
+          pointValue: r.pointValue,
+          masterEquipmentId: r.masterEquipmentId,
+          rowIndexInMaster: rowIndexInMasterGroup(payload.rows, index),
+        },
       )
       return { ...r, values }
     })
     setPayload({ ...payload, rows: nextRows })
   }
 
-  const inputColumns = (payload?.template.columns ?? []).filter((c) => c.type !== 'formula')
+  const mergedSheetTemplate = payload
+    ? mergeFormulasFromEquipmentTemplate(
+        payload.template,
+        equipmentMaster ? resolvedRawDataSheetTemplate : null,
+      )
+    : null
+
+  const primaryColumns = mergedSheetTemplate?.columns ?? []
+  const visibleGridColumns = primaryColumns.filter((c) => isRawDataColumnRequiredInRow(c))
+  const calculationsPanelColumns = primaryColumns.filter((c) => !isRawDataColumnRequiredInRow(c))
   const reportLeastCountOptions = buildReportLeastCountOptions(
     job,
     equipmentMaster,
@@ -2611,23 +2917,11 @@ export function RawDataSheetDialog({
    * Always prefer live Calibration Equipment formulas for grid + Calculations so
    * separators like ± stay in sync (sheet snapshots may still have ASCII `-`).
    */
-  const liveEvalColumns: RawDataSheetColumn[] = payload
-    ? mergeFormulasFromEquipmentTemplate(
-        payload.template,
-        equipmentMaster ? resolvedRawDataSheetTemplate : null,
-      ).columns
+  const liveEvalColumns: RawDataSheetColumn[] = mergedSheetTemplate
+    ? allRawDataSheetColumns(mergedSheetTemplate)
     : []
-  const formulaColumns = liveEvalColumns.filter((c) => c.type === 'formula')
-  /**
-   * Pin Estimate Mean Relative Error onto the main Raw Data grid (before Calculations),
-   * mirroring the same formula column shown in the View Calculations dialog.
-   * Cell turns red when Actual Expanded Uncertainty > used master certificate uncertainty.
-   */
-  const pinnedFormulaColumns = formulaColumns.filter((c) =>
-    /estimate\s*mean\s*relative\s*error/i.test((c.label ?? '').trim()),
-  )
   const calculationsEvalColumns: RawDataSheetColumn[] = liveEvalColumns
-  const calculationsFormulaColumns = formulaColumns
+  const calculationsFormulaColumns = calculationsPanelColumns.filter((c) => c.type === 'formula')
   const calculationsRow =
     calculationsRowId && payload
       ? payload.rows.find((r) => r.id === calculationsRowId) ?? null
@@ -2644,6 +2938,15 @@ export function RawDataSheetDialog({
           environment,
           payload.reportGenerationSettings,
           resolveMasterForSheetRow(calculationsRow, masterEquipments),
+          matchedEquipmentRange,
+          {
+            pointValue: calculationsRow.pointValue,
+            masterEquipmentId: calculationsRow.masterEquipmentId,
+            rowIndexInMaster:
+              calculationsRowIndex >= 0
+                ? rowIndexInMasterGroup(payload.rows, calculationsRowIndex)
+                : 0,
+          },
         )
       : null
   const calculationExplanations: FormulaCalculationExplanation[] =
@@ -2674,15 +2977,11 @@ export function RawDataSheetDialog({
       return
     }
     if (!companyGenerateReportEnabled) {
-      setError('Generate Report is disabled in Company Setting (System Setting).')
-      return
-    }
-    if (!generateReportConfig.enabled) {
-      setError('Generate Report is not enabled on this Calibration Equipment.')
+      setError('Generate Report is disabled in Lab Settings.')
       return
     }
 
-    const allColumns = payload.template.columns
+    const allColumns = allRawDataSheetColumns(payload.template)
     const colByKey = new Map(allColumns.map((c) => [c.key, c]))
     const colKeys = new Set(allColumns.map((c) => c.key))
     const skipReasons: string[] = []
@@ -2794,26 +3093,28 @@ export function RawDataSheetDialog({
       const cfg = configByInputKey.get(k)
       return cfg ? collectModesForRow(cfg) : (['percent'] as GenerateReportRandomnessMode[])
     })
-    const rangeBounds = resolveGenerateReportRangeBounds(
-      muEquipmentRange,
-      jobSelectedRangeFields.range,
-    )
+    const defaultRangeBounds = resolveGenerateReportRangeBoundsForEquipment({
+      ranges: equipmentRangesForJob,
+      preferredRange: matchedEquipmentRange ?? null,
+      fallbackCapacity: equipmentMaster?.range_capacity,
+      jobRangeLabel: jobSelectedRangeFields.range,
+    })
     const needsRangeSpan = allConfiguredModes.includes('range_span')
     const needsRangeMax = allConfiguredModes.includes('range_max')
-    if (needsRangeSpan && (rangeBounds.rangeSpan == null || rangeBounds.rangeSpan <= 0)) {
+    if (needsRangeSpan && (defaultRangeBounds.rangeSpan == null || defaultRangeBounds.rangeSpan <= 0)) {
       setError(
-        'Range span (%) requires equipment Range Min and Range Max. Set them on the Calibration Equipment measurement range (or job selected range).',
+        'Range span (%) requires equipment Range Min and Range Max. Set them on this Calibration Equipment measurement range.',
       )
       return
     }
     if (
       needsRangeMax &&
-      (rangeBounds.rangeMax == null ||
-        !Number.isFinite(rangeBounds.rangeMax) ||
-        Math.abs(rangeBounds.rangeMax) === 0)
+      (defaultRangeBounds.rangeMax == null ||
+        !Number.isFinite(defaultRangeBounds.rangeMax) ||
+        Math.abs(defaultRangeBounds.rangeMax) === 0)
     ) {
       setError(
-        'Range max (%) requires a non-zero equipment Range Maximum. Set Range Max on the Calibration Equipment measurement range (or job selected range).',
+        'Range max (%) requires a non-zero Range Maximum on this Calibration Equipment measurement range.',
       )
       return
     }
@@ -2838,7 +3139,7 @@ export function RawDataSheetDialog({
 
     const emptyRefKeys = new Set<string>()
     let filledRows = 0
-    const nextRows = payload.rows.map((row) => {
+    const nextRows = payload.rows.map((row, index) => {
       let values = { ...row.values }
       let rowFilled = false
       const preservedGenerated: Record<string, string> = {}
@@ -2854,6 +3155,7 @@ export function RawDataSheetDialog({
               row,
               muEquipmentRange,
               leastCountFallbacks,
+              matchedEquipmentRange,
             )
           : '0'
         const ref = hasReference ? parseGenerateReportReferenceNumber(refRaw) : 0
@@ -2892,6 +3194,14 @@ export function RawDataSheetDialog({
         // Positive factor → Ref ± band (with optional Min/Max clamps).
         const effectiveFactor =
           factorText && Number.isFinite(factor) && factor > 0 ? factor : 0
+        const rowRangeBounds = resolveGenerateReportRangeBoundsForEquipment({
+          ranges: equipmentRangesForJob,
+          pointValue: row.pointValue,
+          masterEquipmentId: row.masterEquipmentId,
+          preferredRange: matchedEquipmentRange ?? null,
+          fallbackCapacity: equipmentMaster?.range_capacity,
+          jobRangeLabel: jobSelectedRangeFields.range,
+        })
         const generated = readingWithRandomnessDeviation(
           ref ?? 0,
           effectiveFactor,
@@ -2904,8 +3214,10 @@ export function RawDataSheetDialog({
             mode,
             floor: effectiveFactor > 0 ? floor : 0,
             cap: effectiveFactor > 0 ? cap : 0,
-            rangeSpan: rangeBounds.rangeSpan ?? 0,
-            rangeMax: rangeBounds.rangeMax ?? 0,
+            rangeSpan: rowRangeBounds.rangeSpan ?? defaultRangeBounds.rangeSpan ?? 0,
+            rangeMax: rowRangeBounds.rangeMax ?? defaultRangeBounds.rangeMax ?? 0,
+            rangeMinBound: rowRangeBounds.rangeMin ?? defaultRangeBounds.rangeMin,
+            rangeMaxBound: rowRangeBounds.rangeMax ?? defaultRangeBounds.rangeMax,
           },
         )
         values[key] = generated
@@ -2914,7 +3226,19 @@ export function RawDataSheetDialog({
         rowFilled = true
       }
       if (!rowFilled) return row
-      values = applyFormulaColumns(payload.template.columns, values, dp, environment)
+      values = applySheetRowFormulas(
+        allRawDataSheetColumns(payload.template),
+        values,
+        dp,
+        environment,
+        resolveMasterForSheetRow(row, masterEquipments),
+        matchedEquipmentRange,
+        {
+          pointValue: row.pointValue,
+          masterEquipmentId: row.masterEquipmentId,
+          rowIndexInMaster: rowIndexInMasterGroup(payload.rows, index),
+        },
+      )
       for (const [key, generated] of Object.entries(preservedGenerated)) {
         values[key] = generated
       }
@@ -3006,19 +3330,22 @@ export function RawDataSheetDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+        persistOnFocusLoss
+        overlayClassName={RDS_OVERLAY}
+        className={RDS_FULLSCREEN_DIALOG_CLASS}
         layer="nested"
         aria-describedby={undefined}
       >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-12 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Calibration Conduct · Raw Data Sheet
-            </p>
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <DialogTitle className="text-xl font-semibold tracking-tight text-white">
+                <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                   {cellText(job.equipment_label)}
                 </DialogTitle>
               </div>
@@ -3028,7 +3355,7 @@ export function RawDataSheetDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 border-white/25 bg-white/5 text-xs text-white hover:bg-white/10 hover:text-white"
+                    className={cn('px-3 text-xs', limsDarkBarBtnClass)}
                     onClick={() => setContextPanel('srf')}
                     aria-label="Open SRF Details"
                   >
@@ -3039,7 +3366,7 @@ export function RawDataSheetDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 border-white/25 bg-white/5 text-xs text-white hover:bg-white/10 hover:text-white"
+                    className={cn('px-3 text-xs', limsDarkBarBtnClass)}
                     onClick={() => setContextPanel('customer')}
                     aria-label="Open Customer Details"
                   >
@@ -3050,7 +3377,7 @@ export function RawDataSheetDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 border-white/25 bg-white/5 text-xs text-white hover:bg-white/10 hover:text-white"
+                    className={cn('px-3 text-xs', limsDarkBarBtnClass)}
                     onClick={() => setContextPanel('job')}
                     aria-label="Open Job Allocation Details"
                   >
@@ -3061,7 +3388,7 @@ export function RawDataSheetDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 border-white/25 bg-white/5 text-xs text-white hover:bg-white/10 hover:text-white"
+                    className={cn('px-3 text-xs', limsDarkBarBtnClass)}
                     onClick={() => void openMasterDetails()}
                     disabled={loading || masterDetailsLoading}
                     aria-label="View used master equipment details"
@@ -3076,7 +3403,7 @@ export function RawDataSheetDialog({
           </DialogHeader>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
           {loading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Loading sheet…</p>
           ) : null}
@@ -3095,22 +3422,27 @@ export function RawDataSheetDialog({
             }}
           >
             <DialogContent
-              className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
+              persistOnFocusLoss
+              overlayClassName={RDS_OVERLAY}
+              portalClassName={RDS_OVERLAY}
+              className={RDS_CENTERED_DIALOG_CLASS}
               layer="nested"
               aria-describedby={undefined}
             >
-              <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                  style={limsDarkBarGlowStyle}
+                />
+                <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                    Request Context
-                  </p>
-                  <DialogTitle className="text-lg font-semibold tracking-tight text-white">
+                  <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight text-white sm:text-lg">
+                    <ClipboardList size={18} aria-hidden />
                     SRF Details
                   </DialogTitle>
                 </DialogHeader>
               </div>
-              <div className="max-h-[min(70vh,640px)] overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+              <div className="max-h-[min(70vh,640px)] overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
                 <div className="grid grid-cols-2 gap-2">
                   <DetailField
                     label="SRF Number"
@@ -3158,6 +3490,16 @@ export function RawDataSheetDialog({
                   />
                 </div>
               </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className={limsPrimaryBtnClass}
+                  onClick={() => setContextPanel(null)}
+                >
+                  Close
+                </Button>
+              </div>
             </DialogContent>
           </Dialog>
 
@@ -3168,22 +3510,27 @@ export function RawDataSheetDialog({
             }}
           >
             <DialogContent
-              className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
+              persistOnFocusLoss
+              overlayClassName={RDS_OVERLAY}
+              portalClassName={RDS_OVERLAY}
+              className={RDS_CENTERED_DIALOG_CLASS}
               layer="nested"
               aria-describedby={undefined}
             >
-              <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                  style={limsDarkBarGlowStyle}
+                />
+                <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                    Request Context
-                  </p>
-                  <DialogTitle className="text-lg font-semibold tracking-tight text-white">
+                  <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight text-white sm:text-lg">
+                    <Briefcase size={18} aria-hidden />
                     Customer Details
                   </DialogTitle>
                 </DialogHeader>
               </div>
-              <div className="max-h-[min(70vh,640px)] overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+              <div className="max-h-[min(70vh,640px)] overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
                 <div className="grid grid-cols-2 gap-2">
                   <DetailField
                     label="Client"
@@ -3216,6 +3563,16 @@ export function RawDataSheetDialog({
                   />
                 </div>
               </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className={limsPrimaryBtnClass}
+                  onClick={() => setContextPanel(null)}
+                >
+                  Close
+                </Button>
+              </div>
             </DialogContent>
           </Dialog>
 
@@ -3226,22 +3583,27 @@ export function RawDataSheetDialog({
             }}
           >
             <DialogContent
-              className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
+              persistOnFocusLoss
+              overlayClassName={RDS_OVERLAY}
+              portalClassName={RDS_OVERLAY}
+              className={RDS_CENTERED_DIALOG_CLASS}
               layer="nested"
               aria-describedby={undefined}
             >
-              <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                  style={limsDarkBarGlowStyle}
+                />
+                <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                    Request Context
-                  </p>
-                  <DialogTitle className="text-lg font-semibold tracking-tight text-white">
+                  <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight text-white sm:text-lg">
+                    <Package size={18} aria-hidden />
                     Job Allocation Details
                   </DialogTitle>
                 </DialogHeader>
               </div>
-              <div className="max-h-[min(70vh,640px)] overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+              <div className="max-h-[min(70vh,640px)] overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
                 <div className="grid grid-cols-2 gap-2">
                   <DetailField label="Equipment" value={cellText(job.equipment_label)} />
                   <DetailField label="Range" value={cellText(eqFields.range)} />
@@ -3251,12 +3613,26 @@ export function RawDataSheetDialog({
                   <DetailField label="Serial No." value={cellText(eqFields.serial)} />
                   <DetailField label="Quantity" value={cellText(eqFields.quantity)} />
                   <DetailField label="Accuracy" value={cellText(eqFields.accuracy)} />
-                  <DetailField label="Location" value={locationLabel} />
+                  <DetailField label="Inside / Outside" value={locationLabel} />
+                  <DetailField
+                    label="Location of Calibration"
+                    value={cellText(locationDraft || job.location_of_calibration)}
+                  />
                   <DetailField
                     label="Allocated Engineer"
                     value={cellText(job.allocated_engineer_name)}
                   />
                 </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className={limsPrimaryBtnClass}
+                  onClick={() => setContextPanel(null)}
+                >
+                  Close
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -3268,28 +3644,33 @@ export function RawDataSheetDialog({
             }}
           >
             <DialogContent
-              className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
+              persistOnFocusLoss
+              overlayClassName={RDS_OVERLAY}
+              portalClassName={RDS_OVERLAY}
+              className={RDS_CENTERED_DIALOG_CLASS}
               layer="nested"
               aria-describedby={undefined}
             >
-              <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                  style={limsDarkBarGlowStyle}
+                />
+                <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                    Calibration Standards
-                  </p>
-                  <DialogTitle className="text-lg font-semibold tracking-tight text-white">
+                  <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight text-white sm:text-lg">
+                    <Gauge size={18} aria-hidden />
                     Master Details
                   </DialogTitle>
                 </DialogHeader>
               </div>
-              <div className="max-h-[min(70vh,720px)] space-y-3 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+              <div className="max-h-[min(70vh,720px)] space-y-3 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
                 {masterDetailsLoading ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     Loading master details…
                   </p>
                 ) : masterDetailEntries.length === 0 ? (
-                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                  <p className="rounded-none border-2 border-amber-700/40 bg-[#fff7ed] px-3 py-3 text-sm text-amber-950">
                     No master equipment linked for this job range. Set Master Equipment and Points
                     under Calibration Equipments.
                   </p>
@@ -3310,35 +3691,40 @@ export function RawDataSheetDialog({
                     return (
                       <div
                         key={entry.key}
-                        className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+                        className="overflow-hidden rounded-none border-2 border-stone-700 bg-white ring-1 ring-amber-700/20"
                       >
-                        <div className="border-b border-slate-200 bg-slate-900 px-3 py-2.5 text-white sm:px-4">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="relative overflow-hidden border-b-2 border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-2.5 text-white sm:px-4">
+                          <div
+                            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                            style={limsDarkBarGlowStyle}
+                          />
+                          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                          <div className="relative flex flex-wrap items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-teal-300/90">
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
                                 Master {index + 1}
                                 {master?.asset_code ? ` · ${master.asset_code}` : ''}
                               </p>
-                              <p className="mt-0.5 text-base font-semibold tracking-tight">
+                              <p className="mt-0.5 text-base font-semibold tracking-tight text-white">
                                 {entry.label}
                               </p>
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5">
                               {master?.equipment_status ? (
-                                <span className="rounded-full border border-white/25 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                <span className="rounded-none border border-amber-500/40 bg-stone-800/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
                                   {master.equipment_status}
                                 </span>
                               ) : null}
                               {dueLabel ? (
                                 <span
                                   className={cn(
-                                    'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                                    'rounded-none border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
                                     dueTone === 'overdue' &&
-                                      'border-rose-300/60 bg-rose-500/20 text-rose-100',
+                                      'border-red-400/50 bg-red-700/80 text-white',
                                     dueTone === 'dueSoon' &&
-                                      'border-amber-300/60 bg-amber-500/20 text-amber-100',
+                                      'border-amber-400/50 bg-amber-500/25 text-amber-100',
                                     dueTone === 'ok' &&
-                                      'border-emerald-300/60 bg-emerald-500/20 text-emerald-100',
+                                      'border-amber-500/40 bg-stone-800/80 text-amber-100',
                                   )}
                                 >
                                   Cal {dueLabel}
@@ -3349,7 +3735,7 @@ export function RawDataSheetDialog({
                         </div>
 
                         {master ? (
-                          <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 sm:p-4">
+                          <div className="grid grid-cols-2 gap-2 bg-gradient-to-b from-stone-100/80 to-[#f7f3eb] p-3 sm:grid-cols-3 sm:p-4">
                             <DetailField label="Asset Code" value={cellText(master.asset_code)} />
                             <DetailField
                               label="Serial No."
@@ -3410,7 +3796,7 @@ export function RawDataSheetDialog({
                             />
                           </div>
                         ) : (
-                          <p className="px-4 py-3 text-sm text-slate-500">
+                          <p className="px-4 py-3 text-sm text-stone-500">
                             Master equipment record not found for this tab.
                           </p>
                         )}
@@ -3418,6 +3804,16 @@ export function RawDataSheetDialog({
                     )
                   })
                 )}
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className={limsPrimaryBtnClass}
+                  onClick={() => setContextPanel(null)}
+                >
+                  Close
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -3429,27 +3825,32 @@ export function RawDataSheetDialog({
             }}
           >
             <DialogContent
-              className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
+              persistOnFocusLoss
+              overlayClassName={RDS_OVERLAY}
+              portalClassName={RDS_OVERLAY}
+              className={RDS_CENTERED_DIALOG_CLASS}
               layer="nested"
               aria-describedby={undefined}
             >
-              <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                  style={limsDarkBarGlowStyle}
+                />
+                <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                 <DialogHeader className="relative pr-10 text-left">
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                    Before Calibration
-                  </p>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <DialogTitle className="text-lg font-semibold tracking-tight text-white">
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight text-white sm:text-lg">
+                      <ClipboardCheck size={18} aria-hidden />
                       Pre-Calibration Verification
                     </DialogTitle>
                     {verificationItems.length > 0 ? (
                       <span
                         className={cn(
-                          'rounded-md border px-2.5 py-1 text-xs font-medium tabular-nums',
+                          'rounded-none border px-2.5 py-1 text-xs font-medium tabular-nums',
                           verificationComplete
-                            ? 'border-teal-400/50 bg-teal-500/20 text-teal-100'
-                            : 'border-white/20 bg-white/10 text-white/80',
+                            ? 'border-amber-400/50 bg-amber-500/20 text-amber-100'
+                            : 'border-amber-500/40 bg-stone-800/80 text-amber-100',
                         )}
                       >
                         {verifiedCount}/{verificationItems.length} verified
@@ -3458,104 +3859,125 @@ export function RawDataSheetDialog({
                   </div>
                 </DialogHeader>
               </div>
-              <div className="max-h-[min(70vh,640px)] overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+              <div className="max-h-[min(70vh,640px)] overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
                 {!payload || verificationItems.length === 0 ? (
-                  <p className="rounded-md border border-dashed border-slate-200 bg-white/70 px-3 py-6 text-center text-sm text-slate-500">
+                  <p className="rounded-none border-2 border-dashed border-stone-400 bg-stone-50 px-3 py-6 text-center text-sm text-stone-500">
                     No verification checks on this template.
                   </p>
                 ) : (
-                  <ul className="grid gap-2 sm:grid-cols-1">
-                    {verificationItems.map((item, index) => {
-                      const checked = Boolean(payload.verificationAnswers[item.id])
-                      return (
-                        <li key={item.id}>
-                          <div
-                            className={cn(
-                              'flex h-full items-start gap-3 rounded-lg border px-3 py-3 transition-colors',
-                              checked
-                                ? 'border-teal-300 bg-teal-50/60'
-                                : 'border-slate-200 bg-white',
-                              readOnly && 'opacity-90',
-                            )}
-                          >
-                            <span className="min-w-0 flex-1">
-                              <span className="mb-1 flex items-center gap-2">
-                                <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                  {String(index + 1).padStart(2, '0')}
-                                </span>
-                                {item.required ? (
-                                  <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-700">
-                                    Required
-                                  </span>
-                                ) : (
-                                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                                    Optional
-                                  </span>
-                                )}
-                              </span>
-                              <span
-                                className={cn(
-                                  'block text-sm leading-snug',
-                                  checked ? 'font-medium text-slate-900' : 'text-slate-700',
-                                )}
-                              >
-                                {item.label}
-                              </span>
-                            </span>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={checked}
-                              aria-label={item.label}
-                              disabled={readOnly}
-                              onClick={() => {
-                                setPayload({
-                                  ...payload,
-                                  verificationAnswers: {
-                                    ...payload.verificationAnswers,
-                                    [item.id]: !checked,
-                                  },
-                                })
-                              }}
+                  <div className="overflow-hidden rounded-none border-2 border-stone-700">
+                    <table className={cn(limsTableClass, 'table-fixed')}>
+                      <colgroup>
+                        <col className="w-10" />
+                        <col />
+                        <col className="w-[4.5rem]" />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th className={cn(limsTableHeadClass, 'px-1 py-1.5')}>#</th>
+                          <th className={cn(limsTableHeadClass, 'px-2 py-1.5')}>Description</th>
+                          <th className={cn(limsTableHeadClass, 'px-1 py-1.5')}>
+                            <input
+                              type="checkbox"
                               className={cn(
-                                'relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
-                                checked
-                                  ? 'border-teal-600 bg-teal-600'
-                                  : 'border-slate-300 bg-slate-200',
+                                verificationCheckboxClass,
+                                'mx-auto accent-amber-400',
                               )}
-                            >
-                              <span
-                                className={cn(
-                                  'pointer-events-none block h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-                                  checked ? 'translate-x-[22px]' : 'translate-x-0.5',
-                                )}
-                                aria-hidden
-                              />
-                            </button>
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                              checked={
+                                verificationComplete && verificationItems.length > 0
+                              }
+                              ref={(el) => {
+                                if (!el) return
+                                el.indeterminate =
+                                  verifiedCount > 0 &&
+                                  verifiedCount < verificationItems.length
+                              }}
+                              disabled={readOnly || verificationItems.length === 0}
+                              aria-label="Select all"
+                              title="Select all / Deselect all"
+                              onChange={(e) => {
+                                if (!payload) return
+                                const next = e.target.checked
+                                const verificationAnswers = { ...payload.verificationAnswers }
+                                for (const item of verificationItems) {
+                                  verificationAnswers[item.id] = next
+                                }
+                                setPayload({ ...payload, verificationAnswers })
+                              }}
+                            />
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className={limsTableBodyToneClass}>
+                        {verificationItems.map((item, index) => {
+                          const checked = Boolean(payload.verificationAnswers[item.id])
+                          return (
+                            <tr key={item.id} className="hover:bg-[#fff7ed]">
+                              <td className="px-1 py-1.5 text-center text-xs font-semibold text-stone-700">
+                                {index + 1}
+                              </td>
+                              <td className="px-2 py-1.5 text-left text-sm text-stone-900">
+                                {item.label}
+                              </td>
+                              <td className="px-1 py-1.5 text-center">
+                                <input
+                                  type="checkbox"
+                                  className={cn(verificationCheckboxClass, 'mx-auto')}
+                                  checked={checked}
+                                  disabled={readOnly}
+                                  aria-label={item.label}
+                                  onChange={() => {
+                                    setPayload({
+                                      ...payload,
+                                      verificationAnswers: {
+                                        ...payload.verificationAnswers,
+                                        [item.id]: !checked,
+                                      },
+                                    })
+                                  }}
+                                />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className={limsPrimaryBtnClass}
+                  onClick={() => setContextPanel(null)}
+                >
+                  Close
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
 
           {payload ? (
             <>
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <FileSpreadsheet size={18} className="text-cyan-800" aria-hidden />
-                    <h3 className="text-sm font-semibold text-foreground">Raw Data</h3>
+              <section className="rounded-none border-2 border-stone-700 bg-white p-4 sm:p-5">
+                <div className="relative mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden rounded-none border-2 border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-2 py-1.5">
+                  <div
+                    className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                    style={limsDarkBarGlowStyle}
+                  />
+                  <div className="relative flex shrink-0 items-center gap-2 px-1">
+                    <FileSpreadsheet size={16} className="shrink-0 text-amber-200" aria-hidden />
+                    <h3 className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-amber-100">
+                      {rawDataSheetPrimaryTableName(payload.template)}
+                    </h3>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex min-w-0 flex-nowrap items-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 w-8 p-0 border-slate-400/50 text-slate-800 hover:bg-slate-50"
+                      className={cn('w-8 px-0', limsDarkBarBtnClass)}
                       disabled={readOnly || !payload}
                       onClick={refreshTable}
                       aria-label="Refresh table formulas"
@@ -3568,10 +3990,11 @@ export function RawDataSheetDialog({
                       variant="outline"
                       size="sm"
                       className={cn(
-                        'h-8 border-amber-600/40 text-amber-900 hover:bg-amber-50',
+                        'px-3 text-xs',
+                        limsDarkBarBtnClass,
                         verificationItems.length > 0 &&
                           verificationComplete &&
-                          'border-teal-600/50 bg-teal-50 text-teal-900',
+                          'border-amber-400/70 bg-amber-500/25 text-amber-50',
                       )}
                       onClick={() => setContextPanel('verification')}
                       aria-label="Open Pre-Calibration Verification"
@@ -3593,8 +4016,8 @@ export function RawDataSheetDialog({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 border-sky-600/40 text-sky-800 hover:bg-sky-50"
-                      disabled={readOnly}
+                      className={cn('px-3 text-xs', limsDarkBarBtnClass)}
+                      disabled={!payload}
                       onClick={() => openEnvironmentPanel(true)}
                       aria-label="Environment condition"
                       title="Record temperature, humidity and pressure"
@@ -3606,8 +4029,8 @@ export function RawDataSheetDialog({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 border-indigo-600/40 text-indigo-800 hover:bg-indigo-50"
-                      disabled={readOnly || payload.rows.length === 0}
+                      className={cn('px-3 text-xs', limsDarkBarBtnClass)}
+                      disabled={!payload || payload.rows.length === 0}
                       onClick={() => setUncertaintyOpen(true)}
                       aria-label="Uncertainty calculation step by step"
                       title="Type A / Type B budget → combined & expanded uncertainty"
@@ -3615,78 +4038,12 @@ export function RawDataSheetDialog({
                       <Sigma size={14} className="mr-1" />
                       Uncertainty Step by Step
                     </Button>
-                    <DropdownMenu modal={false}>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 border-violet-600/40 text-violet-900 hover:bg-violet-50"
-                          disabled={readOnly || forceReadOnly || freqSaving}
-                          aria-label="Calibration Frequency"
-                          title="Calibration Frequency (certificate due date)"
-                        >
-                          <CalendarClock size={14} className="mr-1 shrink-0" aria-hidden />
-                          <span className="max-w-[9rem] truncate">
-                            Frequency: {freqButtonLabel}
-                          </span>
-                          <ChevronDown
-                            size={12}
-                            className="ml-1 shrink-0 opacity-70"
-                            aria-hidden
-                          />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        className="z-[90] w-52"
-                        onCloseAutoFocus={(e) => e.preventDefault()}
-                      >
-                        <DropdownMenuLabel>Calibration Frequency</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {FREQUENCIES.map((freq) => {
-                          const selected =
-                            freq === 'Manual'
-                              ? freqSelectValue === 'Manual'
-                              : calibrationFrequency === freq
-                          return (
-                            <DropdownMenuItem
-                              key={freq}
-                              disabled={freqSaving}
-                              className="cursor-pointer"
-                              onSelect={(e) => {
-                                if (freq === 'Manual') {
-                                  e.preventDefault()
-                                  openManualFrequencyDialog()
-                                  return
-                                }
-                                void applyCalibrationFrequency(freq)
-                              }}
-                            >
-                              <Check
-                                size={14}
-                                className={cn(
-                                  'mr-2 shrink-0',
-                                  selected ? 'opacity-100' : 'opacity-0',
-                                )}
-                                aria-hidden
-                              />
-                              {freq}
-                              {freq === 'Manual' &&
-                              parseManualIntervalDays(calibrationFrequency) != null
-                                ? ` (${parseManualIntervalDays(calibrationFrequency)}d)`
-                                : ''}
-                            </DropdownMenuItem>
-                          )
-                        })}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                     {showGenerateReport ? (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 border-teal-600/40 text-teal-800 hover:bg-teal-50"
+                        className={cn('px-3 text-xs', limsDarkBarBtnClass)}
                         disabled={readOnly}
                         onClick={applyGenerateReportSettings}
                         aria-label="Apply Generate Report settings"
@@ -3699,55 +4056,51 @@ export function RawDataSheetDialog({
                   </div>
                 </div>
 
-                <div className="overflow-x-auto rounded-md border border-slate-200">
-                  <table className="w-full min-w-[640px] border-collapse text-sm">
-                    <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <div className="overflow-x-auto rounded-none border-2 border-stone-700">
+                  <table className="w-full min-w-[640px] border-collapse font-jakarta text-sm [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4]">
+                    <thead>
                       <tr>
-                        <th className="w-12 border border-slate-200 px-2 py-2 text-center">#</th>
-                        {inputColumns.map((col) => (
+                        <th className={cn(limsTableHeadClass, 'w-12 px-2 py-2 align-middle')}>#</th>
+                        {visibleGridColumns.map((col) => (
                           <th
                             key={col.key}
-                            className="min-w-[110px] border border-slate-200 px-2 py-2 text-center"
+                            className={cn(
+                              limsTableHeadClass,
+                              'min-w-[110px] px-2 py-2 align-middle leading-tight',
+                            )}
                           >
                             {col.label}
-                            {col.required ? (
-                              <span className="ml-0.5 text-destructive">*</span>
+                            {col.type === 'formula' ? (
+                              <span
+                                className="ml-1 text-amber-100"
+                                title={`Auto-calculated (${formulaOpMeta(col.formula?.op ?? 'sum').label})`}
+                              >
+                                Σ
+                              </span>
+                            ) : col.required ? (
+                              <span className="ml-0.5 text-amber-100">*</span>
                             ) : null}
                           </th>
                         ))}
-                        {pinnedFormulaColumns.map((col) => (
-                          <th
-                            key={`pinned-${col.key}`}
-                            className="min-w-[110px] border border-slate-200 px-2 py-2 text-center"
-                          >
-                            {col.label}
-                            <span
-                              className="ml-1 text-indigo-600"
-                              title={`Auto-calculated (${formulaOpMeta(col.formula?.op ?? 'sum').label})`}
-                            >
-                              Σ
-                            </span>
-                          </th>
-                        ))}
-                        {formulaColumns.length > 0 ? (
-                          <th className="min-w-[120px] border border-slate-200 px-2 py-2 text-center">
+                        {calculationsPanelColumns.length > 0 ? (
+                          <th className={cn(limsTableHeadClass, 'min-w-[120px] px-2 py-2')}>
                             Calculations
                             <span
-                              className="ml-1 text-indigo-600"
-                              title={`${formulaColumns.length} auto-calculated fields`}
+                              className="ml-1 text-amber-100"
+                              title={`${calculationsPanelColumns.length} fields in View`}
                             >
                               Σ
                             </span>
                           </th>
                         ) : null}
                         {!readOnly ? (
-                          <th className="w-20 border border-slate-200 px-2 py-2 text-center">
+                          <th className={cn(limsTableHeadClass, 'w-20 px-2 py-2')}>
                             Action
                           </th>
                         ) : null}
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className={limsTableBodyToneClass}>
                       {payload.rows.map((row, index) => {
                         const isLast = index === payload.rows.length - 1
                         const rowValues = liveRowCalculationValues(
@@ -3757,6 +4110,12 @@ export function RawDataSheetDialog({
                           environment,
                           payload.reportGenerationSettings,
                           resolveMasterForSheetRow(row, masterEquipments),
+                          matchedEquipmentRange,
+                          {
+                            pointValue: row.pointValue,
+                            masterEquipmentId: row.masterEquipmentId,
+                            rowIndexInMaster: rowIndexInMasterGroup(payload.rows, index),
+                          },
                         )
                         const prevMaster = index > 0 ? payload.rows[index - 1]?.masterEquipmentId : null
                         const showMasterHeader =
@@ -3764,20 +4123,19 @@ export function RawDataSheetDialog({
                           (index === 0 || prevMaster !== (row.masterEquipmentId ?? ''))
                         const colSpan =
                           1 +
-                          inputColumns.length +
-                          pinnedFormulaColumns.length +
-                          (formulaColumns.length > 0 ? 1 : 0) +
+                          visibleGridColumns.length +
+                          (calculationsPanelColumns.length > 0 ? 1 : 0) +
                           (!readOnly ? 1 : 0)
-                        const filledCalcCount = formulaColumns.filter(
+                        const filledCalcCount = calculationsPanelColumns.filter(
                           (c) => (rowValues[c.key] ?? '').trim().length > 0,
                         ).length
                         return (
                           <Fragment key={row.id}>
                             {showMasterHeader ? (
-                              <tr className="bg-slate-50/90">
+                              <tr className="bg-[#fff7ed]">
                                 <td
                                   colSpan={colSpan}
-                                  className="border border-slate-200 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal-800"
+                                  className="border border-[#e7e0d4] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900"
                                 >
                                   {row.masterLabel ||
                                     row.masterEquipmentId ||
@@ -3786,11 +4144,51 @@ export function RawDataSheetDialog({
                               </tr>
                             ) : null}
                           <tr>
-                            <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">
+                            <td className="border border-[#e7e0d4] px-2 py-2 text-center align-middle text-slate-500">
                               {index + 1}
                             </td>
-                            {inputColumns.map((col) => (
-                                <td key={col.key} className="border border-slate-200 px-2 py-1.5">
+                            {visibleGridColumns.map((col) => {
+                              if (col.type === 'formula') {
+                                const emreRaw = rowValues[col.key] ?? ''
+                                const emreExceeded = isEmreExpandedUncertaintyExceeded(
+                                  resolveActualExpandedUncertainty(
+                                    liveEvalColumns,
+                                    rowValues,
+                                    emreRaw,
+                                  ),
+                                  resolveUsedMasterUncertainty(row, masterEquipments),
+                                )
+                                return (
+                                  <td
+                                    key={col.key}
+                                    className="border border-[#e7e0d4] px-2 py-1.5 align-middle"
+                                  >
+                                    <Input
+                                      type="text"
+                                      className={cn(
+                                        'h-9 text-center font-medium tabular-nums',
+                                        emreExceeded
+                                          ? 'border-red-300 bg-red-50 text-red-800'
+                                          : 'bg-stone-50 text-stone-900',
+                                      )}
+                                      value={formatPlusMinusPairDisplay(emreRaw)}
+                                      disabled
+                                      readOnly
+                                      aria-label={`${col.label} calculated value row ${index + 1}`}
+                                      title={
+                                        emreExceeded
+                                          ? 'Actual Expanded Uncertainty exceeds used master uncertainty'
+                                          : undefined
+                                      }
+                                    />
+                                  </td>
+                                )
+                              }
+                              return (
+                                <td
+                                  key={col.key}
+                                  className="border border-[#e7e0d4] px-2 py-1.5 align-middle"
+                                >
                                   <Input
                                     type={col.type === 'number' ? 'number' : 'text'}
                                     step={
@@ -3800,7 +4198,7 @@ export function RawDataSheetDialog({
                                           : `0.${'1'.padStart(tableSettings.decimalPlaces, '0')}`
                                         : undefined
                                     }
-                                    className="h-9 text-center"
+                                    className="h-9 text-center tabular-nums"
                                     value={rowValues[col.key] ?? ''}
                                     disabled={readOnly}
                                     aria-label={`${col.label} row ${index + 1}`}
@@ -3819,44 +4217,9 @@ export function RawDataSheetDialog({
                                     }}
                                   />
                                 </td>
-                            ))}
-                            {pinnedFormulaColumns.map((col) => {
-                              const emreRaw = rowValues[col.key] ?? ''
-                              const emreExceeded = isEmreExpandedUncertaintyExceeded(
-                                resolveActualExpandedUncertainty(
-                                  liveEvalColumns,
-                                  rowValues,
-                                  emreRaw,
-                                ),
-                                resolveUsedMasterUncertainty(row, masterEquipments),
-                              )
-                              return (
-                                <td
-                                  key={`pinned-${col.key}`}
-                                  className="border border-slate-200 px-2 py-1.5"
-                                >
-                                  <Input
-                                    type="text"
-                                    className={cn(
-                                      'h-9 text-center font-medium',
-                                      emreExceeded
-                                        ? 'border-red-300 bg-red-50 text-red-800'
-                                        : 'bg-slate-50 text-indigo-900',
-                                    )}
-                                    value={formatPlusMinusPairDisplay(emreRaw)}
-                                    disabled
-                                    readOnly
-                                    aria-label={`${col.label} calculated value row ${index + 1}`}
-                                    title={
-                                      emreExceeded
-                                        ? 'Actual Expanded Uncertainty exceeds used master uncertainty'
-                                        : undefined
-                                    }
-                                  />
-                                </td>
                               )
                             })}
-                            {formulaColumns.length > 0 ? (
+                            {calculationsPanelColumns.length > 0 ? (
                               <td className="border border-slate-200 px-2 py-1.5 text-center">
                                 <Button
                                   type="button"
@@ -3870,7 +4233,7 @@ export function RawDataSheetDialog({
                                   <Eye size={14} className="mr-1.5" aria-hidden />
                                   View
                                   <span className="ml-1.5 font-mono text-[10px] tabular-nums text-indigo-600/80">
-                                    {filledCalcCount}/{formulaColumns.length}
+                                    {filledCalcCount}/{calculationsPanelColumns.length}
                                   </span>
                                 </Button>
                               </td>
@@ -3882,7 +4245,7 @@ export function RawDataSheetDialog({
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="h-8 w-8 px-0 border-teal-600/40 text-teal-800 hover:bg-teal-50"
+                                    className="h-8 w-8 px-0 border-amber-600/40 text-amber-900 hover:bg-amber-50"
                                     onClick={addRow}
                                     aria-label="Add row"
                                     title="Add row"
@@ -3917,74 +4280,146 @@ export function RawDataSheetDialog({
                 </div>
               </section>
 
+              {(mergedSheetTemplate?.extraTables ?? []).map((table) => {
+                const extraVisible = table.columns.filter((c) => isRawDataColumnRequiredInRow(c))
+                if (extraVisible.length === 0) return null
+                return (
+                  <section
+                    key={table.id}
+                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+                  >
+                    <div className="mb-3 flex items-center gap-2">
+                      <FileSpreadsheet size={18} className="text-cyan-800" aria-hidden />
+                      <h3 className="text-sm font-semibold text-foreground">{table.name}</h3>
+                    </div>
+                    <div className="overflow-x-auto rounded-md border border-slate-200">
+                      <table className="w-full min-w-[640px] border-collapse text-sm">
+                        <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="w-12 border border-slate-200 px-2 py-2 text-center align-middle">#</th>
+                            {extraVisible.map((col) => (
+                              <th
+                                key={col.key}
+                                className="min-w-[110px] border border-slate-200 px-2 py-2 text-center align-middle"
+                              >
+                                {col.label}
+                                {col.type === 'formula' ? (
+                                  <span className="ml-1 text-indigo-600" title="Auto-calculated">
+                                    Σ
+                                  </span>
+                                ) : col.required ? (
+                                  <span className="ml-0.5 text-destructive">*</span>
+                                ) : null}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payload.rows.map((row, index) => {
+                            const rowValues = liveRowCalculationValues(
+                              liveEvalColumns,
+                              row.values,
+                              tableSettings.decimalPlaces,
+                              environment,
+                              payload.reportGenerationSettings,
+                              resolveMasterForSheetRow(row, masterEquipments),
+                              matchedEquipmentRange,
+                              {
+                                pointValue: row.pointValue,
+                                masterEquipmentId: row.masterEquipmentId,
+                                rowIndexInMaster: rowIndexInMasterGroup(payload.rows, index),
+                              },
+                            )
+                            return (
+                              <tr key={`${table.id}-${row.id}`}>
+                                <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">
+                                  {index + 1}
+                                </td>
+                                {extraVisible.map((col) => (
+                                  <td
+                                    key={col.key}
+                                    className="border border-slate-200 px-2 py-1.5 align-middle"
+                                  >
+                                    {col.type === 'formula' ? (
+                                      <Input
+                                        type="text"
+                                        className="h-9 bg-stone-50 text-center font-medium tabular-nums text-stone-900"
+                                        value={formatPlusMinusPairDisplay(rowValues[col.key] ?? '')}
+                                        disabled
+                                        readOnly
+                                        aria-label={`${col.label} calculated value row ${index + 1}`}
+                                      />
+                                    ) : (
+                                      <Input
+                                        type={col.type === 'number' ? 'number' : 'text'}
+                                        className="h-9 text-center tabular-nums"
+                                        value={rowValues[col.key] ?? ''}
+                                        disabled={readOnly}
+                                        aria-label={`${col.label} row ${index + 1}`}
+                                        onChange={(e) =>
+                                          updateCellValue(row.id, col.key, e.target.value)
+                                        }
+                                      />
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                )
+              })}
+
               <Dialog open={environmentOpen} onOpenChange={openEnvironmentPanel}>
                 <DialogContent
-                  className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
+                  persistOnFocusLoss
+                  overlayClassName={RDS_OVERLAY}
+              portalClassName={RDS_OVERLAY}
+                  className={RDS_CENTERED_DIALOG_CLASS}
                   layer="nested"
                   aria-describedby={undefined}
                 >
-                  <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                    <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                  <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                      style={limsDarkBarGlowStyle}
+                    />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                     <DialogHeader className="relative pr-10 text-left">
-                      <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                        ISO / IEC 17025 · Clause 6.3
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <DialogTitle className="text-lg font-semibold tracking-tight text-white">
-                          Environment Condition
-                        </DialogTitle>
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-white/50">
-                          Parameters
-                        </span>
-                        <div className="flex flex-wrap items-center gap-1">
-                          {selectedEnvParams.map((opt) => (
-                            <span
-                              key={opt.id}
-                              className="rounded border border-teal-400/50 bg-teal-500/25 px-2 py-0.5 text-[10px] font-medium text-teal-50"
-                              title={opt.header}
-                            >
-                              {opt.header}
-                            </span>
-                          ))}
-                        </div>
-                        {selectedEnvParams.length === 0 ? (
-                          <span className="text-[11px] text-amber-200/90">
-                            No parameter columns configured on equipment template
-                          </span>
-                        ) : null}
-                      </div>
+                      <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight text-white sm:text-lg">
+                        <Thermometer size={18} aria-hidden />
+                        Environment Condition
+                      </DialogTitle>
                     </DialogHeader>
                   </div>
 
-                  <div className="max-h-[min(70vh,640px)] space-y-3 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
-                    <p className="text-xs text-slate-600">
-                      Reading / Point rows come from Calibration Equipment → Raw Data Sheet Format.
-                      Enter only the parameter readings below.
-                    </p>
-
-                    <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-                      <table className="w-full min-w-[420px] border-collapse text-sm">
-                        <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  <div className="max-h-[min(70vh,640px)] space-y-3 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+                    <div className="overflow-x-auto rounded-none border-2 border-stone-700">
+                      <table className={cn(limsTableClass, 'min-w-[420px]')}>
+                        <thead>
                           <tr>
-                            <th className="min-w-[160px] border border-slate-200 px-2 py-2 text-left">
+                            <th className={cn(limsTableHeadClass, 'min-w-[160px] px-2 py-2')}>
                               Reading / Point
                             </th>
                             {selectedEnvParams.map((opt) => (
                               <th
                                 key={opt.id}
-                                className="min-w-[120px] border border-slate-200 px-2 py-2 text-center"
+                                className={cn(limsTableHeadClass, 'min-w-[120px] px-2 py-2')}
                               >
                                 {opt.header}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className={limsTableBodyToneClass}>
                           {environment.rows.length === 0 ? (
                             <tr>
                               <td
                                 colSpan={Math.max(1, selectedEnvParams.length + 1)}
-                                className="border border-slate-200 px-3 py-8 text-center text-sm text-slate-500"
+                                className="px-3 py-8 text-center text-sm text-stone-500"
                               >
                                 No environment rows on the equipment Raw Data Sheet Format. Add Field
                                 rows under Calibration Equipments → Raw Data Sheet Format →
@@ -3993,16 +4428,16 @@ export function RawDataSheetDialog({
                             </tr>
                           ) : (
                             environment.rows.map((row, index) => {
-                              const isCalcRow = isEnvStandardFieldLabel(row.readingLabel)
+                              const isCalcRow = isEnvRowCalculated(row)
                               return (
-                              <tr key={row.id}>
-                                <td className="border border-slate-200 px-2.5 py-2 align-middle">
+                              <tr key={row.id} className="hover:bg-[#fff7ed]">
+                                <td className="px-2.5 py-2 align-middle">
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="text-sm font-medium text-slate-800">
+                                    <span className="text-sm font-medium text-stone-900">
                                       {row.readingLabel || `Row ${index + 1}`}
                                     </span>
                                     {isCalcRow ? (
-                                      <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800">
+                                      <span className="rounded-none border border-amber-700/30 bg-[#fff7ed] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
                                         Calculated
                                       </span>
                                     ) : null}
@@ -4028,25 +4463,29 @@ export function RawDataSheetDialog({
                                       }
                                     }
                                     return (
-                                      <td
-                                        key={opt.id}
-                                        className="border border-slate-200 px-1.5 py-1"
-                                      >
+                                      <td key={opt.id} className="px-1.5 py-1">
                                         <Input
                                           readOnly
                                           value={computed}
                                           title={formula || undefined}
                                           placeholder={formula || opt.header}
-                                          className="h-8 bg-indigo-50/50 text-center font-mono text-indigo-950"
+                                          className={cn(
+                                            limsFieldClass,
+                                            'h-8 bg-stone-50 text-center font-mono text-stone-900',
+                                          )}
                                           aria-label={`${opt.header} calculated for row ${index + 1}`}
                                         />
                                       </td>
                                     )
                                   }
                                   return (
-                                  <td key={opt.id} className="border border-slate-200 px-1.5 py-1">
+                                  <td key={opt.id} className="px-1.5 py-1">
                                     <Input
-                                      inputMode="decimal"
+                                      inputMode={
+                                        resolveEnvRowFieldType(row) === 'text'
+                                          ? 'text'
+                                          : 'decimal'
+                                      }
                                       placeholder={opt.header}
                                       value={row.values[opt.id] ?? ''}
                                       disabled={readOnly}
@@ -4062,7 +4501,7 @@ export function RawDataSheetDialog({
                                           e.target.value,
                                         )
                                       }
-                                      className="h-8 text-center font-mono"
+                                      className={cn(limsFieldClass, 'h-8 text-center font-mono')}
                                       aria-label={`${opt.header} for row ${index + 1}`}
                                     />
                                   </td>
@@ -4075,39 +4514,36 @@ export function RawDataSheetDialog({
                         </tbody>
                       </table>
                     </div>
+                  </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="rds-env-notes">Notes</Label>
-                      <Input
-                        id="rds-env-notes"
-                        placeholder="Optional remarks"
-                        value={environment.notes}
-                        disabled={readOnly}
-                        onChange={(e) =>
-                          setEnvironment({ ...environment, notes: e.target.value })
-                        }
-                        className="h-9"
-                      />
-                    </div>
-
-                    <div className="flex justify-end border-t border-slate-200 pt-3">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
                       <Button
                         type="button"
                         size="sm"
-                        className="h-9 bg-teal-600 text-white hover:bg-teal-500"
+                        className={limsPrimaryBtnClass}
                         onClick={() => {
                           if (payload && !readOnly) {
                             const nextEnv = formatEnvironmentNumberValues(
                               environment,
                               ENV_DECIMAL_PLACES,
                             )
-                            const rows = payload.rows.map((r) => ({
+                            const rows = payload.rows.map((r, index) => ({
                               ...r,
-                              values: applyFormulaColumns(
-                                payload.template.columns,
+                              values: applySheetRowFormulas(
+                                allRawDataSheetColumns(payload.template),
                                 r.values,
                                 tableSettings.decimalPlaces,
                                 nextEnv,
+                                resolveMasterForSheetRow(r, masterEquipments),
+                                matchedEquipmentRange,
+                                {
+                                  pointValue: r.pointValue,
+                                  masterEquipmentId: r.masterEquipmentId,
+                                  rowIndexInMaster: rowIndexInMasterGroup(
+                                    payload.rows,
+                                    index,
+                                  ),
+                                },
                               ),
                             }))
                             setPayload({
@@ -4119,9 +4555,8 @@ export function RawDataSheetDialog({
                           openEnvironmentPanel(false)
                         }}
                       >
-                        Done
+                        {readOnly ? 'Close' : 'Save & Close'}
                       </Button>
-                    </div>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -4134,26 +4569,29 @@ export function RawDataSheetDialog({
               >
                 <DialogContent
                   key={calculationsRowId ?? 'calculations-closed'}
-                  className="fixed inset-2 z-[60] flex h-[calc(100vh-1rem)] max-h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
-                  layer="nested"
+                  persistOnFocusLoss
+                  overlayClassName={RDS_OVERLAY}
+                  className={RDS_FULLSCREEN_DIALOG_CLASS}
+                  layer="stacked"
                   aria-describedby={undefined}
                 >
-                  <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-                    <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-indigo-400 via-violet-500 to-transparent" />
+                  <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                      style={limsDarkBarGlowStyle}
+                    />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
                     <DialogHeader className="relative pr-10 text-left">
-                      <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-indigo-300/90">
-                        Raw Data · Calculated Fields
-                      </p>
-                      <DialogTitle className="text-lg font-semibold tracking-tight text-white">
+                      <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                         Calculations
                         {calculationsRowIndex >= 0 ? (
-                          <span className="ml-2 font-mono text-sm font-normal text-white/70">
+                          <span className="ml-2 font-mono text-sm font-normal text-stone-300">
                             Row {calculationsRowIndex + 1}
                           </span>
                         ) : null}
                       </DialogTitle>
                       {calculationsRow?.masterLabel || calculationsRow?.pointValue ? (
-                        <p className="mt-1 text-xs text-white/65">
+                        <p className="mt-1 text-xs text-stone-300">
                           {[calculationsRow.masterLabel, calculationsRow.pointValue]
                             .filter(Boolean)
                             .join(' · ')}
@@ -4162,53 +4600,50 @@ export function RawDataSheetDialog({
                     </DialogHeader>
                   </div>
 
-                  <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
-                    {calculationsFormulaColumns.length === 0 ? (
-                      <p className="text-sm text-slate-500">No calculated columns on this sheet.</p>
+                  <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+                    {calculationsPanelColumns.length === 0 ? (
+                      <p className="text-sm text-stone-500">No columns in View for this sheet.</p>
                     ) : (
                       <>
-                        <div className="overflow-auto rounded-md border border-slate-200">
-                          <table className="w-full min-w-[640px] border-collapse text-sm">
-                            <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                        <div className="overflow-auto rounded-none border-2 border-stone-700">
+                          <table className="w-full min-w-[640px] border-collapse font-jakarta text-sm [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4]">
+                            <thead className="sticky top-0 z-10">
                               <tr>
-                                <th className="w-12 border border-slate-200 px-2 py-2 text-center">
-                                  #
-                                </th>
-                                {calculationsFormulaColumns.map((col) => (
+                                <th className={cn(limsTableHeadClass, 'w-12 px-2 py-2')}>#</th>
+                                {calculationsPanelColumns.map((col) => (
                                   <th
                                     key={col.key}
-                                    className="min-w-[110px] border border-slate-200 px-2 py-2 text-center"
+                                    className={cn(limsTableHeadClass, 'min-w-[110px] px-2 py-2')}
                                   >
                                     {col.label}
-                                    <span
-                                      className="ml-1 text-indigo-600"
-                                      title={`Auto-calculated (${formulaOpMeta(col.formula?.op ?? 'sum').label})`}
-                                    >
-                                      Σ
-                                    </span>
+                                    {col.type === 'formula' ? (
+                                      <span
+                                        className="ml-1 text-amber-100"
+                                        title={`Auto-calculated (${formulaOpMeta(col.formula?.op ?? 'sum').label})`}
+                                      >
+                                        Σ
+                                      </span>
+                                    ) : null}
                                   </th>
                                 ))}
                               </tr>
                             </thead>
-                            <tbody>
+                            <tbody className={limsTableBodyToneClass}>
                               <tr>
-                                <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">
+                                <td className="px-2 py-2 text-center align-middle text-stone-600">
                                   {calculationsRowIndex >= 0 ? calculationsRowIndex + 1 : ''}
                                 </td>
-                                {calculationsFormulaColumns.map((col) => (
-                                  <td
-                                    key={col.key}
-                                    className="border border-slate-200 px-2 py-1.5"
-                                  >
+                                {calculationsPanelColumns.map((col) => (
+                                  <td key={col.key} className="px-2 py-1.5 align-middle">
                                     <Input
                                       type="text"
-                                      className="h-9 bg-slate-50 text-center font-medium text-indigo-900"
+                                      className="h-9 bg-stone-50 text-center font-medium tabular-nums text-stone-900"
                                       value={formatPlusMinusPairDisplay(
                                         calculationsValues?.[col.key] ?? '',
                                       )}
                                       disabled
                                       readOnly
-                                      aria-label={`${col.label} calculated value`}
+                                      aria-label={`${col.label} value`}
                                     />
                                   </td>
                                 ))}
@@ -4218,50 +4653,50 @@ export function RawDataSheetDialog({
                         </div>
 
                         <div className="space-y-3">
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                             Calculation Steps
                           </p>
                           <div className="grid gap-3 lg:grid-cols-2">
                             {calculationExplanations.map((item, index) => (
                               <div
                                 key={item.columnKey}
-                                className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                                className="rounded-none border-2 border-stone-500 bg-white p-3"
                               >
                                 <div className="mb-2 flex items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <p className="text-[10px] font-medium uppercase tracking-wide text-indigo-600">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
                                       Column {index + 1}
                                     </p>
-                                    <h4 className="truncate text-sm font-semibold text-slate-900">
+                                    <h4 className="truncate text-sm font-semibold text-stone-900">
                                       {item.columnLabel}
                                     </h4>
                                   </div>
-                                  <div className="shrink-0 rounded-md bg-indigo-50 px-2.5 py-1 text-sm font-semibold text-indigo-900">
+                                  <div className="shrink-0 rounded-none border border-amber-700/40 bg-[#fff7ed] px-2.5 py-1 text-sm font-semibold text-amber-950">
                                     {item.result || '—'}
                                   </div>
                                 </div>
 
                                 {item.formulaText ? (
-                                  <p className="mb-2 break-words rounded border border-slate-100 bg-slate-50 px-2 py-1.5 font-mono text-[11px] text-slate-700">
+                                  <p className="mb-2 break-words rounded-none border border-stone-400 bg-stone-50 px-2 py-1.5 font-mono text-[11px] text-stone-700">
                                     {item.formulaText}
                                   </p>
                                 ) : null}
 
                                 {item.inputs.length > 0 ? (
                                   <div className="mb-2 space-y-1">
-                                    <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">
                                       Inputs
                                     </p>
-                                    <ul className="space-y-0.5 text-xs text-slate-700">
+                                    <ul className="space-y-0.5 text-xs text-stone-700">
                                       {item.inputs.map((input) => (
                                         <li
                                           key={`${item.columnKey}-${input.label}`}
                                           className="flex items-center justify-between gap-2"
                                         >
-                                          <span className="min-w-0 truncate text-slate-600">
+                                          <span className="min-w-0 truncate text-stone-600">
                                             {input.label}
                                           </span>
-                                          <span className="shrink-0 font-mono text-slate-900">
+                                          <span className="shrink-0 font-mono text-stone-900">
                                             {input.value}
                                           </span>
                                         </li>
@@ -4270,7 +4705,7 @@ export function RawDataSheetDialog({
                                   </div>
                                 ) : null}
 
-                                <ol className="list-decimal space-y-1 pl-4 text-xs leading-relaxed text-slate-700">
+                                <ol className="list-decimal space-y-1 pl-4 text-xs leading-relaxed text-stone-700">
                                   {item.steps.map((step, stepIndex) => (
                                     <li key={`${item.columnKey}-step-${stepIndex}`}>{step}</li>
                                   ))}
@@ -4283,10 +4718,10 @@ export function RawDataSheetDialog({
                     )}
                   </div>
 
-                  <div className="flex shrink-0 justify-end border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
+                  <div className="flex shrink-0 justify-end border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
                     <Button
                       type="button"
-                      className="bg-indigo-600 text-white hover:bg-indigo-500"
+                      className={limsPrimaryBtnClass}
                       onClick={() => setCalculationsRowId(null)}
                     >
                       Close
@@ -4296,16 +4731,38 @@ export function RawDataSheetDialog({
               </Dialog>
 
               <Dialog open={manualFreqOpen} onOpenChange={setManualFreqOpen}>
-                <DialogContent layer="stacked" className="max-w-sm">
-                  <DialogHeader>
-                    <DialogTitle>Manual Frequency — Days</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-3">
-                    <p className="text-xs text-slate-600">
+                <DialogContent
+                  layer="stacked"
+                  aria-describedby={undefined}
+                  className={cn(
+                    limsDialogClass,
+                    'flex max-w-sm flex-col gap-0 overflow-hidden p-0',
+                    '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+                  )}
+                >
+                  <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                      style={limsDarkBarGlowStyle}
+                    />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                    <DialogHeader className="relative pr-10 text-left">
+                      <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                        Manual Frequency — Days
+                      </DialogTitle>
+                    </DialogHeader>
+                  </div>
+                  <div className="space-y-3 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+                    <p className="text-xs text-stone-600">
                       Enter how many days after the calibration date the next due should fall.
                     </p>
                     <div className="space-y-1.5">
-                      <Label htmlFor="rds-manual-freq-days">Interval (days)</Label>
+                      <Label
+                        htmlFor="rds-manual-freq-days"
+                        className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                      >
+                        Interval (days)
+                      </Label>
                       <Input
                         id="rds-manual-freq-days"
                         type="number"
@@ -4331,15 +4788,20 @@ export function RawDataSheetDialog({
                       ) : null}
                     </div>
                   </div>
-                  <DialogFooter>
+                  <DialogFooter className="gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
                     <Button
                       type="button"
                       variant="outline"
+                      className={limsOutlineBtnClass}
                       onClick={() => setManualFreqOpen(false)}
                     >
                       Cancel
                     </Button>
-                    <Button type="button" onClick={confirmManualFrequency}>
+                    <Button
+                      type="button"
+                      className={limsPrimaryBtnClass}
+                      onClick={confirmManualFrequency}
+                    >
                       Apply
                     </Button>
                   </DialogFooter>
@@ -4349,7 +4811,7 @@ export function RawDataSheetDialog({
               <UncertaintyStepByStepDialog
                 open={uncertaintyOpen}
                 onOpenChange={setUncertaintyOpen}
-                columns={payload.template.columns}
+                columns={allRawDataSheetColumns(payload.template)}
                 rows={payload.rows}
                 decimalPlaces={tableSettings.decimalPlaces}
                 muCalculationTemplate={resolvedMuCalculationTemplate}
@@ -4368,36 +4830,26 @@ export function RawDataSheetDialog({
         </div>
 
         {payload && !loading ? (
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9"
-              onClick={() => onOpenChange(false)}
-            >
-              Close
-            </Button>
-            {!readOnly ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 border-teal-600/40 text-teal-800"
-                  disabled={saving}
-                  onClick={() => void handleSave(false)}
-                >
-                  {saving ? 'Saving…' : 'Save Draft'}
-                </Button>
-                <Button
-                  type="button"
-                  className="h-9 bg-teal-600 text-white hover:bg-teal-500"
-                  disabled={saving}
-                  onClick={() => void handleSave(true)}
-                >
-                  {saving ? 'Saving…' : 'Save & Mark Complete'}
-                </Button>
-              </>
-            ) : null}
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-6">
+            {readOnly ? (
+              <Button
+                type="button"
+                variant="outline"
+                className={cn('h-9', limsOutlineBtnClass)}
+                onClick={() => onOpenChange(false)}
+              >
+                Close
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className={cn('h-9', limsPrimaryBtnClass)}
+                disabled={saving}
+                onClick={() => void handleSave(true)}
+              >
+                {saving ? 'Saving…' : 'Save & Close'}
+              </Button>
+            )}
           </div>
         ) : null}
       </DialogContent>

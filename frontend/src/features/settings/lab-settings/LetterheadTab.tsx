@@ -17,6 +17,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { FileUpload } from '@/components/ui/file-upload'
 import type { FileTemplate, TermsTemplate, WatermarkTemplate } from './types'
 import { LabSettingsPanel } from './labSettingsUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
 type LetterheadTabProps = {
   saveMessage: string | null
@@ -72,7 +79,7 @@ type LetterheadTabProps = {
 
 export function LetterheadTab(props: LetterheadTabProps) {
   return (
-    <LabSettingsPanel eyebrow="Lab Registry · Documents" title="Letter Head Templates">
+    <LabSettingsPanel>
         <div className="space-y-8">
           <section className="space-y-3">
             <div className="flex items-center justify-between">
@@ -86,34 +93,48 @@ export function LetterheadTab(props: LetterheadTabProps) {
                     Add New Header
                   </Button>
                 </DialogTrigger>
-                <DialogContent aria-describedby={undefined}>
-                  <DialogHeader>
-                    <DialogTitle>Add Header Template</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
+                <DialogContent
+                  persistOnFocusLoss
+                  layer="stacked"
+                  aria-describedby={undefined}
+                  className={cn(limsDialogClass, 'max-w-lg p-0')}
+                >
+                  <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                    <DialogHeader className="relative pr-10 text-left">
+                      <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                        Add Header Template
+                      </DialogTitle>
+                    </DialogHeader>
+                  </div>
+
+                  <div className="space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
                     <div className="space-y-2">
-                      <Label htmlFor="header-name">Template Name</Label>
+                      <Label
+                        htmlFor="header-name"
+                        className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                      >
+                        Template Name
+                      </Label>
                       <Input
                         id="header-name"
                         placeholder="e.g., Default Header"
                         value={props.newHeaderName}
                         onChange={(e) => props.setNewHeaderName(e.target.value)}
+                        className={limsFieldClass}
                       />
                     </div>
                   </div>
-                  <DialogFooter>
+
+                  <DialogFooter className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
                     <Button
                       type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        props.setHeaderDialogOpen(false)
-                        props.setNewHeaderName('')
-                      }}
+                      className={cn(limsPrimaryBtnClass, 'h-9 min-w-[8.5rem]')}
+                      onClick={props.onAddHeaderTemplate}
+                      disabled={!props.newHeaderName.trim()}
                     >
-                      Cancel
-                    </Button>
-                    <Button type="button" onClick={props.onAddHeaderTemplate} disabled={!props.newHeaderName.trim()}>
-                      Save Header
+                      Save & Close
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -172,34 +193,48 @@ export function LetterheadTab(props: LetterheadTabProps) {
                     Add New Footer
                   </Button>
                 </DialogTrigger>
-                <DialogContent aria-describedby={undefined}>
-                  <DialogHeader>
-                    <DialogTitle>Add Footer Template</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
+                <DialogContent
+                  persistOnFocusLoss
+                  layer="stacked"
+                  aria-describedby={undefined}
+                  className={cn(limsDialogClass, 'max-w-lg p-0')}
+                >
+                  <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                    <DialogHeader className="relative pr-10 text-left">
+                      <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                        Add Footer Template
+                      </DialogTitle>
+                    </DialogHeader>
+                  </div>
+
+                  <div className="space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
                     <div className="space-y-2">
-                      <Label htmlFor="footer-name">Template Name</Label>
+                      <Label
+                        htmlFor="footer-name"
+                        className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                      >
+                        Template Name
+                      </Label>
                       <Input
                         id="footer-name"
                         placeholder="e.g., Default Footer"
                         value={props.newFooterName}
                         onChange={(e) => props.setNewFooterName(e.target.value)}
+                        className={limsFieldClass}
                       />
                     </div>
                   </div>
-                  <DialogFooter>
+
+                  <DialogFooter className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
                     <Button
                       type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        props.setFooterDialogOpen(false)
-                        props.setNewFooterName('')
-                      }}
+                      className={cn(limsPrimaryBtnClass, 'h-9 min-w-[8.5rem]')}
+                      onClick={props.onAddFooterTemplate}
+                      disabled={!props.newFooterName.trim()}
                     >
-                      Cancel
-                    </Button>
-                    <Button type="button" onClick={props.onAddFooterTemplate} disabled={!props.newFooterName.trim()}>
-                      Save Footer
+                      Save & Close
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -258,34 +293,48 @@ export function LetterheadTab(props: LetterheadTabProps) {
                     Add Terms Template
                   </Button>
                 </DialogTrigger>
-                <DialogContent aria-describedby={undefined}>
-                  <DialogHeader>
-                    <DialogTitle>Add Terms & Conditions Template</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
+                <DialogContent
+                  persistOnFocusLoss
+                  layer="stacked"
+                  aria-describedby={undefined}
+                  className={cn(limsDialogClass, 'max-w-lg p-0')}
+                >
+                  <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                    <DialogHeader className="relative pr-10 text-left">
+                      <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                        Add Terms & Conditions Template
+                      </DialogTitle>
+                    </DialogHeader>
+                  </div>
+
+                  <div className="space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
                     <div className="space-y-2">
-                      <Label htmlFor="terms-name">Template Name</Label>
+                      <Label
+                        htmlFor="terms-name"
+                        className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                      >
+                        Template Name
+                      </Label>
                       <Input
                         id="terms-name"
                         placeholder="e.g., Standard Terms"
                         value={props.newTermsName}
                         onChange={(e) => props.setNewTermsName(e.target.value)}
+                        className={limsFieldClass}
                       />
                     </div>
                   </div>
-                  <DialogFooter>
+
+                  <DialogFooter className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
                     <Button
                       type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        props.setTermsDialogOpen(false)
-                        props.setNewTermsName('')
-                      }}
+                      className={cn(limsPrimaryBtnClass, 'h-9 min-w-[8.5rem]')}
+                      onClick={props.onAddTermsTemplate}
+                      disabled={!props.newTermsName.trim()}
                     >
-                      Cancel
-                    </Button>
-                    <Button type="button" onClick={props.onAddTermsTemplate} disabled={!props.newTermsName.trim()}>
-                      Save Template
+                      Save & Close
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -344,47 +393,70 @@ export function LetterheadTab(props: LetterheadTabProps) {
                     Add New Water Mark
                   </Button>
                 </DialogTrigger>
-                <DialogContent aria-describedby={undefined}>
-                  <DialogHeader>
-                    <DialogTitle>Add New Water Mark</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="watermark-name">Water Mark Name</Label>
-                      <Input
-                        id="watermark-name"
-                        placeholder="e.g., Confidential"
-                        value={props.newWatermarkName}
-                        onChange={(e) => props.setNewWatermarkName(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="watermark-type">Water Mark Type</Label>
-                      <Select value={props.newWatermarkType} onValueChange={(v) => props.setNewWatermarkType(v as 'image' | 'text')}>
-                        <SelectTrigger id="watermark-type">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="image">Image</SelectItem>
-                          <SelectItem value="text">Text</SelectItem>
-                        </SelectContent>
-                      </Select>
+                <DialogContent
+                  persistOnFocusLoss
+                  layer="stacked"
+                  aria-describedby={undefined}
+                  className={cn(limsDialogClass, 'max-w-lg p-0')}
+                >
+                  <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                    <DialogHeader className="relative pr-10 text-left">
+                      <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                        Add New Water Mark
+                      </DialogTitle>
+                    </DialogHeader>
+                  </div>
+
+                  <div className="space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="watermark-name"
+                          className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                        >
+                          Water Mark Name
+                        </Label>
+                        <Input
+                          id="watermark-name"
+                          placeholder="e.g., Confidential"
+                          value={props.newWatermarkName}
+                          onChange={(e) => props.setNewWatermarkName(e.target.value)}
+                          className={limsFieldClass}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label
+                          htmlFor="watermark-type"
+                          className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                        >
+                          Water Mark Type
+                        </Label>
+                        <Select
+                          value={props.newWatermarkType}
+                          onValueChange={(v) => props.setNewWatermarkType(v as 'image' | 'text')}
+                        >
+                          <SelectTrigger id="watermark-type" className={limsFieldClass}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="image">Image</SelectItem>
+                            <SelectItem value="text">Text</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
-                  <DialogFooter>
+
+                  <DialogFooter className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
                     <Button
                       type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        props.setWatermarkDialogOpen(false)
-                        props.setNewWatermarkName('')
-                        props.setNewWatermarkType('image')
-                      }}
+                      className={cn(limsPrimaryBtnClass, 'h-9 min-w-[8.5rem]')}
+                      onClick={props.onAddWatermarkTemplate}
+                      disabled={!props.newWatermarkName.trim()}
                     >
-                      Cancel
-                    </Button>
-                    <Button type="button" onClick={props.onAddWatermarkTemplate} disabled={!props.newWatermarkName.trim()}>
-                      Save
+                      Save & Close
                     </Button>
                   </DialogFooter>
                 </DialogContent>

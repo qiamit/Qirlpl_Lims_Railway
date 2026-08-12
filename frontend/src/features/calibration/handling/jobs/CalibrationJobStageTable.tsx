@@ -1,11 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, Download, FileCheck, FileSpreadsheet, Package, Printer, Reply, Search, Sigma } from 'lucide-react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
+import { createPortal } from 'react-dom'
+import { Download, FileCheck, FileSpreadsheet, Package, Printer, Search, Send, Sigma, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { supabase } from '@/lib/supabaseClient'
-import { cn } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDarkBarSearchClass,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
 import {
   calibrationPointsTableForViewFactor,
   parseMeasurementRanges,
@@ -23,6 +39,8 @@ import {
   type CalibrationJobRow,
   type CalibrationJobStage,
 } from '../types'
+import { FILTER_COMBOBOX_DROPDOWN_ATTR } from '@/features/sample-handling/receiving/FilterCombobox'
+import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import {
   resolveEquipmentMasterForJob,
   type CalibrationEngineerOption,
@@ -32,19 +50,23 @@ import { CertificateDraftDialog } from '../certificate-preparation/CertificateDr
 import { parseCertificateDraft } from '../certificate-preparation/certificateDraftTypes'
 
 const GRID_TABLE =
-  'min-w-[760px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'table-fixed min-w-[980px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border [&_td]:whitespace-nowrap'
 
 const DUC_GRID =
-  'min-w-[900px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4]'
 
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-/** Solid icon actions — Forward (teal) / Refer back (blue); pair with variant="ghost" to avoid primary bg */
+/** Client Master icon actions — Forward (amber) / Refer back (stone) */
+const actionIconOnlyBase =
+  'h-8 w-8 rounded-none border shadow-none transition-colors disabled:opacity-45'
 const forwardIconBtnClass =
-  'h-9 w-9 rounded-none bg-amber-700 text-white shadow-sm hover:bg-amber-800 hover:text-white disabled:bg-amber-700/40 disabled:text-white/90 disabled:opacity-100'
+  `${actionIconOnlyBase} border-amber-800/60 bg-[#fff7ed] text-amber-950 hover:border-amber-900 hover:bg-amber-800 hover:text-white`
 const referBackIconBtnClass =
-  'h-9 w-9 rounded-md bg-blue-600 text-white shadow-sm hover:bg-blue-700 hover:text-white disabled:bg-blue-600/40 disabled:text-white/90 disabled:opacity-100'
+  `${actionIconOnlyBase} border-stone-500 bg-stone-50 text-stone-700 hover:border-stone-800 hover:bg-stone-800 hover:text-amber-100`
+const certPrepIconBtnClass =
+  `${actionIconOnlyBase} border-amber-800/60 bg-[#fff7ed] text-amber-950 hover:border-amber-900 hover:bg-amber-800 hover:text-white`
 
 function cellText(value: string | null | undefined): string {
   const t = (value ?? '').trim()
@@ -154,15 +176,15 @@ function DetailField({
   return (
     <div
       className={cn(
-        'min-w-0 rounded-md border border-slate-200/90 bg-white px-2.5 py-2',
+        'min-w-0 rounded-none border border-stone-500 bg-stone-50 px-2.5 py-2',
         className,
       )}
     >
-      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-600">{label}</p>
       <p
         className={cn(
           'mt-0.5 break-words whitespace-pre-wrap text-sm',
-          isEmpty ? 'text-slate-400' : 'text-slate-900',
+          isEmpty ? 'text-stone-400' : 'text-stone-900',
         )}
       >
         {display}
@@ -281,7 +303,7 @@ async function resolveFullCalibrationPointsText(job: CalibrationJobRow): Promise
 }
 
 /** Full DUC / customer equipment details (job line + equipment_master). */
-function DucEquipmentDetailsDialog({
+export function DucEquipmentDetailsDialog({
   job,
   open,
   onOpenChange,
@@ -379,61 +401,66 @@ function DucEquipmentDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
-        layer="nested"
+        layer="stacked"
+        persistOnFocusLoss
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          'max-h-[min(92vh,820px)] max-w-3xl gap-0 overflow-hidden p-0',
+          'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
+          'md:left-[calc(268px+(100vw-268px)/2)]',
+          '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+        )}
         aria-describedby={undefined}
       >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-10 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              {contextLabel} · Equipment (DUC)
-            </p>
-            <DialogTitle className="text-lg font-semibold tracking-tight text-white">
-              {cellText(job.equipment_label)}
-            </DialogTitle>
-            <p className="mt-1 text-xs text-slate-300">
-              {cellText(job.srf_number)}
-              {job.client_name ? ` · ${job.client_name}` : ''}
-            </p>
+            <div className="grid min-w-0 grid-cols-[1fr_auto] items-center gap-3">
+              <DialogTitle className="min-w-0 truncate text-base font-semibold tracking-tight text-white sm:text-lg">
+                {cellText(job.equipment_label)}
+              </DialogTitle>
+              <p className="min-w-0 truncate text-right text-xs font-medium text-stone-300">
+                {cellText(job.srf_number)}
+                {job.client_name ? ` · ${job.client_name}` : ''}
+              </p>
+            </div>
           </DialogHeader>
         </div>
 
-        <div className="max-h-[min(70vh,640px)] space-y-3 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+        <div className="max-h-[min(70vh,640px)] space-y-3 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
           {loadingMaster || loadingPoints ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-stone-500">
               {loadingMaster ? 'Loading equipment master…' : 'Loading calibration points…'}
             </p>
           ) : null}
           {masterError ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <p className="rounded-none border border-amber-600/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {masterError}
             </p>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <DetailField
-              label="Equipment"
-              value={preferValue(job.equipment_label, master?.equipment_name)}
-              className="col-span-2 sm:col-span-3"
-            />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <DetailField label="SRF Number" value={preferValue(job.srf_number)} />
             <DetailField label="Asset Code" value={preferValue(master?.asset_code)} />
             <DetailField label="Status" value={preferValue(master?.equipment_status)} />
             <DetailField
               label="Customer ID"
               value={preferValue(fields.customerId)}
             />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <DetailField
-              label="Manufacturer / Make"
-              value={preferValue(fields.make, master?.manufacturer)}
+              label="Serial No."
+              value={preferValue(fields.serial, master?.serial_number)}
             />
             <DetailField
               label="Model"
               value={preferValue(fields.model, master?.model_number)}
-            />
-            <DetailField
-              label="Serial No."
-              value={preferValue(fields.serial, master?.serial_number)}
             />
             <DetailField
               label="Range"
@@ -443,32 +470,34 @@ function DucEquipmentDetailsDialog({
               label="Least Count"
               value={preferValue(fields.leastCount, master?.resolution_least_count)}
             />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <DetailField label="Quantity" value={preferValue(fields.quantity)} />
+            <DetailField
+              label="Manufacturer / Make"
+              value={preferValue(fields.make, master?.manufacturer)}
+            />
             <DetailField label="Accuracy" value={preferValue(fields.accuracy)} />
             <DetailField label="Condition of DUC" value={preferValue(fields.condition)} />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <DetailField label="Physical" value={preferValue(fields.physical)} />
             <DetailField
               label="Cal Method"
               value={preferValue(fields.calMethod, master?.calibration_method_label)}
             />
             <DetailField label="Frequency" value={preferValue(fields.frequency)} />
+            <DetailField label="Location" value={locationLabel} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <DetailField
               label="Calibration Points"
               value={calibrationPointsDisplay}
-              className="col-span-2 sm:col-span-3"
             />
-            <DetailField
-              label="Method Notes"
-              value={preferValue(fields.methodNotes)}
-              className="col-span-2 sm:col-span-3"
-            />
-            <DetailField label="Location" value={locationLabel} />
             <DetailField
               label="Allocated Engineer"
               value={preferValue(job.allocated_engineer_name)}
             />
-            <DetailField label="SRF Number" value={preferValue(job.srf_number)} />
-            <DetailField label="Client" value={preferValue(job.client_name)} />
           </div>
         </div>
       </DialogContent>
@@ -479,6 +508,8 @@ function DucEquipmentDetailsDialog({
 export type CalibrationSrfGroup = {
   serviceRequestId: string
   srfNumber: string
+  srfDate: string | null
+  expectedCompletionDate: string | null
   clientName: string | null
   jobs: CalibrationJobRow[]
 }
@@ -490,11 +521,17 @@ export function groupCalibrationJobsBySrf(rows: CalibrationJobRow[]): Calibratio
     const existing = map.get(key)
     if (existing) {
       existing.jobs.push(job)
+      if (!existing.srfDate && job.srf_date) existing.srfDate = job.srf_date
+      if (!existing.expectedCompletionDate && job.required_completion_date) {
+        existing.expectedCompletionDate = job.required_completion_date
+      }
       continue
     }
     map.set(key, {
       serviceRequestId: key,
       srfNumber: job.srf_number,
+      srfDate: job.srf_date ?? null,
+      expectedCompletionDate: job.required_completion_date ?? null,
       clientName: job.client_name,
       jobs: [job],
     })
@@ -505,6 +542,309 @@ export function groupCalibrationJobsBySrf(rows: CalibrationJobRow[]): Calibratio
   }))
 }
 
+function engineerLabel(eng: CalibrationEngineerOption): string {
+  return eng.name
+}
+
+function isCalibrationDivision(division: string): boolean {
+  return division.trim().toLowerCase().includes('calibration')
+}
+
+function PortaledSelectList({
+  open,
+  anchorRef,
+  children,
+}: {
+  open: boolean
+  anchorRef: RefObject<HTMLElement | null>
+  children: ReactNode
+}) {
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null)
+      return
+    }
+    const update = () => {
+      const el = anchorRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      setPos({
+        left: rect.left,
+        top: rect.bottom + 4,
+        width: Math.max(rect.width, 180),
+      })
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open, anchorRef])
+
+  if (!open || !pos) return null
+  return createPortal(
+    <div
+      {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
+      className="fixed z-[9999] rounded-none border border-stone-500 bg-white shadow-lg"
+      style={{ left: pos.left, top: pos.top, width: pos.width }}
+      onMouseDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
+function TypeSelect({
+  value,
+  options,
+  placeholder,
+  ariaLabel,
+  onChange,
+}: {
+  value: string
+  options: string[]
+  placeholder: string
+  ariaLabel: string
+  onChange: (value: string) => void
+}) {
+  const [query, setQuery] = useState(value)
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+
+  useEffect(() => {
+    setQuery(value)
+  }, [value])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return options
+    return options.filter((opt) => opt.toLowerCase().includes(q))
+  }, [options, query])
+
+  useEffect(() => {
+    setHighlight((prev) => (filtered.length === 0 ? 0 : Math.min(prev, filtered.length - 1)))
+  }, [filtered.length])
+
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const pick = (next: string) => {
+    onChange(next)
+    setQuery(next)
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative mx-auto w-full">
+      <Input
+        ref={inputRef}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+          setHighlight(0)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          window.setTimeout(() => {
+            setOpen(false)
+            setQuery(value)
+          }, 150)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Tab') {
+            setOpen(false)
+            return
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            setQuery(value)
+            setOpen(false)
+            return
+          }
+          if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            setOpen(true)
+          }
+          if (event.key === 'ArrowDown' && filtered.length > 0) {
+            event.preventDefault()
+            setHighlight((prev) => (prev + 1) % filtered.length)
+          }
+          if (event.key === 'ArrowUp' && filtered.length > 0) {
+            event.preventDefault()
+            setHighlight((prev) => (prev - 1 + filtered.length) % filtered.length)
+          }
+          if (event.key === 'Enter' && open) {
+            event.preventDefault()
+            const hit = filtered[highlight]
+            if (hit) pick(hit)
+          }
+        }}
+        placeholder={placeholder}
+        autoComplete="off"
+        aria-label={ariaLabel}
+        className="h-9 rounded-none border-stone-500 bg-stone-50 px-2 text-center text-xs shadow-none placeholder:text-center"
+      />
+      <PortaledSelectList open={open} anchorRef={inputRef}>
+        <ul className="max-h-48 overflow-auto text-left text-xs">
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-stone-500">No option found</li>
+          ) : (
+            filtered.map((opt, index) => (
+              <li key={opt}>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className={cn(
+                    'w-full px-3 py-2 text-left',
+                    index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]',
+                  )}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setHighlight(index)}
+                  onClick={() => pick(opt)}
+                >
+                  {opt}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      </PortaledSelectList>
+    </div>
+  )
+}
+
+function EngineerSelect({
+  jobLabel,
+  engineerId,
+  engineerName,
+  engineers,
+  emptyHint = 'No engineer found',
+  onChange,
+}: {
+  jobLabel: string
+  engineerId: string | null
+  engineerName: string | null
+  engineers: CalibrationEngineerOption[]
+  emptyHint?: string
+  onChange: (id: string | null, name: string | null) => void
+}) {
+  const selected = engineers.find((eng) => eng.id === engineerId)
+  const selectedLabel = selected ? engineerLabel(selected) : engineerName?.trim() || ''
+  const [query, setQuery] = useState(selectedLabel)
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+
+  useEffect(() => {
+    setQuery(selectedLabel)
+  }, [selectedLabel])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return engineers
+    return engineers.filter((eng) => engineerLabel(eng).toLowerCase().includes(q))
+  }, [engineers, query])
+
+  useEffect(() => {
+    setHighlight((prev) => (filtered.length === 0 ? 0 : Math.min(prev, filtered.length - 1)))
+  }, [filtered.length])
+
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const pick = (eng: CalibrationEngineerOption | null) => {
+    if (!eng) {
+      onChange(null, null)
+      setQuery('')
+    } else {
+      onChange(eng.id, eng.name)
+      setQuery(engineerLabel(eng))
+    }
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative mx-auto w-full">
+      <Input
+        ref={inputRef}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+          setHighlight(0)
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          window.setTimeout(() => {
+            setOpen(false)
+            setQuery(selectedLabel)
+          }, 150)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Tab') {
+            setOpen(false)
+            return
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            setQuery(selectedLabel)
+            setOpen(false)
+            return
+          }
+          if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            setOpen(true)
+          }
+          if (event.key === 'ArrowDown' && filtered.length > 0) {
+            event.preventDefault()
+            setHighlight((prev) => (prev + 1) % filtered.length)
+          }
+          if (event.key === 'ArrowUp' && filtered.length > 0) {
+            event.preventDefault()
+            setHighlight((prev) => (prev - 1 + filtered.length) % filtered.length)
+          }
+          if (event.key === 'Enter' && open) {
+            event.preventDefault()
+            const hit = filtered[highlight]
+            if (hit) pick(hit)
+          }
+        }}
+        placeholder="Select Engineer"
+        autoComplete="off"
+        aria-label={`Engineer for ${jobLabel}`}
+        className="h-9 rounded-none border-stone-500 bg-stone-50 px-2 text-center text-xs shadow-none placeholder:text-center"
+      />
+      <PortaledSelectList open={open} anchorRef={inputRef}>
+        <ul className="max-h-48 overflow-auto text-left text-xs">
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-center text-stone-500">{emptyHint}</li>
+          ) : (
+            filtered.map((eng, index) => (
+              <li key={eng.id}>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className={cn(
+                    'w-full px-3 py-2 text-left',
+                    index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]',
+                  )}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setHighlight(index)}
+                  onClick={() => pick(eng)}
+                >
+                  {engineerLabel(eng)}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      </PortaledSelectList>
+    </div>
+  )
+}
+
 function DucAllocationDialog({
   open,
   onOpenChange,
@@ -513,6 +853,8 @@ function DucAllocationDialog({
   engineers,
   onLocationChange,
   onEngineerChange,
+  onDesignationChange,
+  onViewDetails,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -521,17 +863,64 @@ function DucAllocationDialog({
   engineers: CalibrationEngineerOption[]
   onLocationChange?: (id: string, location: CalibrationJobLocation) => void
   onEngineerChange?: (id: string, engineerId: string | null, engineerName: string | null) => void
+  onDesignationChange?: (id: string, designation: string) => void
+  onViewDetails?: (job: CalibrationJobRow) => void
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [designationByJob, setDesignationByJob] = useState<Record<string, string>>({})
+  const [labDesignations, setLabDesignations] = useState<string[]>([])
 
   const jobs = group?.jobs ?? []
   const allChecked = jobs.length > 0 && jobs.every((j) => selectedIds.has(j.id))
   const someChecked = jobs.some((j) => selectedIds.has(j.id))
+  const calibrationEngineers = useMemo(
+    () => engineers.filter((eng) => isCalibrationDivision(eng.division)),
+    [engineers],
+  )
+
+  const designationOptions = useMemo(() => {
+    const names = new Set<string>()
+    for (const eng of calibrationEngineers) {
+      if (eng.designation) names.add(eng.designation)
+    }
+    if (names.size === 0) {
+      for (const name of labDesignations) {
+        if (name) names.add(name)
+      }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b))
+  }, [calibrationEngineers, labDesignations])
+
+  useEffect(() => {
+    void fetchDesignationAndDepartmentLabels()
+      .then(({ designations }) => setLabDesignations(designations))
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     if (!open) return
     setSelectedIds(new Set())
   }, [open, group?.serviceRequestId])
+
+  useEffect(() => {
+    if (!open || !group) return
+    setDesignationByJob((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const job of group.jobs) {
+        if (next[job.id]) continue
+        const saved = job.allocated_engineer_designation?.trim()
+        const eng = engineers.find((e) => e.id === job.allocated_engineer_id)
+        const fromEng = eng?.designation?.trim()
+        const value = saved || fromEng
+        if (value) {
+          next[job.id] = value
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [open, group, engineers])
 
   if (!group) return null
 
@@ -551,33 +940,45 @@ function DucAllocationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
         layer="nested"
+        persistOnFocusLoss
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden p-0',
+          'left-0 top-0',
+          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+        )}
         aria-describedby={undefined}
       >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-12 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Job Allocation · Equipment
-            </p>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-white">
-              DUC List — {group.srfNumber}
-            </DialogTitle>
-            <p className="mt-1 text-xs text-slate-300">
-              {group.jobs.length} item(s)
-              {group.clientName ? ` · ${group.clientName}` : ''}
-              {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ''}
-            </p>
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-3">
+              <DialogTitle className="min-w-0 truncate text-base font-semibold tracking-tight text-white sm:text-lg">
+                DUC List — {group.srfNumber}
+              </DialogTitle>
+              <p className="text-center text-xs font-medium text-stone-300">
+                {group.jobs.length} {group.jobs.length === 1 ? 'Item' : 'Items'}
+              </p>
+              <p className="min-w-0 truncate text-right text-xs font-medium text-stone-200">
+                {group.clientName || ''}
+              </p>
+            </div>
           </DialogHeader>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
-          <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-            <Table className={DUC_GRID}>
+        <div className="min-h-0 flex-1 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5 sm:py-5">
+          <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white">
+            <Table className={cn(DUC_GRID, 'table-fixed min-w-0 w-full')}>
               <TableHeader>
                 <TableRow className="bg-stone-800 hover:bg-stone-800">
-                  <TableHead className="w-12 text-center text-xs sm:w-14">
+                  <TableHead className="w-[4%] px-1 text-center text-xs">
                     <input
                       type="checkbox"
                       className={checkboxClass}
@@ -589,12 +990,11 @@ function DucAllocationDialog({
                       onChange={(e) => toggleAll(e.target.checked)}
                     />
                   </TableHead>
-                  <TableHead className="min-w-[160px] text-left text-xs">Equipment (DUC)</TableHead>
-                  <TableHead className="min-w-[120px] text-center text-xs">Range</TableHead>
-                  <TableHead className="min-w-[110px] text-center text-xs">Least Count</TableHead>
-                  <TableHead className="min-w-[110px] text-center text-xs">Make</TableHead>
-                  <TableHead className="min-w-[150px] text-center text-xs">Inside / Outside</TableHead>
-                  <TableHead className="min-w-[200px] text-center text-xs">Engineer</TableHead>
+                  <TableHead className="w-[24%] text-left text-xs">Equipment (DUC)</TableHead>
+                  <TableHead className="w-[14%] text-center text-xs">Range</TableHead>
+                  <TableHead className="w-[16%] text-center text-xs">Inside / Outside</TableHead>
+                  <TableHead className="w-[18%] text-center text-xs">Designation</TableHead>
+                  <TableHead className="w-[24%] text-center text-xs">Calibration Engineer</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -613,23 +1013,27 @@ function DucAllocationDialog({
                         />
                       </TableCell>
                       <TableCell className="align-middle text-sm">
-                        <p className="font-medium text-foreground">
-                          {cellText(job.equipment_label)}
-                        </p>
+                        {onViewDetails ? (
+                          <button
+                            type="button"
+                            className="text-left font-medium text-amber-800 underline decoration-amber-700/40 underline-offset-2 hover:text-amber-950 hover:decoration-amber-800"
+                            onClick={() => onViewDetails(job)}
+                          >
+                            {cellText(job.equipment_label)}
+                          </button>
+                        ) : (
+                          <p className="font-medium text-foreground">
+                            {cellText(job.equipment_label)}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell className="text-center align-middle text-sm">
                         {cellText(fields.range)}
                       </TableCell>
                       <TableCell className="text-center align-middle text-sm">
-                        {cellText(fields.leastCount)}
-                      </TableCell>
-                      <TableCell className="text-center align-middle text-sm">
-                        {cellText(fields.make)}
-                      </TableCell>
-                      <TableCell className="text-center align-middle text-sm">
                         {canEdit && onLocationChange ? (
                           <select
-                            className="h-9 w-full max-w-[180px] rounded-md border border-input bg-background px-2 text-xs"
+                            className="h-9 w-full rounded-none border border-stone-500 bg-stone-50 px-2 text-xs"
                             aria-label={`Inside or Outside for ${job.equipment_label}`}
                             value={job.calibration_location}
                             onChange={(e) =>
@@ -646,24 +1050,67 @@ function DucAllocationDialog({
                         )}
                       </TableCell>
                       <TableCell className="text-center align-middle text-sm">
-                        {canEdit && onEngineerChange ? (
-                          <select
-                            className="mx-auto h-9 w-full max-w-[240px] rounded-md border border-input bg-background px-2 text-xs"
-                            aria-label={`Engineer for ${job.equipment_label}`}
-                            value={job.allocated_engineer_id ?? ''}
-                            onChange={(e) => {
-                              const id = e.target.value || null
-                              const found = engineers.find((eng) => eng.id === id)
-                              onEngineerChange(job.id, id, found?.name ?? null)
+                        {canEdit ? (
+                          <TypeSelect
+                            value={designationByJob[job.id] ?? ''}
+                            options={designationOptions}
+                            placeholder="Select Designation"
+                            ariaLabel={`Designation for ${job.equipment_label}`}
+                            onChange={(designation) => {
+                              setDesignationByJob((prev) => ({ ...prev, [job.id]: designation }))
+                              onDesignationChange?.(job.id, designation)
+                              const current = engineers.find((e) => e.id === job.allocated_engineer_id)
+                              if (
+                                current &&
+                                current.designation &&
+                                current.designation.toLowerCase() !== designation.toLowerCase()
+                              ) {
+                                onEngineerChange?.(job.id, null, null)
+                              }
                             }}
-                          >
-                            <option value="">Select engineer</option>
-                            {engineers.map((eng) => (
-                              <option key={eng.id} value={eng.id}>
-                                {eng.designation ? `${eng.name} (${eng.designation})` : eng.name}
-                              </option>
-                            ))}
-                          </select>
+                          />
+                        ) : (
+                          cellText(
+                            job.allocated_engineer_designation ||
+                              designationByJob[job.id] ||
+                              engineers.find((e) => e.id === job.allocated_engineer_id)?.designation,
+                          )
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center align-middle text-sm">
+                        {canEdit && onEngineerChange ? (
+                          <EngineerSelect
+                            jobLabel={job.equipment_label}
+                            engineerId={job.allocated_engineer_id}
+                            engineerName={job.allocated_engineer_name}
+                            emptyHint={
+                              designationByJob[job.id]
+                                ? 'No engineer found'
+                                : 'Select designation first'
+                            }
+                            engineers={
+                              designationByJob[job.id]
+                                ? calibrationEngineers.filter(
+                                    (eng) =>
+                                      eng.designation.toLowerCase() ===
+                                      designationByJob[job.id]!.toLowerCase(),
+                                  )
+                                : []
+                            }
+                            onChange={(id, name) => {
+                              const picked = calibrationEngineers.find((e) => e.id === id)
+                              const nextDesig =
+                                picked?.designation || designationByJob[job.id] || ''
+                              if (nextDesig) {
+                                setDesignationByJob((prev) => ({
+                                  ...prev,
+                                  [job.id]: nextDesig,
+                                }))
+                              }
+                              onEngineerChange(job.id, id, name)
+                              if (nextDesig) onDesignationChange?.(job.id, nextDesig)
+                            }}
+                          />
                         ) : (
                           cellText(job.allocated_engineer_name)
                         )}
@@ -773,46 +1220,59 @@ function SrfCertificatesListDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+        persistOnFocusLoss
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden p-0',
+          'left-0 top-0',
+          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+        )}
         layer="nested"
         aria-describedby={undefined}
       >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-12 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Certificates · Equipment
-            </p>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-white">
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
               Certificates — {group.srfNumber}
             </DialogTitle>
           </DialogHeader>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
-          <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="min-h-0 flex-1 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5 sm:py-5">
+          <div className="relative mb-3 flex flex-col gap-2 overflow-hidden rounded-none border-2 border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-2 py-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
             <div className="relative min-w-0 flex-1 sm:max-w-sm">
               <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
                 aria-hidden
               />
               <Input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search equipment, certificate no, ULR…"
-                className="h-9 pl-9"
-                aria-label="Search certificates list"
+                placeholder="Search Equipments"
+                className={cn(limsDarkBarSearchClass, 'pl-9')}
+                aria-label="Search Equipments"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">
+            <div className="relative flex flex-wrap items-center gap-2">
+              <span className="text-xs text-stone-300">
                 {selectedJobs.length} selected
               </span>
               <Button
                 type="button"
                 size="sm"
-                className="h-9 gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
+                className={cn('h-8 gap-1.5', limsPrimaryBtnClass)}
                 disabled={selectedJobs.length === 0}
                 onClick={() => onPrintSelected(selectedJobs)}
                 aria-label="Print selected certificates"
@@ -824,7 +1284,7 @@ function SrfCertificatesListDialog({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-9 gap-1.5 border-blue-600/40 text-blue-800 hover:bg-blue-50"
+                className={cn('h-8 gap-1.5', limsOutlineBtnClass)}
                 disabled={selectedJobs.length === 0}
                 onClick={() => onDownloadSelected(selectedJobs)}
                 aria-label="Download selected certificates"
@@ -835,11 +1295,20 @@ function SrfCertificatesListDialog({
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-            <Table className={DUC_GRID}>
+          <div className="overflow-hidden rounded-none border-2 border-stone-700 bg-white">
+            <Table className={cn(DUC_GRID, 'table-fixed min-w-0 w-full')}>
+              <colgroup>
+                <col className="w-[5%]" />
+                <col className="w-[22%]" />
+                <col className="w-[11%]" />
+                <col className="w-[12%]" />
+                <col className="w-[16%]" />
+                <col className="w-[18%]" />
+                <col className="w-[16%]" />
+              </colgroup>
               <TableHeader>
                 <TableRow className="bg-stone-800 hover:bg-stone-800">
-                  <TableHead className="w-10 text-center">
+                  <TableHead className="text-center">
                     <input
                       type="checkbox"
                       className={checkboxClass}
@@ -851,12 +1320,12 @@ function SrfCertificatesListDialog({
                       aria-label="Select all visible certificates"
                     />
                   </TableHead>
-                  <TableHead className="min-w-[130px] text-center text-xs">Certificate No</TableHead>
-                  <TableHead className="min-w-[150px] text-center text-xs">ULR Number</TableHead>
-                  <TableHead className="min-w-[180px] text-center text-xs">Equipment Name</TableHead>
-                  <TableHead className="min-w-[100px] text-center text-xs">Least Count</TableHead>
-                  <TableHead className="min-w-[110px] text-center text-xs">Range</TableHead>
-                  <TableHead className="min-w-[160px] text-center text-xs">Action</TableHead>
+                  <TableHead className="text-center text-xs">Equipment Name</TableHead>
+                  <TableHead className="text-center text-xs">Least Count</TableHead>
+                  <TableHead className="text-center text-xs">Range</TableHead>
+                  <TableHead className="text-center text-xs">Certificate No</TableHead>
+                  <TableHead className="text-center text-xs">ULR Number</TableHead>
+                  <TableHead className="text-center text-xs">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -884,16 +1353,10 @@ function SrfCertificatesListDialog({
                             aria-label={`Select ${job.equipment_label}`}
                           />
                         </TableCell>
-                        <TableCell className="align-middle text-left text-sm font-medium">
-                          {cellText(draft.certificateNumber)}
-                        </TableCell>
-                        <TableCell className="text-center align-middle font-mono text-xs">
-                          {cellText(draft.ulrNumber)}
-                        </TableCell>
-                        <TableCell className="text-center align-middle text-sm">
+                        <TableCell className="min-w-0 text-center align-middle text-sm">
                           <button
                             type="button"
-                            className="mx-auto max-w-full text-center text-sm font-medium text-teal-700 underline decoration-teal-600/50 underline-offset-2 transition-colors hover:text-teal-900 hover:decoration-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+                            className="mx-auto block max-w-full truncate text-center text-sm font-medium text-amber-800 underline decoration-amber-700/40 underline-offset-2 transition-colors hover:text-amber-950 hover:decoration-amber-800"
                             onClick={() => onViewDetails(job)}
                             aria-label={`View equipment details for ${job.equipment_label}`}
                             title="View Equipment Details"
@@ -901,56 +1364,52 @@ function SrfCertificatesListDialog({
                             {cellText(job.equipment_label)}
                           </button>
                         </TableCell>
-                        <TableCell className="text-center align-middle text-sm">
+                        <TableCell className="truncate text-center align-middle text-sm">
                           {cellText(fields.leastCount)}
                         </TableCell>
-                        <TableCell className="text-center align-middle text-sm">
+                        <TableCell className="truncate text-center align-middle text-sm">
                           {cellText(fields.range)}
                         </TableCell>
+                        <TableCell className="truncate align-middle text-left text-sm font-medium">
+                          {cellText(draft.certificateNumber)}
+                        </TableCell>
+                        <TableCell className="truncate text-center align-middle font-mono text-xs">
+                          {cellText(draft.ulrNumber)}
+                        </TableCell>
                         <TableCell className="text-center align-middle">
-                          <div className="flex flex-wrap items-center justify-center gap-1">
+                          <div className="flex flex-wrap items-center justify-center gap-1.5">
                             <Button
                               type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 border-slate-300 px-0 text-base leading-none"
-                              onClick={() => onViewDetails(job)}
-                              aria-label={`Equipment details for ${job.equipment_label}`}
-                              title="Details"
+                              size="icon"
+                              variant="ghost"
+                              className={referBackIconBtnClass}
+                              onClick={() => onDownloadCertificate(job)}
+                              aria-label={`Download PDF for ${job.equipment_label}`}
+                              title="Download PDF"
                             >
-                              <span aria-hidden>👁️</span>
+                              <Download size={15} aria-hidden />
                             </Button>
                             <Button
                               type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 border-teal-600/40 px-0 text-base leading-none hover:bg-teal-50"
+                              size="icon"
+                              variant="ghost"
+                              className={certPrepIconBtnClass}
                               onClick={() => onViewCertificate(job)}
                               aria-label={`View certificate for ${job.equipment_label}`}
                               title="View Cert"
                             >
-                              <span aria-hidden>📜</span>
+                              <FileCheck size={15} aria-hidden />
                             </Button>
                             <Button
                               type="button"
-                              size="sm"
-                              className="h-8 w-8 bg-blue-600 px-0 text-base leading-none text-white hover:bg-blue-700"
+                              size="icon"
+                              variant="ghost"
+                              className={forwardIconBtnClass}
                               onClick={() => onPrintCertificate(job)}
                               aria-label={`Print certificate for ${job.equipment_label}`}
                               title="Print"
                             >
-                              <span aria-hidden>🖨️</span>
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 w-8 border-blue-600/40 px-0 text-base leading-none text-blue-800 hover:bg-blue-50"
-                              onClick={() => onDownloadCertificate(job)}
-                              aria-label={`Download certificate for ${job.equipment_label}`}
-                              title="Download"
-                            >
-                              <span aria-hidden>⬇️</span>
+                              <Printer size={15} aria-hidden />
                             </Button>
                           </div>
                         </TableCell>
@@ -979,10 +1438,14 @@ export function CalibrationJobStageTable({
   engineers = [],
   onLocationChange,
   onEngineerChange,
+  onDesignationChange,
   onForward,
   onReferback,
   actionLoading = false,
   scopedToEngineer = false,
+  hideAction = false,
+  referbackOnly = false,
+  emptyMessage,
 }: {
   stage: CalibrationJobStage
   groups: CalibrationSrfGroup[]
@@ -995,10 +1458,15 @@ export function CalibrationJobStageTable({
   engineers?: CalibrationEngineerOption[]
   onLocationChange?: (id: string, location: CalibrationJobLocation) => void
   onEngineerChange?: (id: string, engineerId: string | null, engineerName: string | null) => void
+  onDesignationChange?: (id: string, designation: string) => void
   onForward: (group: CalibrationSrfGroup) => void
   onReferback: (group: CalibrationSrfGroup) => void
   actionLoading?: boolean
   scopedToEngineer?: boolean
+  hideAction?: boolean
+  /** Forwarded SRF list: only Referback (return to Job Allocation). */
+  referbackOnly?: boolean
+  emptyMessage?: string
 }) {
   const [ducGroup, setDucGroup] = useState<CalibrationSrfGroup | null>(null)
   const [certListGroup, setCertListGroup] = useState<CalibrationSrfGroup | null>(null)
@@ -1036,9 +1504,10 @@ export function CalibrationJobStageTable({
   const isCertificatePrep = stage === 'certificate_preparation'
   const isCertificates = stage === 'certificates'
   const isPerJobTable = isReviewData || isCertificatePrep
-  const canEditAllocation = stage === 'job_allocation'
+  const canEditAllocation = stage === 'job_allocation' && !hideAction && !referbackOnly
   const canReferback = true
-  const canForward = stage !== 'certificates'
+  const canForward = !referbackOnly && !hideAction && stage !== 'certificates'
+  const showActionColumn = !hideAction
 
   const liveDucGroup = useMemo(() => {
     if (!ducGroup) return null
@@ -1073,13 +1542,14 @@ export function CalibrationJobStageTable({
   }
 
   const emptyHint =
-    stage === 'job_allocation'
+    emptyMessage ??
+    (stage === 'job_allocation'
       ? 'No SRFs awaiting allocation. Accept a Service Request to create jobs here.'
       : stage === 'calibration_conduct'
         ? scopedToEngineer
           ? 'No jobs allocated to you in Calibration Conduct yet. After Job Allocation assigns you and clicks Forward, your DUCs appear here.'
           : 'No jobs in Calibration Conduct yet. From Job Allocation, assign Engineer on each DUC, then click Forward.'
-        : `No SRFs in ${title} yet.`
+        : `No SRFs in ${title} yet.`)
 
   if (loading) {
     return (
@@ -1108,9 +1578,9 @@ export function CalibrationJobStageTable({
   }
 
   const reviewGrid =
-    'min-w-[920px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+    'table-fixed min-w-0 w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
   const certPrepGrid =
-    'min-w-[1080px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+    'table-fixed min-w-0 w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
   const selectAllHeader = (
     <TableHead className="w-12 text-center text-xs sm:w-14">
@@ -1130,21 +1600,31 @@ export function CalibrationJobStageTable({
   return (
     <>
       <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
-        <div className="overflow-x-auto">
+        <div className="w-full min-w-0 overflow-hidden">
           {isReviewData ? (
             <Table className={reviewGrid}>
+              <colgroup>
+                <col className="w-[5%]" />
+                <col className={showActionColumn ? 'w-[16%]' : 'w-[18%]'} />
+                <col className={showActionColumn ? 'w-[27%]' : 'w-[34%]'} />
+                <col className={showActionColumn ? 'w-[18%]' : 'w-[22%]'} />
+                <col className={showActionColumn ? 'w-[18%]' : 'w-[21%]'} />
+                {showActionColumn ? <col className="w-[16%]" /> : null}
+              </colgroup>
               <TableHeader>
                 <TableRow className="bg-stone-800 hover:bg-stone-800">
                   {selectAllHeader}
-                  <TableHead className="min-w-[120px] text-center text-xs">SRF Number</TableHead>
-                  <TableHead className="min-w-[160px] text-left text-xs">Equipment (DUC)</TableHead>
-                  <TableHead className="min-w-[150px] text-center text-xs">
+                  <TableHead className="text-center text-xs">SRF Number</TableHead>
+                  <TableHead className="text-left text-xs">Equipment (DUC)</TableHead>
+                  <TableHead className="text-center text-xs">
                     Calibration Raw Data
                   </TableHead>
-                  <TableHead className="min-w-[150px] text-center text-xs">
+                  <TableHead className="text-center text-xs">
                     Uncertainty Calculation
                   </TableHead>
-                  <TableHead className="min-w-[140px] text-center text-xs">Action</TableHead>
+                  {showActionColumn ? (
+                    <TableHead className="text-center text-xs">Action</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1158,7 +1638,9 @@ export function CalibrationJobStageTable({
                     <TableRow
                       key={job.id}
                       data-state={selected ? 'selected' : undefined}
-                      className={alreadyForwarded ? 'bg-muted/30' : undefined}
+                      className={
+                        showActionColumn && alreadyForwarded ? 'bg-muted/30' : undefined
+                      }
                     >
                       <TableCell className="text-center align-middle">
                         <input
@@ -1169,23 +1651,18 @@ export function CalibrationJobStageTable({
                           onChange={() => onToggleSrf(srfKey)}
                         />
                       </TableCell>
-                      <TableCell className="text-center align-middle text-sm font-medium">
+                      <TableCell className="truncate text-center align-middle text-sm font-medium">
                         {cellText(job.srf_number)}
                       </TableCell>
-                      <TableCell className="align-middle text-sm font-medium">
+                      <TableCell className="min-w-0 align-middle text-sm font-medium">
                         <button
                           type="button"
-                          className="max-w-full text-left text-sm font-medium text-teal-700 underline decoration-teal-600/50 underline-offset-2 transition-colors hover:text-teal-900 hover:decoration-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-1"
+                          className="block max-w-full truncate text-left text-sm font-medium text-teal-700 underline decoration-teal-600/50 underline-offset-2 transition-colors hover:text-teal-900 hover:decoration-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-1"
                           onClick={() => setReviewDetailsJob(job)}
                           aria-label={`View equipment details for ${job.equipment_label}`}
                           title="View Equipment (DUC) details"
                         >
                           {cellText(job.equipment_label)}
-                          {alreadyForwarded ? (
-                            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground no-underline">
-                              (Forwarded)
-                            </span>
-                          ) : null}
                         </button>
                       </TableCell>
                       <TableCell className="text-center align-middle">
@@ -1216,6 +1693,7 @@ export function CalibrationJobStageTable({
                           View Uncertainty
                         </Button>
                       </TableCell>
+                      {showActionColumn ? (
                       <TableCell className="text-center align-middle">
                         <div className="flex flex-wrap items-center justify-center gap-1.5">
                           <Button
@@ -1224,7 +1702,7 @@ export function CalibrationJobStageTable({
                             variant="ghost"
                             className={
                               alreadyForwarded
-                                ? 'h-9 w-9 rounded-md bg-muted text-muted-foreground shadow-none'
+                                ? `${actionIconOnlyBase} border-stone-300 bg-stone-100 text-stone-400`
                                 : forwardIconBtnClass
                             }
                             disabled={!jobCanForward || actionLoading || !group}
@@ -1243,7 +1721,7 @@ export function CalibrationJobStageTable({
                                 : 'Forward to Certificate Preparation'
                             }
                           >
-                            <ArrowRight size={16} aria-hidden />
+                            <Send size={15} aria-hidden />
                           </Button>
                           <Button
                             type="button"
@@ -1262,10 +1740,11 @@ export function CalibrationJobStageTable({
                                 : 'Referback to Calibration Conduct'
                             }
                           >
-                            <Reply size={16} aria-hidden />
+                            <Undo2 size={15} aria-hidden />
                           </Button>
                         </div>
                       </TableCell>
+                      ) : null}
                     </TableRow>
                   )
                 })}
@@ -1273,15 +1752,22 @@ export function CalibrationJobStageTable({
             </Table>
           ) : isCertificatePrep ? (
             <Table className={certPrepGrid}>
+              <colgroup>
+                <col className="w-[5%]" />
+                <col className="w-[16%]" />
+                <col className="w-[26%]" />
+                <col className="w-[25%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+              </colgroup>
               <TableHeader>
                 <TableRow className="bg-stone-800 hover:bg-stone-800">
                   {selectAllHeader}
-                  <TableHead className="min-w-[120px] text-center text-xs">SRF Number</TableHead>
-                  <TableHead className="min-w-[160px] text-left text-xs">Equipment Details</TableHead>
-                  <TableHead className="min-w-[180px] text-left text-xs">Client Name</TableHead>
-                  <TableHead className="min-w-[140px] text-center text-xs">Raw Data Results</TableHead>
-                  <TableHead className="min-w-[130px] text-center text-xs">Uncertainty</TableHead>
-                  <TableHead className="min-w-[140px] text-center text-xs">Action</TableHead>
+                  <TableHead className="text-center text-xs">SRF Number</TableHead>
+                  <TableHead className="text-left text-xs">Equipment Details</TableHead>
+                  <TableHead className="text-left text-xs">Client Name</TableHead>
+                  <TableHead className="text-center text-xs">Raw Data Results</TableHead>
+                  <TableHead className="text-center text-xs">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1303,13 +1789,13 @@ export function CalibrationJobStageTable({
                           onChange={() => onToggleSrf(srfKey)}
                         />
                       </TableCell>
-                      <TableCell className="text-center align-middle text-sm font-medium">
+                      <TableCell className="truncate text-center align-middle text-sm font-medium">
                         {cellText(job.srf_number)}
                       </TableCell>
-                      <TableCell className="align-middle text-sm font-medium">
+                      <TableCell className="min-w-0 align-middle text-sm font-medium">
                         <button
                           type="button"
-                          className="max-w-full text-left text-sm font-medium text-teal-700 underline decoration-teal-600/50 underline-offset-2 transition-colors hover:text-teal-900 hover:decoration-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-1"
+                          className="block max-w-full truncate text-left text-sm font-medium text-teal-700 underline decoration-teal-600/50 underline-offset-2 transition-colors hover:text-teal-900 hover:decoration-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-1"
                           onClick={() => setReviewDetailsJob(job)}
                           aria-label={`View equipment details for ${job.equipment_label}`}
                           title="View Equipment Details"
@@ -1317,7 +1803,7 @@ export function CalibrationJobStageTable({
                           {cellText(job.equipment_label)}
                         </button>
                       </TableCell>
-                      <TableCell className="align-middle text-sm">
+                      <TableCell className="truncate align-middle text-sm">
                         {cellText(job.client_name)}
                       </TableCell>
                       <TableCell className="text-center align-middle">
@@ -1335,32 +1821,18 @@ export function CalibrationJobStageTable({
                         </Button>
                       </TableCell>
                       <TableCell className="text-center align-middle">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1 border-indigo-600/40 px-2 text-xs text-indigo-800 hover:bg-indigo-50"
-                          onClick={() => openReviewUncertainty(job)}
-                          aria-label={`View uncertainty for ${job.equipment_label}`}
-                          title="View Uncertainty Step-by-Step (read-only)"
-                        >
-                          <Sigma size={14} aria-hidden />
-                          View Uncertainty
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-center align-middle">
                         <div className="flex flex-wrap items-center justify-center gap-1.5">
                           <Button
                             type="button"
                             size="icon"
                             variant="ghost"
-                            className={forwardIconBtnClass}
+                            className={certPrepIconBtnClass}
                             disabled={actionLoading}
                             onClick={() => setCertificateDraftJob(job)}
                             aria-label="Certificate preparation"
                             title="Certificate preparation — open draft"
                           >
-                            <FileCheck size={16} aria-hidden />
+                            <FileCheck size={15} aria-hidden />
                           </Button>
                           <Button
                             type="button"
@@ -1375,7 +1847,7 @@ export function CalibrationJobStageTable({
                             aria-label={`Refer back ${job.equipment_label}`}
                             title="Refer back"
                           >
-                            <Reply size={16} aria-hidden />
+                            <Undo2 size={15} aria-hidden />
                           </Button>
                         </div>
                       </TableCell>
@@ -1386,15 +1858,52 @@ export function CalibrationJobStageTable({
             </Table>
           ) : (
             <Table className={GRID_TABLE}>
+              <colgroup>
+                <col className="w-[4%]" />
+                <col className={showActionColumn ? 'w-[26%]' : 'w-[30%]'} />
+                <col className="w-[16%]" />
+                <col className="w-[13%]" />
+                <col className="w-[18%]" />
+                <col className={showActionColumn ? 'w-[14%]' : 'w-[19%]'} />
+                {showActionColumn ? <col className="w-[12%]" /> : null}
+              </colgroup>
               <TableHeader>
                 <TableRow className="bg-stone-800 hover:bg-stone-800">
                   {selectAllHeader}
-                  <TableHead className="min-w-[120px] text-center text-xs">SRF Number</TableHead>
-                  <TableHead className="min-w-[200px] text-left text-xs">Client</TableHead>
-                  <TableHead className="min-w-[140px] text-center text-xs">
-                    {stage === 'certificates' ? 'View Certificates' : 'Equipment (DUC)'}
+                  <TableHead className="text-left text-xs leading-tight">Client</TableHead>
+                  <TableHead className="text-center text-xs leading-tight">
+                    SRF
+                    <br />
+                    Number
                   </TableHead>
-                  <TableHead className="min-w-[200px] text-center text-xs">Action</TableHead>
+                  <TableHead className="text-center text-xs leading-tight">
+                    Date of
+                    <br />
+                    SRF
+                  </TableHead>
+                  <TableHead className="text-center text-xs leading-tight">
+                    Expected
+                    <br />
+                    Completion
+                  </TableHead>
+                  <TableHead className="text-center text-xs leading-tight">
+                    {stage === 'certificates' ? (
+                      <>
+                        View
+                        <br />
+                        Certificates
+                      </>
+                    ) : (
+                      <>
+                        Equipment
+                        <br />
+                        (DUC)
+                      </>
+                    )}
+                  </TableHead>
+                  {showActionColumn ? (
+                    <TableHead className="text-center text-xs leading-tight">Action</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1414,11 +1923,20 @@ export function CalibrationJobStageTable({
                           onChange={() => onToggleSrf(group.serviceRequestId)}
                         />
                       </TableCell>
+                      <TableCell
+                        className="max-w-0 truncate align-middle text-sm"
+                        title={cellText(group.clientName)}
+                      >
+                        {cellText(group.clientName)}
+                      </TableCell>
                       <TableCell className="text-center align-middle text-sm font-medium">
                         {cellText(group.srfNumber)}
                       </TableCell>
-                      <TableCell className="align-middle text-sm">
-                        {cellText(group.clientName)}
+                      <TableCell className="text-center align-middle text-sm">
+                        {formatDate(group.srfDate)}
+                      </TableCell>
+                      <TableCell className="text-center align-middle text-sm">
+                        {formatDate(group.expectedCompletionDate)}
                       </TableCell>
                       <TableCell className="text-center align-middle">
                         <Button
@@ -1439,42 +1957,46 @@ export function CalibrationJobStageTable({
                           View ({group.jobs.length})
                         </Button>
                       </TableCell>
-                      <TableCell className="text-center align-middle">
-                        <div className="flex flex-wrap items-center justify-center gap-1.5">
-                          {canForward ? (
+                      {showActionColumn ? (
+                        <TableCell className="text-center align-middle">
+                          <div className="flex flex-nowrap items-center justify-center gap-1.5">
+                            {canForward ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className={forwardIconBtnClass}
+                                disabled={actionLoading}
+                                onClick={() => onForward(group)}
+                                aria-label={`Forward ${group.srfNumber}`}
+                                title="Forward"
+                              >
+                                <Send size={15} aria-hidden />
+                              </Button>
+                            ) : null}
                             <Button
                               type="button"
                               size="icon"
                               variant="ghost"
-                              className={forwardIconBtnClass}
-                              disabled={actionLoading}
-                              onClick={() => onForward(group)}
-                              aria-label={`Forward ${group.srfNumber}`}
-                              title="Forward"
+                              className={referBackIconBtnClass}
+                              disabled={!canReferback || actionLoading}
+                              onClick={() => onReferback(group)}
+                              aria-label={`Referback ${group.srfNumber}`}
+                              title={
+                                referbackOnly
+                                  ? 'Referback to Job Allocation'
+                                  : stage === 'job_allocation'
+                                    ? 'Referback to Service Request'
+                                    : stage === 'certificates'
+                                      ? 'Referback to Certificate Preparation'
+                                      : 'Referback'
+                              }
                             >
-                              <ArrowRight size={16} aria-hidden />
+                              <Undo2 size={15} aria-hidden />
                             </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className={referBackIconBtnClass}
-                            disabled={!canReferback || actionLoading}
-                            onClick={() => onReferback(group)}
-                            aria-label={`Referback ${group.srfNumber}`}
-                            title={
-                              stage === 'job_allocation'
-                                ? 'Referback to Service Request'
-                                : stage === 'certificates'
-                                  ? 'Referback to Certificate Preparation'
-                                  : 'Referback'
-                            }
-                          >
-                            <Reply size={16} aria-hidden />
-                          </Button>
-                        </div>
-                      </TableCell>
+                          </div>
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   )
                 })}
@@ -1494,7 +2016,20 @@ export function CalibrationJobStageTable({
         engineers={engineers}
         onLocationChange={onLocationChange}
         onEngineerChange={onEngineerChange}
+        onDesignationChange={onDesignationChange}
+        onViewDetails={(job) => setReviewDetailsJob(job)}
       />
+
+      {!isCertificates && !isPerJobTable ? (
+        <DucEquipmentDetailsDialog
+          job={reviewDetailsJob}
+          open={Boolean(reviewDetailsJob)}
+          onOpenChange={(open) => {
+            if (!open) setReviewDetailsJob(null)
+          }}
+          contextLabel="Job Allocation"
+        />
+      ) : null}
 
       {isCertificates ? (
         <>

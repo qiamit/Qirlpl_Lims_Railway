@@ -221,31 +221,7 @@ export function nextAuditPlanId(firmInitials: string, existingIds: string[]): st
   return `${initials}/AP-${String(max + 1).padStart(2, '0')}`
 }
 
-const MONTH_ABBR = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-] as const
-
-/** Display dates as DD-MMM-YY (e.g. 10-Aug-26). Parses YYYY-MM-DD without timezone shift. */
-export function formatDate(value: string | null | undefined): string {
-  if (!value) return '—'
-  const d = value.slice(0, 10)
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
-  if (!m) return d || '—'
-  const monthIdx = Number(m[2]) - 1
-  if (monthIdx < 0 || monthIdx > 11) return d
-  return `${m[3]}-${MONTH_ABBR[monthIdx]}-${m[1].slice(2)}`
-}
+export { formatDate } from '@/lib/utils'
 
 export function formatProposedRange(from: string | null | undefined, to: string | null | undefined): string {
   const a = formatDate(from)

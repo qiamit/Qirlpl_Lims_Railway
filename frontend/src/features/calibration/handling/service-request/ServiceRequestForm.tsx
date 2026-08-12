@@ -11,7 +11,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import { clientRegistryFormClass } from '@/features/masters/clients/clientsFormUi'
+import { limsPanelClass, limsPrimaryBtnClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import {
   FilterCombobox,
   type FilterComboboxOption,
@@ -37,14 +39,20 @@ import {
 
 const FORM_TABS = [
   'request',
-  'capabilities',
-  'resources',
-  'iso-checks',
+  'evaluation',
   'customer-communication',
   'review',
 ] as const
 
 type FormTab = (typeof FORM_TABS)[number]
+
+const formTabTriggerClass = cn(
+  'group min-w-0 flex-1 whitespace-nowrap rounded-none border border-transparent px-2 py-2 text-[11px] font-semibold uppercase tracking-wide shadow-none sm:px-3 sm:text-xs',
+  'text-stone-600 hover:bg-stone-200/70 hover:text-stone-900',
+  'focus-visible:ring-2 focus-visible:ring-amber-500/25 focus-visible:ring-offset-0',
+  'data-[state=active]:border-amber-500/50 data-[state=active]:bg-stone-800 data-[state=active]:text-amber-100',
+  'data-[state=active]:shadow-none',
+)
 
 function nextFormTab(current: string): FormTab | null {
   const idx = FORM_TABS.indexOf(current as FormTab)
@@ -72,7 +80,11 @@ function YesNoSelect({
       }
       disabled={disabled}
     >
-      <SelectTrigger id={id} className="mx-auto h-9 w-[96px]" aria-label="Yes, No, or N/A">
+      <SelectTrigger
+        id={id}
+        className="mx-auto h-9 w-[96px] rounded-none border-stone-500 bg-stone-50"
+        aria-label="Yes, No, or N/A"
+      >
         <SelectValue placeholder="N/A" />
       </SelectTrigger>
       <SelectContent>
@@ -106,16 +118,22 @@ function EvaluationTable({
   }>
 }) {
   return (
-    <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-      <p className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-semibold text-slate-700">
+    <div className={cn(limsPanelClass, 'overflow-hidden')}>
+      <p className="border-b border-stone-700 bg-stone-800 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-200">
         {title}
       </p>
       <table className="w-full border-collapse text-sm">
-        <thead className="bg-slate-50/80 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+        <thead>
           <tr>
-            <th className="border border-slate-200 px-2 py-1.5 text-left">Description</th>
-            <th className="w-28 border border-slate-200 px-2 py-1.5 text-center">Yes / No / N/A</th>
-            <th className="min-w-[120px] border border-slate-200 px-2 py-1.5 text-left">Remark</th>
+            <th className="border border-stone-700 bg-stone-800 px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-amber-200">
+              Description
+            </th>
+            <th className="w-28 border border-stone-700 bg-stone-800 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-[0.08em] text-amber-200">
+              Yes / No / N/A
+            </th>
+            <th className="min-w-[120px] border border-stone-700 bg-stone-800 px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-amber-200">
+              Remark
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -126,10 +144,10 @@ function EvaluationTable({
             }
             return (
               <tr key={row.key}>
-                <td className="border border-slate-200 px-2 py-1.5 text-[12px] text-slate-700">
+                <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1.5 text-[12px] text-stone-800">
                   {row.label}
                 </td>
-                <td className="border border-slate-200 px-2 py-1.5 text-center">
+                <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1.5 text-center">
                   <YesNoSelect
                     id={`eval-${row.key}`}
                     value={item.ok}
@@ -142,7 +160,7 @@ function EvaluationTable({
                     }}
                   />
                 </td>
-                <td className="border border-slate-200 px-2 py-1.5">
+                <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1.5">
                   <Input
                     className="h-9"
                     value={item.remark}
@@ -156,10 +174,10 @@ function EvaluationTable({
           })}
           {(extraRows ?? []).map((row) => (
             <tr key={row.key}>
-              <td className="border border-slate-200 px-2 py-1.5 text-[12px] text-slate-700">
+              <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1.5 text-[12px] text-stone-800">
                 {row.label}
               </td>
-              <td className="border border-slate-200 px-2 py-1.5 text-center">
+              <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1.5 text-center">
                 <YesNoSelect
                   id={`eval-${row.key}`}
                   value={row.item.ok}
@@ -172,7 +190,7 @@ function EvaluationTable({
                   }}
                 />
               </td>
-              <td className="border border-slate-200 px-2 py-1.5">
+              <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-1.5">
                 <Input
                   className="h-9"
                   value={row.item.remark}
@@ -293,28 +311,22 @@ export function ServiceRequestFormView({
   const isLastTab = activeTab === 'review'
 
   return (
-    <div className={labRegistryFormClass}>
+    <div className={clientRegistryFormClass}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-4 grid h-auto w-full grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1 sm:grid-cols-3 lg:grid-cols-6">
-          <TabsTrigger value="request" className="px-1 text-[11px] sm:text-xs">
+        <TabsList className="mb-4 flex h-auto w-full items-stretch gap-1 overflow-hidden rounded-none border-2 border-stone-500 bg-stone-100 p-1">
+          <TabsTrigger value="request" className={formTabTriggerClass}>
             Request Details
           </TabsTrigger>
-          <TabsTrigger value="capabilities" className="px-1 text-[11px] sm:text-xs">
-            Capabilities
+          <TabsTrigger value="evaluation" className={formTabTriggerClass}>
+            Evaluation
           </TabsTrigger>
-          <TabsTrigger value="resources" className="px-1 text-[11px] sm:text-xs">
-            Resources
-          </TabsTrigger>
-          <TabsTrigger value="iso-checks" className="px-1 text-[11px] sm:text-xs">
-            ISO 17025 Checks
-          </TabsTrigger>
-          <TabsTrigger value="customer-communication" className="px-1 text-[11px] sm:text-xs">
+          <TabsTrigger value="customer-communication" className={formTabTriggerClass}>
             Customer Communication
           </TabsTrigger>
-          <TabsTrigger value="review" className="px-1 text-[11px] sm:text-xs">
+          <TabsTrigger value="review" className={formTabTriggerClass}>
             Review of Request
             {reviewDoneCount > 0 ? (
-              <span className="ml-1 rounded-full bg-teal-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">
+              <span className="ml-1 rounded-none bg-amber-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 group-data-[state=active]:bg-amber-500/25 group-data-[state=active]:text-amber-200">
                 {reviewDoneCount}
               </span>
             ) : null}
@@ -322,19 +334,19 @@ export function ServiceRequestFormView({
         </TabsList>
 
         <TabsContent value="request" className="mt-0 space-y-6 focus-visible:outline-none">
-          <div className="grid grid-cols-12 gap-4 md:gap-6">
-            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-4">
+          <div className="grid grid-cols-12 gap-x-4 gap-y-2 md:gap-x-5">
+            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
               <Label htmlFor="srf-number">SRF Number *</Label>
               <Input
                 id="srf-number"
                 value={form.srfNumber}
                 onChange={(e) => set('srfNumber', e.target.value.toUpperCase())}
                 readOnly={srfLocked}
-                className={srfLocked ? 'bg-slate-50 text-slate-700' : undefined}
+                className={srfLocked ? 'bg-stone-100 text-stone-700' : undefined}
                 placeholder="SRF-2026-0001"
               />
             </div>
-            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-4">
+            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
               <Label htmlFor="srf-date">SRF Date *</Label>
               <Input
                 id="srf-date"
@@ -361,7 +373,25 @@ export function ServiceRequestFormView({
                 }}
               />
             </div>
-            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-4">
+            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
+              <Label htmlFor="srf-customer-ref">Customer Reference No</Label>
+              <Input
+                id="srf-customer-ref"
+                value={form.customerReferenceNo}
+                onChange={(e) => set('customerReferenceNo', e.target.value)}
+                placeholder="PO / Enquiry / Ref. No."
+              />
+            </div>
+            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
+              <Label htmlFor="srf-customer-ref-date">Customer Reference Date</Label>
+              <Input
+                id="srf-customer-ref-date"
+                type="date"
+                value={form.customerReferenceDate}
+                onChange={(e) => set('customerReferenceDate', e.target.value)}
+              />
+            </div>
+            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-6">
               <Label>Client *</Label>
               <FilterCombobox
                 value={clientOpen ? clientQuery : selectedClientLabel}
@@ -387,11 +417,29 @@ export function ServiceRequestFormView({
                   setClientOpen(open)
                   if (open) setClientQuery(selectedClientLabel)
                 }}
-                placeholder="Search & select client"
+                placeholder="Search & Select Client"
                 listId="srf-client-list"
               />
             </div>
-            <div className="col-span-12 sm:col-span-6 md:col-span-6">
+            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
+              <Label htmlFor="srf-customer-due">Customer Required Date</Label>
+              <Input
+                id="srf-customer-due"
+                type="date"
+                value={form.customerRequiredDate}
+                onChange={(e) => set('customerRequiredDate', e.target.value)}
+              />
+            </div>
+            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
+              <Label htmlFor="srf-due">Expected Date of Completion</Label>
+              <Input
+                id="srf-due"
+                type="date"
+                value={form.requiredCompletionDate}
+                onChange={(e) => set('requiredCompletionDate', e.target.value)}
+              />
+            </div>
+            <div className="col-span-12">
               <CalibrationEquipmentSelectButton
                 value={form.equipmentDescription}
                 onApply={({ description, quantity, methodNotes }) =>
@@ -404,75 +452,17 @@ export function ServiceRequestFormView({
                 }
               />
             </div>
-            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
-              <Label htmlFor="srf-customer-ref">Customer Reference No</Label>
-              <Input
-                id="srf-customer-ref"
-                value={form.customerReferenceNo}
-                onChange={(e) => set('customerReferenceNo', e.target.value)}
-                placeholder="PO / Enquiry / Ref. No."
-              />
-            </div>
-            <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-3">
-              <Label htmlFor="srf-customer-ref-date">Customer Reference Date</Label>
-              <Input
-                id="srf-customer-ref-date"
-                type="date"
-                value={form.customerReferenceDate}
-                onChange={(e) => set('customerReferenceDate', e.target.value)}
-              />
-            </div>
           </div>
+        </TabsContent>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="srf-customer-due">Customer Required Date</Label>
-              <Input
-                id="srf-customer-due"
-                type="date"
-                value={form.customerRequiredDate}
-                onChange={(e) => set('customerRequiredDate', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="srf-due">Expected Date of Completion</Label>
-              <Input
-                id="srf-due"
-                type="date"
-                value={form.requiredCompletionDate}
-                onChange={(e) => set('requiredCompletionDate', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2 lg:col-span-2">
-              <Label htmlFor="srf-customer-doc">Customer Document</Label>
-              <Input
-                id="srf-customer-doc"
-                type="file"
-                className="max-w-full w-full cursor-pointer file:mr-2 file:cursor-pointer"
-                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null
-                  onCustomerDocumentSelect?.(f)
-                }}
-              />
-              {(customerDocumentFileName || form.customerDocumentName) && (
-                <p
-                  className="truncate text-xs text-muted-foreground"
-                  title={customerDocumentFileName || form.customerDocumentName}
-                >
-                  {customerDocumentFileName || form.customerDocumentName}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-md border border-slate-200 bg-white/70 p-3 sm:p-4">
+        <TabsContent value="evaluation" className="mt-0 space-y-5 focus-visible:outline-none">
+          <div className={cn(limsPanelClass, 'space-y-3 p-3 sm:p-4')}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[12px] font-semibold text-slate-700">
+                <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-stone-700">
                   Statement of Conformity Required
                 </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                <p className="mt-0.5 text-[11px] text-stone-500">
                   If Yes, decision rule will apply (Error + MU ≤ Tolerance / Accuracy, or customer
                   rule).
                 </p>
@@ -481,7 +471,10 @@ export function ServiceRequestFormView({
                 value={form.statementOfConformityRequested ? 'yes' : 'no'}
                 onValueChange={(v) => set('statementOfConformityRequested', v === 'yes')}
               >
-                <SelectTrigger className="h-10 w-28" aria-label="Statement of conformity">
+                <SelectTrigger
+                  className="h-10 w-28 rounded-none border-stone-500 bg-stone-50"
+                  aria-label="Statement of conformity"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -492,7 +485,7 @@ export function ServiceRequestFormView({
             </div>
 
             {form.statementOfConformityRequested ? (
-              <div className="grid grid-cols-12 gap-4 border-t border-slate-200 pt-3 md:gap-6">
+              <div className="grid grid-cols-12 gap-4 border-t border-stone-300 pt-3 md:gap-6">
                 <div className="col-span-12 space-y-2 md:col-span-6">
                   <Label htmlFor="srf-spec">Specification / Standard</Label>
                   <Input
@@ -514,12 +507,6 @@ export function ServiceRequestFormView({
               </div>
             ) : null}
           </div>
-        </TabsContent>
-
-        <TabsContent value="capabilities" className="mt-0 space-y-4 focus-visible:outline-none">
-          <p className="text-[12px] font-semibold text-slate-700">
-            Evaluation of Capability for Meeting the requirement of customer
-          </p>
           <EvaluationTable
             title="Capability"
             rows={CAPABILITY_EVALUATION_ROWS}
@@ -528,21 +515,12 @@ export function ServiceRequestFormView({
               patchCapability(key as CapabilityEvaluationKey, patch)
             }
           />
-        </TabsContent>
-
-        <TabsContent value="resources" className="mt-0 space-y-4 focus-visible:outline-none">
-          <p className="text-[12px] font-semibold text-slate-700">
-            Evaluation of Resources for Meeting the requirement of customer
-          </p>
           <EvaluationTable
             title="Resources"
             rows={RESOURCE_EVALUATION_ROWS}
             values={form.resourceEvaluation}
             onChangeItem={(key, patch) => patchResource(key as ResourceEvaluationKey, patch)}
           />
-        </TabsContent>
-
-        <TabsContent value="iso-checks" className="mt-0 space-y-4 focus-visible:outline-none">
           <EvaluationTable
             title="ISO 17025 Checks"
             extraRows={[
@@ -704,17 +682,38 @@ export function ServiceRequestFormView({
 
         <TabsContent value="review" className="mt-0 space-y-5 focus-visible:outline-none">
           <div className="space-y-3">
-            <p className="border-b border-slate-200 pb-2 text-[12px] font-semibold text-slate-700">
-              Other Details
-            </p>
-            <div className="grid grid-cols-12 gap-4 md:gap-6">
-              <div className="col-span-12 space-y-2 sm:col-span-6 md:col-span-4">
+            <div className="grid grid-cols-12 items-start gap-x-4 gap-y-2">
+              <div className="col-span-12 space-y-2 md:col-span-3">
+                <Label htmlFor="srf-customer-doc">Customer Document</Label>
+                <Input
+                  id="srf-customer-doc"
+                  type="file"
+                  className="h-10 max-w-full w-full cursor-pointer rounded-none border-stone-500 bg-stone-50 file:mr-3 file:h-full file:cursor-pointer file:rounded-none file:border-0 file:bg-stone-800 file:px-3 file:text-[11px] file:font-semibold file:uppercase file:tracking-wide file:text-amber-100"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null
+                    onCustomerDocumentSelect?.(f)
+                  }}
+                />
+                {(customerDocumentFileName || form.customerDocumentName) && (
+                  <p
+                    className="truncate text-xs text-stone-500"
+                    title={customerDocumentFileName || form.customerDocumentName}
+                  >
+                    {customerDocumentFileName || form.customerDocumentName}
+                  </p>
+                )}
+              </div>
+              <div className="col-span-12 space-y-2 md:col-span-2">
                 <Label htmlFor="srf-status">Status</Label>
                 <Select
                   value={form.status}
                   onValueChange={(v) => set('status', v as ServiceRequestStatus)}
                 >
-                  <SelectTrigger id="srf-status">
+                  <SelectTrigger
+                    id="srf-status"
+                    className="h-10 rounded-none border-stone-500 bg-stone-50"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -726,33 +725,34 @@ export function ServiceRequestFormView({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-12 space-y-2">
-                <Label htmlFor="srf-special">Any Special Instruction by Customer</Label>
+              <div className="col-span-12 space-y-2 md:col-span-3">
+                <Label htmlFor="srf-special">Instruction By Customer</Label>
                 <Textarea
                   id="srf-special"
-                  rows={2}
+                  rows={1}
                   value={form.specialInstruction}
                   onChange={(e) => set('specialInstruction', e.target.value)}
-                  className="min-h-16"
+                  className="!min-h-10 h-10 resize-none py-2"
                 />
               </div>
-              <div className="col-span-12 space-y-2">
+              <div className="col-span-12 space-y-2 md:col-span-4">
                 <Label htmlFor="srf-remarks">Review Remarks</Label>
                 <Textarea
                   id="srf-remarks"
-                  rows={2}
+                  rows={1}
                   value={form.reviewRemarks}
                   onChange={(e) => set('reviewRemarks', e.target.value)}
-                  placeholder="Discussions with customer, significant changes, review notes"
-                  className="min-h-16"
+                  className="!min-h-10 h-10 resize-none py-2"
                 />
               </div>
             </div>
           </div>
 
-          <div className="space-y-3 rounded-md border border-slate-200 bg-white/70 p-3 sm:p-4">
-            <p className="text-[12px] font-semibold text-slate-700">Terms &amp; Conditions</p>
-            <ol className="list-decimal space-y-1.5 pl-4 text-[11px] leading-relaxed text-slate-600">
+          <div className={cn(limsPanelClass, 'space-y-3 p-3 sm:p-4')}>
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-stone-700">
+              Terms &amp; Conditions
+            </p>
+            <ol className="list-decimal space-y-1.5 pl-4 text-[11px] leading-relaxed text-stone-600">
               {QI_TERMS_AND_CONDITIONS.map((t) => (
                 <li key={t}>{t}</li>
               ))}
@@ -760,11 +760,11 @@ export function ServiceRequestFormView({
             <label className="flex cursor-pointer items-start gap-2 pt-1">
               <input
                 type="checkbox"
-                className="mt-0.5 h-4 w-4 accent-teal-600"
+                className="mt-0.5 h-4 w-4 accent-amber-700"
                 checked={form.termsAccepted}
                 onChange={(e) => set('termsAccepted', e.target.checked)}
               />
-              <span className="text-[12px] text-slate-700">
+              <span className="text-[12px] text-stone-700">
                 I acknowledge the Terms &amp; Conditions above
               </span>
             </label>
@@ -772,11 +772,11 @@ export function ServiceRequestFormView({
         </TabsContent>
       </Tabs>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+      <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-300 pt-4">
         {!isLastTab ? (
           <Button
             type="button"
-            className="bg-teal-600 text-white hover:bg-teal-500"
+            className={limsPrimaryBtnClass}
             onClick={() => {
               if (nextTab) setActiveTab(nextTab)
             }}
@@ -786,7 +786,7 @@ export function ServiceRequestFormView({
         ) : (
           <Button
             type="button"
-            className="bg-teal-600 text-white hover:bg-teal-500"
+            className={limsPrimaryBtnClass}
             onClick={onSave}
             disabled={!canSave || saveLoading}
           >

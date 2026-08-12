@@ -346,12 +346,6 @@ const NAV_SECTIONS: NavSection[] = [
             icon: FileText,
             clause: '7.7',
           },
-          {
-            label: 'Calibration Certificates',
-            to: '/calibration/handling/certificates',
-            icon: FileText,
-            clause: '7.7',
-          },
         ],
       },
       {
@@ -363,6 +357,12 @@ const NAV_SECTIONS: NavSection[] = [
       {
         label: 'Master Equipments',
         to: '/calibration/equipment-for-calibration',
+        icon: Gauge,
+        clause: '6.4',
+      },
+      {
+        label: 'Masters for IQC',
+        to: '/calibration/masters-for-iqc',
         icon: Gauge,
         clause: '6.4',
       },
@@ -468,6 +468,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/calibration/handling/certificates': 'Calibration Handling / Calibration Certificates',
   '/calibration/equipments': 'Calibration LIMS / Calibration Equipments',
   '/calibration/equipment-for-calibration': 'Calibration LIMS / Master Equipments',
+  '/calibration/masters-for-iqc': 'Calibration LIMS / Masters for IQC',
   '/finance/sale': 'Finance Management / Sale',
   '/finance/sale/quotation': 'Finance Management / Sale / Quotation',
   '/finance/sale/proforma-invoice': 'Finance Management / Sale / Proforma Invoice',

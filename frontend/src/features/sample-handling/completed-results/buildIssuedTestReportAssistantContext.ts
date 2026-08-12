@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { appendReportScopeSuffix } from '@/features/sample-handling/report-preparation/reportScope'
 import {
@@ -11,8 +12,7 @@ import type { IssuedTestReportListRow } from './types'
 export { parseSrfFromMessage }
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
-const fmtDate = (v: string | null | undefined) =>
-  v ? new Date(v).toISOString().slice(0, 10) : '—'
+const fmtDate = (v: string | null | undefined) => formatDate(v)
 
 export const ISSUED_TEST_REPORT_INSTRUCTIONS = `You are the **Issued Test Report Assistant** for an ISO 17025 laboratory (Clause 7.8 — post-issue review).
 

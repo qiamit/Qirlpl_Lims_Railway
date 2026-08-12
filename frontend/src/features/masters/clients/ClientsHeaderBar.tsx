@@ -1,9 +1,17 @@
 import { Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 import {
   clientAiTriggerClass,
+  clientDarkBarFieldClass,
   clientDarkBarSearchClass,
   clientPanelClass,
   clientPrimaryBtnClass,
@@ -13,12 +21,16 @@ import { cn } from '@/lib/utils'
 export function ClientsHeaderBar({
   search,
   onSearchChange,
+  pageSize,
+  onPageSizeChange,
   onNew,
   assistantContext,
   onAssistantDataChanged,
 }: {
   search: string
   onSearchChange: (value: string) => void
+  pageSize: number
+  onPageSizeChange: (size: number) => void
   onNew: () => void
   assistantContext: string
   onAssistantDataChanged?: () => void
@@ -39,19 +51,35 @@ export function ClientsHeaderBar({
             Client Directory
           </h1>
 
-          <div className="relative order-3 w-full min-w-0 sm:order-none sm:mx-1 sm:w-[70%] sm:max-w-[19.5rem] sm:flex-none">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
-              aria-hidden
-            />
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search clients…"
-              className={cn(clientDarkBarSearchClass, 'pl-9')}
-              aria-label="Search clients"
-            />
+          <div className="order-3 flex w-full min-w-0 items-center gap-2 sm:order-none sm:mx-1 sm:w-auto sm:max-w-none sm:flex-none">
+            <div className="relative min-w-0 flex-1 sm:w-[70%] sm:max-w-[19.5rem] sm:flex-none">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search clients…"
+                className={cn(clientDarkBarSearchClass, 'pl-9')}
+                aria-label="Search clients"
+              />
+            </div>
+            <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
+              <SelectTrigger
+                className={cn(clientDarkBarFieldClass, 'h-9 w-[7.5rem] shrink-0')}
+                aria-label="Rows per page"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5 / Page</SelectItem>
+                <SelectItem value="10">10 / Page</SelectItem>
+                <SelectItem value="20">20 / Page</SelectItem>
+                <SelectItem value="50">50 / Page</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">

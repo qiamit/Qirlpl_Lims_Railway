@@ -3,7 +3,6 @@ import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
-  CALIBRATION_JOB_STAGE_LABELS,
   nextCalibrationJobStage,
   previousCalibrationJobStage,
   type CalibrationJobLocation,
@@ -11,6 +10,7 @@ import {
   type CalibrationJobStage,
 } from '../types'
 import {
+  deleteCalibrationJobs,
   fetchCalibrationEngineerOptions,
   fetchCalibrationJobsByStage,
   fetchUserProfileBrief,
@@ -18,6 +18,7 @@ import {
   moveCalibrationJobsToPreviousStage,
   referbackCalibrationJobsToServiceRequest,
   stampRawDataSheetReviewed,
+  updateCalibrationJobDesignation,
   updateCalibrationJobEngineer,
   updateCalibrationJobLocation,
   type CalibrationEngineerOption,
@@ -79,13 +80,12 @@ export function CalibrationJobStageMasterPage({
   const [engineers, setEngineers] = useState<CalibrationEngineerOption[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
-  const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [selectedSrfIds, setSelectedSrfIds] = useState<Set<string>>(() => new Set())
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(() => new Set())
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
+  const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
 
   const isConduct = stage === 'calibration_conduct'
@@ -97,13 +97,6 @@ export function CalibrationJobStageMasterPage({
   const scopeConductToEngineer =
     isConduct && !canViewAllCalibrationConductJobs(designation)
 
-  /** Review Data keeps forwarded jobs visible until Cert Prep referback (or further forward). */
-  const listStages = useMemo(
-    (): CalibrationJobStage | CalibrationJobStage[] =>
-      stage === 'review_data' ? ['review_data', 'certificate_preparation'] : stage,
-    [stage],
-  )
-
   const loadRows = useCallback(async () => {
     setListLoading(true)
     setListError(null)
@@ -113,7 +106,7 @@ export function CalibrationJobStageMasterPage({
         return
       }
 
-      const data = await fetchCalibrationJobsByStage(listStages, {
+      const data = await fetchCalibrationJobsByStage(stage, {
         ...(scopeConductToEngineer && user?.id
           ? { allocatedEngineerId: user.id }
           : {}),
@@ -125,7 +118,7 @@ export function CalibrationJobStageMasterPage({
         if (byId.length > 0) {
           setRows(byId)
         } else {
-          const allInStage = await fetchCalibrationJobsByStage(listStages, {
+          const allInStage = await fetchCalibrationJobsByStage(stage, {
             ...(locationFilter ? { calibrationLocation: locationFilter } : {}),
           })
           setRows(allInStage.filter((j) => jobAssignedToCurrentUser(j, user.id, profileName)))
@@ -141,7 +134,6 @@ export function CalibrationJobStageMasterPage({
     }
   }, [
     stage,
-    listStages,
     scopeConductToEngineer,
     user?.id,
     profileName,
@@ -168,7 +160,6 @@ export function CalibrationJobStageMasterPage({
     setSelectedJobIds(new Set())
     setPage(1)
     setSearch('')
-    setActionMessage(null)
   }, [stage])
 
   const filteredRows = useMemo(() => {
@@ -177,6 +168,8 @@ export function CalibrationJobStageMasterPage({
     return rows.filter((r) => {
       const hay = [
         r.srf_number,
+        r.srf_date ?? '',
+        r.required_completion_date ?? '',
         r.client_name ?? '',
         r.equipment_label,
         r.equipment_detail,
@@ -215,13 +208,7 @@ export function CalibrationJobStageMasterPage({
   )
 
   const nextStage = nextCalibrationJobStage(stage)
-  const nextStageLabel = nextStage ? CALIBRATION_JOB_STAGE_LABELS[nextStage] : null
   const prevStage = previousCalibrationJobStage(stage)
-  const prevStageLabel = prevStage
-    ? CALIBRATION_JOB_STAGE_LABELS[prevStage]
-    : stage === 'job_allocation'
-      ? 'Service Request'
-      : null
 
   const jobIdsForSrf = (serviceRequestId: string): string[] =>
     filteredGroups.find((g) => g.serviceRequestId === serviceRequestId)?.jobs.map((j) => j.id) ??
@@ -284,27 +271,21 @@ export function CalibrationJobStageMasterPage({
 
   const moveJobsForward = async (jobIds: string[]) => {
     if (jobIds.length === 0 || !nextStage) return
-    // Review: only move jobs still at review_data (already-forwarded stay listed, Forward disabled)
+    // Review: only move jobs still at review_data
     const idsToMove = isReviewData
       ? jobIds.filter((id) => rows.find((r) => r.id === id)?.stage === 'review_data')
       : jobIds
     if (idsToMove.length === 0) {
-      setActionMessage(
-        isReviewData
-          ? 'Selected job(s) are already forwarded to Certificate Preparation.'
-          : 'Nothing forwarded.',
-      )
       return
     }
     const blockMsg =
       assertEngineersAssignedForForward(idsToMove) ??
       assertInwardChecklistForOutsideForward(idsToMove)
     if (blockMsg) {
-      setActionMessage(blockMsg)
+      window.alert(blockMsg)
       return
     }
     setActionLoading(true)
-    setActionMessage(null)
     try {
       if (isReviewData && user?.id) {
         const profile =
@@ -323,23 +304,16 @@ export function CalibrationJobStageMasterPage({
           ),
         )
       }
-      const { moved, skippedTerminal } = await moveCalibrationJobsToNextStage(idsToMove)
-      setActionMessage(
-        moved > 0
-          ? `Forwarded ${moved} DUC job(s) to ${CALIBRATION_JOB_STAGE_LABELS[nextStage]}.${
-              stage === 'job_allocation'
-                ? ' Assigned engineers can open Calibration Conduct.'
-                : ''
-            }`
-          : skippedTerminal > 0
-            ? 'Selected jobs are already at the final stage.'
-            : 'Nothing forwarded.',
-      )
+      const { moved } = await moveCalibrationJobsToNextStage(idsToMove)
+      if (moved > 0) {
+        const movedSet = new Set(idsToMove)
+        setRows((prev) => prev.filter((r) => !movedSet.has(r.id)))
+      }
       setSelectedSrfIds(new Set())
       setSelectedJobIds(new Set())
       await loadRows()
     } catch (err) {
-      setActionMessage(formatError(err))
+      window.alert(formatError(err))
     } finally {
       setActionLoading(false)
     }
@@ -349,23 +323,13 @@ export function CalibrationJobStageMasterPage({
     if (jobIds.length === 0) return
     if (stage === 'job_allocation') {
       setActionLoading(true)
-      setActionMessage(null)
       try {
-        const { removed, srfReopened } = await referbackCalibrationJobsToServiceRequest(jobIds)
-        setActionMessage(
-          removed > 0
-            ? `Referred back ${removed} DUC job(s) to Service Request.${
-                srfReopened > 0
-                  ? ` ${srfReopened} SRF(s) set to Under Review.`
-                  : ''
-              }`
-            : 'Nothing referred back.',
-        )
+        await referbackCalibrationJobsToServiceRequest(jobIds)
         setSelectedSrfIds(new Set())
         setSelectedJobIds(new Set())
         await loadRows()
       } catch (err) {
-        setActionMessage(formatError(err))
+        window.alert(formatError(err))
       } finally {
         setActionLoading(false)
       }
@@ -374,23 +338,13 @@ export function CalibrationJobStageMasterPage({
 
     if (!prevStage) return
     setActionLoading(true)
-    setActionMessage(null)
     try {
-      const { moved, skippedFirst } = await moveCalibrationJobsToPreviousStage(jobIds)
-      setActionMessage(
-        moved > 0
-          ? `Referred back ${moved} DUC job(s) to ${CALIBRATION_JOB_STAGE_LABELS[prevStage]}.${
-              skippedFirst > 0 ? ` ${skippedFirst} already at first stage.` : ''
-            }`
-          : skippedFirst > 0
-            ? 'Selected jobs are already at Job Allocation (first stage).'
-            : 'Nothing referred back.',
-      )
+      await moveCalibrationJobsToPreviousStage(jobIds)
       setSelectedSrfIds(new Set())
       setSelectedJobIds(new Set())
       await loadRows()
     } catch (err) {
-      setActionMessage(formatError(err))
+      window.alert(formatError(err))
     } finally {
       setActionLoading(false)
     }
@@ -424,15 +378,6 @@ export function CalibrationJobStageMasterPage({
         return { ...r, inward_checklist: payload }
       }),
     )
-    setActionMessage(
-      kind === 'outgoing'
-        ? payload.completed
-          ? 'Outgoing Checklist completed. Raw Data Sheet is now available.'
-          : 'Outgoing Checklist draft saved.'
-        : payload.completed
-          ? 'Inward Checklist completed. Forward is now available.'
-          : 'Inward Checklist draft saved.',
-    )
   }
 
   const handleLocationOfCalibrationSaved = (
@@ -446,41 +391,67 @@ export function CalibrationJobStageMasterPage({
     )
   }
 
-  const handleBulkForward = async () => {
-    if (isConduct) {
-      await moveJobsForward([...selectedJobIds])
-      return
-    }
-    const ids = [...selectedSrfIds].flatMap((srfId) => jobIdsForSrf(srfId))
-    await moveJobsForward(ids)
+  const selectedActionJobIds = (): string[] => {
+    if (isConduct || isPerJobStage) return [...selectedJobIds]
+    return [...selectedSrfIds].flatMap((srfId) => jobIdsForSrf(srfId))
   }
 
-  const selectedJobsReadyForOutsideForward =
-    !isOutsideConduct ||
-    [...selectedJobIds].every((id) => {
-      const job = rows.find((r) => r.id === id)
-      if (!job) return false
-      return isChecklistCompleted(parseConductOutsideChecklist(job.inward_checklist, 'inward'))
-    })
+  const handlePrintSelected = () => {
+    const jobIds = selectedActionJobIds()
+    const source = jobIds.length > 0 ? filteredRows.filter((r) => jobIds.includes(r.id)) : filteredRows
+    if (source.length === 0) return
+    const esc = (v: string) =>
+      v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    const cards = source
+      .map(
+        (r) => `
+        <section style="border:1px solid #e7eaf0;border-radius:12px;padding:14px;margin-bottom:12px">
+          <h2 style="margin:0 0 8px">${esc(r.srf_number || '—')}</h2>
+          <p><b>Client:</b> ${esc(r.client_name || '—')}</p>
+          <p><b>Equipment:</b> ${esc(r.equipment_label || '—')}</p>
+          <p><b>Location:</b> ${esc(r.calibration_location || '—')}</p>
+          <p><b>Engineer:</b> ${esc(r.allocated_engineer_name || '—')}</p>
+        </section>`,
+      )
+      .join('')
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.open()
+    w.document.write(
+      `<!doctype html><html><head><title>Calibration Jobs</title></head><body style="font-family:sans-serif;padding:24px">${cards}<script>window.onload=function(){setTimeout(function(){window.print()},200)}</script></body></html>`,
+    )
+    w.document.close()
+  }
 
-  const handleBulkReferback = async () => {
-    if (isConduct) {
-      await moveJobsReferback([...selectedJobIds])
-      return
+  const handleDeleteSelected = async () => {
+    const ids = selectedActionJobIds()
+    if (ids.length === 0) return
+    if (!window.confirm(`Delete ${ids.length} selected job(s)?`)) return
+    setActionLoading(true)
+    try {
+      if (stage === 'job_allocation') {
+        await referbackCalibrationJobsToServiceRequest(ids)
+      } else {
+        await deleteCalibrationJobs(ids)
+      }
+      setSelectedSrfIds(new Set())
+      setSelectedJobIds(new Set())
+      await loadRows()
+    } catch (err) {
+      window.alert(formatError(err))
+    } finally {
+      setActionLoading(false)
     }
-    const ids = [...selectedSrfIds].flatMap((srfId) => jobIdsForSrf(srfId))
-    await moveJobsReferback(ids)
   }
 
   const handleLocationChange = async (id: string, location: CalibrationJobLocation) => {
-    setActionMessage(null)
     try {
       await updateCalibrationJobLocation(id, location)
       setRows((prev) =>
         prev.map((r) => (r.id === id ? { ...r, calibration_location: location } : r)),
       )
     } catch (err) {
-      setActionMessage(formatError(err))
+      window.alert(formatError(err))
     }
   }
 
@@ -489,7 +460,6 @@ export function CalibrationJobStageMasterPage({
     engineerId: string | null,
     engineerName: string | null,
   ) => {
-    setActionMessage(null)
     try {
       await updateCalibrationJobEngineer(id, { id: engineerId, name: engineerName })
       setRows((prev) =>
@@ -504,7 +474,20 @@ export function CalibrationJobStageMasterPage({
         ),
       )
     } catch (err) {
-      setActionMessage(formatError(err))
+      window.alert(formatError(err))
+    }
+  }
+
+  const handleDesignationChange = async (id: string, designation: string) => {
+    try {
+      await updateCalibrationJobDesignation(id, designation)
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === id ? { ...r, allocated_engineer_designation: designation.trim() || null } : r,
+        ),
+      )
+    } catch (err) {
+      window.alert(formatError(err))
     }
   }
 
@@ -513,10 +496,19 @@ export function CalibrationJobStageMasterPage({
       <CalibrationJobStageHeaderBar
         stage={stage}
         titleOverride={titleOverride}
+        locationFilter={locationFilter}
         search={search}
         onSearchChange={(v) => {
           setSearch(v)
           setPage(1)
+        }}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        onForwardedChanged={() => {
+          void loadRows()
         }}
       />
       {isConduct ? (
@@ -556,6 +548,7 @@ export function CalibrationJobStageMasterPage({
           engineers={engineers}
           onLocationChange={stage === 'job_allocation' ? handleLocationChange : undefined}
           onEngineerChange={stage === 'job_allocation' ? handleEngineerChange : undefined}
+          onDesignationChange={stage === 'job_allocation' ? handleDesignationChange : undefined}
           onForward={handleForwardGroup}
           onReferback={handleReferbackGroup}
           actionLoading={actionLoading}
@@ -563,40 +556,12 @@ export function CalibrationJobStageMasterPage({
         />
       )}
       <CalibrationJobStageFooterBar
-        message={isConduct ? null : actionMessage}
         loading={listLoading || actionLoading}
-        selectedCount={isConduct ? selectedJobIds.size : selectedSrfIds.size}
-        totalCount={listTotal}
+        selectedCount={isConduct || isPerJobStage ? selectedJobIds.size : selectedSrfIds.size}
         page={safePage}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
-        canMoveNext={
-          (isConduct ? selectedJobIds.size > 0 : selectedSrfIds.size > 0) &&
-          Boolean(nextStage) &&
-          selectedJobsReadyForOutsideForward
-        }
-        nextStageLabel={nextStageLabel}
-        onMoveNext={() => void handleBulkForward()}
-        showBulkMove={!isPerJobStage && Boolean(nextStage)}
-        showBulkActions={!isPerJobStage && !isConduct && stage !== 'certificates'}
-        canReferbackBulk={
-          !isPerJobStage &&
-          stage !== 'certificates' &&
-          (isConduct ? selectedJobIds.size > 0 : selectedSrfIds.size > 0) &&
-          Boolean(prevStageLabel)
-        }
-        previousStageLabel={
-          isPerJobStage || isConduct || stage === 'certificates' ? null : prevStageLabel
-        }
-        onReferbackBulk={
-          isPerJobStage || isConduct || stage === 'certificates'
-            ? undefined
-            : () => void handleBulkReferback()
-        }
+        onPrintSelected={handlePrintSelected}
+        onDeleteSelected={() => void handleDeleteSelected()}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

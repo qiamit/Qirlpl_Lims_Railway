@@ -1,154 +1,142 @@
-import { cn } from '@/lib/utils'
-import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
-import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  limsDarkBarBtnClass,
+  limsDarkBarFieldClass,
+  limsDarkBarGlowStyle,
+  limsDeleteBtnClass,
+  limsPanelClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
 export function CalibrationJobStageFooterBar({
-  message,
   loading,
   selectedCount,
-  totalCount,
   page,
   pageCount,
-  pageSize,
-  onPageSizeChange,
-  canMoveNext,
-  nextStageLabel,
-  onMoveNext,
-  showBulkMove = true,
-  /** When false, hides Forward / Referback / selection summary (e.g. Review Data). */
-  showBulkActions = true,
-  canReferbackBulk = false,
-  previousStageLabel = null,
-  onReferbackBulk,
+  onPrintSelected,
+  onDeleteSelected,
   onPrevPage,
   onNextPage,
   jumpTo,
   onJumpToChange,
   onJumpToGo,
 }: {
-  message: string | null
   loading: boolean
   selectedCount: number
-  totalCount: number
   page: number
   pageCount: number
-  pageSize: number
-  onPageSizeChange: (size: number) => void
-  canMoveNext: boolean
-  nextStageLabel: string | null
-  onMoveNext: () => void
-  showBulkMove?: boolean
-  showBulkActions?: boolean
-  canReferbackBulk?: boolean
-  previousStageLabel?: string | null
-  onReferbackBulk?: () => void
+  onPrintSelected: () => void
+  onDeleteSelected: () => void
   onPrevPage: () => void
   onNextPage: () => void
   jumpTo: string
   onJumpToChange: (v: string) => void
   onJumpToGo: () => void
 }) {
-  return (
-    <div className="flex flex-col gap-2 relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-3 py-3 shadow-sm sm:px-4">
-      {message ? (
-        <p className="text-xs text-stone-300 sm:text-sm">{message}</p>
-      ) : null}
-      <div
-        className={`flex flex-wrap items-center gap-2 ${showBulkActions ? 'justify-between' : 'justify-end'}`}
-      >
-        {showBulkActions ? (
-          <div className="flex flex-wrap items-center gap-2">
-            {showBulkMove ? (
-              <Button
-                type="button"
-                size="sm"
-                className="gap-1.5 rounded-none bg-amber-700 text-white hover:bg-amber-800"
-                disabled={!canMoveNext || loading || !nextStageLabel}
-                onClick={onMoveNext}
-                aria-label={nextStageLabel ? `Forward to ${nextStageLabel}` : 'Forward'}
-              >
-                <ArrowRight size={14} />
-                {nextStageLabel ? `Forward (${selectedCount})` : 'Forward'}
-              </Button>
-            ) : null}
-            {onReferbackBulk && previousStageLabel ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline" className={cn('gap-1.5 border-amber-600/40 text-amber-900 hover:bg-amber-50', limsDarkBarBtnClass)}
-                disabled={!canReferbackBulk || loading}
-                onClick={onReferbackBulk}
-                aria-label={`Referback to ${previousStageLabel}`}
-              >
-                <ArrowLeft size={14} />
-                Referback ({selectedCount})
-              </Button>
-            ) : null}
-            <span className="text-xs text-stone-300">
-              {selectedCount} selected · {totalCount} total
-            </span>
-          </div>
-        ) : null}
+  const selectionDisabled = selectedCount === 0
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={String(pageSize)}
-            onValueChange={(v) => onPageSizeChange(Number.parseInt(v, 10))}
-          >
-            <SelectTrigger className={cn(limsDarkBarFieldClass, 'h-8 w-[72px]')} aria-label="Page size">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[10, 25, 50, 100].map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 px-0"
-            disabled={page <= 1 || loading}
-            onClick={onPrevPage}
-            aria-label="Previous page"
-          >
-            <ChevronLeft size={14} />
-          </Button>
-          <span className="text-xs tabular-nums text-stone-300">
-            {page} / {Math.max(pageCount, 1)}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 px-0"
-            disabled={page >= pageCount || loading}
-            onClick={onNextPage}
-            aria-label="Next page"
-          >
-            <ChevronRight size={14} />
-          </Button>
-          <Input
-            className="h-8 w-14"
-            value={jumpTo}
-            onChange={(e) => onJumpToChange(e.target.value)}
-            aria-label="Jump to page"
-          />
-          <Button type="button" variant="outline" size="sm" className="h-8" onClick={onJumpToGo}>
-            Go
-          </Button>
+  return (
+    <div className={cn(limsPanelClass)}>
+      <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-1.5 text-white sm:px-5 sm:py-2">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.18]"
+          style={limsDarkBarGlowStyle}
+        />
+        <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+
+        <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
+          <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                'h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs',
+                limsDarkBarBtnClass,
+              )}
+              onClick={onPrintSelected}
+              disabled={loading}
+              title="Print"
+            >
+              <Printer size={14} />
+              <span className="hidden lg:inline">Print</span>
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className={cn(
+                limsDeleteBtnClass,
+                'h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs',
+              )}
+              onClick={onDeleteSelected}
+              disabled={loading || selectionDisabled}
+              title="Delete"
+            >
+              <Trash2 size={14} />
+              <span className="hidden lg:inline">Delete</span>
+            </Button>
+            {selectedCount > 0 ? (
+              <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
+                Selected: {selectedCount}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1 overflow-x-auto overscroll-x-contain sm:gap-1.5 md:gap-2 [-webkit-overflow-scrolling:touch]">
+            <Input
+              aria-label="Jump to page"
+              placeholder="Page"
+              value={jumpTo}
+              onChange={(e) => onJumpToChange(e.target.value.replace(/[^0-9]/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onJumpToGo()
+              }}
+              className={cn(
+                limsDarkBarFieldClass,
+                'h-7 w-10 shrink-0 text-[11px] sm:h-8 sm:w-12 sm:text-xs md:w-14',
+              )}
+              inputMode="numeric"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn('hidden h-7 shrink-0 sm:inline-flex sm:h-8', limsDarkBarBtnClass)}
+              onClick={onJumpToGo}
+              disabled={loading}
+            >
+              Jump
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={cn('h-7 w-7 shrink-0 sm:h-8 sm:w-8', limsDarkBarBtnClass)}
+              onClick={onPrevPage}
+              disabled={loading || page <= 1}
+            >
+              <ChevronLeft size={16} />
+              <span className="sr-only">Previous page</span>
+            </Button>
+            <span className="shrink-0 whitespace-nowrap text-center text-[10px] font-medium text-stone-300 sm:min-w-[4.5rem] sm:text-xs md:min-w-[5.5rem]">
+              <span className="hidden sm:inline">Page </span>
+              {page}/{Math.max(pageCount, 1)}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={cn('h-7 w-7 shrink-0 sm:h-8 sm:w-8', limsDarkBarBtnClass)}
+              onClick={onNextPage}
+              disabled={loading || page >= pageCount}
+            >
+              <ChevronRight size={16} />
+              <span className="sr-only">Next page</span>
+            </Button>
+          </div>
         </div>
       </div>
     </div>

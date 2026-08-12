@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { EquipmentForCalibrationRow, EquipmentScheduleSection } from './types'
+import { formatDate } from '@/lib/utils'
 
 export function EquipmentForCalibrationTable({
   rows,
@@ -47,17 +48,7 @@ export function EquipmentForCalibrationTable({
     return due.getTime() < now.getTime()
   }
 
-  const formatDateToDDMMYYYY = (dateStr: string | null | undefined) => {
-    if (!dateStr) return '-'
-    const parts = dateStr.slice(0, 10).split('-')
-    if (parts.length === 3) {
-      const [year, month, day] = parts
-      if (year.length === 4 && month.length === 2 && day.length === 2) {
-        return `${day}-${month}-${year}`
-      }
-    }
-    return dateStr
-  }
+  const formatDateToDDMMYYYY = (dateStr: string | null | undefined) => formatDate(dateStr)
 
   const renderScheduleRow = (
     label: string,
@@ -129,7 +120,7 @@ export function EquipmentForCalibrationTable({
           <p className="text-sm text-muted-foreground">
             {searchActive
               ? 'No equipment matches your search.'
-              : 'No equipment for calibration added yet.'}
+              : 'No records added yet.'}
           </p>
           {!searchActive ? (
             <p className="mt-1 text-xs text-muted-foreground">

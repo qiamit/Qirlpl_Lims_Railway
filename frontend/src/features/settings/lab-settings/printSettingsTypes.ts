@@ -8,7 +8,7 @@ export type { PartCReportColumnVisibility }
 
 export type PrintPageSize = 'A4' | 'Letter'
 
-export type PdfOutputMode = 'browser_print' | 'html2pdf'
+export type PdfOutputMode = 'browser_print' | 'playwright'
 
 /** Preset font stacks for test report / SRF print (web-safe for browser print & PDF). */
 export const PRINT_FONT_FAMILY_OPTIONS: ReadonlyArray<{ label: string; value: string }> = [
@@ -270,7 +270,7 @@ export const DEFAULT_TEST_REPORT_PRINT_SETTINGS: TestReportPrintSettings = {
   partCNewPage: true,
   partDNewPage: true,
   showWatermark: true,
-  pdfOutputMode: 'browser_print',
+  pdfOutputMode: 'playwright',
   partCColumns: { ...DEFAULT_PART_C_REPORT_COLUMNS },
   showSignatures: true,
   signatures: DEFAULT_TEST_REPORT_SIGNATURES.map((s) => ({ ...s })),
@@ -300,7 +300,7 @@ export const DEFAULT_SRF_PRINT_SETTINGS: SrfPrintSettings = {
   showFooter: true,
   headerTemplateName: '',
   footerTemplateName: '',
-  pdfOutputMode: 'browser_print',
+  pdfOutputMode: 'playwright',
 }
 
 export const DEFAULT_LAB_PRINT_SETTINGS: LabPrintSettingsDocument = {
@@ -356,7 +356,9 @@ export function parseTestReportPrintSettings(raw: unknown): TestReportPrintSetti
   const o = raw as Record<string, unknown>
   const pageSize = o.pageSize === 'Letter' ? 'Letter' : 'A4'
   const pdfOutputMode: PdfOutputMode =
-    o.pdfOutputMode === 'html2pdf' ? 'html2pdf' : 'browser_print'
+    o.pdfOutputMode === 'playwright' || o.pdfOutputMode === 'html2pdf'
+      ? 'playwright'
+      : 'browser_print'
 
   const horizontalLegacy = clamp(Number(o.bodyPaddingHorizontalMm), 8, 25)
   const bodyPaddingLeftMm =
@@ -423,7 +425,9 @@ export function parseSrfPrintSettings(raw: unknown): SrfPrintSettings {
   const o = raw as Record<string, unknown>
   const pageSize = o.pageSize === 'Letter' ? 'Letter' : 'A4'
   const pdfOutputMode: PdfOutputMode =
-    o.pdfOutputMode === 'html2pdf' ? 'html2pdf' : 'browser_print'
+    o.pdfOutputMode === 'playwright' || o.pdfOutputMode === 'html2pdf'
+      ? 'playwright'
+      : 'browser_print'
 
   return {
     pageSize,

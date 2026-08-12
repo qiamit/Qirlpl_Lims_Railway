@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ClientManageDialogContent } from '@/features/masters/clients/ClientManageDialogContent'
+import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
 import {
   limsAddLinkClass,
   limsDarkBarGlowStyle,
@@ -583,61 +584,56 @@ export function TestParameterForm({
           </div>
 
           <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex min-h-6 items-center justify-between">
-              <Label htmlFor="under-accreditation">Under Accreditation</Label>
-              <Dialog open={accreditationDialogOpen} onOpenChange={setAccreditationDialogOpen}>
-                <DialogTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(limsAddLinkClass, 'inline-flex h-6 w-6 items-center justify-center')}
-                    aria-label="Add accreditation body"
-                    title="Add New"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
-                <ClientManageDialogContent
-                  open={accreditationDialogOpen}
-                  title="Add Accreditation Body"
-                  addLabel="Body Name"
-                  inputId="new-accreditation"
-                  placeholder="e.g., NABL"
-                  value={newAccreditationBody}
-                  onValueChange={setNewAccreditationBody}
-                  onSave={onAddAccreditationBody}
-                  onUpdate={onUpdateAccreditationBody}
-                  saveDisabled={!newAccreditationBody.trim()}
-                  items={accreditationBodyOptions.map((b) => ({ id: b.id, label: b.name }))}
-                  canDelete={() => true}
-                  onDelete={onDeleteAccreditationBody}
-                />
-              </Dialog>
-            </div>
-
-            {accreditationBodyOptions.length > 0 ? (
-              <Select
-                value={underAccreditationIds[0] ?? ''}
-                onValueChange={(v) =>
-                  onChange({
-                    ...form,
-                    underAccreditationIds: v ? [v] : [],
-                  })
+            <Label htmlFor="under-accreditation">Under Accreditation</Label>
+            <Dialog open={accreditationDialogOpen} onOpenChange={setAccreditationDialogOpen}>
+              <LimsFieldWithAdd
+                addButton={
+                  <DialogTrigger asChild>
+                    <LimsFieldAddButton aria-label="Add accreditation body" />
+                  </DialogTrigger>
                 }
               >
-                <SelectTrigger id="under-accreditation">
-                  <SelectValue placeholder="Select accreditation" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accreditationBodyOptions.map((body) => (
-                    <SelectItem key={body.id} value={body.id}>
-                      {body.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input id="under-accreditation" value="" readOnly placeholder="Add bodies to use them here" />
-            )}
+                {accreditationBodyOptions.length > 0 ? (
+                  <Select
+                    value={underAccreditationIds[0] ?? ''}
+                    onValueChange={(v) =>
+                      onChange({
+                        ...form,
+                        underAccreditationIds: v ? [v] : [],
+                      })
+                    }
+                  >
+                    <SelectTrigger id="under-accreditation">
+                      <SelectValue placeholder="Select accreditation" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accreditationBodyOptions.map((body) => (
+                        <SelectItem key={body.id} value={body.id}>
+                          {body.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input id="under-accreditation" value="" readOnly placeholder="Add bodies to use them here" />
+                )}
+              </LimsFieldWithAdd>
+              <ClientManageDialogContent
+                open={accreditationDialogOpen}
+                title="Add Accreditation Body"
+                addLabel="Body Name"
+                inputId="new-accreditation"
+                placeholder="e.g., NABL"
+                value={newAccreditationBody}
+                onValueChange={setNewAccreditationBody}
+                onSave={onAddAccreditationBody}
+                onUpdate={onUpdateAccreditationBody}
+                saveDisabled={!newAccreditationBody.trim()}
+                items={accreditationBodyOptions.map((b) => ({ id: b.id, label: b.name }))}
+                canDelete={() => true}
+                onDelete={onDeleteAccreditationBody}
+              />
+            </Dialog>
           </div>
 
           <div className="col-span-12 md:col-span-3 space-y-2">

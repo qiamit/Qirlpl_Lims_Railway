@@ -1,6 +1,16 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type RefObject,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 export type FilterComboboxOption = { id: string; label: string }
@@ -44,6 +54,8 @@ export function FilterCombobox({
   disabled,
   dropdownPlacement = 'auto',
   onInputFocus,
+  multiline = false,
+  rows = 2,
 }: {
   value: string
   onValueChange: (value: string) => void
@@ -61,8 +73,11 @@ export function FilterCombobox({
   disabled?: boolean
   dropdownPlacement?: DropdownPlacement
   onInputFocus?: () => void
+  /** Use textarea so long values can wrap. */
+  multiline?: boolean
+  rows?: number
 }) {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
   const selectingRef = useRef(false)
   const [highlightIndex, setHighlightIndex] = useState(-1)
   const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null)
@@ -163,7 +178,7 @@ export function FilterCombobox({
     selectIndex(index)
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (!open) onOpenChange(true)
@@ -180,6 +195,8 @@ export function FilterCombobox({
     }
 
     if (e.key === 'Enter') {
+      // Multiline: allow newline unless an option is highlighted.
+      if (multiline && highlightIndex < 0) return
       if (!open || itemCount === 0) return
       e.preventDefault()
       selectIndex(highlightIndex >= 0 ? highlightIndex : 0)
@@ -194,10 +211,30 @@ export function FilterCombobox({
     }
   }
 
+  const onFieldChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    onValueChange(e.target.value)
+    if (!open) onOpenChange(true)
+    setHighlightIndex(-1)
+  }
+
+  const onFieldFocus = () => {
+    onInputFocus?.()
+    onOpenChange(true)
+  }
+
+  const onFieldBlur = () => {
+    window.setTimeout(() => {
+      if (selectingRef.current) return
+      const active = document.activeElement
+      if (active && isFilterComboboxDropdownTarget(active)) return
+      onOpenChange(false)
+    }, 200)
+  }
+
   const dropdownList = showList && dropdownPosition ? (
     <div
       {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
-      className="fixed z-[200] rounded-md border border-border bg-popover shadow-lg"
+      className="fixed z-[9999] rounded-md border border-border bg-popover shadow-lg"
       style={{
         left: dropdownPosition.left,
         width: dropdownPosition.width,
@@ -219,7 +256,7 @@ export function FilterCombobox({
                   tabIndex={-1}
                   aria-selected={highlightIndex === index}
                   className={cn(
-                    'w-full px-3 py-2 text-left',
+                    'block w-full truncate whitespace-nowrap px-3 py-2 text-left',
                     highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
                   )}
                   onPointerDown={handleOptionPointerDown(index)}
@@ -240,7 +277,7 @@ export function FilterCombobox({
                     tabIndex={-1}
                     aria-selected={highlightIndex === index}
                     className={cn(
-                      'w-full px-3 py-2 text-left text-primary',
+                      'block w-full truncate whitespace-nowrap px-3 py-2 text-left text-primary',
                       highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
                       action.className,
                     )}
@@ -262,37 +299,52 @@ export function FilterCombobox({
 
   return (
     <div className={cn('relative', className)}>
-      <Input
-        ref={inputRef}
-        id={inputId}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => {
-          onValueChange(e.target.value)
-          onOpenChange(true)
-          setHighlightIndex(-1)
-        }}
-        onFocus={() => {
-          onInputFocus?.()
-          onOpenChange(true)
-        }}
-        onBlur={() => {
-          window.setTimeout(() => {
-            if (selectingRef.current) return
-            onOpenChange(false)
-          }, 150)
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        className={inputClassName}
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={showList}
-        aria-controls={showList ? optionListId : undefined}
-        aria-activedescendant={
-          showList && highlightIndex >= 0 ? `${optionListId}-option-${highlightIndex}` : undefined
-        }
-      />
+      {multiline ? (
+        <Textarea
+          ref={inputRef as RefObject<HTMLTextAreaElement>}
+          id={inputId}
+          value={value}
+          disabled={disabled}
+          onChange={onFieldChange}
+          onFocus={onFieldFocus}
+          onBlur={onFieldBlur}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          rows={rows}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls={showList ? optionListId : undefined}
+          aria-activedescendant={
+            showList && highlightIndex >= 0 ? `${optionListId}-option-${highlightIndex}` : undefined
+          }
+          className={cn(
+            'min-h-0 resize-none whitespace-pre-wrap break-words',
+            inputClassName,
+          )}
+        />
+      ) : (
+        <Input
+          ref={inputRef as RefObject<HTMLInputElement>}
+          id={inputId}
+          value={value}
+          disabled={disabled}
+          onChange={onFieldChange}
+          onFocus={onFieldFocus}
+          onBlur={onFieldBlur}
+          onClick={() => onOpenChange(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className={inputClassName}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls={showList ? optionListId : undefined}
+          aria-activedescendant={
+            showList && highlightIndex >= 0 ? `${optionListId}-option-${highlightIndex}` : undefined
+          }
+        />
+      )}
       {dropdownList ? createPortal(dropdownList, document.body) : null}
     </div>
   )

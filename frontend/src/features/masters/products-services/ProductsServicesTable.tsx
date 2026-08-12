@@ -109,12 +109,17 @@ export function ProductsServicesTable({
                       <p className="truncate font-medium text-foreground" title={r.item_name}>
                         {r.item_name}
                       </p>
-                      <p className="truncate font-mono text-xs text-muted-foreground">
-                        {r.item_code}
+                      <p className="truncate text-xs text-muted-foreground">
+                        <span className="font-mono">{r.item_code}</span>
+                        {r.hsn_code ? (
+                          <>
+                            <span className="mx-1.5 text-stone-300" aria-hidden>
+                              ·
+                            </span>
+                            <span>HSN: {r.hsn_code}</span>
+                          </>
+                        ) : null}
                       </p>
-                      {r.hsn_code ? (
-                        <p className="truncate text-xs text-muted-foreground">HSN: {r.hsn_code}</p>
-                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell className="align-middle text-center">
@@ -127,9 +132,6 @@ export function ProductsServicesTable({
                     <div className="space-y-0.5">
                       <p className="text-sm text-foreground">Sale: ₹ {formatMoney(r.sale_price)}</p>
                       <p className="text-xs text-muted-foreground">
-                        Purchase: ₹ {formatMoney(r.purchase_price)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
                         GST {formatMoney(r.gst_percent)}% · Disc ₹ {formatMoney(r.discount)}
                       </p>
                     </div>
@@ -138,22 +140,17 @@ export function ProductsServicesTable({
                     <div className="space-y-0.5">
                       <p className="text-sm text-foreground">{r.unit_of_measurement || '—'}</p>
                       {r.item_type === 'Product' ? (
-                        <>
-                          <p
-                            className={cn(
-                              'text-xs',
-                              lowStock ? 'font-semibold text-destructive' : 'text-muted-foreground',
-                            )}
-                          >
-                            Stock: {r.opening_stock}
-                            {lowStock ? ' · Low' : ''}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Alert: {r.low_stock_alert}
-                          </p>
-                        </>
+                        <p
+                          className={cn(
+                            'text-xs',
+                            lowStock ? 'font-semibold text-destructive' : 'text-muted-foreground',
+                          )}
+                        >
+                          Stock: {r.opening_stock}
+                          {lowStock ? ' · Low' : ''}
+                        </p>
                       ) : (
-                        <p className="text-xs text-muted-foreground">Service · no stock</p>
+                        <p className="text-xs text-muted-foreground">No Stock</p>
                       )}
                     </div>
                   </TableCell>

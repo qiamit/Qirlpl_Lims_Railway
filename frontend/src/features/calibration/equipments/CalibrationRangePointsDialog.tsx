@@ -4,7 +4,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   Eye,
-  Gauge,
   Plus,
   Trash2,
 } from 'lucide-react'
@@ -18,7 +17,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
 import {
   FilterCombobox,
   type FilterComboboxOption,
@@ -42,6 +47,11 @@ import {
   type MasterPointsTab,
 } from './types'
 
+export type RawSheetLiveMasterRefs = {
+  masterEquipmentIds: string[]
+  masterPointsTables: Array<{ columns: Array<{ header: string }> }>
+}
+
 export type CalibrationPointsDialogSection =
   | 'masters'
   | 'rawSheet'
@@ -49,18 +59,19 @@ export type CalibrationPointsDialogSection =
   | 'generateReport'
   | 'modeOfCalibration'
 
-const FULLSCREEN_DIALOG_CLASS =
-  '!flex fixed inset-0 z-[60] !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none !translate-x-0 !translate-y-0 flex-col gap-0 overflow-hidden !rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100'
+const FULLSCREEN_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
 
-const FULLSCREEN_DIALOG_STYLE = {
-  width: '100vw',
-  height: '100dvh',
-  maxWidth: 'none',
-  maxHeight: '100dvh',
-  top: 0,
-  left: 0,
-  transform: 'none',
-} as const
+const mastersThClass =
+  'border border-stone-700 bg-stone-800 px-1.5 py-2 text-center text-[10px] font-bold uppercase leading-tight tracking-[0.08em] text-amber-200'
+const mastersTdClass = 'border border-[#e7e0d4] px-2 py-2 text-center align-middle'
+
+const FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
 
 type DueStatus = 'valid' | 'dueSoon' | 'overdue' | 'notSet'
 
@@ -106,15 +117,7 @@ function displayMetaValue(value: string | null | undefined): string {
 }
 
 function formatMetaDate(value: string | null | undefined): string {
-  const v = String(value ?? '').trim()
-  if (!v) return '—'
-  const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return v
-  return d.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
+  return formatDate(value)
 }
 
 /** Deep-clone a table with fresh row ids so imports never share references. */
@@ -592,19 +595,24 @@ function CalibrationPointsTableEditor({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-sm">
-          <thead className="bg-slate-50 text-left text-[11px] font-medium uppercase tracking-wide text-slate-500">
+        <table className="w-full min-w-[520px] border-collapse text-sm">
+          <thead>
             <tr>
-              <th className="w-12 px-3 py-2 text-center">#</th>
+              <th className="w-12 border border-stone-700 bg-stone-800 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                #
+              </th>
               {displayColumns.map((col) => {
                 const active = sortColId === col.id
                 return (
-                  <th key={col.id} className="min-w-[140px] px-3 py-2">
+                  <th
+                    key={col.id}
+                    className="min-w-[140px] border border-stone-700 bg-stone-800 px-2 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200"
+                  >
                     <button
                       type="button"
-                      className="inline-flex max-w-full items-center gap-1 text-left hover:text-teal-800"
+                      className="inline-flex max-w-full items-center gap-1 text-left text-amber-200 hover:text-amber-100"
                       title={
                         active && sortDir === 'asc'
                           ? 'Sorted lower → higher (click for higher → lower)'
@@ -621,17 +629,19 @@ function CalibrationPointsTableEditor({
                         </span>
                       ) : null}
                       {active && sortDir === 'asc' ? (
-                        <ArrowUp size={12} className="shrink-0 text-teal-700" aria-hidden />
+                        <ArrowUp size={12} className="shrink-0 text-amber-300" aria-hidden />
                       ) : active && sortDir === 'desc' ? (
-                        <ArrowDown size={12} className="shrink-0 text-teal-700" aria-hidden />
+                        <ArrowDown size={12} className="shrink-0 text-amber-300" aria-hidden />
                       ) : (
-                        <ArrowUpDown size={12} className="shrink-0 text-slate-400" aria-hidden />
+                        <ArrowUpDown size={12} className="shrink-0 text-stone-400" aria-hidden />
                       )}
                     </button>
                   </th>
                 )
               })}
-              <th className="w-14 px-2 py-2 text-right"> </th>
+              <th className="w-14 border border-stone-700 bg-stone-800 px-2 py-2 text-right text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                {' '}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -645,14 +655,17 @@ function CalibrationPointsTableEditor({
                   )
                 : row.values
               return (
-                <tr key={row.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2 align-middle text-center text-slate-500">
+                <tr
+                  key={row.id}
+                  className={index % 2 === 0 ? 'bg-[#f7f3eb]' : 'bg-[#fffcf7]'}
+                >
+                  <td className="border border-[#e7e0d4] px-2 py-2 text-center align-middle text-stone-500">
                     {index + 1}
                   </td>
                   {displayColumns.map((col) => {
                     const isFormula = col.type === 'formula'
                     return (
-                      <td key={col.id} className="px-3 py-2 align-middle">
+                      <td key={col.id} className="border border-[#e7e0d4] px-2 py-2 align-middle">
                         <Label htmlFor={`view-pt-${row.id}-${col.id}`} className="sr-only">
                           {col.header} row {index + 1}
                           {isFormula ? ' (calculated)' : ''}
@@ -668,7 +681,7 @@ function CalibrationPointsTableEditor({
                           readOnly={isFormula}
                           tabIndex={isFormula ? -1 : undefined}
                           placeholder={isFormula ? 'Auto' : col.header}
-                          className={cn('h-9', isFormula && 'bg-slate-50 text-slate-700')}
+                          className={cn('h-9 text-center', isFormula && 'bg-stone-100 text-stone-700')}
                           title={
                             isFormula
                               ? col.formula?.expression?.trim() || 'Calculated column'
@@ -678,13 +691,13 @@ function CalibrationPointsTableEditor({
                       </td>
                     )
                   })}
-                  <td className="px-2 py-2 align-middle text-right">
+                  <td className="border border-[#e7e0d4] px-2 py-2 text-center align-middle">
                     {isLast ? (
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-9 w-9 border-teal-600/40 px-0 text-teal-800 hover:bg-teal-50"
+                        className="mx-auto h-8 w-8 px-0 text-amber-800 hover:bg-amber-500/15 hover:text-amber-950"
                         onClick={addRow}
                         aria-label="Add check point"
                       >
@@ -873,18 +886,26 @@ function MasterCalibrationPointsViewDialog({
       <DialogContent
         persistOnFocusLoss
         layer="nested"
-        className="flex max-h-[90dvh] max-w-4xl flex-col gap-0 overflow-hidden p-0"
+        overlayClassName={FULLSCREEN_OVERLAY}
+        className={FULLSCREEN_DIALOG_CLASS}
         aria-describedby={undefined}
       >
-        <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
-          <DialogTitle className="text-lg font-semibold text-slate-900">
-            {title} — Calibration Points
-          </DialogTitle>
-          {loadHint ? <p className="text-xs text-slate-500">{loadHint}</p> : null}
-        </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              {title} — Calibration Points
+            </DialogTitle>
+            {loadHint ? <p className="mt-0.5 text-xs text-stone-300">{loadHint}</p> : null}
+          </DialogHeader>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
           {loading ? (
-            <p className="text-sm text-slate-500">Loading calibration points…</p>
+            <p className="text-sm text-stone-600">Loading calibration points…</p>
           ) : tab ? (
             <CalibrationPointsTableEditor
               table={tab.calibrationPointsTable}
@@ -893,9 +914,13 @@ function MasterCalibrationPointsViewDialog({
             />
           ) : null}
         </div>
-        <DialogFooter className="border-t border-slate-200 px-5 py-3">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+        <DialogFooter className="shrink-0 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={() => onOpenChange(false)}
+          >
+            Save & Close
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -906,14 +931,13 @@ function MasterCalibrationPointsViewDialog({
 export function CalibrationRangePointsDialog({
   open,
   onOpenChange,
-  rangeLabel,
-  unit,
   pointsTable,
   masterEquipmentIds = [],
   masterPointsTabs,
   masterEquipmentOptions = [],
   modeOfCalibrationConfigured = false,
   rawSheetContent = null,
+  rawSheetFooterActions = null,
   muSheetContent = null,
   generateReportContent = null,
   modeOfCalibrationContent = null,
@@ -931,11 +955,13 @@ export function CalibrationRangePointsDialog({
   /** Indicator when Mode of Calibration has been entered for this range. */
   modeOfCalibrationConfigured?: boolean
   /** Inline Raw Data Sheet Format editor (section panel). */
-  rawSheetContent?: ReactNode
+  rawSheetContent?: ReactNode | ((live: RawSheetLiveMasterRefs) => ReactNode)
+  /** Extra footer actions while Raw Data Sheet Format is open. */
+  rawSheetFooterActions?: ReactNode
   /** Inline MU Calculation Sheet editor (section panel). */
   muSheetContent?: ReactNode
   /** Inline Generate Report Format editor (section panel). */
-  generateReportContent?: ReactNode
+  generateReportContent?: ReactNode | ((live: RawSheetLiveMasterRefs) => ReactNode)
   /** Inline Mode of Calibration manual input (section panel). */
   modeOfCalibrationContent?: ReactNode
   /** Section to open when the dialog becomes visible. */
@@ -1028,6 +1054,19 @@ export function CalibrationRangePointsDialog({
       cancelled = true
     }
   }, [open, masterEquipmentOptions, tabs])
+
+  useEffect(() => {
+    if (!open || (activeSection !== 'rawSheet' && activeSection !== 'generateReport')) return
+    for (const tab of tabs) {
+      if (loadingPointsTabId === tab.id) continue
+      if (
+        tab.masterEquipmentId.trim() &&
+        (tab.calibrationPointsTable.columns?.length ?? 0) === 0
+      ) {
+        void loadPointsForTab(tab.masterEquipmentId, tab.id)
+      }
+    }
+  }, [open, activeSection, tabs, loadPointsForTab, loadingPointsTabId])
 
   const usedMasterIds = useMemo(
     () =>
@@ -1136,7 +1175,16 @@ export function CalibrationRangePointsDialog({
     onOpenChange(false)
   }
 
-  const unitSuffix = unit.trim() ? ` ${unit.trim()}` : ''
+  const headerTitle =
+    activeSection === 'rawSheet'
+      ? 'Raw Data Sheet Format'
+      : activeSection === 'muSheet'
+        ? 'MU Calculation Sheet'
+        : activeSection === 'generateReport'
+          ? 'Generate Report Format'
+          : activeSection === 'modeOfCalibration'
+            ? 'Mode of Calibration'
+            : 'Calibration Points'
 
   return (
     <>
@@ -1144,133 +1192,93 @@ export function CalibrationRangePointsDialog({
         <DialogContent
           persistOnFocusLoss
           layer="nested"
+          overlayClassName={FULLSCREEN_OVERLAY}
           className={FULLSCREEN_DIALOG_CLASS}
-          style={FULLSCREEN_DIALOG_STYLE}
           aria-describedby={undefined}
         >
-          <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative space-y-0 pr-10 text-left">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <p className="mb-0 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  Measurement Range
-                </p>
-                <DialogTitle className="text-xl font-semibold tracking-tight text-white">
-                  <button
-                    type="button"
-                    className="text-left hover:text-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300/60"
-                    onClick={() => setActiveSection('masters')}
-                    title="Back to masters & points"
-                  >
-                    Calibration Points
-                  </button>
-                </DialogTitle>
-                <p className="mb-0 text-xs text-slate-300">
-                  {rangeLabel || '—'}
-                  {unitSuffix}
-                </p>
-              </div>
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                {headerTitle}
+              </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
             {activeSection === 'rawSheet' ? (
               <div className="mx-auto w-full max-w-none space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 border-slate-300 text-xs text-slate-700 hover:bg-slate-50"
-                    onClick={() => setActiveSection('masters')}
-                  >
-                    ← Back to Masters
-                  </Button>
-                </div>
-                {rawSheetContent}
+                {typeof rawSheetContent === 'function'
+                  ? rawSheetContent({
+                      masterEquipmentIds: tabs
+                        .map((t) => t.masterEquipmentId.trim())
+                        .filter(Boolean),
+                      masterPointsTables: tabs
+                        .map((t) => t.calibrationPointsTable)
+                        .filter((t) => (t.columns?.length ?? 0) > 0)
+                        .map((t) => ({
+                          columns: t.columns.map((c) => ({ header: c.header })),
+                        })),
+                    })
+                  : rawSheetContent}
               </div>
             ) : null}
             {activeSection === 'muSheet' ? (
-              <div className="mx-auto w-full max-w-none space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 border-slate-300 text-xs text-slate-700 hover:bg-slate-50"
-                    onClick={() => setActiveSection('masters')}
-                  >
-                    ← Back to Masters
-                  </Button>
-                </div>
-                {muSheetContent}
-              </div>
+              <div className="mx-auto w-full max-w-none space-y-3">{muSheetContent}</div>
             ) : null}
             {activeSection === 'generateReport' ? (
               <div className="mx-auto w-full max-w-none space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 border-slate-300 text-xs text-slate-700 hover:bg-slate-50"
-                    onClick={() => setActiveSection('masters')}
-                  >
-                    ← Back to Masters
-                  </Button>
-                </div>
-                {generateReportContent}
+                {typeof generateReportContent === 'function'
+                  ? generateReportContent({
+                      masterEquipmentIds: tabs
+                        .map((t) => t.masterEquipmentId.trim())
+                        .filter(Boolean),
+                      masterPointsTables: tabs
+                        .map((t) => t.calibrationPointsTable)
+                        .filter((t) => (t.columns?.length ?? 0) > 0)
+                        .map((t) => ({
+                          columns: t.columns.map((c) => ({ header: c.header })),
+                        })),
+                    })
+                  : generateReportContent}
               </div>
             ) : null}
             {activeSection === 'modeOfCalibration' ? (
-              <div className="mx-auto w-full max-w-none space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 border-slate-300 text-xs text-slate-700 hover:bg-slate-50"
-                    onClick={() => setActiveSection('masters')}
-                  >
-                    ← Back to Masters
-                  </Button>
-                </div>
-                {modeOfCalibrationContent}
-              </div>
+              <div className="mx-auto w-full max-w-none space-y-3">{modeOfCalibrationContent}</div>
             ) : null}
             {activeSection === 'masters' ? (
               <div className="mx-auto w-full max-w-none space-y-3">
-                <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[960px] border-collapse text-sm">
-                      <thead className="bg-slate-50 text-left text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
+                  <div className="w-full">
+                    <table className="w-full table-fixed border-collapse text-sm">
+                      <thead>
                         <tr>
-                          <th className="w-12 border border-slate-200 px-2 py-2 text-center">
+                          <th className={cn(mastersThClass, 'w-10')}>
                             <input
                               type="checkbox"
-                              className="mx-auto block h-4 w-4 accent-teal-600"
+                              className="mx-auto block h-4 w-4 accent-amber-700"
                               checked={allTabsSelected}
                               onChange={(e) => toggleAllTabs(e.target.checked)}
                               aria-label="Select all masters"
                             />
                           </th>
-                          <th className="min-w-[240px] border border-slate-200 px-3 py-2">
+                          <th className={mastersThClass}>
                             Master Equipment Name
                           </th>
-                          <th className="min-w-[160px] border border-slate-200 px-3 py-2 text-center">
+                          <th className={cn(mastersThClass, 'w-[18%]')}>
                             Range of Master
                           </th>
-                          <th className="min-w-[160px] border border-slate-200 px-3 py-2 text-center">
+                          <th className={cn(mastersThClass, 'w-[16%]')}>
                             Uncertainty of Master
                           </th>
-                          <th className="w-36 border border-slate-200 px-3 py-2 text-center">
-                            Status of Master
-                          </th>
-                          <th className="w-36 border border-slate-200 px-3 py-2 text-center">
-                            Calibration Point
-                          </th>
-                          <th className="w-20 border border-slate-200 px-2 py-2 text-center">
-                            Action
+                          <th className={cn(mastersThClass, 'w-[15%]')}>Status of Master</th>
+                          <th className={cn(mastersThClass, 'w-[14%]')}>Calibration Point</th>
+                          <th className={cn(mastersThClass, 'w-10')}>
+                            <span className="sr-only">Action</span>
                           </th>
                         </tr>
                       </thead>
@@ -1286,19 +1294,29 @@ export function CalibrationRangePointsDialog({
                           const usedElsewhere = new Set(
                             [...usedMasterIds].filter((id) => id !== tab.masterEquipmentId),
                           )
+                          const rowSelected = selectedTabIds.has(tab.id)
 
                           return (
-                            <tr key={tab.id} className="border-t border-slate-100">
-                              <td className="border border-slate-200 px-2 py-2 text-center align-middle">
+                            <tr
+                              key={tab.id}
+                              className={
+                                rowSelected
+                                  ? 'bg-[#fde68a]/80'
+                                  : index % 2 === 0
+                                    ? 'bg-[#f7f3eb]'
+                                    : 'bg-[#fffcf7]'
+                              }
+                            >
+                              <td className={mastersTdClass}>
                                 <input
                                   type="checkbox"
-                                  className="mx-auto block h-4 w-4 accent-teal-600"
-                                  checked={selectedTabIds.has(tab.id)}
+                                  className="mx-auto block h-4 w-4 accent-amber-700"
+                                  checked={rowSelected}
                                   onChange={(e) => toggleTabSelected(tab.id, e.target.checked)}
                                   aria-label={`Select ${masterLabelForTab(tab, index, masterEquipmentOptions)}`}
                                 />
                               </td>
-                              <td className="border border-slate-200 px-3 py-2 align-middle">
+                              <td className={cn(mastersTdClass, 'text-left')}>
                                 <MasterEquipmentNameCell
                                   tabId={tab.id}
                                   masterEquipmentId={tab.masterEquipmentId}
@@ -1308,18 +1326,18 @@ export function CalibrationRangePointsDialog({
                                   onSelectMaster={selectMasterForTab}
                                 />
                               </td>
-                              <td className="border border-slate-200 px-3 py-2 align-middle text-center text-slate-700">
+                              <td className={cn(mastersTdClass, 'text-stone-700')}>
                                 {meta?.rangeCapacity ?? '—'}
                               </td>
-                              <td className="border border-slate-200 px-3 py-2 align-middle text-center text-slate-700">
+                              <td className={cn(mastersTdClass, 'text-stone-700')}>
                                 {meta?.uncertainty ?? '—'}
                               </td>
-                              <td className="border border-slate-200 px-3 py-2 align-middle text-center">
+                              <td className={mastersTdClass}>
                                 <Button
                                   type="button"
                                   variant="outline"
                                   size="sm"
-                                  className="h-8 gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-50"
+                                  className={cn('h-8 w-full max-w-[7.5rem] px-2 text-xs', limsOutlineBtnClass)}
                                   disabled={!tab.masterEquipmentId.trim()}
                                   onClick={() => setStatusViewMasterId(tab.masterEquipmentId)}
                                   aria-label={`View status for ${masterLabelForTab(tab, index, masterEquipmentOptions)}`}
@@ -1327,13 +1345,13 @@ export function CalibrationRangePointsDialog({
                                   View Status
                                 </Button>
                               </td>
-                              <td className="border border-slate-200 px-3 py-2 align-middle text-center">
+                              <td className={mastersTdClass}>
                                 <div className="flex justify-center">
                                   <Button
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="h-8 gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-50"
+                                    className={cn('h-8 w-full max-w-[6.5rem] gap-1 px-2 text-xs', limsOutlineBtnClass)}
                                     disabled={!tab.masterEquipmentId.trim()}
                                     onClick={() => openViewForTab(tab)}
                                     aria-label={`View calibration points for ${masterLabelForTab(tab, index, masterEquipmentOptions)}`}
@@ -1341,20 +1359,20 @@ export function CalibrationRangePointsDialog({
                                     <Eye size={14} aria-hidden />
                                     View
                                     {pointCount > 0 ? (
-                                      <span className="rounded-full bg-teal-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">
+                                      <span className="rounded-none bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                                         {pointCount}
                                       </span>
                                     ) : null}
                                   </Button>
                                 </div>
                               </td>
-                              <td className="border border-slate-200 px-2 py-2 align-middle text-center">
+                              <td className={mastersTdClass}>
                                 {isLast ? (
                                   <Button
                                     type="button"
-                                    variant="outline"
+                                    variant="ghost"
                                     size="sm"
-                                    className="h-9 w-9 border-teal-600/40 px-0 text-teal-800 hover:bg-teal-50"
+                                    className="mx-auto h-8 w-8 px-0 text-amber-800 hover:bg-amber-500/15 hover:text-amber-950"
                                     onClick={addMasterRow}
                                     aria-label="Add master row"
                                   >
@@ -1365,7 +1383,7 @@ export function CalibrationRangePointsDialog({
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    className="h-9 w-9 px-0 text-destructive hover:bg-destructive/10"
+                                    className="mx-auto h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
                                     onClick={() => removeMasterRow(tab.id)}
                                     aria-label={`Delete ${masterLabelForTab(tab, index, masterEquipmentOptions)}`}
                                   >
@@ -1380,28 +1398,8 @@ export function CalibrationRangePointsDialog({
                     </table>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="relative h-8 border-violet-600/40 text-xs text-violet-900 hover:bg-violet-50"
-                    aria-label="Mode of Calibration"
-                    onClick={() => setActiveSection('modeOfCalibration')}
-                  >
-                    <Gauge size={14} className="mr-1" />
-                    Mode of Calibration
-                    {modeOfCalibrationConfigured ? (
-                      <span
-                        className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-500"
-                        aria-hidden
-                        title="Mode of Calibration set"
-                      />
-                    ) : null}
-                  </Button>
-                </div>
                 {(masterEquipmentOptions ?? []).length === 0 ? (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-stone-500">
                     No master equipment found. Add standards under Equipment for Calibration.
                   </p>
                 ) : null}
@@ -1409,18 +1407,20 @@ export function CalibrationRangePointsDialog({
             ) : null}
           </div>
 
-          <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="bg-teal-600 text-white hover:bg-teal-500"
-              onClick={handleDone}
-              disabled={loadingPointsTabId != null}
-            >
-              Done
-            </Button>
+          <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:justify-between sm:px-6">
+            <div className="flex flex-wrap items-center gap-2">
+              {activeSection === 'rawSheet' ? rawSheetFooterActions : null}
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                className={limsPrimaryBtnClass}
+                onClick={handleDone}
+                disabled={loadingPointsTabId != null}
+              >
+                Save & Close
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

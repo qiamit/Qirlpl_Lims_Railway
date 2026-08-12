@@ -3,7 +3,7 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@
 import type { AllocationRow } from '../types'
 import { ArrowDown, ArrowUp, ArrowUpDown, Inbox, Pencil, SendHorizontal } from 'lucide-react'
 import { limsTableClass } from '@/lib/limsThemeUi'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import {
   areSampleAllocationActionsLocked,
   getSectionCodesInTestAllocation,
@@ -12,7 +12,7 @@ import {
 import type { SampleAllocationSortKey } from './sortSampleAllocationRows'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
-const fmtDate = (v: string | null | undefined) => (v ? v.slice(0, 10) : '-')
+const fmtDate = (v: string | null | undefined) => formatDate(v)
 
 function SortableHead({
   label,

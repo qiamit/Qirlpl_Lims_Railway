@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2, Wrench } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,8 +8,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -18,7 +24,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ConductMaintenanceAssistant } from './ConductMaintenanceAssistant'
-import { MaintenanceHistoryPanel } from './MaintenanceHistoryPanel'
 import {
   checklistItemsToRows,
   defaultRepairForStatus,
@@ -29,7 +34,6 @@ import {
 } from './maintenanceChecklist'
 import {
   newMaintenanceHistoryId,
-  sortMaintenanceHistoryNewestFirst,
   type MaintenanceHistoryRecord,
 } from './maintenanceHistory'
 import type { Frequency, MaintenanceChecklistItem } from './types'
@@ -37,6 +41,15 @@ import { calculateNextDueDate, sanitizeDateStr } from './types'
 
 export type { MaintenanceCheckpointRow, MaintenanceCheckpointStatus }
 export { REPAIR_DEFAULT_OK, REPAIR_DEFAULT_NOT_OK, defaultRepairForStatus } from './maintenanceChecklist'
+
+const FULLSCREEN_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+)
 
 function newCheckpointRow(checkPoint = ''): MaintenanceCheckpointRow {
   return {
@@ -93,8 +106,6 @@ export function ConductMaintenanceDialog({
 }) {
   const [rows, setRows] = useState<MaintenanceCheckpointRow[]>([])
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
-  const [aiMessage, setAiMessage] = useState<string | null>(null)
-  const [aiError, setAiError] = useState(false)
   const snapshotRef = useRef({
     lastDate: '',
     nextDate: '',
@@ -107,10 +118,8 @@ export function ConductMaintenanceDialog({
   useEffect(() => {
     if (!open) return
     setSaveMessage(null)
-    setAiMessage(null)
-    setAiError(false)
     const saved = checklistItemsToRows(initialChecklist)
-    setRows(saved)
+    setRows(saved.length > 0 ? saved : [newCheckpointRow()])
     snapshotRef.current = {
       lastDate: lastMaintenanceDate ?? '',
       nextDate: nextMaintenanceDate ?? '',
@@ -122,15 +131,6 @@ export function ConductMaintenanceDialog({
     // Load only when dialog opens so parent re-renders do not wipe edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
-
-  const sortedHistory = useMemo(
-    () => sortMaintenanceHistoryNewestFirst(maintenanceHistory),
-    [maintenanceHistory],
-  )
-
-  const allSelected = rows.length > 0 && rows.every((row) => row.selected)
-  const someSelected = rows.some((row) => row.selected)
-  const selectedCount = useMemo(() => rows.filter((row) => row.selected).length, [rows])
 
   const updateRow = (key: string, patch: Partial<MaintenanceCheckpointRow>) => {
     setRows((prev) =>
@@ -145,12 +145,12 @@ export function ConductMaintenanceDialog({
     )
   }
 
-  const toggleAll = (checked: boolean) => {
-    setRows((prev) => prev.map((row) => ({ ...row, selected: checked })))
+  const addRow = () => {
+    setRows((prev) => [...prev, newCheckpointRow()])
   }
 
-  const removeSelected = () => {
-    setRows((prev) => prev.filter((row) => !row.selected))
+  const removeRow = (key: string) => {
+    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.key !== key)))
   }
 
   const handleSaveAndClose = () => {
@@ -207,177 +207,154 @@ export function ConductMaintenanceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent layer={layer} className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Wrench className="h-4 w-4" />
-            Conduct Maintenance
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3 text-sm">
-          <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
-            <p className="font-medium">{equipmentName || 'Equipment'}</p>
-            {assetCode ? (
-              <p className="text-xs text-muted-foreground font-mono">Asset Code: {assetCode}</p>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label className="text-xs font-semibold text-muted-foreground">
-              Maintenance Checklist ({selectedCount}/{rows.length} selected)
-            </Label>
-            <div className="flex items-center gap-2">
-              <ConductMaintenanceAssistant
-                equipment={{
-                  equipmentName,
-                  assetCode,
-                  manufacturer,
-                  modelNumber,
-                  rangeCapacity,
-                }}
-                onApplyChecklist={setRows}
-                onStatusMessage={(message, isError) => {
-                  setAiMessage(message)
-                  setAiError(!!isError)
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1.5"
-                onClick={() => setRows((prev) => [...prev, newCheckpointRow()])}
-              >
-                <Plus size={14} />
-                Add Check Point
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-8 gap-1.5 text-destructive hover:text-destructive"
-                disabled={!someSelected}
-                onClick={removeSelected}
-              >
-                <Trash2 size={14} />
-                Remove Selected
-              </Button>
-            </div>
-          </div>
-
-          <MaintenanceHistoryPanel
-            history={sortedHistory}
-            currentLastDate={lastMaintenanceDate}
-            currentDoneByName={maintenanceDoneByName}
-            currentChecklist={initialChecklist}
+      <DialogContent
+        persistOnFocusLoss
+        layer={layer === 'default' ? 'nested' : layer}
+        overlayClassName={FULLSCREEN_OVERLAY}
+        className={FULLSCREEN_DIALOG_CLASS}
+        aria-describedby={undefined}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
           />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Conduct Maintenance
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full min-w-[720px] text-xs">
-              <thead className="bg-stone-800">
-                <tr>
-                  <th className="w-12 p-2 text-center">
-                    <div className="flex justify-center">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        disabled={rows.length === 0}
-                        ref={(el) => {
-                          if (el) el.indeterminate = !allSelected && someSelected
-                        }}
-                        onChange={(e) => toggleAll(e.target.checked)}
-                        aria-label="Select all checkpoints"
-                      />
-                    </div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
+            labRegistryFormClass,
+          )}
+        >
+        <div className="space-y-3 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3 rounded-none border-2 border-stone-400 bg-stone-50 px-3 py-2">
+            <div>
+              <p className="text-sm font-semibold text-stone-800">{equipmentName || 'Equipment'}</p>
+              {assetCode ? (
+                <p className="font-mono text-xs text-stone-500">Asset Code: {assetCode}</p>
+              ) : null}
+            </div>
+            <ConductMaintenanceAssistant
+              equipment={{
+                equipmentName,
+                assetCode,
+                manufacturer,
+                modelNumber,
+                rangeCapacity,
+              }}
+              onApplyChecklist={(next) =>
+                setRows(next.length > 0 ? next : [newCheckpointRow()])
+              }
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-none border-2 border-stone-400">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-stone-800 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                  <th className="w-[5%] border border-stone-700 px-2 py-2 text-center">#</th>
+                  <th className="border border-stone-700 px-2 py-2 text-center">
+                    Maintenance Check Point
                   </th>
-                  <th className="p-2 text-center font-medium">Maintenance Check Point</th>
-                  <th className="w-36 p-2 text-center font-medium">Status</th>
-                  <th className="min-w-[180px] p-2 text-center font-medium">Repair If Any</th>
+                  <th className="w-36 border border-stone-700 px-2 py-2 text-center">Status</th>
+                  <th className="min-w-[180px] border border-stone-700 px-2 py-2 text-center">
+                    Repair If Any
+                  </th>
+                  <th className="w-[7%] border border-stone-700 px-2 py-2 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="p-6 text-center text-muted-foreground">
-                      No check points yet. Use <strong>Add Check Point</strong> or{' '}
-                      <strong>AI Assistant</strong> to create the checklist.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((row, index) => (
-                  <tr key={row.key} className="border-t border-border">
-                    <td className="p-2 text-center">
-                      <div className="flex justify-center">
-                        <input
-                          type="checkbox"
-                          checked={row.selected}
-                          onChange={(e) => updateRow(row.key, { selected: e.target.checked })}
-                          aria-label={`Select checkpoint ${index + 1}`}
+              <tbody className="bg-[#f7f3eb]">
+                {rows.map((row, index) => {
+                  const isLastRow = index === rows.length - 1
+                  return (
+                    <tr key={row.key} className="hover:bg-amber-50/40">
+                      <td className="border border-stone-300 px-2 py-1.5 text-center align-middle font-mono text-stone-500">
+                        {index + 1}
+                      </td>
+                      <td className="border border-stone-300 px-1 py-0.5 text-left align-middle">
+                        <Input
+                          value={row.checkPoint}
+                          placeholder={`Check point ${index + 1}`}
+                          onChange={(e) => updateRow(row.key, { checkPoint: e.target.value })}
+                          className="!h-7 min-h-0 px-2 py-0.5 text-left text-xs"
                         />
-                      </div>
-                    </td>
-                    <td className="p-2">
-                      <Input
-                        value={row.checkPoint}
-                        placeholder={`Check point ${index + 1}`}
-                        onChange={(e) => updateRow(row.key, { checkPoint: e.target.value })}
-                        className="h-9"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <Select
-                        value={row.status}
-                        onValueChange={(value) =>
-                          updateRow(row.key, { status: value as MaintenanceCheckpointStatus })
-                        }
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="OK">OK</SelectItem>
-                          <SelectItem value="Not OK">Not OK</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="p-2">
-                      <Input
-                        value={row.repairIfAny}
-                        placeholder={defaultRepairForStatus(row.status)}
-                        onChange={(e) => updateRow(row.key, { repairIfAny: e.target.value })}
-                        className="h-9"
-                        aria-label={`Repair if any for checkpoint ${index + 1}`}
-                      />
-                    </td>
-                  </tr>
-                  ))
-                )}
+                      </td>
+                      <td className="border border-stone-300 px-1 py-0.5 text-center align-middle">
+                        <Select
+                          value={row.status}
+                          onValueChange={(value) =>
+                            updateRow(row.key, { status: value as MaintenanceCheckpointStatus })
+                          }
+                        >
+                          <SelectTrigger className="!h-7 min-h-0 px-2 py-0 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="OK">OK</SelectItem>
+                            <SelectItem value="Not OK">Not OK</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="border border-stone-300 px-1 py-0.5 text-right align-middle">
+                        <Input
+                          value={row.repairIfAny}
+                          placeholder={defaultRepairForStatus(row.status)}
+                          onChange={(e) => updateRow(row.key, { repairIfAny: e.target.value })}
+                          className="!h-7 min-h-0 px-2 py-0.5 text-right text-xs"
+                          aria-label={`Repair if any for checkpoint ${index + 1}`}
+                        />
+                      </td>
+                      <td className="border border-stone-300 py-0.5 text-center align-middle">
+                        <div className="flex items-center justify-center">
+                          {isLastRow ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-amber-800 hover:bg-amber-500/15"
+                              aria-label="Add check point"
+                              onClick={addRow}
+                            >
+                              <Plus size={12} />
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-destructive hover:bg-rose-50"
+                              aria-label={`Delete check point ${index + 1}`}
+                              onClick={() => removeRow(row.key)}
+                            >
+                              <Trash2 size={10} />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
-          {aiMessage ? (
-            <p
-              className={`text-xs rounded-md px-3 py-2 border ${
-                aiError
-                  ? 'text-destructive bg-destructive/5 border-destructive/30'
-                  : 'text-emerald-700 bg-emerald-50 border-emerald-200'
-              }`}
-            >
-              {aiMessage}
-            </p>
-          ) : null}
-
           {saveMessage ? (
-            <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+            <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-none px-3 py-2">
               {saveMessage}
             </p>
           ) : null}
         </div>
+        </div>
 
-        <DialogFooter>
-          <Button type="button" onClick={handleSaveAndClose}>
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
+          <Button type="button" className={limsPrimaryBtnClass} onClick={handleSaveAndClose}>
             Save & Close
           </Button>
         </DialogFooter>

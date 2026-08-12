@@ -47,13 +47,45 @@ export type RawDataColumnFormula = {
   expression?: string | null
 }
 
+export type RawDataRequiredMode = 'auto' | 'yes' | 'no'
+
 export type RawDataSheetColumn = {
   key: string
   label: string
   type: RawDataColumnType
   required: boolean
+  /** Formula columns: Auto / Yes / No for Required in Raw Data. */
+  requiredMode?: RawDataRequiredMode
+  /** When true, this column is printed on the calibration certificate. */
+  requiredInCertificate?: boolean
   /** Present only when type = 'formula'. */
   formula?: RawDataColumnFormula
+}
+
+export function resolveRawDataRequiredMode(col: RawDataSheetColumn): RawDataRequiredMode {
+  if (col.requiredMode === 'auto' || col.requiredMode === 'yes' || col.requiredMode === 'no') {
+    return col.requiredMode
+  }
+  if (col.type === 'formula') return col.required ? 'yes' : 'auto'
+  return col.required ? 'yes' : 'no'
+}
+
+/** Required in Raw Data checkbox — checked columns stay on the conduct grid. */
+export function isRawDataColumnRequiredInRow(col: RawDataSheetColumn): boolean {
+  return resolveRawDataRequiredMode(col) === 'yes'
+}
+
+/** Missing flag (legacy templates) stays visible on the certificate. */
+export function isRawDataColumnRequiredInCertificate(
+  col: Pick<RawDataSheetColumn, 'requiredInCertificate'>,
+): boolean {
+  return col.requiredInCertificate !== false
+}
+
+function parseRequiredInCertificate(row: Record<string, unknown>): boolean | undefined {
+  const raw = row.requiredInCertificate ?? row.required_in_certificate
+  if (raw == null) return undefined
+  return Boolean(raw)
 }
 
 export type RawDataFormulaOpMeta = {
@@ -198,10 +230,23 @@ export type RawDataVerificationItem = {
   required: boolean
 }
 
+export type RawDataSheetTableBlock = {
+  id: string
+  name: string
+  columns: RawDataSheetColumn[]
+}
+
+export const PRIMARY_RAW_DATA_TABLE_ID = 'primary'
+export const DEFAULT_RAW_DATA_TABLE_NAME = 'Raw data columns'
+
 export type RawDataSheetTemplate = {
   version: 1
   verification: { items: RawDataVerificationItem[] }
   columns: RawDataSheetColumn[]
+  /** Display name of the primary columns table. */
+  tableName?: string
+  /** Additional raw-data tables (own name + columns). */
+  extraTables?: RawDataSheetTableBlock[]
   /** Seed raw-data rows from equipment measurement_ranges.calibration_points */
   seedFrom: 'calibration_points' | 'none'
   /** Default Environment Condition setup for Conduct Raw Data Sheet. */
@@ -562,10 +607,14 @@ export function defaultEnvStatFormulaExpression(
   }
 }
 
+export type EnvRowFieldType = 'number' | 'text' | 'formula'
+
 export type RawDataEnvironmentReadingRow = {
   id: string
   /** First-column label / linked raw-data row id or free text. */
   readingLabel: string
+  /** Number / Text input, or Calculated (formula) cells. */
+  fieldType?: EnvRowFieldType
   /** Values keyed by EnvParameterColumn.id (or legacy EnvParameterKey). */
   values: Record<string, string>
   /**
@@ -573,6 +622,25 @@ export type RawDataEnvironmentReadingRow = {
    * Refs use other Field labels: `=AVERAGE([Reading at 0],[Reading at 120])`.
    */
   formulas?: Record<string, string>
+}
+
+export function parseEnvRowFieldType(raw: unknown): EnvRowFieldType | undefined {
+  const v = String(raw ?? '').trim().toLowerCase()
+  if (v === 'number' || v === 'text' || v === 'formula') return v
+  if (v === 'calculated') return 'formula'
+  return undefined
+}
+
+export function resolveEnvRowFieldType(row: RawDataEnvironmentReadingRow): EnvRowFieldType {
+  const parsed = parseEnvRowFieldType(row.fieldType)
+  if (parsed) return parsed
+  if (row.formulas && Object.keys(row.formulas).length > 0) return 'formula'
+  if (isEnvStandardFieldLabel(row.readingLabel)) return 'formula'
+  return 'number'
+}
+
+export function isEnvRowCalculated(row: RawDataEnvironmentReadingRow): boolean {
+  return resolveEnvRowFieldType(row) === 'formula'
 }
 
 export type RawDataEnvironmentConditions = {
@@ -600,12 +668,26 @@ function newEnvReadingId(): string {
 
 export function emptyEnvironmentReadingRow(
   label = '',
+  fieldType?: EnvRowFieldType,
 ): RawDataEnvironmentReadingRow {
   return {
     id: newEnvReadingId(),
     readingLabel: label,
     values: {},
+    ...(fieldType ? { fieldType } : {}),
   }
+}
+
+function withParsedEnvFieldType(
+  row: Record<string, unknown>,
+  readingLabel: string,
+  formulas?: Record<string, string>,
+): EnvRowFieldType | undefined {
+  const explicit = parseEnvRowFieldType(row.fieldType ?? row.field_type)
+  if (explicit) return explicit
+  if (formulas && Object.keys(formulas).length > 0) return 'formula'
+  if (isEnvStandardFieldLabel(readingLabel)) return 'formula'
+  return undefined
 }
 
 function parseEnvParameterColumns(raw: unknown): EnvParameterColumn[] {
@@ -674,10 +756,13 @@ export function parseEnvironmentConditions(raw: unknown): RawDataEnvironmentCond
             ? (row.values as Record<string, unknown>)
             : {}
         const formulas = parseEnvRowFormulas(row.formulas)
+        const readingLabel = String(row.readingLabel ?? row.reading_label ?? row.label ?? '').trim()
+        const fieldType = withParsedEnvFieldType(row, readingLabel, formulas)
         return {
           id: String(row.id ?? newEnvReadingId()),
-          readingLabel: String(row.readingLabel ?? row.reading_label ?? row.label ?? '').trim(),
+          readingLabel,
           values: parseEnvRowValues(valuesRaw),
+          ...(fieldType ? { fieldType } : {}),
           ...(formulas ? { formulas } : {}),
         } satisfies RawDataEnvironmentReadingRow
       })
@@ -794,6 +879,30 @@ export function newPayloadRowId(): string {
   return newId('row')
 }
 
+export function newRawDataTableId(): string {
+  return newId('tbl')
+}
+
+export function emptyRawDataSheetTableBlock(name = 'Raw data table'): RawDataSheetTableBlock {
+  return {
+    id: newRawDataTableId(),
+    name,
+    columns: [emptyRawDataSheetColumn()],
+  }
+}
+
+export function rawDataSheetPrimaryTableName(template: RawDataSheetTemplate): string {
+  const name = String(template.tableName ?? '').trim()
+  return name || DEFAULT_RAW_DATA_TABLE_NAME
+}
+
+export function allRawDataSheetColumns(template: RawDataSheetTemplate): RawDataSheetColumn[] {
+  return [
+    ...template.columns,
+    ...(template.extraTables ?? []).flatMap((table) => table.columns),
+  ]
+}
+
 /** Sensible default when equipment has no template yet. */
 export function defaultRawDataSheetTemplate(): RawDataSheetTemplate {
   return {
@@ -802,7 +911,9 @@ export function defaultRawDataSheetTemplate(): RawDataSheetTemplate {
     verification: {
       items: [emptyVerificationItem()],
     },
+    tableName: DEFAULT_RAW_DATA_TABLE_NAME,
     columns: [emptyRawDataSheetColumn()],
+    extraTables: [],
     environmentDefaults: {
       selectedParameters: [],
       parameterColumns: [],
@@ -818,6 +929,7 @@ export function emptyRawDataSheetColumn(): RawDataSheetColumn {
     label: '',
     type: 'number',
     required: false,
+    requiredInCertificate: false,
   }
 }
 
@@ -842,6 +954,84 @@ export function emptyColumnFormula(): RawDataColumnFormula {
 
 function isColumnType(v: unknown): v is RawDataColumnType {
   return v === 'text' || v === 'number' || v === 'formula'
+}
+
+function parseTemplateColumns(columnsRaw: unknown): RawDataSheetColumn[] {
+  if (!Array.isArray(columnsRaw)) return []
+  const columns: RawDataSheetColumn[] = []
+  for (const item of columnsRaw) {
+    if (!item || typeof item !== 'object') continue
+    const row = item as Record<string, unknown>
+    const key = String(row.key ?? '').trim()
+    const label = String(row.label ?? '').trim()
+    if (!key || !label) continue
+    const type = isColumnType(row.type) ? row.type : 'text'
+    const formula =
+      type === 'formula' ? (parseColumnFormula(row.formula) ?? emptyColumnFormula()) : undefined
+    columns.push({
+      key,
+      label,
+      type,
+      required: Boolean(row.required),
+      requiredMode:
+        row.requiredMode === 'auto' || row.requiredMode === 'yes' || row.requiredMode === 'no'
+          ? row.requiredMode
+          : type === 'formula'
+            ? Boolean(row.required)
+              ? 'yes'
+              : 'auto'
+            : undefined,
+      requiredInCertificate: parseRequiredInCertificate(row),
+      ...(formula ? { formula } : {}),
+    })
+  }
+  return columns
+}
+
+function serializeTemplateColumns(columns: RawDataSheetColumn[]): RawDataSheetColumn[] {
+  return columns
+    .map((c) => {
+      const type = isColumnType(c.type) ? c.type : 'text'
+      const formula = type === 'formula' ? (c.formula ?? emptyColumnFormula()) : undefined
+      return {
+        key: (c.key || newRawDataColumnKey()).trim(),
+        label: c.label.trim(),
+        type,
+        required: Boolean(c.required),
+        ...(c.requiredMode ? { requiredMode: c.requiredMode } : {}),
+        requiredInCertificate: c.requiredInCertificate,
+        ...(formula
+          ? {
+              formula: {
+                op: formula.op,
+                sources: formula.sources.filter((s) => s.trim().length > 0),
+                constant: formula.constant ?? null,
+                decimals: formula.decimals ?? null,
+                referenceTempC: formula.referenceTempC ?? null,
+                expression: formula.expression?.trim() || null,
+              },
+            }
+          : {}),
+      } satisfies RawDataSheetColumn
+    })
+    .filter((c) => c.label.length > 0)
+}
+
+function parseExtraTables(raw: unknown): RawDataSheetTableBlock[] {
+  if (!Array.isArray(raw)) return []
+  const tables: RawDataSheetTableBlock[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const row = item as Record<string, unknown>
+    const columns = parseTemplateColumns(row.columns)
+    if (columns.length === 0) continue
+    tables.push({
+      id: String(row.id ?? newRawDataTableId()).trim() || newRawDataTableId(),
+      name: String(row.name ?? '').trim() || 'Raw data table',
+      columns,
+    })
+  }
+  return tables
 }
 
 function isFormulaOp(v: unknown): v is RawDataFormulaOp {
@@ -885,28 +1075,10 @@ export function parseRawDataSheetTemplate(raw: unknown): RawDataSheetTemplate | 
   const obj = raw as Record<string, unknown>
   if (obj.version !== 1) return null
 
-  const columnsRaw = obj.columns
-  if (!Array.isArray(columnsRaw) || columnsRaw.length === 0) return null
-
-  const columns: RawDataSheetColumn[] = []
-  for (const item of columnsRaw) {
-    if (!item || typeof item !== 'object') continue
-    const row = item as Record<string, unknown>
-    const key = String(row.key ?? '').trim()
-    const label = String(row.label ?? '').trim()
-    if (!key || !label) continue
-    const type = isColumnType(row.type) ? row.type : 'text'
-    const formula =
-      type === 'formula' ? (parseColumnFormula(row.formula) ?? emptyColumnFormula()) : undefined
-    columns.push({
-      key,
-      label,
-      type,
-      required: type === 'formula' ? false : Boolean(row.required),
-      ...(formula ? { formula } : {}),
-    })
-  }
+  const columns = parseTemplateColumns(obj.columns)
   if (columns.length === 0) return null
+  const tableName = String(obj.tableName ?? obj.table_name ?? '').trim()
+  const extraTables = parseExtraTables(obj.extraTables ?? obj.extra_tables)
 
   const verificationObj =
     obj.verification && typeof obj.verification === 'object'
@@ -955,10 +1127,12 @@ export function parseRawDataSheetTemplate(raw: unknown): RawDataSheetTemplate | 
           row.readingLabel ?? row.reading_label ?? row.label ?? '',
         ).trim()
         const formulas = parseEnvRowFormulas(row.formulas)
+        const fieldType = withParsedEnvFieldType(row, readingLabel, formulas)
         return {
           id: String(row.id ?? newEnvReadingId()),
           readingLabel,
           values,
+          ...(fieldType ? { fieldType } : {}),
           ...(formulas ? { formulas } : {}),
         } satisfies RawDataEnvironmentReadingRow
       })
@@ -993,6 +1167,8 @@ export function parseRawDataSheetTemplate(raw: unknown): RawDataSheetTemplate | 
   return {
     version: 1,
     columns,
+    ...(tableName ? { tableName } : {}),
+    ...(extraTables.length > 0 ? { extraTables } : {}),
     verification: { items },
     seedFrom,
     ...(environmentDefaults ? { environmentDefaults } : {}),
@@ -1015,6 +1191,7 @@ export function serializeRawDataSheetTemplate(
     return {
       id: row.id || newEnvReadingId(),
       readingLabel: String(row.readingLabel ?? '').trim(),
+      fieldType: resolveEnvRowFieldType(row),
       values: { ...row.values },
       ...(formulas ? { formulas } : {}),
     }
@@ -1041,30 +1218,18 @@ export function serializeRawDataSheetTemplate(
         }))
         .filter((i) => i.label.length > 0),
     },
-    columns: template.columns
-      .map((c) => {
-        const type = isColumnType(c.type) ? c.type : 'text'
-        const formula = type === 'formula' ? (c.formula ?? emptyColumnFormula()) : undefined
-        return {
-          key: (c.key || newRawDataColumnKey()).trim(),
-          label: c.label.trim(),
-          type,
-          required: type === 'formula' ? false : Boolean(c.required),
-          ...(formula
-            ? {
-                formula: {
-                  op: formula.op,
-                  sources: formula.sources.filter((s) => s.trim().length > 0),
-                  constant: formula.constant ?? null,
-                  decimals: formula.decimals ?? null,
-                  referenceTempC: formula.referenceTempC ?? null,
-                  expression: formula.expression?.trim() || null,
-                },
-              }
-            : {}),
-        } satisfies RawDataSheetColumn
-      })
-      .filter((c) => c.label.length > 0),
+    ...(rawDataSheetPrimaryTableName(template) !== DEFAULT_RAW_DATA_TABLE_NAME ||
+    String(template.tableName ?? '').trim()
+      ? { tableName: rawDataSheetPrimaryTableName(template) }
+      : {}),
+    columns: serializeTemplateColumns(template.columns),
+    extraTables: (template.extraTables ?? [])
+      .map((table) => ({
+        id: table.id || newRawDataTableId(),
+        name: String(table.name ?? '').trim() || 'Raw data table',
+        columns: serializeTemplateColumns(table.columns),
+      }))
+      .filter((table) => table.columns.length > 0),
     environmentDefaults: {
       selectedParameters:
         selected.length > 0
@@ -1101,7 +1266,7 @@ export function parseRawDataSheetPayload(raw: unknown): RawDataSheetPayload | nu
     const valuesRaw =
       row.values && typeof row.values === 'object' ? (row.values as Record<string, unknown>) : {}
     const values: RawDataSheetRowValues = {}
-    for (const col of template.columns) {
+    for (const col of allRawDataSheetColumns(template)) {
       values[col.key] = String(valuesRaw[col.key] ?? '')
     }
     const pointValue = String(row.pointValue ?? row.point_value ?? '').trim()
@@ -1276,6 +1441,7 @@ const EXPRESSION_FN_NAMES = new Set([
   'mod',
   'int',
   'ceiling',
+  'ceil',
   'floor',
   'roundup',
   'rounddown',
@@ -1309,6 +1475,38 @@ const EXPRESSION_FN_NAMES = new Set([
   'avedev',
   'large',
   'small',
+  'cbrt',
+  'sinh',
+  'cosh',
+  'tanh',
+  'asinh',
+  'acosh',
+  'atanh',
+  'log2',
+  'pow',
+  'rms',
+  'rss',
+  'sumsq',
+  'hypot',
+  'range',
+  'cv',
+  'stdevp',
+  'varp',
+  'mround',
+  'clamp',
+  'xor',
+  'ifs',
+  'choose',
+  'sec',
+  'csc',
+  'cot',
+  'devsq',
+  'sqrtpi',
+  'combin',
+  'percent',
+  'gcd',
+  'lcm',
+  'tempcorrect',
 ])
 
 /** Normalize Excel-ish operators / leading equals. */
@@ -1397,9 +1595,25 @@ function resolveColumnRef(
   return softMatches[0] ?? null
 }
 
-/**
- * Collect column keys referenced by `[Label]` tokens (and optional bare keys).
- */
+/** `=Load in kN` → `=[Load in kN]` when that label exists. */
+export function wrapBareFormulaColumnRef(
+  expr: string,
+  columns: RawDataSheetColumn[],
+): string {
+  const trimmed = expr.trim()
+  if (!trimmed) return trimmed
+  const prefixed = trimmed.startsWith('=') ? trimmed : `=${trimmed}`
+  const body = normalizeColumnFormulaExpression(prefixed)
+  if (!body || /[[+\-*/(),]/.test(body)) return prefixed
+  const needle = body.trim().toLowerCase()
+  const col =
+    columns.find((c) => c.label.trim().toLowerCase() === needle) ??
+    columns.find((c) => c.key.toLowerCase() === needle)
+  if (!col) return prefixed
+  const label = col.label.trim() || col.key
+  return `=[${label}]`
+}
+
 export function extractExpressionSourceKeys(
   expr: string,
   columns: RawDataSheetColumn[],
@@ -1417,6 +1631,10 @@ export function extractExpressionSourceKeys(
       keys.push(col.key)
     }
   }
+  if (keys.length === 0 && !/[[+\-*/(),]/.test(normalized)) {
+    const bare = resolveColumnRef(normalized, columns)
+    if (bare) keys.push(bare.key)
+  }
   return keys
 }
 
@@ -1425,7 +1643,7 @@ function validateExpressionBody(body: string): string | null {
   let rest = body.replace(/"(?:\\.|[^"\\])*"/g, ' ')
   // After refs replaced with numbers, only math + allowed fn names + & should remain.
   rest = rest.replace(/\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, ' ')
-  rest = rest.replace(/[+\-*/().,&\s]/g, ' ')
+  rest = rest.replace(/[+\-*/().,&<>=!\s]/g, ' ')
   const tokens = rest.split(/\s+/).filter(Boolean)
   for (const tok of tokens) {
     if (!EXPRESSION_FN_NAMES.has(tok.toLowerCase())) {
@@ -1546,6 +1764,24 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
   })
 }
 
+/** Evaluate a number-only math expression (no [column] refs). */
+export function evaluateMathExpression(expr: string): number | null {
+  const body = normalizeColumnFormulaExpression(expr)
+  if (!body) return null
+  try {
+    return runValidatedMathExpression(body)
+  } catch {
+    return null
+  }
+}
+
+/** Validate a number-only math expression. Returns null if valid. */
+export function validateMathExpression(expr: string): string | null {
+  const body = normalizeColumnFormulaExpression(expr)
+  if (!body) return 'Formula is empty.'
+  return validateExpressionBody(body)
+}
+
 function runValidatedMathExpression(body: string): number | null {
   const validationError = validateExpressionBody(body)
   if (validationError) throw new Error(validationError)
@@ -1638,6 +1874,102 @@ function runValidatedMathExpression(body: string): number | null {
     if (k < 1 || k > vals.length) throw new Error('incomplete')
     return vals[k - 1]!
   }
+  const roundFn = (x: number, digits?: number) => {
+    if (digits == null) return Math.round(x)
+    const f = 10 ** Math.round(digits)
+    return Math.round(x * f) / f
+  }
+  const rms = (...nums: number[]) => {
+    if (nums.length === 0) throw new Error('incomplete')
+    return Math.sqrt(nums.reduce((a, b) => a + b * b, 0) / nums.length)
+  }
+  const rss = (...nums: number[]) => {
+    if (nums.length === 0) throw new Error('incomplete')
+    return Math.sqrt(nums.reduce((a, b) => a + b * b, 0))
+  }
+  const sumsq = (...nums: number[]) => {
+    if (nums.length === 0) throw new Error('incomplete')
+    return nums.reduce((a, b) => a + b * b, 0)
+  }
+  const rangeFn = (...nums: number[]) => {
+    if (nums.length === 0) throw new Error('incomplete')
+    return Math.max(...nums) - Math.min(...nums)
+  }
+  const popVariance = (nums: number[]) => {
+    if (nums.length < 1) throw new Error('incomplete')
+    const avg = meanOf(nums)
+    return nums.reduce((acc, n) => acc + (n - avg) ** 2, 0) / nums.length
+  }
+  const stdevp = (...nums: number[]) => Math.sqrt(popVariance(nums))
+  const varp = (...nums: number[]) => popVariance(nums)
+  const cv = (...nums: number[]) => {
+    const avg = meanOf(nums)
+    if (avg === 0) throw new Error('incomplete')
+    const v = sampleVariance(nums)
+    if (v == null) throw new Error('incomplete')
+    return Math.sqrt(v) / avg
+  }
+  const mround = (x: number, multiple: number) => {
+    if (multiple === 0) throw new Error('incomplete')
+    return Math.round(x / multiple) * multiple
+  }
+  const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi)
+  const xorFn = (...nums: number[]) => (nums.filter((n) => Boolean(n)).length % 2 === 1 ? 1 : 0)
+  const ifsFn = (...args: number[]) => {
+    if (args.length < 2) throw new Error('incomplete')
+    for (let i = 0; i + 1 < args.length; i += 2) {
+      if (args[i]) return args[i + 1]!
+    }
+    if (args.length % 2 === 1) return args[args.length - 1]!
+    throw new Error('incomplete')
+  }
+  const choose = (index: number, ...vals: number[]) => {
+    const i = Math.floor(index) - 1
+    if (i < 0 || i >= vals.length) throw new Error('incomplete')
+    return vals[i]!
+  }
+  const gcdTwo = (a: number, b: number): number => {
+    let x = Math.abs(Math.trunc(a))
+    let y = Math.abs(Math.trunc(b))
+    while (y) {
+      const t = y
+      y = x % y
+      x = t
+    }
+    return x
+  }
+  const gcd = (...nums: number[]) => {
+    if (nums.length === 0) throw new Error('incomplete')
+    return nums.reduce((a, b) => gcdTwo(a, b))
+  }
+  const lcmTwo = (a: number, b: number) => {
+    if (a === 0 || b === 0) return 0
+    return Math.abs(Math.trunc(a) * Math.trunc(b)) / gcdTwo(a, b)
+  }
+  const lcm = (...nums: number[]) => {
+    if (nums.length === 0) throw new Error('incomplete')
+    return nums.reduce((a, b) => lcmTwo(a, b))
+  }
+  const combin = (n: number, k: number) => {
+    const N = Math.floor(n)
+    const K = Math.floor(k)
+    if (N < 0 || K < 0 || K > N || N > 170) throw new Error('incomplete')
+    return fact(N) / (fact(K) * fact(N - K))
+  }
+  const percent = (part: number, whole: number) => {
+    if (whole === 0) throw new Error('incomplete')
+    return (part / whole) * 100
+  }
+  const tempcorrect = (reading: number, temp: number, alpha: number, refTemp = 20) =>
+    reading * (1 + alpha * (temp - refTemp))
+  const sec = (x: number) => 1 / Math.cos(x)
+  const csc = (x: number) => 1 / Math.sin(x)
+  const cot = (x: number) => 1 / Math.tan(x)
+  const devsq = (...nums: number[]) => {
+    if (nums.length === 0) throw new Error('incomplete')
+    const avg = meanOf(nums)
+    return nums.reduce((a, b) => a + (b - avg) ** 2, 0)
+  }
 
   // Function name → implementation (all lowercase; wrapper serves upper/lower)
   const impl: Record<string, (...n: number[]) => number> = {
@@ -1648,7 +1980,7 @@ function runValidatedMathExpression(body: string): number | null {
     max: Math.max,
     abs: Math.abs,
     sqrt: Math.sqrt,
-    round: Math.round,
+    round: roundFn,
     median,
     mode,
     stdev,
@@ -1661,6 +1993,7 @@ function runValidatedMathExpression(body: string): number | null {
     mod,
     int: intFn,
     ceiling: Math.ceil,
+    ceil: Math.ceil,
     floor: Math.floor,
     roundup: roundUp,
     rounddown: roundDown,
@@ -1694,6 +2027,38 @@ function runValidatedMathExpression(body: string): number | null {
     avedev,
     large,
     small,
+    cbrt: Math.cbrt,
+    sinh: Math.sinh,
+    cosh: Math.cosh,
+    tanh: Math.tanh,
+    asinh: Math.asinh,
+    acosh: Math.acosh,
+    atanh: Math.atanh,
+    log2: Math.log2,
+    pow: power,
+    rms,
+    rss,
+    sumsq,
+    hypot: Math.hypot,
+    range: rangeFn,
+    cv,
+    stdevp,
+    varp,
+    mround,
+    clamp,
+    xor: xorFn,
+    ifs: ifsFn,
+    choose,
+    sec,
+    csc,
+    cot,
+    devsq,
+    sqrtpi: (x: number) => Math.sqrt(Math.PI * x),
+    combin,
+    percent,
+    gcd,
+    lcm,
+    tempcorrect,
   }
 
   const names = Object.keys(impl)
@@ -1756,8 +2121,11 @@ export function evaluateColumnFormulaExpression(
       const raw = (values[col.key] ?? '').trim()
       if (!raw) throw new Error('incomplete')
       const n = Number(raw)
-      if (!Number.isFinite(n)) throw new Error('incomplete')
-      return `(${n})`
+      if (Number.isFinite(n)) return `(${n})`
+      const extracted = raw.match(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)
+      const parsed = extracted ? Number(extracted[0]) : NaN
+      if (!Number.isFinite(parsed)) throw new Error('incomplete')
+      return `(${parsed})`
     })
 
   if (expressionUsesTextConcat(body)) {
@@ -1878,7 +2246,7 @@ export function envFormulaRefValues(
   if (!env) return values
   const cols = resolveEnvParameterColumns(env)
   const allRows = env.rows ?? []
-  const dataRows = allRows.filter((r) => !isEnvStandardFieldLabel(r.readingLabel))
+  const dataRows = allRows.filter((r) => !isEnvRowCalculated(r))
 
   for (const col of cols) {
     const nums: number[] = []
@@ -1899,7 +2267,7 @@ export function envFormulaRefValues(
       const key = envCellFormulaKey(col.id, fieldLabel)
       const raw = (row.values[col.id] ?? '').trim()
 
-      if (isEnvStandardFieldLabel(fieldLabel)) {
+      if (isEnvRowCalculated(row)) {
         const expr = (row.formulas?.[col.id] ?? raw).trim()
         if (!expr) continue
         try {
@@ -1980,6 +2348,11 @@ export function analyzeColumnFormulaExpression(
     }
   }
 
+  // Bare column label, e.g. `=Load in kN` (no brackets / operators).
+  if (!/[[+\-*/(),]/.test(normalized) && resolveColumnRef(normalized, columns)) {
+    return null
+  }
+
   const unknown: string[] = []
   const bracketRe = /\[([^\]]+)\]/g
   let m: RegExpExecArray | null
@@ -2042,6 +2415,12 @@ export const COLUMN_FORMULA_HELP_ROWS: {
   example: string
   use: string
 }[] = [
+  {
+    name: 'X',
+    syntax: 'x',
+    example: '2*x + 1',
+    use: 'Generate New Points: value from Column for X. Column formulas: use [Column] names.',
+  },
   {
     name: 'AVERAGE / MEAN',
     syntax: 'AVERAGE(a,b,…)',
@@ -2115,16 +2494,16 @@ export const COLUMN_FORMULA_HELP_ROWS: {
     use: 'Absolute (drop sign)',
   },
   {
-    name: 'SQRT',
-    syntax: 'SQRT(x)',
+    name: 'SQRT / CBRT',
+    syntax: 'SQRT(x) / CBRT(x)',
     example: '=SQRT([Variance])',
-    use: 'Square root',
+    use: 'Square / cube root',
   },
   {
     name: 'ROUND',
-    syntax: 'ROUND(x)',
-    example: '=ROUND([Error])',
-    use: 'Round to nearest',
+    syntax: 'ROUND(x[,digits])',
+    example: '=ROUND([Error],3)',
+    use: 'Round to nearest (optional decimal places)',
   },
   {
     name: 'ROUNDUP / ROUNDDOWN',
@@ -2139,8 +2518,8 @@ export const COLUMN_FORMULA_HELP_ROWS: {
     use: 'Whole number down / up / down',
   },
   {
-    name: 'EXP / LN / LOG / LOG10',
-    syntax: 'EXP(x) / LN(x) / LOG(x[,base]) / LOG10(x)',
+    name: 'EXP / LN / LOG / LOG10 / LOG2',
+    syntax: 'EXP(x) / LN(x) / LOG(x[,base]) / LOG10(x) / LOG2(x)',
     example: '=LN([Reading])',
     use: 'Exponential & logarithms',
   },
@@ -2209,6 +2588,108 @@ export const COLUMN_FORMULA_HELP_ROWS: {
     syntax: 'LARGE(a,b,…,k) / SMALL(a,b,…,k)',
     example: '=LARGE([R1],[R2],[R3],1)',
     use: 'k-th largest / smallest (k = last arg)',
+  },
+  {
+    name: 'RMS',
+    syntax: 'RMS(a,b,…)',
+    example: '=RMS([R1],[R2],[R3])',
+    use: 'Root mean square',
+  },
+  {
+    name: 'RSS / SUMSQ',
+    syntax: 'RSS(a,b,…) / SUMSQ(a,b,…)',
+    example: '=RSS([U1],[U2],[U3])',
+    use: 'Root sum square / sum of squares (uncertainty)',
+  },
+  {
+    name: 'HYPOT',
+    syntax: 'HYPOT(a,b,…)',
+    example: '=HYPOT([X],[Y])',
+    use: '√(a²+b²+…)',
+  },
+  {
+    name: 'RANGE',
+    syntax: 'RANGE(a,b,…)',
+    example: '=RANGE([R1],[R2],[R3])',
+    use: 'Max − min',
+  },
+  {
+    name: 'CV',
+    syntax: 'CV(a,b,…)',
+    example: '=CV([R1],[R2],[R3])',
+    use: 'Coefficient of variation (STDEV ÷ mean)',
+  },
+  {
+    name: 'STDEVP / VARP',
+    syntax: 'STDEVP(a,b,…) / VARP(a,b,…)',
+    example: '=STDEVP([R1],[R2],[R3])',
+    use: 'Population standard deviation / variance',
+  },
+  {
+    name: 'DEVSQ',
+    syntax: 'DEVSQ(a,b,…)',
+    example: '=DEVSQ([R1],[R2],[R3])',
+    use: 'Sum of squared deviations from mean',
+  },
+  {
+    name: 'MROUND',
+    syntax: 'MROUND(x,multiple)',
+    example: '=MROUND([Reading],0.5)',
+    use: 'Round to nearest multiple',
+  },
+  {
+    name: 'CLAMP',
+    syntax: 'CLAMP(x,lo,hi)',
+    example: '=CLAMP([Reading],0,100)',
+    use: 'Limit value between lo and hi',
+  },
+  {
+    name: 'PERCENT',
+    syntax: 'PERCENT(part,whole)',
+    example: '=PERCENT([Error],[Nominal])',
+    use: 'part ÷ whole × 100',
+  },
+  {
+    name: 'IFS / CHOOSE / XOR',
+    syntax: 'IFS(c,a,…) / CHOOSE(n,a,b,…) / XOR(…)',
+    example: '=IFS([Error]>1,1,[Error]<0,0,2)',
+    use: 'Multi-condition / pick nth / exclusive or',
+  },
+  {
+    name: 'SINH / COSH / TANH',
+    syntax: 'SINH(x) / COSH(x) / TANH(x)',
+    example: '=TANH([Reading])',
+    use: 'Hyperbolic trig',
+  },
+  {
+    name: 'ASINH / ACOSH / ATANH',
+    syntax: 'ASINH(x) / ACOSH(x) / ATANH(x)',
+    example: '=ASINH([Reading])',
+    use: 'Inverse hyperbolic trig',
+  },
+  {
+    name: 'SEC / CSC / COT',
+    syntax: 'SEC(x) / CSC(x) / COT(x)',
+    example: '=SEC(RADIANS(60))',
+    use: '1/cos, 1/sin, 1/tan',
+  },
+  {
+    name: 'SQRTPI / COMBIN',
+    syntax: 'SQRTPI(x) / COMBIN(n,k)',
+    example: '=COMBIN(10,3)',
+    use: '√(π·x) / combinations nCk',
+  },
+  {
+    name: 'GCD / LCM',
+    syntax: 'GCD(a,b,…) / LCM(a,b,…)',
+    example: '=GCD(12,18)',
+    use: 'Greatest common divisor / least common multiple',
+  },
+  {
+    name: 'TEMPCORRECT',
+    syntax: 'TEMPCORRECT(reading,temp,α[,tRef])',
+    example: '=TEMPCORRECT([Length],[Temperature],11.5e-6,20)',
+    use: 'reading × (1 + α × (temp − tRef)); tRef default 20',
   },
   {
     name: '+ − × ÷',
@@ -2652,53 +3133,148 @@ export function applyFormulaColumns(
 
   const masterCols = masterEquipmentFormulaRefColumns()
   const pointsCols = masterPointsFormulaRefColumns(pointsTables ?? [])
+  // Prefer Master point headers so `=[Load in kN]` uses the master cell,
+  // not an empty same-label sheet formula column.
+  const wrapCols = [...pointsCols, ...masterCols, ...columns]
+  const columnsForEval = columns.map((col) => {
+    const expr = col.formula?.expression?.trim() ?? ''
+    if (col.type !== 'formula' || !expr) return col
+    return {
+      ...col,
+      formula: {
+        ...col.formula,
+        expression: wrapBareFormulaColumnRef(expr, wrapCols),
+      },
+    }
+  })
+  // Caller-supplied values win so View Factor / job rows can inject actual
+  // Master point cells (`pt:*`) instead of empty same-label sheet matches.
   const mergedValues: RawDataSheetRowValues = {
-    ...values,
-    ...masterEquipmentFormulaRefValues(master),
     ...masterPointsFormulaRefValues(pointsCols, columns, values),
+    ...masterEquipmentFormulaRefValues(master),
+    ...values,
   }
-  const allColumns = [...columns, ...masterCols, ...pointsCols]
+  const allColumns = [...pointsCols, ...masterCols, ...columnsForEval]
   const next = { ...mergedValues }
-  for (const col of columns) {
+  for (const col of columnsForEval) {
     if (col.type !== 'formula') continue
-    next[col.key] = computeFormulaValue(col, next, decimalPlaces, allColumns, env)
+    const computed = computeFormulaValue(col, next, decimalPlaces, allColumns, env)
+    if (computed.trim()) {
+      next[col.key] = computed
+      continue
+    }
+    const needle = col.label.trim().toLowerCase()
+    const ptMatch =
+      pointsCols.find((p) => p.label.trim().toLowerCase() === needle) ??
+      pointsCols.find((p) => p.key === `pt:${col.key}`)
+    const fromPoint = ptMatch ? String(mergedValues[ptMatch.key] ?? '').trim() : ''
+    next[col.key] = fromPoint
   }
   return next
 }
 
+function overlayEquipmentColumn(
+  equipmentCol: RawDataSheetColumn,
+  sheetCol: RawDataSheetColumn | null,
+): RawDataSheetColumn {
+  const formula =
+    equipmentCol.type === 'formula' && equipmentCol.formula
+      ? {
+          op: equipmentCol.formula.op,
+          sources: [...(equipmentCol.formula.sources ?? [])],
+          constant: equipmentCol.formula.constant ?? null,
+          decimals: equipmentCol.formula.decimals ?? null,
+          referenceTempC: equipmentCol.formula.referenceTempC ?? null,
+          expression: equipmentCol.formula.expression?.trim() || null,
+        }
+      : equipmentCol.formula
+  return {
+    ...(sheetCol ?? {}),
+    ...equipmentCol,
+    key: sheetCol?.key ?? equipmentCol.key,
+    label: equipmentCol.label,
+    type: equipmentCol.type,
+    required: equipmentCol.required,
+    requiredMode: equipmentCol.requiredMode,
+    requiredInCertificate: equipmentCol.requiredInCertificate,
+    formula,
+  }
+}
+
 /**
- * Copy formula definitions from Calibration Equipment template onto the Conduct
- * sheet snapshot (match by key, then by label). Preserves sheet column order/keys.
+ * Apply live Calibration Equipment Raw Data Sheet Format onto the Conduct
+ * snapshot: column order, Required flags, labels, and formulas.
+ * Keeps existing sheet column keys so saved row values still bind.
  */
 export function mergeFormulasFromEquipmentTemplate(
   sheetTemplate: RawDataSheetTemplate,
   equipmentTemplate: RawDataSheetTemplate | null | undefined,
 ): RawDataSheetTemplate {
-  if (!equipmentTemplate?.columns?.length) return sheetTemplate
-  const byKey = new Map(equipmentTemplate.columns.map((c) => [c.key, c]))
-  const byLabel = new Map(
-    equipmentTemplate.columns.map((c) => [c.label.trim().toLowerCase(), c]),
+  if (!equipmentTemplate) return sheetTemplate
+  const equipmentColumns = equipmentTemplate.columns ?? []
+  if (equipmentColumns.length === 0) return sheetTemplate
+
+  const sheetByKey = new Map(sheetTemplate.columns.map((c) => [c.key, c]))
+  const sheetByLabel = new Map(
+    sheetTemplate.columns.map((c) => [c.label.trim().toLowerCase(), c]),
   )
+  const usedSheetKeys = new Set<string>()
+  const matchSheet = (eq: RawDataSheetColumn): RawDataSheetColumn | null => {
+    const byKey = sheetByKey.get(eq.key)
+    if (byKey && !usedSheetKeys.has(byKey.key)) {
+      usedSheetKeys.add(byKey.key)
+      return byKey
+    }
+    const byLabel = sheetByLabel.get(eq.label.trim().toLowerCase())
+    if (byLabel && !usedSheetKeys.has(byLabel.key)) {
+      usedSheetKeys.add(byLabel.key)
+      return byLabel
+    }
+    return null
+  }
+
+  const equipmentKeyToSheetKey = new Map<string, string>()
+  const columns = equipmentColumns.map((eq) => {
+    const sheet = matchSheet(eq)
+    if (sheet) equipmentKeyToSheetKey.set(eq.key, sheet.key)
+    return overlayEquipmentColumn(eq, sheet)
+  })
+  for (const col of columns) {
+    if (!col.formula?.sources?.length) continue
+    col.formula = {
+      ...col.formula,
+      sources: col.formula.sources.map((key) => equipmentKeyToSheetKey.get(key) ?? key),
+    }
+  }
+
+  const equipmentExtras = equipmentTemplate.extraTables ?? []
+  const extraTables = (equipmentExtras.length > 0 ? equipmentExtras : sheetTemplate.extraTables ?? []).map((eqTable) => {
+    const sheetTable =
+      (sheetTemplate.extraTables ?? []).find((t) => t.id === eqTable.id) ??
+      (sheetTemplate.extraTables ?? []).find(
+        (t) => t.name.trim().toLowerCase() === eqTable.name.trim().toLowerCase(),
+      )
+    const extraByKey = new Map((sheetTable?.columns ?? []).map((c) => [c.key, c]))
+    const extraByLabel = new Map(
+      (sheetTable?.columns ?? []).map((c) => [c.label.trim().toLowerCase(), c]),
+    )
+    return {
+      ...eqTable,
+      id: sheetTable?.id ?? eqTable.id,
+      columns: (eqTable.columns ?? []).map((eq) => {
+        const sheetCol =
+          extraByKey.get(eq.key) ?? extraByLabel.get(eq.label.trim().toLowerCase()) ?? null
+        return overlayEquipmentColumn(eq, sheetCol)
+      }),
+    }
+  })
+
   return {
     ...sheetTemplate,
-    columns: sheetTemplate.columns.map((col) => {
-      const src =
-        byKey.get(col.key) ?? byLabel.get(col.label.trim().toLowerCase()) ?? null
-      if (!src || src.type !== 'formula' || !src.formula) return col
-      return {
-        ...col,
-        type: 'formula' as const,
-        required: false,
-        formula: {
-          op: src.formula.op,
-          sources: [...(src.formula.sources ?? [])],
-          constant: src.formula.constant ?? null,
-          decimals: src.formula.decimals ?? null,
-          referenceTempC: src.formula.referenceTempC ?? null,
-          expression: src.formula.expression?.trim() || null,
-        },
-      }
-    }),
+    ...equipmentTemplate,
+    columns,
+    extraTables,
+    verification: equipmentTemplate.verification ?? sheetTemplate.verification,
   }
 }
 
@@ -2722,15 +3298,16 @@ export function buildInitialRawDataSheetPayload(
   points: CalibrationPointSeed[],
 ): RawDataSheetPayload {
   const snap = serializeRawDataSheetTemplate(template)
+  const snapColumns = allRawDataSheetColumns(snap)
   const seedCol =
-    snap.columns.find((c) => c.key === 'nominal') ??
-    snap.columns.find((c) => c.label.trim().toLowerCase() === 'nominal') ??
-    snap.columns.find((c) => c.type === 'number')
+    snapColumns.find((c) => c.key === 'nominal') ??
+    snapColumns.find((c) => c.label.trim().toLowerCase() === 'nominal') ??
+    snapColumns.find((c) => c.type === 'number')
 
   let rows: RawDataSheetPayloadRow[]
   if (snap.seedFrom === 'calibration_points' && points.length > 0) {
     rows = points.map((p) => {
-      const values = emptyValuesForColumns(snap.columns)
+      const values = emptyValuesForColumns(snapColumns)
       if (seedCol) values[seedCol.key] = p.pointValue
       return {
         id: newPayloadRowId(),
@@ -2742,7 +3319,7 @@ export function buildInitialRawDataSheetPayload(
     rows = [
       {
         id: newPayloadRowId(),
-        values: emptyValuesForColumns(snap.columns),
+        values: emptyValuesForColumns(snapColumns),
       },
     ]
   }
@@ -2759,6 +3336,7 @@ export function buildInitialRawDataSheetPayload(
       return {
         id: row.id || newEnvReadingId(),
         readingLabel: String(row.readingLabel ?? '').trim(),
+        fieldType: resolveEnvRowFieldType(row),
         values: { ...row.values },
         ...(formulas ? { formulas } : {}),
       }

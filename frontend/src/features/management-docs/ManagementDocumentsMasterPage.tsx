@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass, limsRegistryFormClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/hooks/useAuth'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { X } from 'lucide-react'
 import { ManagementDocumentsHeaderBar, type StatusCounts } from './ManagementDocumentsHeaderBar'
 import { ManagementDocumentsTable } from './ManagementDocumentsTable'
 import { ManagementDocumentsFooterBar } from './ManagementDocumentsFooterBar'
@@ -130,6 +138,7 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
   const [uploadBusy, setUploadBusy] = useState(false)
   const [previewRow, setPreviewRow] = useState<ManagementDocumentRow | null>(null)
   const [showA4Preview, setShowA4Preview] = useState(false)
+  const [previewAutoPrint, setPreviewAutoPrint] = useState(false)
 
   const title = levelPageTitle(level)
 
@@ -256,6 +265,13 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
   }
 
   const handleViewDocument = (row: ManagementDocumentRow) => {
+    setPreviewAutoPrint(false)
+    setPreviewRow(row)
+    setShowA4Preview(true)
+  }
+
+  const handlePrintDocument = (row: ManagementDocumentRow) => {
+    setPreviewAutoPrint(true)
     setPreviewRow(row)
     setShowA4Preview(true)
   }
@@ -607,6 +623,8 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
         level={level}
         search={search}
         onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
         onNew={handleNew}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
@@ -618,30 +636,42 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-3xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+          showCloseButton={false}
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'max-h-[92vh] w-[calc(100vw-1rem)] max-w-3xl',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+          )}
         >
-          <div className="relative bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+          <div className="relative flex items-center gap-3 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }}
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                Management Documentation · Level {level}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative min-w-0 flex-1 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId ? 'Edit Document' : 'Add Document'}
               </DialogTitle>
             </DialogHeader>
+            <DialogClose
+              className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-none border !border-red-600 !bg-red-600 !text-white shadow-sm transition-colors hover:!border-red-700 hover:!bg-red-700 hover:!text-white focus:outline-none focus:ring-2 focus:!ring-red-500 focus:ring-offset-2"
+              aria-label="Close"
+            >
+              <X className="h-3.5 w-3.5 !text-white" strokeWidth={2.75} aria-hidden />
+              <span className="sr-only">Close</span>
+            </DialogClose>
           </div>
 
-          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div
+            className={cn(
+              limsRegistryFormClass,
+              'max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
+            )}
+          >
             {saveMessage ? (
               <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {saveMessage}
@@ -671,8 +701,9 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
         selectedIds={selectedIds}
         onToggle={toggleRow}
         onToggleAll={toggleAll}
-        onEdit={handleEdit}
+        onPrint={handlePrintDocument}
         onView={handleViewDocument}
+        onEdit={handleEdit}
         onUpload={handleUploadDocument}
         onStatusChange={(row, status) => void handleStatusChange(row, status)}
         statusUpdatingId={statusUpdatingId}
@@ -681,9 +712,13 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
       <ManagementDocumentA4PreviewDialog
         open={showA4Preview}
         row={previewRow}
+        autoPrint={previewAutoPrint}
         onOpenChange={(open) => {
           setShowA4Preview(open)
-          if (!open) setPreviewRow(null)
+          if (!open) {
+            setPreviewRow(null)
+            setPreviewAutoPrint(false)
+          }
         }}
         onDraftUpdated={(updated) => {
           setPreviewRow(updated)
@@ -719,11 +754,8 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
         message={message}
         loading={listLoading || saveLoading || uploadBusy}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={page}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={setPageSize}
         onImport={handleImport}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}

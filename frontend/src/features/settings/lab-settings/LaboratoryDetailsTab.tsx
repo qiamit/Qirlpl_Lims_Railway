@@ -20,6 +20,8 @@ import type { OptionItem } from './types'
 type LaboratoryDetailsTabProps = {
   labName: string
   setLabName: (value: string) => void
+  gstNumber: string
+  setGstNumber: (value: string) => void
   contactPersonName: string
   setContactPersonName: (value: string) => void
   mobile: string
@@ -198,8 +200,8 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
             {props.saveLoading ? 'Saving…' : 'Save'}
           </Button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end mt-4">
-          <div className="min-w-0 space-y-2 xl:col-span-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:gap-6 items-end mt-4">
+          <div className="min-w-0 space-y-2">
             <div className="flex items-center min-h-[20px]">
               <Label htmlFor="lab-name">Name of the Laboratory</Label>
             </div>
@@ -211,7 +213,23 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
               onChange={(e) => props.setLabName(e.target.value)}
             />
           </div>
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center min-h-[20px]">
+              <Label htmlFor="lab-gst-number">GST Number</Label>
+            </div>
+            <Input
+              id="lab-gst-number"
+              className="w-full uppercase"
+              placeholder="e.g. 22AAAAA0000A1Z5"
+              value={props.gstNumber}
+              onChange={(e) => props.setGstNumber(e.target.value.toUpperCase())}
+              maxLength={15}
+              autoComplete="off"
+            />
+          </div>
+        </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end mt-4">
           <div className="min-w-0 space-y-2 xl:col-span-1">
             <div className="flex items-center justify-between gap-2 min-h-[20px]">
               <Label htmlFor="lab-type" className="shrink-0">Laboratory Type</Label>

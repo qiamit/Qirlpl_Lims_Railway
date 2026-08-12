@@ -2,7 +2,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import { cn } from '@/lib/utils'
+import { limsFieldClass, limsOutlineBtnClass, limsPrimaryBtnClass } from '@/lib/limsThemeUi'
 import type { ManagementDocumentForm } from './types'
 import { MANAGEMENT_DOC_STATUSES, MANAGEMENT_DOC_TYPES } from './types'
 
@@ -33,7 +34,7 @@ function EmployeeSelect({
         value={value.trim() ? value : NONE}
         onValueChange={(v) => onValueChange(v === NONE ? '' : v)}
       >
-        <SelectTrigger id={id} aria-label={label}>
+        <SelectTrigger id={id} aria-label={label} className={limsFieldClass}>
           <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
         </SelectTrigger>
         <SelectContent>
@@ -78,23 +79,24 @@ export function ManagementDocumentsForm({
   const automationDisabled = !editingId || saveLoading
 
   return (
-    <div className={labRegistryFormClass}>
+    <div className="space-y-6">
       <div className="space-y-6">
         <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="doc-number">Document Number</Label>
             <Input
               id="doc-number"
+              className={limsFieldClass}
               placeholder="QE/QM"
               value={form.docNumber}
               onChange={(e) => onChange({ ...form, docNumber: e.target.value })}
             />
           </div>
 
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="doc-type">Document Type</Label>
             <Select value={form.docType} onValueChange={(v) => onChange({ ...form, docType: v })}>
-              <SelectTrigger id="doc-type" aria-label="Document type">
+              <SelectTrigger id="doc-type" aria-label="Document type" className={limsFieldClass}>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
@@ -107,13 +109,13 @@ export function ManagementDocumentsForm({
             </Select>
           </div>
 
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="status">Status</Label>
             <Select
               value={form.status}
               onValueChange={(v) => onChange({ ...form, status: v as ManagementDocumentForm['status'] })}
             >
-              <SelectTrigger id="status" aria-label="Status">
+              <SelectTrigger id="status" aria-label="Status" className={limsFieldClass}>
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
               <SelectContent>
@@ -130,64 +132,71 @@ export function ManagementDocumentsForm({
             <Label htmlFor="title">Title</Label>
             <Input
               id="title"
+              className={limsFieldClass}
               placeholder="Enter Document Title"
               value={form.title}
               onChange={(e) => onChange({ ...form, title: e.target.value })}
             />
           </div>
 
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="revision-no">Revision No</Label>
             <Input
               id="revision-no"
+              className={limsFieldClass}
               placeholder="00"
               value={form.revisionNo}
               onChange={(e) => onChange({ ...form, revisionNo: e.target.value })}
             />
           </div>
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="revision-date">Revision Date</Label>
             <Input
               id="revision-date"
               type="date"
+              className={limsFieldClass}
               value={form.revisionDate}
               onChange={(e) => onChange({ ...form, revisionDate: e.target.value })}
             />
           </div>
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="issue-no">Issue No</Label>
             <Input
               id="issue-no"
+              className={limsFieldClass}
               placeholder="00"
               value={form.issueNo}
               onChange={(e) => onChange({ ...form, issueNo: e.target.value })}
             />
           </div>
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="issue-date">Issue Date</Label>
             <Input
               id="issue-date"
               type="date"
+              className={limsFieldClass}
               value={form.issueDate}
               onChange={(e) => onChange({ ...form, issueDate: e.target.value })}
             />
           </div>
 
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="amendment-no">Amendment No</Label>
             <Input
               id="amendment-no"
+              className={limsFieldClass}
               placeholder="00"
               value={form.amendmentNo}
               onChange={(e) => onChange({ ...form, amendmentNo: e.target.value })}
             />
           </div>
 
-          <div className="col-span-12 md:col-span-4 space-y-2">
+          <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="amendment-date">Amendment Date</Label>
             <Input
               id="amendment-date"
               type="date"
+              className={limsFieldClass}
               value={form.amendmentDate}
               onChange={(e) => onChange({ ...form, amendmentDate: e.target.value })}
             />
@@ -217,12 +226,13 @@ export function ManagementDocumentsForm({
         </div>
       </div>
 
-      <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-6 flex flex-col gap-3 border-t-2 border-stone-500 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className={cn('h-9', limsOutlineBtnClass)}
             disabled={automationDisabled}
             onClick={onNewRevision}
             title={!editingId ? 'Save the document first' : 'Archive current version and start next revision'}
@@ -233,6 +243,7 @@ export function ManagementDocumentsForm({
             type="button"
             variant="outline"
             size="sm"
+            className={cn('h-9', limsOutlineBtnClass)}
             disabled={automationDisabled}
             onClick={onNewIssue}
             title={!editingId ? 'Save the document first' : 'Archive current version and start next issue'}
@@ -243,6 +254,7 @@ export function ManagementDocumentsForm({
             type="button"
             variant="outline"
             size="sm"
+            className={cn('h-9', limsOutlineBtnClass)}
             disabled={automationDisabled}
             onClick={onNewAmendment}
             title={!editingId ? 'Save the document first' : 'Archive current version and start next amendment'}
@@ -252,7 +264,7 @@ export function ManagementDocumentsForm({
         </div>
         <Button
           type="button"
-          className="bg-teal-600 text-white hover:bg-teal-500"
+          className={cn('h-9 min-w-[140px]', limsPrimaryBtnClass)}
           onClick={onSave}
           disabled={!canSave || saveLoading}
         >

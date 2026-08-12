@@ -1,10 +1,15 @@
-import { SaleModulePlaceholder } from '../SaleModulePlaceholder'
+import { SaleDocumentMasterPage } from '../shared/SaleDocumentMasterPage'
 
 export default function InvoicePage() {
   return (
-    <SaleModulePlaceholder
-      title="Invoice"
-      description="Generate and track tax invoices for completed work."
+    <SaleDocumentMasterPage
+      config={{
+        title: 'Invoice',
+        documentKind: 'invoice',
+        addLabel: 'Add New Invoice',
+        emptyHint: 'No invoices added yet.',
+        numberColumnLabel: 'Invoice No.',
+      }}
     />
   )
 }

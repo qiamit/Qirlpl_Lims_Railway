@@ -11,7 +11,7 @@ import {
 } from '../types'
 
 const JOB_SELECT =
-  'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, location_of_calibration, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, outgoing_checklist, inward_checklist, certificate_draft, created_at, updated_at'
+  'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, location_of_calibration, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, allocated_engineer_designation, outgoing_checklist, inward_checklist, certificate_draft, created_at, updated_at'
 
 export async function fetchCalibrationJobsByStage(
   stage: CalibrationJobStage | CalibrationJobStage[],
@@ -36,7 +36,34 @@ export async function fetchCalibrationJobsByStage(
 
   const { data, error } = await query
   if (error) throw error
-  return (data ?? []) as CalibrationJobRow[]
+  const jobs = (data ?? []) as CalibrationJobRow[]
+  const srfIds = [...new Set(jobs.map((j) => j.service_request_id).filter(Boolean))]
+  if (srfIds.length === 0) return jobs
+
+  const { data: srfRows, error: srfError } = await supabase
+    .from('calibration_service_requests')
+    .select('id, srf_date, required_completion_date')
+    .in('id', srfIds)
+  if (srfError) return jobs
+
+  const dateBySrf = new Map<string, { srfDate: string | null; completionDate: string | null }>()
+  for (const row of srfRows ?? []) {
+    const id = String((row as { id: string }).id)
+    const srfRaw = (row as { srf_date?: string | null }).srf_date
+    const dueRaw = (row as { required_completion_date?: string | null }).required_completion_date
+    dateBySrf.set(id, {
+      srfDate: srfRaw ? String(srfRaw).slice(0, 10) : null,
+      completionDate: dueRaw ? String(dueRaw).slice(0, 10) : null,
+    })
+  }
+  return jobs.map((job) => {
+    const dates = dateBySrf.get(job.service_request_id)
+    return {
+      ...job,
+      srf_date: dates?.srfDate ?? job.srf_date ?? null,
+      required_completion_date: dates?.completionDate ?? job.required_completion_date ?? null,
+    }
+  })
 }
 
 export async function updateCalibrationJobLocation(
@@ -64,14 +91,30 @@ export async function updateCalibrationJobLocationOfCalibration(
 
 export async function updateCalibrationJobEngineer(
   id: string,
-  engineer: { id: string | null; name: string | null },
+  engineer: { id: string | null; name: string | null; designation?: string | null },
+): Promise<void> {
+  const patch: {
+    allocated_engineer_id: string | null
+    allocated_engineer_name: string | null
+    allocated_engineer_designation?: string | null
+  } = {
+    allocated_engineer_id: engineer.id,
+    allocated_engineer_name: engineer.name,
+  }
+  if (engineer.designation !== undefined) {
+    patch.allocated_engineer_designation = engineer.designation?.trim() || null
+  }
+  const { error } = await supabase.from('calibration_jobs').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function updateCalibrationJobDesignation(
+  id: string,
+  designation: string | null,
 ): Promise<void> {
   const { error } = await supabase
     .from('calibration_jobs')
-    .update({
-      allocated_engineer_id: engineer.id,
-      allocated_engineer_name: engineer.name,
-    })
+    .update({ allocated_engineer_designation: designation?.trim() || null })
     .eq('id', id)
   if (error) throw error
 }
@@ -105,6 +148,8 @@ export type CalibrationEngineerOption = {
   id: string
   name: string
   designation: string
+  department: string
+  division: string
 }
 
 export async function fetchUserProfileBrief(
@@ -157,7 +202,7 @@ export async function stampRawDataSheetReviewed(
 export async function fetchCalibrationEngineerOptions(): Promise<CalibrationEngineerOption[]> {
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('id, full_name, designation, status')
+    .select('id, full_name, designation, department_name, division, status')
     .order('full_name', { ascending: true })
   if (error) throw error
 
@@ -168,7 +213,9 @@ export async function fetchCalibrationEngineerOptions(): Promise<CalibrationEngi
       const name =
         String((u as { full_name?: string }).full_name ?? '').trim() || id
       const designation = String((u as { designation?: string }).designation ?? '').trim()
-      return { id, name, designation }
+      const department = String((u as { department_name?: string }).department_name ?? '').trim()
+      const division = String((u as { division?: string }).division ?? '').trim()
+      return { id, name, designation, department, division }
     })
 }
 
@@ -220,6 +267,22 @@ export async function moveCalibrationJobsToNextStage(ids: string[]): Promise<{
   return { moved, skippedTerminal }
 }
 
+/** Return forwarded jobs to Job Allocation (any later stage). */
+export async function referbackCalibrationJobsToJobAllocation(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const { data, error } = await supabase
+    .from('calibration_jobs')
+    .select('id, stage')
+    .in('id', ids)
+  if (error) throw error
+  const toMove = (data ?? [])
+    .filter((row) => (row.stage as CalibrationJobStage) !== 'job_allocation')
+    .map((row) => String(row.id))
+  if (toMove.length === 0) return 0
+  await moveCalibrationJobStage(toMove, 'job_allocation')
+  return toMove.length
+}
+
 export async function moveCalibrationJobsToPreviousStage(ids: string[]): Promise<{
   moved: number
   skippedFirst: number
@@ -257,6 +320,13 @@ export async function moveCalibrationJobsToPreviousStage(ids: string[]): Promise
  * Job Allocation → Service Request referback (Sample Allocation → Receiving pattern).
  * Deletes DUC jobs (raw sheets cascade) and reopens SRF as Under Review when no jobs remain.
  */
+export async function deleteCalibrationJobs(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const { error } = await supabase.from('calibration_jobs').delete().in('id', ids)
+  if (error) throw error
+  return ids.length
+}
+
 export async function referbackCalibrationJobsToServiceRequest(ids: string[]): Promise<{
   removed: number
   srfReopened: number
@@ -435,6 +505,8 @@ export type EquipmentMasterForSheet = {
   generate_report_config?: unknown
   /** Per-equipment Calibration Certificate template. */
   certificate_template_config?: unknown
+  outgoing_checklist_template?: unknown
+  inward_checklist_template?: unknown
   calibration_method_label: string | null
   master_equipment_id?: string | null
 }
@@ -445,7 +517,7 @@ export async function fetchEquipmentMasterForSheet(
   const { data, error } = await supabase
     .from('equipment_master')
     .select(
-      'id, equipment_name, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, calibration_method_label, master_equipment_id',
+      'id, equipment_name, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, outgoing_checklist_template, inward_checklist_template, calibration_method_label, master_equipment_id',
     )
     .eq('id', equipmentMasterId)
     .maybeSingle()
@@ -502,7 +574,7 @@ export async function fetchMasterEquipmentsByIds(
 }
 
 const SHEET_EQ_SELECT =
-  'id, equipment_name, serial_number, equipment_status, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, calibration_method_label, master_equipment_id'
+  'id, equipment_name, serial_number, equipment_status, measurement_ranges, range_capacity, resolution_least_count, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, outgoing_checklist_template, inward_checklist_template, calibration_method_label, master_equipment_id'
 
 type EquipmentMasterResolveRow = EquipmentMasterForSheet & {
   serial_number: string | null
@@ -604,6 +676,8 @@ export async function resolveEquipmentMasterForJob(job: {
     mu_calculation_template: chosen.mu_calculation_template,
     generate_report_config: chosen.generate_report_config,
     certificate_template_config: chosen.certificate_template_config,
+    outgoing_checklist_template: chosen.outgoing_checklist_template,
+    inward_checklist_template: chosen.inward_checklist_template,
     calibration_method_label: chosen.calibration_method_label ?? null,
     master_equipment_id: chosen.master_equipment_id ?? null,
   }

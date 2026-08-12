@@ -35,6 +35,7 @@ export type LabSettingsRow = Record<string, unknown>
 export function parseLabSettingsRow(row: LabSettingsRow) {
   return {
     labName: String(row.lab_name ?? ''),
+    gstNumber: String(row.gst_number ?? ''),
     contactPersonName: String(row.contact_person ?? row.contact_person_name ?? ''),
     mobile: String(row.phone ?? row.lab_phone ?? ''),
     email: String(row.email ?? row.lab_email ?? ''),
@@ -82,6 +83,7 @@ export async function fetchGenerateReportFeatureEnabled(
 
 export function labDetailsPayload(input: {
   labName: string
+  gstNumber: string
   address: string
   mobile: string
   email: string
@@ -100,6 +102,7 @@ export function labDetailsPayload(input: {
   return {
     id: LAB_SETTINGS_SINGLETON_ID,
     lab_name: input.labName,
+    gst_number: input.gstNumber.trim() || null,
     address: input.address,
     phone: input.mobile,
     email: input.email,

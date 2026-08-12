@@ -1,5 +1,5 @@
 import EquipmentForCalibrationMasterPage from './EquipmentForCalibrationMasterPage'
 
 export default function EquipmentForCalibrationPage() {
-  return <EquipmentForCalibrationMasterPage />
+  return <EquipmentForCalibrationMasterPage variant="master" />
 }

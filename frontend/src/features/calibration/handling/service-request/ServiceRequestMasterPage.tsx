@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsPageShellClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
@@ -446,7 +451,7 @@ export default function ServiceRequestMasterPage() {
         (r) => `
         <section style="border:1px solid #e7eaf0;border-radius:12px;padding:14px;margin-bottom:12px">
           <h2 style="margin:0 0 8px">${esc(r.srf_number)}</h2>
-          <p><b>Date:</b> ${esc(r.srf_date?.slice(0, 10) || '—')} · <b>Status:</b> ${esc(r.status || '—')}</p>
+          <p><b>Date:</b> ${esc(formatDate(r.srf_date))} · <b>Status:</b> ${esc(r.status || '—')}</p>
           <p><b>Client:</b> ${esc(r.client_name || '—')}</p>
           <p><b>Location:</b> ${esc(r.calibration_location || '—')}</p>
           <p><b>Equipment:</b> ${esc(r.equipment_description || '—')}</p>
@@ -468,6 +473,11 @@ export default function ServiceRequestMasterPage() {
       <ServiceRequestHeaderBar
         search={search}
         onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onNew={openNew}
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadRows()}
@@ -476,32 +486,30 @@ export default function ServiceRequestMasterPage() {
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden p-0',
+            'left-0 top-0',
+            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+          )}
           aria-describedby={undefined}
         >
-          <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }}
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                {editingId
-                  ? 'Calibration Handling · Edit Service Request'
-                  : 'Calibration Handling · New Service Request'}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId ? 'Edit Service Request' : 'Add New Service Request'}
               </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5 sm:py-5">
             {saveMessage && showForm ? (
               <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {saveMessage}
@@ -536,17 +544,10 @@ export default function ServiceRequestMasterPage() {
       />
 
       <ServiceRequestFooterBar
-        message={showForm ? null : saveMessage}
         loading={listLoading || saveLoading}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={safePage}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onImport={() => importInputRef.current?.click()}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}

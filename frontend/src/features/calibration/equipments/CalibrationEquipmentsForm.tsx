@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Calculator, ChevronDown, Copy, FileBarChart, FileSpreadsheet, Plus, Trash2 } from 'lucide-react'
+import { Calculator, ChevronDown, ClipboardList, Copy, FileBarChart, FileSpreadsheet, Plus, Thermometer, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
 import { fetchGenerateReportFeatureEnabled } from '@/features/settings/lab-settings/labSettingsDb'
 import { supabase } from '@/lib/supabaseClient'
 import { cn } from '@/lib/utils'
@@ -62,12 +68,22 @@ import {
 } from './types'
 import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
 import { CalibrationRangePointsDialog, type CalibrationPointsDialogSection } from './CalibrationRangePointsDialog'
+import {
+  allRawDataSheetColumns,
+  rawDataSheetPrimaryTableName,
+} from '@/features/calibration/rawDataSheetTypes'
+import { masterPointsFormulaRefColumns } from '@/features/calibration/masterEquipmentFormulaRefs'
 import { RawDataSheetTemplateEditor } from './RawDataSheetTemplateEditor'
 import { MuCalculationSheetEditor } from './MuCalculationSheetEditor'
 import {
   CertificateFormatButton,
   CertificateFormatDialog,
 } from './CertificateFormatDialog'
+import { EquipmentChecklistTemplateDialog } from './EquipmentChecklistTemplateDialog'
+import {
+  equipmentChecklistHasCustomItems,
+  type ConductOutsideChecklistKind,
+} from '@/features/calibration/handling/jobs/conductOutsideChecklist'
 import {
   certificateTemplateIsConfigured,
   serializeCalibrationCertificateTemplate,
@@ -81,18 +97,19 @@ import {
 
 const COLUMN_NONE = '__none__'
 
-const VIEW_FACTOR_FULLSCREEN_DIALOG_CLASS =
-  '!flex fixed inset-0 !z-[70] !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none !translate-x-0 !translate-y-0 flex-col gap-0 overflow-hidden !rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100'
+const VIEW_FACTOR_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
 
-const VIEW_FACTOR_FULLSCREEN_DIALOG_STYLE = {
-  width: '100vw',
-  height: '100dvh',
-  maxWidth: 'none',
-  maxHeight: '100dvh',
-  top: 0,
-  left: 0,
-  transform: 'none',
-} as const
+const VIEW_FACTOR_FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
+
+const vfThClass =
+  'border border-stone-700 bg-stone-800 px-1 py-2 text-center text-[10px] font-bold uppercase leading-tight tracking-[0.08em] text-amber-200'
+const vfTdClass = 'border border-[#e7e0d4] px-1.5 py-1.5 text-center align-middle'
 
 function randomnessFactorPlaceholder(mode: GenerateReportRandomnessMode): string {
   switch (mode) {
@@ -123,6 +140,10 @@ function randomnessFactorAriaLabel(
   }
 }
 
+const rangeThClass =
+  'border border-stone-700 bg-stone-800 px-2 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200'
+const rangeTdClass = 'border border-[#e7e0d4] px-2 py-2 text-center'
+
 /** Equipment measurement-range fields for Generate Report Reference Column. */
 const GENERATE_REPORT_EQUIPMENT_REF_COLUMNS = [
   ...MU_EQUIPMENT_RANGE_FIELD_COLUMNS.map((col) => {
@@ -140,6 +161,7 @@ export function CalibrationEquipmentsForm({
   masterEquipmentOptions,
   canSave,
   saveLoading,
+  autoSaveStatus = 'idle',
   onSave,
 }: {
   form: CalibrationEquipmentForm
@@ -148,6 +170,7 @@ export function CalibrationEquipmentsForm({
   masterEquipmentOptions: FilterComboboxOption[]
   canSave: boolean
   saveLoading: boolean
+  autoSaveStatus?: 'idle' | 'saving' | 'saved' | 'error'
   onSave: () => void
 }) {
   const [methodQuery, setMethodQuery] = useState(form.calibrationMethodLabel)
@@ -163,6 +186,9 @@ export function CalibrationEquipmentsForm({
   }>({ roundOff: '', decimalPlaces: 2 })
   const [selectedRangeIds, setSelectedRangeIds] = useState<Set<string>>(() => new Set())
   const [certificateFormatOpen, setCertificateFormatOpen] = useState(false)
+  const [checklistKind, setChecklistKind] = useState<ConductOutsideChecklistKind | null>(null)
+  const [envConditionOpen, setEnvConditionOpen] = useState(false)
+  const [verificationOpen, setVerificationOpen] = useState(false)
   const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
 
   useEffect(() => {
@@ -252,13 +278,17 @@ export function CalibrationEquipmentsForm({
         modeOfCalibration: form.modeOfCalibration,
         methodUsed: form.methodUsed,
       })
-      const cols = seeded.rawDataSheetTemplate?.columns ?? []
+      const cols = seeded.rawDataSheetTemplate
+        ? allRawDataSheetColumns(seeded.rawDataSheetTemplate)
+        : []
       const labels = cols
+        .filter((c) => c.requiredInCertificate !== false)
         .map((c) => String(c.label ?? '').trim())
         .filter(Boolean)
       if (labels.length > 0) return labels
     }
-    return (form.rawDataSheetTemplate?.columns ?? [])
+    return allRawDataSheetColumns(form.rawDataSheetTemplate)
+      .filter((c) => c.requiredInCertificate !== false)
       .map((c) => String(c.label ?? '').trim())
       .filter(Boolean)
   }, [
@@ -316,28 +346,72 @@ export function CalibrationEquipmentsForm({
     setPointsRangeId(rangeId)
   }
 
-  const openTemplateSection = (section: 'rawSheet' | 'muSheet' | 'generateReport') => {
-    const rangeId = pointsRangeId ?? form.ranges[0]?.id ?? null
+  const hasAnyRangeMaster = useMemo(
+    () =>
+      form.ranges.some((range) => {
+        const fromIds = (range.masterEquipmentIds ?? []).some((id) => id.trim())
+        if (fromIds) return true
+        return (range.masterPointsTabs ?? []).some((tab) => tab.masterEquipmentId.trim())
+      }),
+    [form.ranges],
+  )
+
+  const openTemplateSection = (
+    section: 'rawSheet' | 'muSheet' | 'generateReport' | 'modeOfCalibration',
+  ) => {
+    const rangeWithMaster = form.ranges.find((range) => {
+      if ((range.masterEquipmentIds ?? []).some((id) => id.trim())) return true
+      return (range.masterPointsTabs ?? []).some((tab) => tab.masterEquipmentId.trim())
+    })
+    const rangeId =
+      pointsRangeId ??
+      (section === 'rawSheet' ? rangeWithMaster?.id : null) ??
+      form.ranges[0]?.id ??
+      null
     if (!rangeId) return
+    if (section === 'generateReport') {
+      updateRange(rangeId, {
+        generateReportConfig: {
+          ...(form.ranges.find((r) => r.id === rangeId)?.generateReportConfig ??
+            templateGenerateReport),
+          enabled: true,
+        },
+      })
+    }
     openPointsForRange(rangeId, section)
   }
 
   /** Input Column may target any sheet column (including formula). */
   const generateReportInputColumns = useMemo(
-    () => templateRawDataSheet.columns,
-    [templateRawDataSheet.columns],
+    () => allRawDataSheetColumns(templateRawDataSheet),
+    [templateRawDataSheet],
   )
 
-  /** Reference sheet columns exclude formula (equipment refs cover range fields). */
-  const rawDataSheetColumns = useMemo(
-    () => templateRawDataSheet.columns.filter((c) => c.type !== 'formula'),
-    [templateRawDataSheet.columns],
-  )
+  /** Every Raw Data table column (number / text / calculated), grouped by table. */
+  const rawDataRefColumnGroups = useMemo(() => {
+    const groups: Array<{ label: string; columns: typeof templateRawDataSheet.columns }> = []
+    const primary = templateRawDataSheet.columns.filter((c) => c.key.trim())
+    if (primary.length > 0) {
+      groups.push({
+        label: rawDataSheetPrimaryTableName(templateRawDataSheet),
+        columns: primary,
+      })
+    }
+    for (const table of templateRawDataSheet.extraTables ?? []) {
+      const columns = table.columns.filter((c) => c.key.trim())
+      if (columns.length === 0) continue
+      groups.push({
+        label: String(table.name ?? '').trim() || 'Additional table',
+        columns,
+      })
+    }
+    return groups
+  }, [templateRawDataSheet])
 
   const patchGenerateReportConfig = (patch: Partial<GenerateReportConfig>) => {
     if (!pointsRangeId) return
     updateRange(pointsRangeId, {
-      generateReportConfig: { ...templateGenerateReport, ...patch },
+      generateReportConfig: { ...templateGenerateReport, ...patch, enabled: true },
     })
   }
 
@@ -383,17 +457,17 @@ export function CalibrationEquipmentsForm({
     return buildViewFactorPointEntriesForGenerateReportRow(
       randomnessEditorRow,
       form.ranges,
-      templateRawDataSheet.columns,
+      generateReportInputColumns,
       templateRange,
     )
-  }, [randomnessEditorRow, form.ranges, templateRawDataSheet.columns, templateRange])
+  }, [randomnessEditorRow, form.ranges, generateReportInputColumns, templateRange])
 
   const openRandomnessEditor = (row: GenerateReportConfigRow) => {
     if (!templateRange) return
     const entries = buildViewFactorPointEntriesForGenerateReportRow(
       row,
       form.ranges,
-      templateRawDataSheet.columns,
+      generateReportInputColumns,
       templateRange,
     )
     setRandomnessDraft(buildGenerateReportRandomnessEditorRows(row, entries))
@@ -482,7 +556,7 @@ export function CalibrationEquipmentsForm({
     const sourceEntries = buildViewFactorPointEntriesForGenerateReportRow(
       sourceRow,
       form.ranges,
-      templateRawDataSheet.columns,
+      generateReportInputColumns,
       templateRange,
     )
     const { pointRows, roundOff, decimalPlaces } = copyGenerateReportRandomnessDraftFromRow(
@@ -561,7 +635,7 @@ export function CalibrationEquipmentsForm({
     <div
       className={cn(
         labRegistryFormClass,
-        'min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5',
+        'min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
       )}
     >
       <div className="space-y-6">
@@ -612,8 +686,8 @@ export function CalibrationEquipmentsForm({
         </div>
 
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-300 pb-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
               Measurement Ranges
             </p>
             <div className="flex items-center gap-2">
@@ -632,37 +706,33 @@ export function CalibrationEquipmentsForm({
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+          <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
             <table className="w-full min-w-[860px] border-collapse text-sm">
-              <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              <thead>
                 <tr>
-                  <th className="w-10 border border-slate-200 px-2 py-2 text-center">
+                  <th className={cn(rangeThClass, 'w-10 text-center')}>
                     <input
                       type="checkbox"
-                      className="mx-auto block h-4 w-4 accent-teal-600"
+                      className="mx-auto block h-4 w-4 accent-amber-700"
                       checked={allRangesSelected}
                       onChange={(e) => toggleAllRanges(e.target.checked)}
                       aria-label="Select all ranges"
                     />
                   </th>
-                  <th className="w-12 border border-slate-200 px-2 py-2 text-center">S.No</th>
-                  <th className="min-w-[110px] border border-slate-200 px-2 py-2 text-center">
+                  <th className={cn(rangeThClass, 'w-12 text-center')}>S.No</th>
+                  <th className={cn(rangeThClass, 'min-w-[110px] text-center')}>
                     Range Minimum
                   </th>
-                  <th className="min-w-[110px] border border-slate-200 px-2 py-2 text-center">
+                  <th className={cn(rangeThClass, 'min-w-[110px] text-center')}>
                     Range Maximum
                   </th>
-                  <th className="min-w-[100px] border border-slate-200 px-2 py-2 text-center">
+                  <th className={cn(rangeThClass, 'min-w-[100px] text-center')}>
                     Least Count
                   </th>
-                  <th className="min-w-[90px] border border-slate-200 px-2 py-2 text-center">
-                    Accuracy
-                  </th>
-                  <th className="min-w-[110px] border border-slate-200 px-2 py-2 text-center">
-                    Unit
-                  </th>
-                  <th className="w-28 border border-slate-200 px-2 py-2 text-center">Point</th>
-                  <th className="w-16 border border-slate-200 px-2 py-2 text-center">Action</th>
+                  <th className={cn(rangeThClass, 'min-w-[90px] text-center')}>Accuracy</th>
+                  <th className={cn(rangeThClass, 'min-w-[110px] text-center')}>Unit</th>
+                  <th className={cn(rangeThClass, 'w-28 text-center')}>Point</th>
+                  <th className={cn(rangeThClass, 'w-16 text-center')}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -687,21 +757,30 @@ export function CalibrationEquipmentsForm({
                   const masterCount =
                     range.masterEquipmentIds?.filter((id) => id.trim()).length ??
                     tabs.filter((t) => t.masterEquipmentId.trim()).length
+                  const rowSelected = selectedRangeIds.has(range.id)
                   return (
-                    <tr key={range.id} className="align-middle">
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                    <tr
+                      key={range.id}
+                      className={cn(
+                        'align-middle',
+                        rowSelected
+                          ? 'bg-[#fde68a]/80'
+                          : index % 2 === 0
+                            ? 'bg-[#f7f3eb]'
+                            : 'bg-[#fffcf7]',
+                      )}
+                    >
+                      <td className={rangeTdClass}>
                         <input
                           type="checkbox"
-                          className="mx-auto block h-4 w-4 accent-teal-600"
-                          checked={selectedRangeIds.has(range.id)}
+                          className="mx-auto block h-4 w-4 accent-amber-700"
+                          checked={rowSelected}
                           onChange={() => toggleRange(range.id)}
                           aria-label={`Select range ${index + 1}`}
                         />
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">
-                        {index + 1}
-                      </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                      <td className={cn(rangeTdClass, 'text-stone-500')}>{index + 1}</td>
+                      <td className={rangeTdClass}>
                         <Input
                           id={`cal-eq-range-min-${range.id}`}
                           placeholder="e.g. 0"
@@ -709,11 +788,11 @@ export function CalibrationEquipmentsForm({
                           onChange={(e) =>
                             updateRange(range.id, { rangeMin: e.target.value })
                           }
-                          className="h-9 text-center"
+                          className="!h-8 text-center"
                           aria-label={`Range minimum ${index + 1}`}
                         />
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                      <td className={rangeTdClass}>
                         <Input
                           id={`cal-eq-range-max-${range.id}`}
                           placeholder="e.g. 300"
@@ -721,11 +800,11 @@ export function CalibrationEquipmentsForm({
                           onChange={(e) =>
                             updateRange(range.id, { rangeMax: e.target.value })
                           }
-                          className="h-9 text-center"
+                          className="!h-8 text-center"
                           aria-label={`Range maximum ${index + 1}`}
                         />
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                      <td className={rangeTdClass}>
                         <Input
                           id={`cal-eq-res-${range.id}`}
                           placeholder="e.g. 0.02"
@@ -733,38 +812,42 @@ export function CalibrationEquipmentsForm({
                           onChange={(e) =>
                             updateRange(range.id, { resolutionLeastCount: e.target.value })
                           }
-                          className="h-9 text-center"
+                          className="!h-8 text-center"
                           aria-label={`Least count ${index + 1}`}
                         />
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                      <td className={rangeTdClass}>
                         <Input
                           id={`cal-eq-acc-${range.id}`}
                           placeholder="e.g. ±0.02"
                           value={range.accuracy}
                           onChange={(e) => updateRange(range.id, { accuracy: e.target.value })}
-                          className="h-9 text-center"
+                          className="!h-8 text-center"
                           aria-label={`Accuracy ${index + 1}`}
                         />
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                      <td className={rangeTdClass}>
                         <MeasurementUnitSelect
                           id={`cal-eq-unit-${range.id}`}
                           value={range.unit}
                           onChange={(unit) => updateRange(range.id, { unit })}
                           showLabel={false}
-                          showManageButton={false}
+                          showManageButton
                           placeholder="Unit"
                           className="mx-auto w-full"
-                          inputClassName="h-9 text-center"
+                          inputClassName="!h-8 text-center"
+                          shellClassName="!h-8"
                         />
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                      <td className={rangeTdClass}>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="mx-auto h-8 gap-1.5 border-slate-300 bg-transparent px-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          className={cn(
+                            'mx-auto h-8 gap-1.5 px-2 text-xs font-medium',
+                            limsOutlineBtnClass,
+                          )}
                           onClick={() => openPointsForRange(range.id)}
                           aria-label={`Calibration points for range ${index + 1}`}
                           title={
@@ -775,24 +858,24 @@ export function CalibrationEquipmentsForm({
                         >
                           <span>Points</span>
                           {pointCount > 0 ? (
-                            <span className="rounded-full bg-teal-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">
+                            <span className="rounded-none bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                               {pointCount}
                             </span>
                           ) : null}
                           {masterCount > 0 ? (
-                            <span className="rounded-full bg-slate-600/10 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                            <span className="rounded-none bg-stone-600/10 px-1.5 py-0.5 text-[10px] font-semibold text-stone-700">
                               M{masterCount}
                             </span>
                           ) : null}
                         </Button>
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
+                      <td className={rangeTdClass}>
                         {isLast ? (
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            className="mx-auto h-8 w-8 border-teal-600/40 px-0 text-teal-800 hover:bg-teal-50"
+                            className="mx-auto h-8 w-8 px-0 text-amber-800 hover:bg-amber-500/15 hover:text-amber-950"
                             onClick={addRange}
                             aria-label="Add range"
                           >
@@ -817,70 +900,151 @@ export function CalibrationEquipmentsForm({
               </tbody>
             </table>
           </div>
+
+          <div className="overflow-hidden rounded-none border-2 border-stone-700 bg-[#f7f3eb]">
+            <div className="grid grid-cols-2 sm:grid-cols-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                'h-8 min-w-0 justify-center rounded-none border-0 border-r border-b border-stone-500 px-2 text-xs shadow-none',
+                limsOutlineBtnClass,
+              )}
+              disabled={!hasAnyRangeMaster}
+              onClick={() => openTemplateSection('rawSheet')}
+              aria-label="Raw Data Sheet Format"
+              title={
+                hasAnyRangeMaster
+                  ? undefined
+                  : 'Select a master on at least one range (Points) first'
+              }
+            >
+              <FileSpreadsheet size={14} className="mr-1.5 shrink-0 text-amber-800" />
+              <span className="truncate">Raw Data Sheet Format</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                'h-8 min-w-0 justify-center rounded-none border-0 border-r border-b border-stone-500 px-2 text-xs shadow-none',
+                limsOutlineBtnClass,
+              )}
+              disabled={form.ranges.length === 0}
+              onClick={() => openTemplateSection('muSheet')}
+              aria-label="MU Calculation Sheet"
+            >
+              <Calculator size={14} className="mr-1.5 shrink-0 text-amber-800" />
+              <span className="truncate">MU Calculation Sheet</span>
+            </Button>
+            {companyGenerateReportEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'relative h-8 min-w-0 justify-center rounded-none border-0 border-b border-stone-500 px-2 text-xs shadow-none sm:border-r-0',
+                  limsOutlineBtnClass,
+                )}
+                disabled={form.ranges.length === 0}
+                onClick={() => openTemplateSection('generateReport')}
+                aria-label="Generate Report Format"
+              >
+                <FileBarChart size={14} className="mr-1.5 shrink-0 text-amber-800" />
+                <span className="truncate">Generate Report Format</span>
+              </Button>
+            ) : null}
+            <CertificateFormatButton
+              configured={certificateTemplateIsConfigured(form.certificateTemplate)}
+              onClick={() => setCertificateFormatOpen(true)}
+              className={cn(
+                'h-8 min-w-0 justify-center rounded-none border-0 border-r border-b border-stone-500 px-2 text-xs shadow-none sm:border-b-0',
+                limsOutlineBtnClass,
+              )}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                'relative h-8 min-w-0 justify-center rounded-none border-0 border-r border-stone-500 px-2 text-xs shadow-none',
+                limsOutlineBtnClass,
+              )}
+              onClick={() => setChecklistKind('outgoing')}
+              aria-label="Outgoing Checklist"
+            >
+              <ClipboardList size={14} className="mr-1.5 shrink-0 text-amber-800" />
+              <span className="truncate">Outgoing Checklist</span>
+              {equipmentChecklistHasCustomItems(form.outgoingChecklist) ? (
+                <span
+                  className="ml-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-600"
+                  aria-hidden
+                  title="Outgoing checklist configured"
+                />
+              ) : null}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                'relative h-8 min-w-0 justify-center rounded-none border-0 px-2 text-xs shadow-none',
+                limsOutlineBtnClass,
+              )}
+              onClick={() => setChecklistKind('inward')}
+              aria-label="Inward Checklist"
+            >
+              <ClipboardList size={14} className="mr-1.5 shrink-0 text-amber-800" />
+              <span className="truncate">Inward Checklist</span>
+              {equipmentChecklistHasCustomItems(form.inwardChecklist) ? (
+                <span
+                  className="ml-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-600"
+                  aria-hidden
+                  title="Inward checklist configured"
+                />
+              ) : null}
+            </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-      <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5 overflow-x-auto border-t border-slate-200 bg-white px-4 py-3 sm:gap-2 sm:px-6">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 shrink-0 border-teal-600/40 text-teal-800 hover:bg-teal-50"
-          disabled={form.ranges.length === 0}
-          onClick={() => openTemplateSection('rawSheet')}
-          aria-label="Raw Data Sheet Format"
-        >
-          <FileSpreadsheet size={16} className="mr-1.5" />
-          Raw Data Sheet Format
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 shrink-0 border-indigo-600/40 text-indigo-800 hover:bg-indigo-50"
-          disabled={form.ranges.length === 0}
-          onClick={() => openTemplateSection('muSheet')}
-          aria-label="MU Calculation Sheet"
-        >
-          <Calculator size={16} className="mr-1.5" />
-          MU Calculation Sheet
-        </Button>
-        {companyGenerateReportEnabled ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="relative h-9 shrink-0 border-amber-600/40 text-amber-900 hover:bg-amber-50"
-            disabled={form.ranges.length === 0}
-            onClick={() => openTemplateSection('generateReport')}
-            aria-label="Generate Report Format"
-          >
-            <FileBarChart size={16} className="mr-1.5" />
-            Generate Report Format
-            {templateGenerateReport.enabled ? (
-              <span
-                className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
-                aria-hidden
-                title="Generate Report enabled"
-              />
-            ) : null}
-          </Button>
-        ) : null}
-        <CertificateFormatButton
-          configured={certificateTemplateIsConfigured(form.certificateTemplate)}
-          onClick={() => setCertificateFormatOpen(true)}
-        />
+      <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5 overflow-x-auto border-t border-stone-300 bg-white px-4 py-3 sm:gap-2 sm:px-6">
+        <span className="text-[11px] text-stone-500" aria-live="polite">
+          {autoSaveStatus === 'saving'
+            ? 'Saving…'
+            : autoSaveStatus === 'saved'
+              ? 'Saved'
+              : autoSaveStatus === 'error'
+                ? 'Save failed'
+                : null}
+        </span>
         <Button
           type="button"
           size="sm"
-          className="h-9 shrink-0 bg-teal-600 text-white hover:bg-teal-500"
+          className={cn('h-9 shrink-0', limsPrimaryBtnClass)}
           onClick={onSave}
           disabled={!canSave || saveLoading}
         >
           {saveLoading ? 'Saving…' : 'Save & Close'}
         </Button>
       </div>
+
+      <EquipmentChecklistTemplateDialog
+        open={checklistKind != null}
+        onOpenChange={(open) => {
+          if (!open) setChecklistKind(null)
+        }}
+        kind={checklistKind ?? 'outgoing'}
+        equipmentName={form.equipmentName}
+        items={checklistKind === 'inward' ? form.inwardChecklist : form.outgoingChecklist}
+        onSave={(items) => {
+          if (checklistKind === 'inward') set('inwardChecklist', items)
+          else set('outgoingChecklist', items)
+        }}
+      />
 
       <CertificateFormatDialog
         open={certificateFormatOpen}
@@ -903,6 +1067,8 @@ export function CalibrationEquipmentsForm({
           if (!open) {
             setPointsRangeId(null)
             setPointsDialogSection('masters')
+            setEnvConditionOpen(false)
+            setVerificationOpen(false)
             closeRandomnessEditor()
           }
         }}
@@ -915,28 +1081,58 @@ export function CalibrationEquipmentsForm({
         modeOfCalibrationConfigured={Boolean(
           templateModeOfCalibration.trim() || templateMethodUsed.trim(),
         )}
-        rawSheetContent={
-          <>
-            <h3 className="text-base font-semibold text-slate-900">Raw Data Sheet Format</h3>
+        rawSheetContent={(live) => (
             <RawDataSheetTemplateEditor
               value={templateRawDataSheet}
-              masterEquipmentIds={pointsRange?.masterEquipmentIds ?? []}
-              masterPointsTables={(pointsRange?.masterPointsTabs ?? [])
-                .map((t) => t.calibrationPointsTable)
-                .filter((t) => (t.columns?.length ?? 0) > 0)}
+              masterEquipmentIds={live.masterEquipmentIds}
+              masterPointsTables={live.masterPointsTables}
+              environmentDialogOpen={envConditionOpen}
+              onEnvironmentDialogOpenChange={setEnvConditionOpen}
+              verificationDialogOpen={verificationOpen}
+              onVerificationDialogOpenChange={setVerificationOpen}
               onChange={(rawDataSheetTemplate) => {
                 if (!pointsRangeId) return
                 updateRange(pointsRangeId, { rawDataSheetTemplate })
               }}
             />
-          </>
+        )}
+        rawSheetFooterActions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className={cn('h-9', limsOutlineBtnClass)}
+              onClick={() => setVerificationOpen(true)}
+            >
+              <ClipboardList size={16} className="mr-1.5" aria-hidden />
+              Verification Checklist
+              {templateRawDataSheet.verification.items.length > 0 ? (
+                <span className="ml-1.5 rounded-none bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                  {templateRawDataSheet.verification.items.length}
+                </span>
+              ) : null}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn('h-9', limsOutlineBtnClass)}
+              onClick={() => setEnvConditionOpen(true)}
+            >
+              <Thermometer size={16} className="mr-1.5" aria-hidden />
+              Environment Condition
+              {(templateRawDataSheet.environmentDefaults?.parameterColumns?.length ?? 0) > 0 ? (
+                <span className="ml-1.5 rounded-none bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                  {templateRawDataSheet.environmentDefaults?.parameterColumns?.length}
+                </span>
+              ) : null}
+            </Button>
+          </div>
         }
         muSheetContent={
           <>
-            <h3 className="text-base font-semibold text-slate-900">MU Calculation Sheet</h3>
             <MuCalculationSheetEditor
               value={templateMuCalculation}
-              rawDataSheetColumns={templateRawDataSheet.columns}
+              rawDataSheetColumns={allRawDataSheetColumns(templateRawDataSheet)}
               onChange={(muCalculationTemplate) => {
                 if (!pointsRangeId) return
                 updateRange(pointsRangeId, { muCalculationTemplate })
@@ -944,28 +1140,10 @@ export function CalibrationEquipmentsForm({
             />
           </>
         }
-        generateReportContent={
-          <>
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-teal-600"
-                checked={templateGenerateReport.enabled}
-                onChange={(e) => patchGenerateReportConfig({ enabled: e.target.checked })}
-                aria-label="Enable Generate Report"
-              />
-              <span className="text-sm font-medium text-slate-800">Enable Generate Report</span>
-            </label>
-            {templateGenerateReport.enabled ? (
-              <p className="mt-1.5 text-xs text-slate-500">
-                Use View Factor for per-point Mode / Factor / Min / Max, Round Off, and
-                Decimal. Points without a matching config are skipped on Apply. Range span
-                (%) uses the same ± band at every point from Range Min/Max.
-              </p>
-            ) : null}
-
-            {templateGenerateReport.enabled ? (
-              <div className="mt-4 overflow-x-auto rounded-md border border-slate-200 bg-white">
+        generateReportContent={(live) => {
+          const masterPointRefColumns = masterPointsFormulaRefColumns(live.masterPointsTables)
+          return (
+              <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
                 <table className="w-full min-w-[520px] border-collapse text-sm">
                   <thead>
                     <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
@@ -988,7 +1166,7 @@ export function CalibrationEquipmentsForm({
                         ? buildViewFactorPointEntriesForGenerateReportRow(
                             row,
                             form.ranges,
-                            templateRawDataSheet.columns,
+                            generateReportInputColumns,
                             templateRange,
                           ).length
                         : undefined
@@ -1058,12 +1236,10 @@ export function CalibrationEquipmentsForm({
                                     </SelectItem>
                                   ))}
                                 </SelectGroup>
-                                {rawDataSheetColumns.filter(
-                                  (col) => col.key !== row.inputColumnKey,
-                                ).length > 0 ? (
+                                {masterPointRefColumns.length > 0 ? (
                                   <SelectGroup>
-                                    <SelectLabel>Raw Data Sheet</SelectLabel>
-                                    {rawDataSheetColumns
+                                    <SelectLabel>Calibration Points</SelectLabel>
+                                    {masterPointRefColumns
                                       .filter((col) => col.key !== row.inputColumnKey)
                                       .map((col) => (
                                         <SelectItem key={col.key} value={col.key}>
@@ -1072,6 +1248,22 @@ export function CalibrationEquipmentsForm({
                                       ))}
                                   </SelectGroup>
                                 ) : null}
+                                {rawDataRefColumnGroups.map((group) => {
+                                  const cols = group.columns.filter(
+                                    (col) => col.key !== row.inputColumnKey,
+                                  )
+                                  if (cols.length === 0) return null
+                                  return (
+                                    <SelectGroup key={group.label}>
+                                      <SelectLabel>{group.label}</SelectLabel>
+                                      {cols.map((col) => (
+                                        <SelectItem key={col.key} value={col.key}>
+                                          {col.label.trim() || 'Untitled column'}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  )
+                                })}
                               </SelectContent>
                             </Select>
                           </td>
@@ -1119,9 +1311,8 @@ export function CalibrationEquipmentsForm({
                   </tbody>
                 </table>
               </div>
-            ) : null}
-          </>
-        }
+          )
+        }}
         modeOfCalibrationContent={
           <>
             <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1190,15 +1381,17 @@ export function CalibrationEquipmentsForm({
         <DialogContent
           layer="stacked"
           persistOnFocusLoss
+          overlayClassName={VIEW_FACTOR_OVERLAY}
           className={VIEW_FACTOR_FULLSCREEN_DIALOG_CLASS}
-          style={VIEW_FACTOR_FULLSCREEN_DIALOG_STYLE}
           aria-describedby={undefined}
         >
-          <div className="relative shrink-0 border-b border-slate-200 bg-slate-900 px-4 py-3 text-white sm:px-5">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-28 text-left sm:pr-[22rem]">
-              <p className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-amber-300/90">
-                Generate Report
-              </p>
               <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 View Factor — {randomnessEditorInputLabel}
               </DialogTitle>
@@ -1280,49 +1473,33 @@ export function CalibrationEquipmentsForm({
               </div>
             ) : null}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
             {viewFactorPointEntries.length === 0 ? (
-              <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <p className="mb-3 rounded-none border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 Add Measurement Range points first (Measurement Ranges → Points). View
                 Factor can only be set per point.
               </p>
             ) : null}
-            <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-              <table className="w-full min-w-[1180px] border-collapse text-sm">
+            <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
+              <table className="w-full table-fixed border-collapse text-sm">
                 <thead>
-                  <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                    <th className="min-w-[88px] border border-slate-200 px-2 py-2 text-center">
-                      Point
-                    </th>
-                    <th className="min-w-[110px] border border-slate-200 px-2 py-2 text-center">
-                      Reference Value
-                    </th>
-                    <th className="min-w-[130px] border border-slate-200 px-2 py-2 text-center">
-                      Mode
-                    </th>
-                    <th className="min-w-[100px] border border-slate-200 px-2 py-2 text-center">
-                      Randomness Factor
-                    </th>
-                    <th className="min-w-[72px] border border-slate-200 px-2 py-2 text-center">
-                      Min
-                    </th>
-                    <th className="min-w-[72px] border border-slate-200 px-2 py-2 text-center">
-                      Max
-                    </th>
-                    <th className="min-w-[90px] border border-slate-200 px-2 py-2 text-center">
-                      Round Off
-                    </th>
-                    <th className="min-w-[80px] border border-slate-200 px-2 py-2 text-center">
-                      Decimal
-                    </th>
+                  <tr>
+                    <th className={cn(vfThClass, 'w-[8%]')}>Point</th>
+                    <th className={cn(vfThClass, 'w-[10%]')}>Reference Value</th>
+                    <th className={cn(vfThClass, 'w-[14%]')}>Mode</th>
+                    <th className={cn(vfThClass, 'w-[12%]')}>Randomness Factor</th>
+                    <th className={cn(vfThClass, 'w-[8%]')}>Min</th>
+                    <th className={cn(vfThClass, 'w-[8%]')}>Max</th>
+                    <th className={cn(vfThClass, 'w-[10%]')}>Round Off</th>
+                    <th className={cn(vfThClass, 'w-[8%]')}>Decimal</th>
                     <th
-                      className="min-w-[96px] border border-slate-200 px-2 py-2 text-center"
+                      className={cn(vfThClass, 'w-[11%]')}
                       title="Output of Reference Value Minimum"
                     >
                       Output Min
                     </th>
                     <th
-                      className="min-w-[96px] border border-slate-200 px-2 py-2 text-center"
+                      className={cn(vfThClass, 'w-[11%]')}
                       title="Output of Reference Value Maximum"
                     >
                       Output Max
@@ -1334,7 +1511,7 @@ export function CalibrationEquipmentsForm({
                     <tr>
                       <td
                         colSpan={10}
-                        className="border border-slate-200 px-3 py-6 text-center text-sm text-slate-500"
+                        className="border border-[#e7e0d4] bg-[#fffcf7] px-3 py-6 text-center text-sm text-stone-500"
                       >
                         No points yet. Add Measurement Range points first.
                       </td>
@@ -1356,17 +1533,20 @@ export function CalibrationEquipmentsForm({
                         rangeId: entry.rangeId,
                       })
                       return (
-                        <tr key={entry.id} className="align-middle">
-                          <td className="border border-slate-200 px-2 py-2 text-center text-sm font-medium text-slate-800">
+                        <tr
+                          key={entry.id}
+                          className={index % 2 === 0 ? 'bg-[#f7f3eb]' : 'bg-[#fffcf7]'}
+                        >
+                          <td className={cn(vfTdClass, 'font-medium text-stone-800')}>
                             {entry.point}
                           </td>
                           <td
-                            className="border border-slate-200 px-2 py-2 text-center text-sm text-slate-700"
+                            className={cn(vfTdClass, 'text-stone-700')}
                             title={referenceValue || 'No reference value'}
                           >
                             {referenceValue || '—'}
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className={vfTdClass}>
                             <Select
                               value={mode}
                               onValueChange={(value) =>
@@ -1390,7 +1570,7 @@ export function CalibrationEquipmentsForm({
                               </SelectContent>
                             </Select>
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className={vfTdClass}>
                             <Input
                               id={`cal-eq-report-pt-factor-${entry.id}`}
                               type="number"
@@ -1408,7 +1588,7 @@ export function CalibrationEquipmentsForm({
                               aria-label={randomnessFactorAriaLabel(mode, index)}
                             />
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className={vfTdClass}>
                             <Input
                               id={`cal-eq-report-pt-floor-${entry.id}`}
                               type="number"
@@ -1427,7 +1607,7 @@ export function CalibrationEquipmentsForm({
                               aria-label={`Min absolute band floor for point ${entry.point}`}
                             />
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className={vfTdClass}>
                             <Input
                               id={`cal-eq-report-pt-cap-${entry.id}`}
                               type="number"
@@ -1446,7 +1626,7 @@ export function CalibrationEquipmentsForm({
                               aria-label={`Max absolute band cap for point ${entry.point}`}
                             />
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className={vfTdClass}>
                             <Input
                               id={`cal-eq-report-pt-roundoff-${entry.id}`}
                               type="number"
@@ -1462,7 +1642,7 @@ export function CalibrationEquipmentsForm({
                               aria-label={`Round Off for point ${entry.point}`}
                             />
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className={vfTdClass}>
                             <Input
                               id={`cal-eq-report-pt-decimal-${entry.id}`}
                               type="number"
@@ -1486,13 +1666,13 @@ export function CalibrationEquipmentsForm({
                             />
                           </td>
                           <td
-                            className="border border-slate-200 px-2 py-2 text-center text-sm tabular-nums text-slate-700"
+                            className={cn(vfTdClass, 'tabular-nums text-stone-700')}
                             title="Preview: Reference − band (after Round Off & Decimal)"
                           >
                             {outputMin}
                           </td>
                           <td
-                            className="border border-slate-200 px-2 py-2 text-center text-sm tabular-nums text-slate-700"
+                            className={cn(vfTdClass, 'tabular-nums text-stone-700')}
                             title="Preview: Reference + band (after Round Off & Decimal)"
                           >
                             {outputMax}
@@ -1505,12 +1685,9 @@ export function CalibrationEquipmentsForm({
               </table>
             </div>
           </div>
-          <DialogFooter className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
-            <Button type="button" variant="outline" onClick={closeRandomnessEditor}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={saveRandomnessEditor}>
-              Done
+          <DialogFooter className="shrink-0 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
+            <Button type="button" className={limsPrimaryBtnClass} onClick={saveRandomnessEditor}>
+              Save & Close
             </Button>
           </DialogFooter>
         </DialogContent>

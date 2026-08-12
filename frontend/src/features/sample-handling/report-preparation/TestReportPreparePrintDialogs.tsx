@@ -248,7 +248,7 @@ export function TestReportPrintSettingDialog({
                   <SelectItem value="browser_print">
                     Browser print (recommended — fixed letterhead/footer)
                   </SelectItem>
-                  <SelectItem value="html2pdf">Direct PDF file (html2pdf)</SelectItem>
+                  <SelectItem value="playwright">Direct PDF file (Playwright)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -4,6 +4,34 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+  limsTableBodyToneClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+
+const MU_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const MU_FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
+
+const MU_CENTERED_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!absolute left-auto top-auto !flex translate-x-0 translate-y-0 flex-col',
+  'max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl',
+  'md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))]',
+  '[&>button]:text-white [&>button]:hover:bg-white/10',
+)
 import type {
   RawDataSheetColumn,
   RawDataSheetPayloadRow,
@@ -514,11 +542,11 @@ export function UncertaintyStepByStepDialog({
   const renderTypeAStep = () => {
     const tables = template.typeA.tables.filter((t) => t.columns.length > 0)
     return (
-      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="space-y-3 rounded-none border-2 border-stone-700 bg-white p-3 sm:p-4">
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-500">No Raw Data Sheet rows available.</p>
+          <p className="text-sm text-stone-500">No Raw Data Sheet rows available.</p>
         ) : tables.length === 0 ? (
-          <p className="text-sm text-slate-500">No components configured for this section.</p>
+          <p className="text-sm text-stone-500">No components configured for this section.</p>
         ) : (
           tables.map((table, tableIndex) => (
             <MuSectionMultiRowEditor
@@ -547,11 +575,11 @@ export function UncertaintyStepByStepDialog({
   const renderTypeBStep = () => {
     const tables = template.typeB.tables.filter((t) => t.columns.length > 0)
     return (
-      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="space-y-3 rounded-none border-2 border-stone-700 bg-white p-3 sm:p-4">
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-500">No Raw Data Sheet rows available.</p>
+          <p className="text-sm text-stone-500">No Raw Data Sheet rows available.</p>
         ) : tables.length === 0 ? (
-          <p className="text-sm text-slate-500">No components configured for this section.</p>
+          <p className="text-sm text-stone-500">No components configured for this section.</p>
         ) : (
           tables.map((table, tableIndex) => (
             <MuSectionMultiRowEditor
@@ -581,11 +609,11 @@ export function UncertaintyStepByStepDialog({
     const tables = template.calculation.tables.filter((t) => t.columns.length > 0)
     const budgetTableIndex = tables.length > 0 ? tables.length - 1 : -1
     return (
-      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="space-y-3 rounded-none border-2 border-stone-700 bg-white p-3 sm:p-4">
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-500">No Raw Data Sheet rows available.</p>
+          <p className="text-sm text-stone-500">No Raw Data Sheet rows available.</p>
         ) : tables.length === 0 ? (
-          <p className="text-sm text-slate-500">No components configured for this section.</p>
+          <p className="text-sm text-stone-500">No components configured for this section.</p>
         ) : (
           tables.map((table, tableIndex) => (
             <MuSectionMultiRowEditor
@@ -621,22 +649,27 @@ export function UncertaintyStepByStepDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+        overlayClassName={MU_OVERLAY}
+        className={MU_FULLSCREEN_DIALOG_CLASS}
         layer="nested"
         aria-describedby={undefined}
       >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-12 text-left">
-            <DialogTitle className="text-xl font-semibold tracking-tight text-white">
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-6 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
               Uncertainty Calculation — Step by Step
             </DialogTitle>
           </DialogHeader>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
           {!hasTemplate ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-950">
+            <div className="rounded-none border-2 border-amber-700/40 bg-amber-50 px-4 py-6 text-sm text-amber-950">
               <p className="font-medium">MU Calculation Sheet is not configured</p>
               <p className="mt-2 text-xs leading-relaxed text-amber-900/90">
                 Open Calibration Equipments → edit this equipment → configure Type A, Type B, and
@@ -652,12 +685,12 @@ export function UncertaintyStepByStepDialog({
                     <button
                       type="button"
                       className={cn(
-                        'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                        'rounded-none border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
                         stepIndex === index
-                          ? 'border-teal-600 bg-teal-50 text-teal-900'
+                          ? 'border-amber-700 bg-amber-100 text-amber-950'
                           : stepIndex > index
-                            ? 'border-slate-300 bg-white text-slate-700'
-                            : 'border-slate-200 bg-slate-50 text-slate-400',
+                            ? 'border-stone-500 bg-white text-stone-800'
+                            : 'border-stone-300 bg-stone-100 text-stone-400',
                       )}
                       onClick={() => {
                         if (index <= stepIndex) setStepIndex(index)
@@ -678,12 +711,11 @@ export function UncertaintyStepByStepDialog({
           )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-6">
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-9 gap-1"
+            className={cn('h-9 gap-1', limsOutlineBtnClass)}
             disabled={stepIndex <= 0 || !hasTemplate}
             onClick={goBack}
           >
@@ -695,8 +727,7 @@ export function UncertaintyStepByStepDialog({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="h-9 border-teal-600/40 text-teal-800"
+                className={cn('h-9', limsOutlineBtnClass)}
                 onClick={() => {
                   onApplyUncertainty(expandedPick.value)
                   onOpenChange(false)
@@ -708,8 +739,7 @@ export function UncertaintyStepByStepDialog({
             {hasTemplate && stepIndex < wizardSteps.length - 1 ? (
               <Button
                 type="button"
-                size="sm"
-                className="h-9 gap-1 bg-teal-600 text-white hover:bg-teal-500"
+                className={cn('h-9 gap-1', limsPrimaryBtnClass)}
                 disabled={!canNext}
                 onClick={goNext}
               >
@@ -719,8 +749,7 @@ export function UncertaintyStepByStepDialog({
             ) : (
               <Button
                 type="button"
-                size="sm"
-                className="h-9 bg-teal-600 text-white hover:bg-teal-500"
+                className={cn('h-9', limsPrimaryBtnClass)}
                 onClick={() => onOpenChange(false)}
               >
                 Done
@@ -798,38 +827,34 @@ function MuSectionMultiRowEditor({
   )
 
   return (
-    <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50/40 p-2.5">
-      <p className="text-xs font-semibold text-slate-800">{label}</p>
-      <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-        <table className="w-full table-auto border-collapse text-center text-sm">
-          <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="whitespace-nowrap border border-slate-200 px-2 py-2 text-center">
-                USE
-              </th>
-              <th className="whitespace-nowrap border border-slate-200 px-2 py-2 text-center">
+    <div className="space-y-2 rounded-none border-2 border-stone-500 bg-white p-2.5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-stone-800">{label}</p>
+      <div className="overflow-x-auto rounded-none border-2 border-stone-700 bg-white">
+        <table className={cn(limsTableClass, 'table-auto text-center text-sm')}>
+          <thead>
+            <tr className={limsTableHeadClass}>
+              <th className="whitespace-nowrap px-2 py-2 text-center">USE</th>
+              <th className="whitespace-nowrap px-2 py-2 text-center">
                 <span className="normal-case tracking-normal">Point</span>
               </th>
               {table.columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    'whitespace-nowrap border border-slate-200 px-2 py-2 text-center',
-                    col.type === 'formula' && 'bg-teal-50/60 text-teal-900',
+                    'whitespace-nowrap px-2 py-2 text-center',
+                    col.type === 'formula' && 'bg-amber-900/40 text-amber-100',
                   )}
                 >
                   <span className="normal-case tracking-normal">
                     {col.label || col.key}
                     {col.required && col.type !== 'formula' ? (
-                      <span className="ml-0.5 text-red-500">*</span>
+                      <span className="ml-0.5 text-red-300">*</span>
                     ) : null}
                   </span>
                 </th>
               ))}
               {showBudgetColumn ? (
-                <th className="whitespace-nowrap border border-slate-200 px-2 py-2 text-center">
-                  Uncertainty Budget
-                </th>
+                <th className="whitespace-nowrap px-2 py-2 text-center">Uncertainty Budget</th>
               ) : null}
             </tr>
           </thead>
@@ -865,19 +890,19 @@ function MuSectionMultiRowEditor({
               return (
                 <tr
                   key={rdsRow.id}
-                  className={cn(isSelected && 'bg-teal-50/30')}
+                  className={cn(limsTableBodyToneClass, isSelected && 'bg-amber-50')}
                 >
-                  <td className="whitespace-nowrap border border-slate-200 px-1.5 py-1.5 text-center">
+                  <td className="whitespace-nowrap px-1.5 py-1.5 text-center">
                     <input
                       type="radio"
                       name={useRadioName}
                       checked={isSelected}
                       onChange={() => onSelectRow(rdsRow.id)}
                       aria-label={`Select row ${rowIndex + 1}`}
-                      className="h-4 w-4 accent-teal-600"
+                      className="h-4 w-4 accent-amber-700"
                     />
                   </td>
-                  <td className="whitespace-nowrap border border-slate-200 px-2 py-1.5 text-center font-mono text-xs text-slate-700">
+                  <td className="whitespace-nowrap px-2 py-1.5 text-center font-mono text-xs text-stone-800">
                     {point || '—'}
                   </td>
                   {table.columns.map((col) => {
@@ -889,13 +914,13 @@ function MuSectionMultiRowEditor({
                       <td
                         key={col.key}
                         className={cn(
-                          'whitespace-nowrap border border-slate-200 px-1.5 py-1.5 text-center',
-                          isFormula && 'bg-teal-50/40',
-                          missingRequired && 'bg-amber-50/50',
+                          'whitespace-nowrap px-1.5 py-1.5 text-center',
+                          isFormula && 'bg-amber-50/80',
+                          missingRequired && 'bg-amber-100/70',
                         )}
                       >
                         {isFormula ? (
-                          <p className="px-1 text-center font-mono text-xs font-semibold text-teal-900">
+                          <p className="px-1 text-center font-mono text-xs font-semibold text-amber-950">
                             {display.trim() || '—'}
                           </p>
                         ) : (
@@ -905,8 +930,9 @@ function MuSectionMultiRowEditor({
                             value={rawValues[col.key] ?? ''}
                             onChange={(e) => onChangeCell(rdsRow.id, col.key, e.target.value)}
                             className={cn(
+                              limsFieldClass,
                               'mx-auto h-8 bg-white text-center font-mono text-xs',
-                              missingRequired && 'border-amber-400',
+                              missingRequired && 'border-amber-600',
                             )}
                             aria-label={`${col.label || col.key} row ${rowIndex + 1}`}
                             aria-required={col.required}
@@ -917,20 +943,19 @@ function MuSectionMultiRowEditor({
                     )
                   })}
                   {showBudgetColumn ? (
-                    <td className="whitespace-nowrap border border-slate-200 px-1.5 py-1.5 text-center">
+                    <td className="whitespace-nowrap px-1.5 py-1.5 text-center">
                       {canViewBudget ? (
                         <Button
                           type="button"
                           variant="outline"
-                          size="sm"
-                          className="h-7 border-teal-600/40 px-2 text-[11px] text-teal-800 hover:bg-teal-50"
+                          className={cn('h-7 px-2 text-[11px]', limsOutlineBtnClass)}
                           onClick={() => onViewBudget?.(rdsRow.id)}
                           aria-label={`View uncertainty budget for point ${point || rowIndex + 1}`}
                         >
                           View Budget
                         </Button>
                       ) : (
-                        <span className="text-slate-300">—</span>
+                        <span className="text-stone-300">—</span>
                       )}
                     </td>
                   ) : null}
@@ -1022,27 +1047,27 @@ function SingleRowMuSectionBreakdown({
 
   return (
     <div className="space-y-2.5">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">{subtitle}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-700">{subtitle}</p>
       {tables.map((table, tableIndex) => {
         const rawValues = tableValues[table.id] ?? emptyValuesForMuTable(table)
         const evaluated = evaluatedByTableId[table.id] ?? rawValues
         return (
           <div
             key={table.id || `tbl-${tableIndex}`}
-            className="overflow-x-auto rounded-md border border-slate-200"
+            className="overflow-x-auto rounded-none border-2 border-stone-700"
           >
             {tables.length > 1 ? (
-              <p className="border-b border-slate-100 bg-slate-50 px-2 py-1.5 text-center text-[11px] font-medium text-slate-600">
+              <p className="border-b border-stone-300 bg-stone-100 px-2 py-1.5 text-center text-[11px] font-medium text-stone-700">
                 {table.label.trim() || `Component ${tableIndex + 1}`}
               </p>
             ) : null}
-            <table className="w-full table-auto border-collapse text-center text-xs">
-              <thead className="bg-white text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="border border-slate-200 px-2 py-1.5 text-left">Field</th>
-                  <th className="border border-slate-200 px-2 py-1.5 text-center">Type</th>
-                  <th className="border border-slate-200 px-2 py-1.5 text-center">Formula</th>
-                  <th className="border border-slate-200 px-2 py-1.5 text-center">Value</th>
+            <table className={cn(limsTableClass, 'table-auto text-center text-xs')}>
+              <thead>
+                <tr className={limsTableHeadClass}>
+                  <th className="px-2 py-1.5 text-left">Field</th>
+                  <th className="px-2 py-1.5 text-center">Type</th>
+                  <th className="px-2 py-1.5 text-center">Formula</th>
+                  <th className="px-2 py-1.5 text-center">Value</th>
                 </tr>
               </thead>
               <tbody>
@@ -1052,20 +1077,20 @@ function SingleRowMuSectionBreakdown({
                     ? String(evaluated[col.key] ?? '').trim()
                     : String(rawValues[col.key] ?? '').trim()
                   return (
-                    <tr key={col.key} className="border-t border-slate-100">
-                      <td className="border border-slate-200 px-2 py-1.5 text-left text-slate-700">
+                    <tr key={col.key} className={limsTableBodyToneClass}>
+                      <td className="px-2 py-1.5 text-left text-stone-800">
                         {col.label || col.key}
                       </td>
-                      <td className="border border-slate-200 px-2 py-1.5 text-center text-slate-500">
+                      <td className="px-2 py-1.5 text-center text-stone-600">
                         {isFormula ? 'Calculated' : 'Input'}
                       </td>
-                      <td className="border border-slate-200 px-2 py-1.5 text-left font-mono text-[10px] text-slate-500">
+                      <td className="px-2 py-1.5 text-left font-mono text-[10px] text-stone-600">
                         {muColumnFormulaHint(col)}
                       </td>
                       <td
                         className={cn(
-                          'border border-slate-200 px-2 py-1.5 text-center font-mono',
-                          isFormula && 'bg-teal-50/40 font-semibold text-teal-900',
+                          'px-2 py-1.5 text-center font-mono',
+                          isFormula && 'bg-amber-50 font-semibold text-amber-950',
                         )}
                       >
                         {display || '—'}
@@ -1123,43 +1148,52 @@ function PointUncertaintyBudgetDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex max-h-[min(90dvh,720px)] max-w-3xl flex-col gap-0 overflow-hidden p-0"
-        layer="nested"
+        overlayClassName={MU_OVERLAY}
+        portalClassName={MU_OVERLAY}
+        className={MU_CENTERED_DIALOG_CLASS}
+        layer="stacked"
         aria-describedby={undefined}
       >
-        <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-3 text-left sm:px-5">
-          <DialogTitle className="text-base font-semibold text-slate-900">
-            Uncertainty Budget — Point {point}
-          </DialogTitle>
-        </DialogHeader>
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Uncertainty Budget — Point {point}
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-4 sm:px-5">
-          <dl className="grid gap-2 rounded-md border border-teal-200 bg-teal-50/30 px-3 py-2.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+          <dl className="grid gap-2 rounded-none border-2 border-stone-700 bg-amber-50/40 px-3 py-2.5 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <dt className="text-[10px] uppercase tracking-wide text-slate-500">Point</dt>
-              <dd className="mt-0.5 font-mono text-sm text-slate-800">{point}</dd>
+              <dt className="text-[10px] uppercase tracking-wide text-stone-500">Point</dt>
+              <dd className="mt-0.5 font-mono text-sm text-stone-800">{point}</dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-wide text-slate-500">
+              <dt className="text-[10px] uppercase tracking-wide text-stone-500">
                 {combinedLabel || 'Combined Uncertainty'}
               </dt>
-              <dd className="mt-0.5 font-mono text-sm text-slate-800">
+              <dd className="mt-0.5 font-mono text-sm text-stone-800">
                 {combinedValue.trim() || '—'}
               </dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-wide text-slate-500">
+              <dt className="text-[10px] uppercase tracking-wide text-stone-500">
                 Coverage Factor
               </dt>
-              <dd className="mt-0.5 font-mono text-sm text-slate-800">
+              <dd className="mt-0.5 font-mono text-sm text-stone-800">
                 {coverageK ? `k = ${coverageK}` : '—'}
               </dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-wide text-slate-500">
+              <dt className="text-[10px] uppercase tracking-wide text-stone-500">
                 {expandedLabel || 'Expanded Uncertainty'}
               </dt>
-              <dd className="mt-0.5 font-mono text-sm font-semibold text-teal-900">
+              <dd className="mt-0.5 font-mono text-sm font-semibold text-amber-950">
                 {expandedValue.trim() || '—'}
               </dd>
             </div>
@@ -1211,14 +1245,19 @@ function PointUncertaintyBudgetDialog({
             />
           ) : null}
 
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-stone-500">
             Decimal places: {decimalPlaces}. Calculated fields are evaluated from wizard inputs and
             linked Raw Data Sheet values.
           </p>
         </div>
 
-        <div className="flex shrink-0 justify-end border-t border-slate-200 px-4 py-3 sm:px-5">
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+        <div className="flex shrink-0 justify-end border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
+          <Button
+            type="button"
+            variant="outline"
+            className={cn('h-9', limsOutlineBtnClass)}
+            onClick={() => onOpenChange(false)}
+          >
             Close
           </Button>
         </div>

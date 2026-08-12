@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,6 +11,7 @@ import { ProductsServicesForm } from './ProductsServicesForm'
 import {
   emptyProductServiceForm,
   formatMoney,
+  formatMoneyInput,
   isValidNumberOrEmpty,
   nextItemCode,
   normalizeText,
@@ -116,6 +118,7 @@ function buildPrintHtml(rows: ProductServiceRow[]) {
           <div class="field"><div class="k">GST %</div><div class="v">${esc(formatMoney(r.gst_percent))}%</div></div>
           <div class="field"><div class="k">Discount</div><div class="v">₹ ${esc(formatMoney(r.discount))}</div></div>
           <div class="field"><div class="k">UOM</div><div class="v">${esc(r.unit_of_measurement || '—')}</div></div>
+          <div class="field"><div class="k">Make</div><div class="v">${esc(r.make || '—')}</div></div>
           ${stockBlock}
         </div>
       </section>`
@@ -152,6 +155,7 @@ const CSV_HEADERS = [
   'gst_percent',
   'discount',
   'unit_of_measurement',
+  'make',
   'opening_stock',
   'low_stock_alert',
 ] as const
@@ -177,6 +181,7 @@ export default function ProductsServicesMasterPage() {
   const canSave =
     !saveLoading &&
     normalizeText(form.itemCode).length > 0 &&
+    normalizeText(form.itemCategory).length > 0 &&
     normalizeText(form.itemName).length > 0 &&
     isValidNumberOrEmpty(form.salePrice) &&
     isValidNumberOrEmpty(form.purchasePrice) &&
@@ -219,6 +224,7 @@ export default function ProductsServicesMasterPage() {
         r.item_description,
         r.hsn_code,
         r.unit_of_measurement,
+        r.make,
       ]
         .filter(Boolean)
         .join(' ')
@@ -262,7 +268,7 @@ export default function ProductsServicesMasterPage() {
     rows.filter((r) => r.item_type === itemType).map((r) => r.item_code)
 
   const openNew = () => {
-    const itemType: ItemType = 'Product'
+    const itemType: ItemType = 'Service'
     setEditingId(null)
     setForm({
       ...emptyProductServiceForm(itemType),
@@ -293,11 +299,12 @@ export default function ProductsServicesMasterPage() {
     itemName: asCopy ? `${row.item_name} - Copy` : row.item_name,
     itemDescription: row.item_description ?? '',
     hsnCode: row.hsn_code ?? '',
-    salePrice: String(row.sale_price ?? 0),
-    purchasePrice: String(row.purchase_price ?? 0),
-    gstPercent: String(row.gst_percent ?? 0),
-    discount: String(row.discount ?? 0),
+    salePrice: formatMoneyInput(String(row.sale_price ?? 0)),
+    purchasePrice: formatMoneyInput(String(row.purchase_price ?? 0)),
+    gstPercent: formatMoneyInput(String(row.gst_percent ?? 0)),
+    discount: formatMoneyInput(String(row.discount ?? 0)),
     unitOfMeasurement: row.unit_of_measurement ?? '',
+    make: row.make ?? '',
     openingStock: String(row.opening_stock ?? 0),
     lowStockAlert: String(row.low_stock_alert ?? 0),
   })
@@ -334,6 +341,7 @@ export default function ProductsServicesMasterPage() {
         gst_percent: parseMoney(form.gstPercent),
         discount: parseMoney(form.discount),
         unit_of_measurement: normalizeText(form.unitOfMeasurement) || null,
+        make: normalizeText(form.make) || null,
         opening_stock: isProduct ? parseMoney(form.openingStock) : 0,
         low_stock_alert: isProduct ? parseMoney(form.lowStockAlert) : 0,
       }
@@ -412,6 +420,7 @@ export default function ProductsServicesMasterPage() {
       gst_percent: String(r.gst_percent ?? 0),
       discount: String(r.discount ?? 0),
       unit_of_measurement: r.unit_of_measurement ?? '',
+      make: r.make ?? '',
       opening_stock: String(r.opening_stock ?? 0),
       low_stock_alert: String(r.low_stock_alert ?? 0),
     }))
@@ -444,7 +453,7 @@ export default function ProductsServicesMasterPage() {
           return {
             item_type: itemType,
             item_code: get('item_code').toUpperCase(),
-            item_category: get('item_category') === 'Calibration' ? 'Calibration' : 'Testing',
+            item_category: get('item_category') || 'Testing',
             item_name: get('item_name'),
             item_description: get('item_description') || null,
             hsn_code: get('hsn_code') || null,
@@ -453,6 +462,7 @@ export default function ProductsServicesMasterPage() {
             gst_percent: parseMoney(get('gst_percent') || '0'),
             discount: parseMoney(get('discount') || '0'),
             unit_of_measurement: get('unit_of_measurement') || null,
+            make: get('make') || null,
             opening_stock: itemType === 'Product' ? parseMoney(get('opening_stock') || '0') : 0,
             low_stock_alert: itemType === 'Product' ? parseMoney(get('low_stock_alert') || '0') : 0,
           }
@@ -495,6 +505,11 @@ export default function ProductsServicesMasterPage() {
       <ProductsServicesHeaderBar
         search={search}
         onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onNew={openNew}
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadRows()}
@@ -503,34 +518,28 @@ export default function ProductsServicesMasterPage() {
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            '!flex max-h-[92vh] w-[calc(100%-1.5rem)] max-w-3xl flex-col overflow-hidden sm:w-full',
+            // Center in main content area (sidebar 268px stays clear)
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
         >
-          <div className="relative bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }}
-            />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                {editingId
-                  ? 'Product & Services · Edit Entry'
-                  : 'Product & Services · New Entry'}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId ? 'Edit Product / Service' : 'Add Product / Service'}
               </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-b from-stone-100/80 to-white">
             {saveMessage && showForm ? (
-              <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <p className="mx-4 mt-4 shrink-0 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive sm:mx-6">
                 {saveMessage}
               </p>
             ) : null}
@@ -560,17 +569,10 @@ export default function ProductsServicesMasterPage() {
       />
 
       <ProductsServicesFooterBar
-        message={showForm ? null : saveMessage}
         loading={listLoading || saveLoading}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={safePage}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onImport={() => importInputRef.current?.click()}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}

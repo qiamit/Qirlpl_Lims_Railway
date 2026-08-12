@@ -3,7 +3,7 @@ import { Copy, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import type { ServiceRequestRow } from './types'
 
 const GRID_TABLE =
@@ -15,15 +15,17 @@ const VIEW_GRID =
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/80 hover:bg-[#fde68a]/80'
+const stickyEven = 'bg-[#f7f3eb]'
+const stickyOdd = 'bg-[#fffcf7]'
+const stickySelected = 'bg-[#fde68a]/80'
+const stickyHover = 'group-hover:bg-[#f3e9d8]'
+
 function cellText(value: string | null | undefined): string {
   const t = (value ?? '').trim()
   return t.length > 0 ? t : '—'
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—'
-  const d = value.slice(0, 10)
-  return d || '—'
 }
 
 type ParsedEquipment = {
@@ -246,14 +248,22 @@ export function ServiceRequestTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => {
+              {rows.map((r, index) => {
                 const selected = selectedIds.has(r.id)
+                const even = index % 2 === 0
+                const rowTone = selected ? rowSelectedClass : even ? rowEvenClass : rowOddClass
+                const stickyBg = selected ? stickySelected : even ? stickyEven : stickyOdd
                 return (
-                  <TableRow key={r.id} data-state={selected ? 'selected' : undefined}>
+                  <TableRow
+                    key={r.id}
+                    data-state={selected ? 'selected' : undefined}
+                    className={cn('group border-[#e7e0d4] transition-colors', rowTone)}
+                  >
                     <TableCell
                       className={cn(
                         'sticky left-0 z-10 text-center align-middle',
-                        selected ? 'bg-muted' : 'bg-card',
+                        stickyBg,
+                        !selected && stickyHover,
                       )}
                     >
                       <input
@@ -267,7 +277,8 @@ export function ServiceRequestTable({
                     <TableCell
                       className={cn(
                         'sticky left-12 z-10 align-middle text-center sm:left-14',
-                        selected ? 'bg-muted' : 'bg-card',
+                        stickyBg,
+                        !selected && stickyHover,
                       )}
                     >
                       <p className="truncate font-mono text-sm text-foreground">{cellText(r.srf_number)}</p>

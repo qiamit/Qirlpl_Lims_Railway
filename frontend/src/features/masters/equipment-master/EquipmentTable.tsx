@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import type { EquipmentRow } from './types'
 import { Badge } from '@/components/ui/badge'
+import { formatDate } from '@/lib/utils'
 
 export function EquipmentTable({
   rows,
@@ -48,17 +49,7 @@ export function EquipmentTable({
     return due.getTime() < now.getTime()
   }
 
-  const formatDateToDDMMYYYY = (dateStr: string | null) => {
-    if (!dateStr) return '-'
-    const parts = dateStr.split('-')
-    if (parts.length === 3) {
-      const [year, month, day] = parts
-      if (year.length === 4 && month.length === 2 && day.length === 2) {
-        return `${day}-${month}-${year}`
-      }
-    }
-    return dateStr
-  }
+  const formatDateToDDMMYYYY = (dateStr: string | null) => formatDate(dateStr)
 
   const renderScheduleRow = (
     label: string,

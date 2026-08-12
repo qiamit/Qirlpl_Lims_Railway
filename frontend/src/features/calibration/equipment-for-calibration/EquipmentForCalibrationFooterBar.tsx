@@ -1,27 +1,15 @@
-import { cn } from '@/lib/utils'
-import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
-import { ChevronLeft, ChevronRight, Download, FileUp, Printer, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
+import { limsDarkBarFieldClass, limsPanelClass } from '@/lib/limsThemeUi'
 
 export function EquipmentForCalibrationFooterBar({
   message,
   loading,
   selectedCount,
-  totalCount,
   page,
   pageCount,
-  pageSize,
-  onPageSizeChange,
-  onImport,
-  onExport,
   onPrintSelected,
   onDeleteSelected,
   onPrevPage,
@@ -33,13 +21,8 @@ export function EquipmentForCalibrationFooterBar({
   message: string | null
   loading: boolean
   selectedCount: number
-  totalCount: number
   page: number
   pageCount: number
-  pageSize: number
-  onPageSizeChange: (size: number) => void
-  onImport: () => void
-  onExport: () => void
   onPrintSelected: () => void
   onDeleteSelected: () => void
   onPrevPage: () => void
@@ -48,109 +31,95 @@ export function EquipmentForCalibrationFooterBar({
   onJumpToChange: (value: string) => void
   onJumpToGo: () => void
 }) {
-  const selectionDisabled = selectedCount === 0
-  const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
-  const to = Math.min(page * pageSize, totalCount)
-
   return (
-    <div className="flex flex-col gap-3 relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-3 py-3 shadow-sm sm:px-5 sm:py-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" className={cn('gap-1.5', limsDarkBarBtnClass)} onClick={onImport} disabled={loading}>
-            <FileUp size={14} />
-            <span className="hidden sm:inline">Import</span>
-          </Button>
-          <Button type="button" variant="outline" size="sm" className={cn('gap-1.5', limsDarkBarBtnClass)} onClick={onExport} disabled={loading}>
-            <Download size={14} />
-            <span className="hidden sm:inline">Export</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm" className={cn('gap-1.5', limsDarkBarBtnClass)}
-            onClick={onPrintSelected}
-            disabled={loading}
-          >
-            <Printer size={14} />
-            <span className="hidden sm:inline">Print</span>
-          </Button>
-          <Button
-            type="button"
-            variant="destructive" size="sm" className={limsDeleteBtnClass}
-            onClick={onDeleteSelected}
-            disabled={loading || selectionDisabled}
-          >
-            <Trash2 size={14} />
-            <span className="hidden sm:inline">Delete</span>
-          </Button>
-          {selectedCount > 0 ? (
-            <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
-          ) : null}
-          {message ? (
-            <p
-              className={
-                message.toLowerCase().includes('saved') ||
-                message.toLowerCase().includes('deleted') ||
-                message.toLowerCase().includes('imported')
-                  ? 'w-full text-sm text-emerald-300 sm:w-auto'
-                  : 'w-full text-sm text-red-300 sm:w-auto'
-              }
+    <div className={cn(limsPanelClass)}>
+      <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-2 text-white sm:px-5">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.18]"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 12% 20%, rgba(217,119,6,0.45), transparent 42%), radial-gradient(circle at 88% 0%, rgba(251,191,36,0.25), transparent 35%)',
+          }}
+        />
+        <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+        <div className="relative flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 rounded-none border-amber-500/50 bg-transparent px-2 text-[11px] text-amber-200 hover:bg-amber-500/10 hover:text-amber-100"
+              disabled={selectedCount === 0 || loading}
+              onClick={onPrintSelected}
             >
-              {message}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex flex-nowrap items-center justify-start gap-2 overflow-x-auto overscroll-x-contain pb-0.5 sm:justify-end sm:gap-3">
-          <p className="shrink-0 whitespace-nowrap text-sm text-stone-300">
-            Showing <span className="font-medium text-white">{from}</span>–
-            <span className="font-medium text-white">{to}</span> of{' '}
-            <span className="font-medium text-white">{totalCount}</span>
-          </p>
-          <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger className={cn(limsDarkBarFieldClass, 'w-[110px] shrink-0')} aria-label="Rows per page">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="5">5 / Page</SelectItem>
-              <SelectItem value="10">10 / Page</SelectItem>
-              <SelectItem value="20">20 / Page</SelectItem>
-              <SelectItem value="50">50 / Page</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            aria-label="Jump to page"
-            placeholder="Page"
-            value={jumpTo}
-            onChange={(e) => onJumpToChange(e.target.value.replace(/[^0-9]/g, ''))}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onJumpToGo()
-            }}
-            className="h-9 w-16 shrink-0 sm:w-20"
-            inputMode="numeric"
-          />
-          <Button type="button" variant="outline" size="sm" className={cn('shrink-0', limsDarkBarBtnClass)} onClick={onJumpToGo} disabled={loading}>
-            Jump
-          </Button>
-          <Button
-            type="button"
-            variant="outline" size="icon" className={cn('h-9 w-9 shrink-0', limsDarkBarBtnClass)}
-            onClick={onPrevPage}
-            disabled={loading || page <= 1}
-          >
-            <ChevronLeft size={16} />
-          </Button>
-          <span className="min-w-[5rem] shrink-0 whitespace-nowrap text-center text-xs font-medium text-stone-300">
-            Page {page} / {pageCount}
-          </span>
-          <Button
-            type="button"
-            variant="outline" size="icon" className={cn('h-9 w-9 shrink-0', limsDarkBarBtnClass)}
-            onClick={onNextPage}
-            disabled={loading || page >= pageCount}
-          >
-            <ChevronRight size={16} />
-          </Button>
+              <Printer size={12} />
+              Print
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="h-7 gap-1 rounded-none px-2 text-[11px]"
+              disabled={selectedCount === 0 || loading}
+              onClick={onDeleteSelected}
+            >
+              <Trash2 size={12} />
+              Delete
+            </Button>
+          </div>
+          <div className="flex min-w-0 flex-1 items-center justify-center px-2">
+            {message ? (
+              <p className="truncate text-center text-[11px] text-amber-100/90">{message}</p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Input
+              value={jumpTo}
+              onChange={(e) => onJumpToChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onJumpToGo()
+              }}
+              placeholder="Page"
+              className={cn(limsDarkBarFieldClass, 'h-8 w-16 text-center text-xs')}
+              aria-label="Jump to page"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-none border-amber-500/50 bg-transparent px-2 text-[11px] text-amber-200 hover:bg-amber-500/10"
+              onClick={onJumpToGo}
+            >
+              Jump
+            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-white hover:bg-white/10"
+                disabled={page <= 1}
+                onClick={onPrevPage}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={16} />
+              </Button>
+              <span className="min-w-[4.5rem] text-center text-[11px] text-stone-300">
+                Page {page} / {pageCount}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-white hover:bg-white/10"
+                disabled={page >= pageCount}
+                onClick={onNextPage}
+                aria-label="Next page"
+              >
+                <ChevronRight size={16} />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

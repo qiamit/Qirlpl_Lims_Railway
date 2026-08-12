@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { ExternalLink, Plus } from 'lucide-react'
+import { Search } from 'lucide-react'
+import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -7,15 +8,17 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { FilterCombobox } from '@/features/sample-handling/receiving/FilterCombobox'
+import { limsFieldAddBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { ClientManageDialogContent } from './ClientManageDialogContent'
-import { clientAddLinkClass, clientRegistryFormClass, clientVerifyLinkClass } from './clientsFormUi'
+import { clientRegistryFormClass } from './clientsFormUi'
 import {
   BALANCE_TYPES,
   isValidEmail,
   isValidGst,
   isValidIndianPin,
   isValidMobile,
+  toProperTitleCase,
   type BalanceType,
   type ClientForm,
   type CompanyScale,
@@ -94,12 +97,17 @@ export function ClientsForm({
   onAddPaymentTerm,
   onUpdatePaymentTerm,
   onDeletePaymentTerm,
+  hideFooter = false,
+  compact = false,
 }: {
   form: ClientForm
   onChange: (next: ClientForm) => void
   canSave: boolean
   saveLoading: boolean
   onSave: () => void
+  hideFooter?: boolean
+  /** Tighter spacing for nested dialogs (e.g. Add Client from Quotation). */
+  compact?: boolean
   states: Array<{ id: string; label: string }>
   countries: Array<{ id: string; label: string }>
   districts: Array<{ id: string; label: string }>
@@ -242,125 +250,136 @@ export function ClientsForm({
 
   return (
     <div className={clientRegistryFormClass}>
-      <div className="space-y-5">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-12 md:col-span-4 space-y-2">
-            <div className="flex items-center justify-between gap-2 h-5">
-              <Label htmlFor="gst">GST Number</Label>
-              <a
-                className={clientVerifyLinkClass}
-                href="https://services.gst.gov.in/services/searchtp"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Verify GST
-                <ExternalLink size={12} />
-              </a>
-            </div>
-            <Input
-              id="gst"
-              placeholder="22AAAFQ8256C1ZK"
-              value={form.gstNumber}
-              onChange={(e) => onChange({ ...form, gstNumber: e.target.value })}
-              aria-invalid={Boolean(gstError)}
+      <div className={cn(compact ? 'space-y-2' : 'space-y-5')}>
+        <div className={cn('grid grid-cols-12', compact ? 'gap-2' : 'gap-4')}>
+          <div className={cn('col-span-12 md:col-span-4', compact ? 'space-y-1' : 'space-y-2')}>
+            <Label htmlFor="gst">GST Number</Label>
+            <LimsFieldWithAdd
               className={cn(
                 gstError &&
-                  '!border-red-600 !bg-red-50 focus-visible:!border-red-600 focus-visible:!ring-red-500/30',
+                  '!border-red-600 !bg-red-50 focus-within:!border-red-600 focus-within:!ring-red-500/30',
               )}
-            />
+              addButton={
+                <a
+                  className={limsFieldAddBtnClass}
+                  href="https://services.gst.gov.in/services/searchtp"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Verify GST"
+                  title="Verify GST"
+                >
+                  <Search size={14} strokeWidth={2.25} aria-hidden />
+                </a>
+              }
+            >
+              <Input
+                id="gst"
+                placeholder="22AAAFQ8256C1ZK"
+                value={form.gstNumber}
+                onChange={(e) => onChange({ ...form, gstNumber: e.target.value })}
+                aria-invalid={Boolean(gstError)}
+                className="h-full border-0 bg-transparent shadow-none focus-visible:border-transparent focus-visible:bg-transparent focus-visible:ring-0"
+              />
+            </LimsFieldWithAdd>
           </div>
 
-          <div className="col-span-12 md:col-span-4 space-y-2">
-            <div className="flex items-center justify-between gap-2 h-5">
-              <Label htmlFor="company-type" className="text-xs">Company Type</Label>
-              <Dialog open={companyTypeDialogOpen} onOpenChange={setCompanyTypeDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
-                <ClientManageDialogContent
-                  open={companyTypeDialogOpen}
-                  title="Manage Company Types"
-                  addLabel="Add Company Type"
-                  inputId="new-company-type"
-                  placeholder="e.g., Distributor"
-                  value={newCompanyType}
-                  onValueChange={setNewCompanyType}
-                  onSave={onAddCompanyType}
-                  onUpdate={onUpdateCompanyType}
-                  saveDisabled={!newCompanyType.trim()}
-                  items={companyTypes}
-                  canDelete={() => companyTypes.length > 1}
-                  onDelete={onDeleteCompanyType}
-                />
-              </Dialog>
-            </div>
-            <Select value={form.companyType} onValueChange={(v) => onChange({ ...form, companyType: v as CompanyType })}>
-              <SelectTrigger id="company-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from(new Set([form.companyType, ...companyTypes.map((x) => x.label)].filter((v) => String(v ?? '').trim().length > 0))).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className={cn('col-span-12 md:col-span-4', compact ? 'space-y-1' : 'space-y-2')}>
+            <Label htmlFor="company-type" className="text-xs">Company Type</Label>
+            <Dialog open={companyTypeDialogOpen} onOpenChange={setCompanyTypeDialogOpen}>
+              <LimsFieldWithAdd
+                addButton={
+                  <DialogTrigger asChild>
+                    <LimsFieldAddButton aria-label="Add company type" />
+                  </DialogTrigger>
+                }
+              >
+                <Select value={form.companyType} onValueChange={(v) => onChange({ ...form, companyType: v as CompanyType })}>
+                  <SelectTrigger id="company-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from(new Set([form.companyType, ...companyTypes.map((x) => x.label)].filter((v) => String(v ?? '').trim().length > 0))).map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </LimsFieldWithAdd>
+              <ClientManageDialogContent
+                open={companyTypeDialogOpen}
+                title="Manage Company Types"
+                addLabel="Add Company Type"
+                inputId="new-company-type"
+                placeholder="e.g., Distributor"
+                value={newCompanyType}
+                onValueChange={setNewCompanyType}
+                onSave={onAddCompanyType}
+                onUpdate={onUpdateCompanyType}
+                saveDisabled={!newCompanyType.trim()}
+                items={companyTypes}
+                canDelete={() => companyTypes.length > 1}
+                onDelete={onDeleteCompanyType}
+              />
+            </Dialog>
           </div>
 
-          <div className="col-span-12 md:col-span-4 space-y-2">
-            <div className="flex items-center justify-between gap-2 h-5">
-              <Label htmlFor="company-scale" className="text-xs">Company Scale</Label>
-              <Dialog open={companyScaleDialogOpen} onOpenChange={setCompanyScaleDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
-                <ClientManageDialogContent
-                  open={companyScaleDialogOpen}
-                  title="Manage Company Scales"
-                  addLabel="Add Company Scale"
-                  inputId="new-company-scale"
-                  placeholder="e.g., Nano"
-                  value={newCompanyScale}
-                  onValueChange={setNewCompanyScale}
-                  onSave={onAddCompanyScale}
-                  onUpdate={onUpdateCompanyScale}
-                  saveDisabled={!newCompanyScale.trim()}
-                  items={companyScales}
-                  canDelete={() => companyScales.length > 1}
-                  onDelete={onDeleteCompanyScale}
-                />
-              </Dialog>
-            </div>
-            <Select value={form.companyScale} onValueChange={(v) => onChange({ ...form, companyScale: v as CompanyScale })}>
-              <SelectTrigger id="company-scale">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from(new Set([form.companyScale, ...companyScales.map((x) => x.label)].filter((v) => String(v ?? '').trim().length > 0))).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className={cn('col-span-12 md:col-span-4', compact ? 'space-y-1' : 'space-y-2')}>
+            <Label htmlFor="company-scale" className="text-xs">Company Scale</Label>
+            <Dialog open={companyScaleDialogOpen} onOpenChange={setCompanyScaleDialogOpen}>
+              <LimsFieldWithAdd
+                addButton={
+                  <DialogTrigger asChild>
+                    <LimsFieldAddButton aria-label="Add company scale" />
+                  </DialogTrigger>
+                }
+              >
+                <Select value={form.companyScale} onValueChange={(v) => onChange({ ...form, companyScale: v as CompanyScale })}>
+                  <SelectTrigger id="company-scale">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from(new Set([form.companyScale, ...companyScales.map((x) => x.label)].filter((v) => String(v ?? '').trim().length > 0))).map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </LimsFieldWithAdd>
+              <ClientManageDialogContent
+                open={companyScaleDialogOpen}
+                title="Manage Company Scales"
+                addLabel="Add Company Scale"
+                inputId="new-company-scale"
+                placeholder="e.g., Nano"
+                value={newCompanyScale}
+                onValueChange={setNewCompanyScale}
+                onSave={onAddCompanyScale}
+                onUpdate={onUpdateCompanyScale}
+                saveDisabled={!newCompanyScale.trim()}
+                items={companyScales}
+                canDelete={() => companyScales.length > 1}
+                onDelete={onDeleteCompanyScale}
+              />
+            </Dialog>
           </div>
 
-          <div className="col-span-12 space-y-2">
+          <div className={cn(compact ? 'col-span-12 md:col-span-6 space-y-1' : 'col-span-12 space-y-2')}>
             <Label htmlFor="company-name" className="text-xs">Name of the Company</Label>
             <Input
               id="company-name"
               placeholder="Enter Company Name"
               value={form.companyName}
               onChange={(e) => onChange({ ...form, companyName: e.target.value })}
+              onBlur={() => {
+                const next = toProperTitleCase(form.companyName)
+                if (next !== form.companyName) onChange({ ...form, companyName: next })
+              }}
             />
           </div>
 
-          <div className="col-span-12 space-y-2">
+          <div className={cn(compact ? 'col-span-12 md:col-span-6 space-y-1' : 'col-span-12 space-y-2')}>
             <Label htmlFor="address" className="text-xs">Address of the Company</Label>
             <Textarea
               id="address"
@@ -368,200 +387,237 @@ export function ClientsForm({
               placeholder="Enter Company Address"
               value={form.address}
               onChange={(e) => onChange({ ...form, address: e.target.value })}
+              onBlur={() => {
+                const next = toProperTitleCase(form.address)
+                if (next !== form.address) onChange({ ...form, address: next })
+              }}
               className="!h-10 !min-h-10 resize-none rounded-none border border-stone-500 bg-stone-50 px-3 py-2 shadow-none focus-visible:border-amber-600 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-amber-500/20 focus-visible:ring-offset-0"
             />
           </div>
 
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex items-center justify-between h-5">
-              <Label htmlFor="pin" className="text-xs">PIN Code</Label>
-              <Dialog open={pinCodeDialogOpen} onOpenChange={setPinCodeDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
-                <ClientManageDialogContent
-                  open={pinCodeDialogOpen}
-                  title="Manage PIN Codes"
-                  addLabel="Add PIN Code"
-                  inputId="new-pin"
-                  placeholder="6 digit PIN"
-                  value={newPinCode}
-                  onValueChange={(v) => setNewPinCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
-                  inputMode="numeric"
-                  onSave={onAddPinCode}
-                  onUpdate={onUpdatePinCode}
-                  saveDisabled={newPinCode.trim().length !== 6}
-                  items={pinCodes}
-                  canDelete={() => pinCodes.length > 1}
-                  onDelete={onDeletePinCode}
-                />
-              </Dialog>
-            </div>
-            <FilterCombobox
-              value={form.pinCode}
-              onValueChange={(v) => {
-                const pin = v.replace(/[^0-9]/g, '').slice(0, 6)
-                if (pin.length === 6) {
-                  applyPinAutoFill(pin)
-                } else {
-                  onChange({ ...form, pinCode: pin })
+          <div className={cn('col-span-12 md:col-span-3', compact ? 'space-y-1' : 'space-y-2')}>
+            <Label htmlFor="pin" className="text-xs">PIN Code</Label>
+            <Dialog open={pinCodeDialogOpen} onOpenChange={setPinCodeDialogOpen}>
+              <LimsFieldWithAdd
+                addButton={
+                  <DialogTrigger asChild>
+                    <LimsFieldAddButton aria-label="Add PIN code" />
+                  </DialogTrigger>
                 }
-              }}
-              options={pinOptions}
-              onSelectOption={(opt) => applyPinAutoFill(opt.label)}
-              open={pinOpen}
-              onOpenChange={setPinOpen}
-              placeholder="Type or select PIN"
-              listId="client-pin-combobox"
-              inputClassName="h-10"
-            />
+              >
+                <FilterCombobox
+                  value={form.pinCode}
+                  onValueChange={(v) => {
+                    const pin = v.replace(/[^0-9]/g, '').slice(0, 6)
+                    if (pin.length === 6) {
+                      applyPinAutoFill(pin)
+                    } else {
+                      onChange({ ...form, pinCode: pin })
+                    }
+                  }}
+                  options={pinOptions}
+                  onSelectOption={(opt) => applyPinAutoFill(opt.label)}
+                  open={pinOpen}
+                  onOpenChange={setPinOpen}
+                  placeholder="Type or select PIN"
+                  listId="client-pin-combobox"
+                  inputClassName="h-10"
+                />
+              </LimsFieldWithAdd>
+              <ClientManageDialogContent
+                open={pinCodeDialogOpen}
+                title="Manage PIN Codes"
+                addLabel="Add PIN Code"
+                inputId="new-pin"
+                placeholder="6 digit PIN"
+                value={newPinCode}
+                onValueChange={(v) => setNewPinCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
+                inputMode="numeric"
+                onSave={onAddPinCode}
+                onUpdate={onUpdatePinCode}
+                saveDisabled={newPinCode.trim().length !== 6}
+                items={pinCodes}
+                canDelete={() => pinCodes.length > 1}
+                onDelete={onDeletePinCode}
+              />
+            </Dialog>
             {pinError && <p className="text-xs text-destructive">{pinError}</p>}
           </div>
 
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex items-center justify-between h-5">
-              <Label htmlFor="district" className="text-xs">District</Label>
-              <Dialog open={districtDialogOpen} onOpenChange={setDistrictDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
-                <ClientManageDialogContent
-                  open={districtDialogOpen}
-                  title="Manage Districts"
-                  addLabel="Add District"
-                  inputId="new-district"
-                  placeholder="Enter District"
-                  value={newDistrictName}
-                  onValueChange={setNewDistrictName}
-                  onSave={onAddDistrict}
-                  onUpdate={onUpdateDistrict}
-                  saveDisabled={!newDistrictName.trim()}
-                  items={districts}
-                  canDelete={() => districts.length > 1}
-                  onDelete={onDeleteDistrict}
+          <div className={cn('col-span-12 md:col-span-3', compact ? 'space-y-1' : 'space-y-2')}>
+            <Label htmlFor="district" className="text-xs">District</Label>
+            <Dialog open={districtDialogOpen} onOpenChange={setDistrictDialogOpen}>
+              <LimsFieldWithAdd
+                addButton={
+                  <DialogTrigger asChild>
+                    <LimsFieldAddButton aria-label="Add district" />
+                  </DialogTrigger>
+                }
+              >
+                <FilterCombobox
+                  value={form.district}
+                  onValueChange={(v) => onChange({ ...form, district: v })}
+                  options={districtOptions}
+                  onSelectOption={(opt) => onChange({ ...form, district: opt.label })}
+                  open={districtOpen}
+                  onOpenChange={setDistrictOpen}
+                  placeholder="Type or select District"
+                  listId="client-district-combobox"
+                  inputId="district"
+                  inputClassName="h-10"
                 />
-              </Dialog>
-            </div>
-            <FilterCombobox
-              value={form.district}
-              onValueChange={(v) => onChange({ ...form, district: v })}
-              options={districtOptions}
-              onSelectOption={(opt) => onChange({ ...form, district: opt.label })}
-              open={districtOpen}
-              onOpenChange={setDistrictOpen}
-              placeholder="Type or select District"
-              listId="client-district-combobox"
-              inputId="district"
-              inputClassName="h-10"
-            />
+              </LimsFieldWithAdd>
+              <ClientManageDialogContent
+                open={districtDialogOpen}
+                title="Manage Districts"
+                addLabel="Add District"
+                inputId="new-district"
+                placeholder="Enter District"
+                value={newDistrictName}
+                onValueChange={setNewDistrictName}
+                onSave={onAddDistrict}
+                onUpdate={onUpdateDistrict}
+                saveDisabled={!newDistrictName.trim()}
+                items={districts}
+                canDelete={() => districts.length > 1}
+                onDelete={onDeleteDistrict}
+              />
+            </Dialog>
           </div>
 
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex items-center justify-between h-5">
-              <Label htmlFor="state" className="text-xs">State</Label>
-              <Dialog open={stateDialogOpen} onOpenChange={setStateDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
-                <ClientManageDialogContent
-                  open={stateDialogOpen}
-                  title="Manage States"
-                  addLabel="Add State"
-                  inputId="new-state"
-                  placeholder="Enter state"
-                  value={newStateName}
-                  onValueChange={setNewStateName}
-                  onSave={onAddState}
-                  onUpdate={onUpdateState}
-                  saveDisabled={!newStateName.trim()}
-                  items={states}
-                  canDelete={(s) => states.length > 1 && s.label !== 'Chhattisgarh'}
-                  onDelete={onDeleteState}
+          <div className={cn('col-span-12 md:col-span-3', compact ? 'space-y-1' : 'space-y-2')}>
+            <Label htmlFor="state" className="text-xs">State</Label>
+            <Dialog open={stateDialogOpen} onOpenChange={setStateDialogOpen}>
+              <LimsFieldWithAdd
+                addButton={
+                  <DialogTrigger asChild>
+                    <LimsFieldAddButton aria-label="Add state" />
+                  </DialogTrigger>
+                }
+              >
+                <FilterCombobox
+                  value={form.state}
+                  onValueChange={(v) => onChange({ ...form, state: v })}
+                  options={stateOptions}
+                  onSelectOption={(opt) => onChange({ ...form, state: opt.label })}
+                  open={stateOpen}
+                  onOpenChange={setStateOpen}
+                  placeholder="Type or select State"
+                  listId="client-state-combobox"
+                  inputId="state"
+                  inputClassName="h-10"
                 />
-              </Dialog>
-            </div>
-            <FilterCombobox
-              value={form.state}
-              onValueChange={(v) => onChange({ ...form, state: v })}
-              options={stateOptions}
-              onSelectOption={(opt) => onChange({ ...form, state: opt.label })}
-              open={stateOpen}
-              onOpenChange={setStateOpen}
-              placeholder="Type or select State"
-              listId="client-state-combobox"
-              inputId="state"
-              inputClassName="h-10"
-            />
+              </LimsFieldWithAdd>
+              <ClientManageDialogContent
+                open={stateDialogOpen}
+                title="Manage States"
+                addLabel="Add State"
+                inputId="new-state"
+                placeholder="Enter state"
+                value={newStateName}
+                onValueChange={setNewStateName}
+                onSave={onAddState}
+                onUpdate={onUpdateState}
+                saveDisabled={!newStateName.trim()}
+                items={states}
+                canDelete={(s) => states.length > 1 && s.label !== 'Chhattisgarh'}
+                onDelete={onDeleteState}
+              />
+            </Dialog>
           </div>
 
-          <div className="col-span-12 md:col-span-3 space-y-2">
-            <div className="flex items-center justify-between h-5">
-              <Label htmlFor="country" className="text-xs">Country</Label>
-              <Dialog open={countryDialogOpen} onOpenChange={setCountryDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
-                <ClientManageDialogContent
-                  open={countryDialogOpen}
-                  title="Manage Countries"
-                  addLabel="Add Country"
-                  inputId="new-country"
-                  placeholder="Enter country"
-                  value={newCountryName}
-                  onValueChange={setNewCountryName}
-                  onSave={onAddCountry}
-                  onUpdate={onUpdateCountry}
-                  saveDisabled={!newCountryName.trim()}
-                  items={countries}
-                  canDelete={(c) => countries.length > 1 && c.label !== 'India'}
-                  onDelete={onDeleteCountry}
-                />
-              </Dialog>
-            </div>
-            <Select value={form.country} onValueChange={(v) => onChange({ ...form, country: v })}>
-              <SelectTrigger id="country">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {countries.map((c) => (
-                  <SelectItem key={c.id} value={c.label}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className={cn('col-span-12 md:col-span-3', compact ? 'space-y-1' : 'space-y-2')}>
+            <Label htmlFor="country" className="text-xs">Country</Label>
+            <Dialog open={countryDialogOpen} onOpenChange={setCountryDialogOpen}>
+              <LimsFieldWithAdd
+                addButton={
+                  <DialogTrigger asChild>
+                    <LimsFieldAddButton aria-label="Add country" />
+                  </DialogTrigger>
+                }
+              >
+                <Select value={form.country} onValueChange={(v) => onChange({ ...form, country: v })}>
+                  <SelectTrigger id="country">
+                    <SelectValue placeholder="Select country" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {countries.map((c) => (
+                      <SelectItem key={c.id} value={c.label}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </LimsFieldWithAdd>
+              <ClientManageDialogContent
+                open={countryDialogOpen}
+                title="Manage Countries"
+                addLabel="Add Country"
+                inputId="new-country"
+                placeholder="Enter country"
+                value={newCountryName}
+                onValueChange={setNewCountryName}
+                onSave={onAddCountry}
+                onUpdate={onUpdateCountry}
+                saveDisabled={!newCountryName.trim()}
+                items={countries}
+                canDelete={(c) => countries.length > 1 && c.label !== 'India'}
+                onDelete={onDeleteCountry}
+              />
+            </Dialog>
           </div>
 
-          <div className="col-span-12 md:col-span-4 flex flex-col space-y-2">
-            <div className="flex h-5 items-center justify-between gap-2">
+          <div className={cn('col-span-12 grid grid-cols-3', compact ? 'gap-2' : 'gap-4')}>
+            <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label htmlFor="contact-person">Name of the Contact Person</Label>
+              <Input
+                id="contact-person"
+                placeholder="Enter Contact Person Name"
+                value={form.contactPersonName}
+                onChange={(e) => onChange({ ...form, contactPersonName: e.target.value })}
+                className="h-10"
+              />
             </div>
-            <Input
-              id="contact-person"
-              placeholder="Enter Contact Person Name"
-              value={form.contactPersonName}
-              onChange={(e) => onChange({ ...form, contactPersonName: e.target.value })}
-              className="h-10"
-            />
-          </div>
 
-          <div className="col-span-12 md:col-span-4 flex flex-col space-y-2">
-            <div className="flex h-5 items-center justify-between gap-2">
+            <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label>Mobile Number</Label>
               <Dialog open={countryCodeDialogOpen} onOpenChange={setCountryCodeDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add country code">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
+                <LimsFieldWithAdd
+                  addButton={
+                    <DialogTrigger asChild>
+                      <LimsFieldAddButton aria-label="Add country code" />
+                    </DialogTrigger>
+                  }
+                >
+                  <div className="flex h-10 gap-2">
+                    <div className="w-20 shrink-0">
+                      <FilterCombobox
+                        value={form.countryCode}
+                        onValueChange={(v) => onChange({ ...form, countryCode: v })}
+                        options={countryCodeOptions}
+                        onSelectOption={(opt) => onChange({ ...form, countryCode: opt.id })}
+                        open={countryCodeOpen}
+                        onOpenChange={setCountryCodeOpen}
+                        placeholder="+91"
+                        listId="client-country-code-combobox"
+                        inputId="country-code"
+                        inputClassName="h-10 px-1.5 text-sm"
+                      />
+                    </div>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="10 Digit Mobile Number"
+                      value={form.mobile}
+                      onChange={(e) =>
+                        onChange({
+                          ...form,
+                          mobile: e.target.value.replace(/[^0-9]/g, '').slice(0, 10),
+                        })
+                      }
+                      className="min-w-0 flex-[1_1_0%] grow"
+                    />
+                  </div>
+                </LimsFieldWithAdd>
                 <ClientManageDialogContent
                   open={countryCodeDialogOpen}
                   title="Manage Country Codes"
@@ -582,92 +638,75 @@ export function ClientsForm({
                   getEditValue={(c) => countryCodes.find((x) => x.id === c.id)?.value ?? c.label}
                 />
               </Dialog>
+              {mobileError ? <p className="text-xs text-destructive">{mobileError}</p> : null}
             </div>
-            <div className="flex h-10 gap-2">
-              <div className="w-20 shrink-0">
-                <FilterCombobox
-                  value={form.countryCode}
-                  onValueChange={(v) => onChange({ ...form, countryCode: v })}
-                  options={countryCodeOptions}
-                  onSelectOption={(opt) => onChange({ ...form, countryCode: opt.id })}
-                  open={countryCodeOpen}
-                  onOpenChange={setCountryCodeOpen}
-                  placeholder="+91"
-                  listId="client-country-code-combobox"
-                  inputId="country-code"
-                  inputClassName="h-10 px-1.5 text-sm"
-                />
-              </div>
-              <Input
-                inputMode="numeric"
-                placeholder="10 Digit Mobile Number"
-                value={form.mobile}
-                onChange={(e) =>
-                  onChange({
-                    ...form,
-                    mobile: e.target.value.replace(/[^0-9]/g, '').slice(0, 10),
-                  })
-                }
-                className="min-w-0 flex-[1_1_0%] grow"
-              />
-            </div>
-            {mobileError ? <p className="text-xs text-destructive">{mobileError}</p> : null}
-          </div>
 
-          <div className="col-span-12 md:col-span-4 flex flex-col space-y-2">
-            <div className="flex h-5 items-center justify-between gap-2">
+            <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label htmlFor="email">Email ID</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter Email ID"
+                value={form.email}
+                onChange={(e) => onChange({ ...form, email: e.target.value })}
+                className="h-10"
+              />
+              {emailError ? <p className="text-xs text-destructive">{emailError}</p> : null}
             </div>
-            <Input
-              id="email"
-              type="email"
-              placeholder="Enter Email ID"
-              value={form.email}
-              onChange={(e) => onChange({ ...form, email: e.target.value })}
-              className="h-10"
-            />
-            {emailError ? <p className="text-xs text-destructive">{emailError}</p> : null}
           </div>
 
-          <div className="col-span-12 md:col-span-4 flex flex-col space-y-2">
-            <div className="flex h-5 items-center justify-between gap-2">
+          <div className={cn('col-span-12 grid grid-cols-3', compact ? 'gap-2' : 'gap-4')}>
+            <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label htmlFor="opening-balance">Opening Balance</Label>
-            </div>
-            <div className="flex h-10 gap-2">
-              <Input
-                id="opening-balance"
-                inputMode="decimal"
-                placeholder="0.00"
-                value={form.openingBalance}
-                onChange={(e) => onChange({ ...form, openingBalance: e.target.value.replace(/[^0-9.]/g, '') })}
-                className="min-w-0 flex-1"
-              />
-              <div className="w-24 shrink-0">
-                <Select value={form.balanceType} onValueChange={(v) => onChange({ ...form, balanceType: v as BalanceType })}>
-                  <SelectTrigger aria-label="Cr/Dr" className="h-10 rounded-none">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BALANCE_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex h-10 gap-2">
+                <Input
+                  id="opening-balance"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={form.openingBalance}
+                  onChange={(e) => onChange({ ...form, openingBalance: e.target.value.replace(/[^0-9.]/g, '') })}
+                  className="min-w-0 flex-1"
+                />
+                <div className="w-24 shrink-0">
+                  <Select value={form.balanceType} onValueChange={(v) => onChange({ ...form, balanceType: v as BalanceType })}>
+                    <SelectTrigger aria-label="Cr/Dr" className="h-10 rounded-none">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BALANCE_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="col-span-12 md:col-span-4 flex flex-col space-y-2">
-            <div className="flex h-5 items-center justify-between gap-2">
+            <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label htmlFor="payment-term">Payment Term</Label>
               <Dialog open={paymentTermDialogOpen} onOpenChange={setPaymentTermDialogOpen}>
-                <DialogTrigger asChild>
-                  <button type="button" className={clientAddLinkClass} aria-label="Add">
-                    <Plus size={14} />
-                  </button>
-                </DialogTrigger>
+                <LimsFieldWithAdd
+                  addButton={
+                    <DialogTrigger asChild>
+                      <LimsFieldAddButton aria-label="Add payment term" />
+                    </DialogTrigger>
+                  }
+                >
+                  <FilterCombobox
+                    value={form.paymentTerm}
+                    onValueChange={(v) => onChange({ ...form, paymentTerm: v as PaymentTerm })}
+                    options={paymentTermOptions}
+                    onSelectOption={(opt) => onChange({ ...form, paymentTerm: opt.label as PaymentTerm })}
+                    open={paymentTermOpen}
+                    onOpenChange={setPaymentTermOpen}
+                    placeholder="Type or select Payment Term"
+                    listId="client-payment-term-combobox"
+                    inputId="payment-term"
+                    inputClassName="h-10"
+                  />
+                </LimsFieldWithAdd>
                 <ClientManageDialogContent
                   open={paymentTermDialogOpen}
                   title="Manage Payment Terms"
@@ -685,44 +724,32 @@ export function ClientsForm({
                 />
               </Dialog>
             </div>
-            <FilterCombobox
-              value={form.paymentTerm}
-              onValueChange={(v) => onChange({ ...form, paymentTerm: v as PaymentTerm })}
-              options={paymentTermOptions}
-              onSelectOption={(opt) => onChange({ ...form, paymentTerm: opt.label as PaymentTerm })}
-              open={paymentTermOpen}
-              onOpenChange={setPaymentTermOpen}
-              placeholder="Type or select Payment Term"
-              listId="client-payment-term-combobox"
-              inputId="payment-term"
-              inputClassName="h-10"
-            />
-          </div>
 
-          <div className="col-span-12 md:col-span-4 flex flex-col space-y-2">
-            <div className="flex h-5 items-center justify-between gap-2">
+            <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label htmlFor="remark">Remark</Label>
+              <Input
+                id="remark"
+                placeholder="Enter Remark"
+                value={form.remark}
+                onChange={(e) => onChange({ ...form, remark: e.target.value })}
+                className="h-10"
+              />
             </div>
-            <Input
-              id="remark"
-              placeholder="Enter Remark"
-              value={form.remark}
-              onChange={(e) => onChange({ ...form, remark: e.target.value })}
-              className="h-10"
-            />
           </div>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
-        <Button
-          type="button"
-          className="h-9 rounded-none bg-amber-700 px-4 text-sm text-white shadow-sm hover:bg-amber-800"
-          onClick={onSave}
-          disabled={!canSave || saveLoading}
-        >
-          {saveLoading ? 'Saving…' : 'Save & Close'}
-        </Button>
-      </div>
+      {!hideFooter ? (
+        <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
+          <Button
+            type="button"
+            className="h-9 rounded-none bg-amber-700 px-4 text-sm text-white shadow-sm hover:bg-amber-800"
+            onClick={onSave}
+            disabled={!canSave || saveLoading}
+          >
+            {saveLoading ? 'Saving…' : 'Save & Close'}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

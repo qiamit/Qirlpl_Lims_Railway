@@ -5,6 +5,21 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
 import { FileUp, Eye, X, Trash2, Plus, CheckCircle, AlertTriangle, Settings, MapPin, Activity, ShieldCheck, History, FileText, Wrench, CalendarCheck, Cpu, Info, Layers, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   calculateNextDueDate,
@@ -145,7 +160,7 @@ export function EquipmentMasterForm({
   const [intermediateCompleteMessage, setIntermediateCompleteMessage] = useState<string | null>(null)
   const [calDetailsOpen, setCalDetailsOpen] = useState(false)
   const [intermediateDetailsOpen, setIntermediateDetailsOpen] = useState(false)
-  const [maintDetailsOpen, setMaintDetailsOpen] = useState(false)
+  const [maintenanceScheduleOpen, setMaintenanceScheduleOpen] = useState(false)
 
   const effectiveMaintenanceDoneBy = form.maintenanceDoneBy || form.custodianEmployeeId || ''
 
@@ -165,8 +180,29 @@ export function EquipmentMasterForm({
     ids: { last: string; next: string },
     labelClassName = 'text-xs font-semibold',
   ) => (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-      <div className="space-y-1.5">
+    <div className="grid grid-cols-12 gap-3">
+      <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+        <Label htmlFor={`${ids.last}-freq`} className={labelClassName}>
+          Schedule Frequency
+        </Label>
+        <Select
+          value={form.maintenanceScheduleFrequency || 'Quarterly'}
+          onValueChange={(v) => onChange({ ...form, maintenanceScheduleFrequency: v as Frequency })}
+        >
+          <SelectTrigger id={`${ids.last}-freq`}>
+            <SelectValue placeholder="Select Frequency" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Daily">Daily</SelectItem>
+            <SelectItem value="Weekly">Weekly</SelectItem>
+            <SelectItem value="Monthly">Monthly</SelectItem>
+            <SelectItem value="Quarterly">Quarterly</SelectItem>
+            <SelectItem value="Half Yearly">Half Yearly</SelectItem>
+            <SelectItem value="Yearly">Yearly</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
         <Label htmlFor={ids.last} className={labelClassName}>
           Last Date
         </Label>
@@ -177,8 +213,7 @@ export function EquipmentMasterForm({
           onChange={(e) => onChange({ ...form, lastMaintenanceDate: e.target.value })}
         />
       </div>
-
-      <div className="space-y-1.5">
+      <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
         <Label htmlFor={ids.next} className={labelClassName}>
           Next Due (Auto)
         </Label>
@@ -187,29 +222,47 @@ export function EquipmentMasterForm({
           type="date"
           value={form.nextMaintenanceDate}
           readOnly
-          className="bg-muted text-muted-foreground font-mono"
+          className="bg-slate-50 font-mono text-slate-600"
         />
       </div>
-
-      <div className="space-y-1.5">
+      <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+        <Label htmlFor={`${ids.last}-done`} className={labelClassName}>
+          Maintenance Done By
+        </Label>
+        <Select
+          value={effectiveMaintenanceDoneBy}
+          onValueChange={(v) => onChange({ ...form, maintenanceDoneBy: v })}
+        >
+          <SelectTrigger id={`${ids.last}-done`}>
+            <SelectValue placeholder="Name of Employee" />
+          </SelectTrigger>
+          <SelectContent>
+            {employees.map((emp) => (
+              <SelectItem key={emp.id} value={emp.id}>
+                {emp.full_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
         <Label className={labelClassName}>Conduct Maintenance</Label>
         <Button
           type="button"
           variant="outline"
-          className="h-9 w-full gap-1.5 text-xs"
+          className={cn('h-10 w-full gap-1.5 text-xs', limsOutlineBtnClass)}
           onClick={() => setConductMaintenanceOpen(true)}
         >
           <Wrench size={14} />
           Conduct
         </Button>
       </div>
-
-      <div className="space-y-1.5">
+      <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
         <Label className={labelClassName}>View Old Checklist</Label>
         <Button
           type="button"
           variant="secondary"
-          className="h-9 w-full gap-1.5 text-xs"
+          className="h-10 w-full gap-1.5 text-xs"
           disabled={!hasMaintenanceChecklistHistory}
           onClick={() => setMaintenanceHistoryViewOpen(true)}
         >
@@ -219,6 +272,60 @@ export function EquipmentMasterForm({
         </Button>
       </div>
     </div>
+  )
+
+  const renderMaintenanceScheduleDialog = () => (
+    <Dialog open={maintenanceScheduleOpen} onOpenChange={setMaintenanceScheduleOpen}>
+      <DialogContent
+        persistOnFocusLoss
+        layer="nested"
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+          'left-0 top-0',
+          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+        )}
+        aria-describedby={undefined}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Maintenance Schedule Form
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
+            labRegistryFormClass,
+          )}
+        >
+          {renderMaintenanceScheduleRow(
+            { last: 'eq-last-maint-dialog', next: 'eq-next-maint-dialog' },
+            'text-[11px] font-semibold uppercase tracking-wide text-stone-600',
+          )}
+        </div>
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            disabled={saveLoading}
+            onClick={() => {
+              onSave()
+              setMaintenanceScheduleOpen(false)
+            }}
+          >
+            {saveLoading ? 'Saving…' : 'Save & Close'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 
   const renderMaintenanceHistoryDialog = () => (
@@ -231,6 +338,15 @@ export function EquipmentMasterForm({
       currentLastDate={form.lastMaintenanceDate}
       currentDoneByName={maintenanceDoneByName}
       currentChecklist={form.maintenanceChecklist}
+      onDirectorChange={(next) =>
+        onChange({
+          ...form,
+          maintenanceHistory: next.history,
+          lastMaintenanceDate: next.currentLastDate,
+          maintenanceDoneBy: next.currentDoneByName,
+          maintenanceChecklist: next.currentChecklist,
+        })
+      }
     />
   )
 
@@ -747,7 +863,7 @@ export function EquipmentMasterForm({
                             }
                           >
                             {eq.next_calibration_due
-                              ? `Cal Due: ${new Date(eq.next_calibration_due).toLocaleDateString('en-GB')}${isOverdue ? ' (Overdue!)' : ''}`
+                              ? `Cal Due: ${formatDate(eq.next_calibration_due)}${isOverdue ? ' (Overdue!)' : ''}`
                               : 'No Calibration Due Date'}
                           </span>
                         </div>
@@ -773,7 +889,7 @@ export function EquipmentMasterForm({
                         <div>
                           <span className="text-muted-foreground">Last Calibration: </span>
                           {eq.last_calibration_date
-                            ? new Date(eq.last_calibration_date).toLocaleDateString('en-GB')
+                            ? formatDate(eq.last_calibration_date)
                             : '-'}
                         </div>
                         <div>
@@ -1572,92 +1688,20 @@ export function EquipmentMasterForm({
         </div>
       )
     } else if (activeSection === 'maintenance') {
-      sectionTitle = 'Maintenance Details'
+      sectionTitle = 'Maintenance'
       sectionContent = (
-        <div className="border rounded-lg p-4 space-y-4 bg-slate-50/50">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Maintenance Status</Label>
-              <Select
-                value={maintApplicable}
-                onValueChange={(v) => {
-                  setMaintApplicable(v as 'applicable' | 'not-applicable')
-                  if (v === 'not-applicable') {
-                    onChange({
-                      ...form,
-                      maintenanceScheduleFrequency: '',
-                      lastMaintenanceDate: '',
-                      nextMaintenanceDate: '',
-                      maintenanceDoneBy: '',
-                    })
-                  } else {
-                    onChange({
-                      ...form,
-                      maintenanceScheduleFrequency: form.maintenanceScheduleFrequency || 'Quarterly',
-                      maintenanceDoneBy: form.maintenanceDoneBy || form.custodianEmployeeId,
-                    })
-                  }
-                }}
-              >
-                <SelectTrigger className="bg-white">
-                  <SelectValue placeholder="Select Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="applicable">Applicable</SelectItem>
-                  <SelectItem value="not-applicable">Not Applicable</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {maintApplicable === 'applicable' ? (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="eq-maint-freq" className="text-xs font-semibold">Schedule Frequency</Label>
-                  <Select
-                    value={form.maintenanceScheduleFrequency || 'Quarterly'}
-                    onValueChange={(v) => onChange({ ...form, maintenanceScheduleFrequency: v as Frequency })}
-                  >
-                    <SelectTrigger id="eq-maint-freq">
-                      <SelectValue placeholder="Select Frequency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Daily">Daily</SelectItem>
-                      <SelectItem value="Weekly">Weekly</SelectItem>
-                      <SelectItem value="Monthly">Monthly</SelectItem>
-                      <SelectItem value="Quarterly">Quarterly</SelectItem>
-                      <SelectItem value="Half Yearly">Half Yearly</SelectItem>
-                      <SelectItem value="Yearly">Yearly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="eq-maint-done" className="text-xs font-semibold">Maintenance Done By</Label>
-                  <Select
-                    value={effectiveMaintenanceDoneBy}
-                    onValueChange={(v) => onChange({ ...form, maintenanceDoneBy: v })}
-                  >
-                    <SelectTrigger id="eq-maint-done">
-                      <SelectValue placeholder="Select Employee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {employees.map((emp) => (
-                        <SelectItem key={emp.id} value={emp.id}>
-                          {emp.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            ) : null}
+        <div className="flex flex-col space-y-2">
+          <div className="flex flex-col gap-3 rounded-none border border-stone-400 bg-white/90 px-3 py-3">
+            <Button
+              type="button"
+              variant="outline"
+              className={cn('h-10 w-full shrink-0', limsOutlineBtnClass)}
+              onClick={() => setMaintenanceScheduleOpen(true)}
+            >
+              <Wrench size={16} className="mr-2" />
+              Open Form
+            </Button>
           </div>
-
-          {maintApplicable === 'applicable' &&
-            renderMaintenanceScheduleRow(
-              { last: 'eq-last-maint', next: 'eq-next-maint' },
-              'text-xs font-semibold',
-            )}
         </div>
       )
     }
@@ -1719,10 +1763,12 @@ export function EquipmentMasterForm({
           }}
           equipmentName={form.equipmentName}
           assetCode={form.assetCode}
+          acceptanceCriteria={form.accuracyAcceptanceCriteria}
           onComplete={handleCompleteIntermediateCheck}
         >
           {renderIntermediateCheckCalculator()}
         </ConductIntermediateCheckDialog>
+        {renderMaintenanceScheduleDialog()}
         {renderMaintenanceHistoryDialog()}
         {renderIntermediateCheckHistoryDialog()}
       </Card>
@@ -2390,117 +2436,22 @@ export function EquipmentMasterForm({
               )}
             </div>
 
-            {/* Maintenance details */}
-            <div id="section-maintenance" className="col-span-12 md:col-span-4 border rounded-lg p-3 space-y-3 bg-slate-50/50 transition-all duration-300">
-              <div className="flex items-center justify-between gap-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Maintenance</h4>
-                {maintApplicable === 'applicable' ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs gap-1"
-                    onClick={() => setMaintDetailsOpen((open) => !open)}
-                  >
-                    {maintDetailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    {maintDetailsOpen ? 'Hide Details' : 'Show Details'}
-                  </Button>
-                ) : null}
+            {/* Maintenance — same Open Form + Schedule Form as Masters for IQC */}
+            <div id="section-maintenance" className="col-span-12 flex flex-col space-y-2 md:col-span-4">
+              <div className="border border-b-0 border-stone-400 bg-stone-100/90 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+                Maintenance
               </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Maintenance Status</Label>
-                <Select
-                  value={maintApplicable}
-                  onValueChange={(v) => {
-                    setMaintApplicable(v as 'applicable' | 'not-applicable')
-                    if (v === 'not-applicable') {
-                      setMaintDetailsOpen(false)
-                      onChange({
-                        ...form,
-                        maintenanceScheduleFrequency: '',
-                        lastMaintenanceDate: '',
-                        nextMaintenanceDate: '',
-                        maintenanceDoneBy: '',
-                      })
-                    } else {
-                      setMaintDetailsOpen(false)
-                      onChange({
-                        ...form,
-                        maintenanceScheduleFrequency: form.maintenanceScheduleFrequency || 'Quarterly',
-                        maintenanceDoneBy: form.maintenanceDoneBy || form.custodianEmployeeId,
-                      })
-                    }
-                  }}
+              <div className="flex h-full flex-col gap-3 rounded-none border border-stone-400 bg-white/90 px-3 py-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn('h-10 w-full shrink-0', limsOutlineBtnClass)}
+                  onClick={() => setMaintenanceScheduleOpen(true)}
                 >
-                  <SelectTrigger className="bg-white border-slate-200">
-                    <SelectValue placeholder="Select Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="applicable">Applicable</SelectItem>
-                    <SelectItem value="not-applicable">Not Applicable</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <Wrench size={16} className="mr-2" />
+                  Open Form
+                </Button>
               </div>
-
-              {maintApplicable === 'not-applicable' && (
-                <div className="flex items-start gap-2 bg-slate-100/60 border border-slate-200/50 rounded-xl p-3 animate-in fade-in-50 duration-200">
-                  <Info className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
-                  <span className="text-[11px] text-slate-600 leading-relaxed">
-                    Preventive maintenance is <strong>not applicable</strong>. Schedule alerts and logs are disabled.
-                  </span>
-                </div>
-              )}
-
-              {maintApplicable === 'applicable' && maintDetailsOpen && (
-                <>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="eq-maint-freq-grid" className="text-xs">Schedule Frequency</Label>
-                      <Select
-                        value={form.maintenanceScheduleFrequency || 'Quarterly'}
-                        onValueChange={(v) => onChange({ ...form, maintenanceScheduleFrequency: v as Frequency })}
-                      >
-                        <SelectTrigger id="eq-maint-freq-grid">
-                          <SelectValue placeholder="Select Frequency" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Daily">Daily</SelectItem>
-                          <SelectItem value="Weekly">Weekly</SelectItem>
-                          <SelectItem value="Monthly">Monthly</SelectItem>
-                          <SelectItem value="Quarterly">Quarterly</SelectItem>
-                          <SelectItem value="Half Yearly">Half Yearly</SelectItem>
-                          <SelectItem value="Yearly">Yearly</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="eq-maint-done-grid" className="text-xs">Maintenance Done By</Label>
-                      <Select
-                        value={effectiveMaintenanceDoneBy}
-                        onValueChange={(v) => onChange({ ...form, maintenanceDoneBy: v })}
-                      >
-                        <SelectTrigger id="eq-maint-done-grid">
-                          <SelectValue placeholder="Select Employee" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {employees.map((emp) => (
-                            <SelectItem key={emp.id} value={emp.id}>
-                              {emp.full_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {renderMaintenanceScheduleRow(
-                    { last: 'eq-last-maint-grid', next: 'eq-next-maint-grid' },
-                    'text-xs',
-                  )}
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -2644,10 +2595,12 @@ export function EquipmentMasterForm({
         }}
         equipmentName={form.equipmentName}
         assetCode={form.assetCode}
+        acceptanceCriteria={form.accuracyAcceptanceCriteria}
         onComplete={handleCompleteIntermediateCheck}
       >
         {renderIntermediateCheckCalculator()}
       </ConductIntermediateCheckDialog>
+      {renderMaintenanceScheduleDialog()}
       {renderMaintenanceHistoryDialog()}
       {renderIntermediateCheckHistoryDialog()}
     </Card>

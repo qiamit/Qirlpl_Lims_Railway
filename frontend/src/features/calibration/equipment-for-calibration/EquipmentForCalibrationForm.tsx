@@ -16,7 +16,6 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -33,6 +32,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import {
   FilterCombobox,
   type FilterComboboxOption,
@@ -65,14 +71,18 @@ import {
   FREQUENCIES,
   calculateNextDueDate,
   emptyCalibrationPointRow,
+  emptyCalibrationPointsColumn,
+  visibleCalibrationPointsColumns,
   formatManualDaysFrequency,
   frequencySelectValue,
   hasAutoNextDue,
   isPresetFrequency,
+  normalizeText,
   parseManualIntervalDays,
   type CalibrationPointsColumn,
   type CalibrationPointRow,
   type EquipmentForCalibrationForm,
+  type EquipmentMasterVariant,
   type EquipmentScheduleSection,
   type EquipmentStatus,
   type Frequency,
@@ -85,23 +95,39 @@ import {
 import { ScientificFormulaPad } from './ScientificFormulaPad'
 import { ThermalExpansionCoeffField } from './ThermalExpansionCoeffField'
 import { CalibrationPointsTableSetupDialog } from './CalibrationPointsTableSetupDialog'
+import { IqcMasterSelectionDialog } from './IqcMasterSelectionDialog'
 import { computeCalibrationPointRowValues } from './calibrationPointsFormula'
 
-const NESTED_FULLSCREEN_DIALOG_CLASS =
-  '!flex fixed inset-0 z-[60] !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none !translate-x-0 !translate-y-0 flex-col gap-0 overflow-hidden !rounded-none border-0 bg-white p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100'
+const NESTED_FULLSCREEN_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
 
-const NESTED_FULLSCREEN_DIALOG_STYLE = {
-  width: '100vw',
-  height: '100dvh',
-  maxWidth: 'none',
-  maxHeight: '100dvh',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  transform: 'none',
-  borderRadius: 0,
-} as const
+const NESTED_FULLSCREEN_DIALOG_CLASS = cn(
+  '!flex z-[60] h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none sm:rounded-none',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'border-stone-600 ring-1 ring-amber-700/20',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
+
+function ClientThemeDialogChrome({
+  title,
+  description,
+}: {
+  title: string
+  description?: ReactNode
+}) {
+  return (
+    <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+      <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+      <DialogHeader className="relative pr-10 text-left">
+        <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+          {title}
+        </DialogTitle>
+        {description}
+      </DialogHeader>
+    </div>
+  )
+}
 
 function SectionTitle({
   children,
@@ -112,7 +138,7 @@ function SectionTitle({
 }) {
   return (
     <p
-      className={`border-b border-slate-200 pb-2 text-[12px] font-medium text-slate-600 ${className ?? ''}`}
+      className={`border-b border-stone-300 pb-2 text-[12px] font-medium text-stone-600 ${className ?? ''}`}
     >
       {children}
     </p>
@@ -123,16 +149,14 @@ function SectionTitle({
 function ScheduleFieldTile({
   children,
   span = 4,
+  className,
 }: {
   children: ReactNode
   span?: 2 | 3 | 4 | 6 | 12 | 'auto'
+  className?: string
 }) {
   if (span === 'auto') {
-    return (
-      <div className="space-y-2 rounded-md border border-slate-200/80 bg-white/70 px-3 py-3">
-        {children}
-      </div>
-    )
+    return <div className={cn('min-w-0 space-y-2', className)}>{children}</div>
   }
   const spanClass =
     span === 2
@@ -146,7 +170,7 @@ function ScheduleFieldTile({
             : 'md:col-span-4'
   return (
     <div
-      className={`col-span-12 space-y-2 rounded-md border border-slate-200/80 bg-white/70 px-3 py-3 ${spanClass}`}
+      className={`col-span-12 min-w-0 space-y-2 ${spanClass}`}
     >
       {children}
     </div>
@@ -229,17 +253,25 @@ function ManualDaysDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent layer="stacked" className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Manual Frequency — Days</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <p className="text-xs text-slate-600">
+      <DialogContent
+        layer="stacked"
+        aria-describedby={undefined}
+        className={cn(
+          limsDialogClass,
+          'flex max-w-sm flex-col gap-0 overflow-hidden p-0',
+          '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+        )}
+      >
+        <ClientThemeDialogChrome title="Manual Frequency — Days" />
+        <div className="space-y-3 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+          <p className="text-xs text-stone-600">
             Enter how many days after the last date the next due should fall. Next Due stays
             auto-calculated.
           </p>
           <div className="space-y-1.5">
-            <Label htmlFor="efc-manual-days">Interval (days)</Label>
+            <Label htmlFor="efc-manual-days" className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+              Interval (days)
+            </Label>
             <Input
               id="efc-manual-days"
               type="number"
@@ -263,11 +295,16 @@ function ManualDaysDialog({
             {error ? <p className="text-[11px] text-rose-600">{error}</p> : null}
           </div>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
+          <Button
+            type="button"
+            variant="outline"
+            className={limsOutlineBtnClass}
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button type="button" onClick={apply}>
+          <Button type="button" className={limsPrimaryBtnClass} onClick={apply}>
             Apply
           </Button>
         </DialogFooter>
@@ -287,6 +324,7 @@ export function EquipmentForCalibrationForm({
   onSave,
   assetCodeLocked = false,
   initialSection = null,
+  moduleVariant = 'master',
 }: {
   form: EquipmentForCalibrationForm
   onChange: (next: EquipmentForCalibrationForm) => void
@@ -301,7 +339,9 @@ export function EquipmentForCalibrationForm({
   assetCodeLocked?: boolean
   /** Auto-open one schedule dialog when the form is opened from a table status badge. */
   initialSection?: EquipmentScheduleSection | null
+  moduleVariant?: EquipmentMasterVariant
 }) {
+  const intermediateCheckEnabled = moduleVariant !== 'iqc'
   const [mfrQuery, setMfrQuery] = useState(form.manufacturer)
   const [mfrOpen, setMfrOpen] = useState(false)
   const [agencyQuery, setAgencyQuery] = useState(form.externalCalibrationAgencyName)
@@ -327,15 +367,20 @@ export function EquipmentForCalibrationForm({
   const [manualDaysOpen, setManualDaysOpen] = useState(false)
   const [pointsSetupOpen, setPointsSetupOpen] = useState(false)
   const handlePointsSetupOpenChange = useFormDialogOpenChange(setPointsSetupOpen)
+  const [icEnvSetupOpen, setIcEnvSetupOpen] = useState(false)
+  const [icCheckSetupOpen, setIcCheckSetupOpen] = useState(false)
+  const [icIqcSetupOpen, setIcIqcSetupOpen] = useState(false)
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false)
   const handleFormulaDialogOpenChange = useFormDialogOpenChange(setFormulaDialogOpen)
   const [formulaSourceColId, setFormulaSourceColId] = useState('')
   const [formulaTargetColId, setFormulaTargetColId] = useState('')
   const [formulaExpr, setFormulaExpr] = useState('')
+  const [formulaDecimals, setFormulaDecimals] = useState(2)
   const [formulaXInputs, setFormulaXInputs] = useState<Array<{ id: string; x: string }>>([
     { id: 'x-1', x: '' },
   ])
   const [formulaHint, setFormulaHint] = useState<string | null>(null)
+  const [nestedSaveHint, setNestedSaveHint] = useState<string | null>(null)
   const [selectedPointIds, setSelectedPointIds] = useState<Set<string>>(() => new Set())
   const [pointsSortColId, setPointsSortColId] = useState<string | null>(null)
   const [pointsSortDir, setPointsSortDir] = useState<'asc' | 'desc'>('asc')
@@ -361,11 +406,13 @@ export function EquipmentForCalibrationForm({
     // Open after mount so nested dialog stacks above the edit form reliably.
     const timer = window.setTimeout(() => {
       if (initialSection === 'calibration') setCalibrationDialogOpen(true)
-      else if (initialSection === 'intermediate') setIntermediateCheckDialogOpen(true)
+      else if (initialSection === 'intermediate' && intermediateCheckEnabled) {
+        setIntermediateCheckDialogOpen(true)
+      }
       else if (initialSection === 'maintenance') setMaintenanceDialogOpen(true)
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [initialSection])
+  }, [initialSection, intermediateCheckEnabled])
 
   const patchForm = (patch: Partial<EquipmentForCalibrationForm>) => {
     // Keep ref in sync immediately so Save (esp. nested dialog) never uses a stale snapshot.
@@ -451,8 +498,16 @@ export function EquipmentForCalibrationForm({
       : ''
 
   const saveAndCloseNested = (close: () => void) => {
-    // Clone snapshot so async save cannot see a later wiped ref.
-    onSave({ ...latestFormSnapshot() })
+    const snapshot = { ...latestFormSnapshot() }
+    const ready =
+      normalizeText(snapshot.assetCode).length > 0 &&
+      normalizeText(snapshot.equipmentName).length > 0
+    if (!ready) {
+      setNestedSaveHint('Equipment Name is required on the main form before saving.')
+      return
+    }
+    setNestedSaveHint(null)
+    onSave(snapshot)
     close()
   }
 
@@ -807,14 +862,16 @@ export function EquipmentForCalibrationForm({
     set('calibrationPoints', points)
   }
 
-  const pointsGridTemplate = `2rem repeat(${Math.max(form.calibrationPointsColumns.length, 1)}, minmax(120px, 1fr)) 4.5rem 5.5rem`
+  const tableColumns = visibleCalibrationPointsColumns(form.calibrationPointsColumns)
+  const pointsGridTemplate = `2rem repeat(${Math.max(tableColumns.length, 1)}, minmax(120px, 1fr)) 4.5rem 5.5rem`
 
   const openFormulaDialog = () => {
-    const cols = form.calibrationPointsColumns
+    const cols = visibleCalibrationPointsColumns(form.calibrationPointsColumns)
     if (cols.length === 0) return
     setFormulaSourceColId(cols[0]!.id)
     setFormulaTargetColId(cols.length > 1 ? cols[1]!.id : '')
     setFormulaExpr('')
+    setFormulaDecimals(2)
     setFormulaXInputs([{ id: newFormulaXRowId(), x: '' }])
     setFormulaHint(null)
     setFormulaDialogOpen(true)
@@ -861,8 +918,8 @@ export function EquipmentForCalibrationForm({
 
     const newRows = parsed.map(({ x, result }) => {
       const row = emptyCalibrationPointRow(cols)
-      row.values[formulaSourceColId] = formatFormulaResult(x)
-      row.values[formulaTargetColId] = formatFormulaResult(result)
+      row.values[formulaSourceColId] = formatFormulaResult(x, formulaDecimals)
+      row.values[formulaTargetColId] = formatFormulaResult(result, formulaDecimals)
       return row
     })
 
@@ -889,11 +946,11 @@ export function EquipmentForCalibrationForm({
               value={form.assetCode}
               onChange={(e) => set('assetCode', e.target.value.toUpperCase())}
               readOnly={assetCodeLocked}
-              className={assetCodeLocked ? 'bg-slate-50 text-slate-700' : undefined}
+              className={assetCodeLocked ? 'bg-stone-100 text-stone-700' : undefined}
               placeholder="QE-EQ-0001"
             />
           </div>
-          <div className="min-w-0 space-y-2">
+          <div className="min-w-0 space-y-2 sm:col-span-2">
             <Label htmlFor="efc-name">Equipment Name *</Label>
             <Input
               id="efc-name"
@@ -921,6 +978,14 @@ export function EquipmentForCalibrationForm({
             </Select>
           </div>
           <div className="min-w-0 space-y-2">
+            <Label htmlFor="efc-acc">Acceptance Criteria</Label>
+            <Input
+              id="efc-acc"
+              value={form.accuracyAcceptanceCriteria}
+              onChange={(e) => set('accuracyAcceptanceCriteria', e.target.value)}
+            />
+          </div>
+          <div className="min-w-0 space-y-2 sm:col-span-2">
             <Label>Manufacturer</Label>
             <FilterCombobox
               value={mfrOpen ? mfrQuery : selectedManufacturerLabel}
@@ -970,24 +1035,16 @@ export function EquipmentForCalibrationForm({
               onChange={(e) => set('resolutionLeastCount', e.target.value)}
             />
           </div>
-          <div className="min-w-0 space-y-2">
-            <Label htmlFor="efc-acc">Accuracy / Acceptance Criteria</Label>
-            <Input
-              id="efc-acc"
-              value={form.accuracyAcceptanceCriteria}
-              onChange={(e) => set('accuracyAcceptanceCriteria', e.target.value)}
-            />
-          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 flex flex-col space-y-2 md:col-span-4">
             <SectionTitle className="text-center">Calibration</SectionTitle>
-            <div className="flex h-full flex-col gap-3 rounded-md border border-slate-200/80 bg-white/70 px-3 py-3">
+            <div className="flex h-full flex-col gap-3 rounded-none border border-stone-400 bg-white/90 px-3 py-3">
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 w-full shrink-0 border-teal-600/40 text-teal-800 hover:bg-teal-50"
+                className={cn('h-10 w-full shrink-0', limsOutlineBtnClass)}
                 onClick={() => setCalibrationDialogOpen(true)}
               >
                 <ClipboardCheck size={16} className="mr-2" />
@@ -998,12 +1055,27 @@ export function EquipmentForCalibrationForm({
 
           <div className="col-span-12 flex flex-col space-y-2 md:col-span-4">
             <SectionTitle className="text-center">Intermediate Check</SectionTitle>
-            <div className="flex h-full flex-col gap-3 rounded-md border border-slate-200/80 bg-white/70 px-3 py-3">
+            <div className="flex h-full flex-col gap-3 rounded-none border border-stone-400 bg-white/90 px-3 py-3">
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 w-full shrink-0 border-teal-600/40 text-teal-800 hover:bg-teal-50"
-                onClick={() => setIntermediateCheckDialogOpen(true)}
+                className={cn('h-10 w-full shrink-0', limsOutlineBtnClass)}
+                disabled={!intermediateCheckEnabled}
+                aria-disabled={!intermediateCheckEnabled}
+                title={
+                  intermediateCheckEnabled
+                    ? 'Open Intermediate Check form'
+                    : 'Not available for Masters for IQC'
+                }
+                aria-label={
+                  intermediateCheckEnabled
+                    ? 'Open Intermediate Check form'
+                    : 'Open Intermediate Check form (inactive for Masters for IQC)'
+                }
+                onClick={() => {
+                  if (!intermediateCheckEnabled) return
+                  setIntermediateCheckDialogOpen(true)
+                }}
               >
                 <ListChecks size={16} className="mr-2" />
                 Open Form
@@ -1013,11 +1085,11 @@ export function EquipmentForCalibrationForm({
 
           <div className="col-span-12 flex flex-col space-y-2 md:col-span-4">
             <SectionTitle className="text-center">Maintenance</SectionTitle>
-            <div className="flex h-full flex-col gap-3 rounded-md border border-slate-200/80 bg-white/70 px-3 py-3">
+            <div className="flex h-full flex-col gap-3 rounded-none border border-stone-400 bg-white/90 px-3 py-3">
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 w-full shrink-0 border-teal-600/40 text-teal-800 hover:bg-teal-50"
+                className={cn('h-10 w-full shrink-0', limsOutlineBtnClass)}
                 onClick={() => setMaintenanceDialogOpen(true)}
               >
                 <Wrench size={16} className="mr-2" />
@@ -1031,24 +1103,14 @@ export function EquipmentForCalibrationForm({
           <DialogContent
             persistOnFocusLoss
             layer="nested"
+            overlayClassName={NESTED_FULLSCREEN_OVERLAY}
             className={NESTED_FULLSCREEN_DIALOG_CLASS}
-            style={NESTED_FULLSCREEN_DIALOG_STYLE}
             aria-describedby={undefined}
           >
-            <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-              <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-              <DialogHeader className="relative pr-10 text-left">
-                <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  Equipment For Calibration
-                </p>
-                <DialogTitle className="text-xl font-semibold tracking-tight text-white">
-                  Calibration Form
-                </DialogTitle>
-              </DialogHeader>
-            </div>
+            <ClientThemeDialogChrome title="Calibration Form" />
 
             <div
-              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5 ${labRegistryFormClass}`}
+              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5 ${labRegistryFormClass}`}
             >
               <div className="space-y-6">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -1090,7 +1152,7 @@ export function EquipmentForCalibrationForm({
                     {frequencySelectValue(form.calibrationFrequency) === 'Manual' ? (
                       <button
                         type="button"
-                        className="mt-1 text-left text-[11px] font-medium text-teal-700 hover:underline"
+                        className="mt-1 text-left text-[11px] font-medium text-amber-800 hover:underline"
                         onClick={() => openManualDaysDialog('calibration')}
                       >
                         {calManualDays !== null
@@ -1162,7 +1224,7 @@ export function EquipmentForCalibrationForm({
                       placeholder="2"
                     />
                   </ScheduleFieldTile>
-                  <ScheduleFieldTile span="auto">
+                  <ScheduleFieldTile span="auto" className="lg:col-span-2">
                     <Label>External Calibration Agency</Label>
                     <FilterCombobox
                       value={agencyOpen ? agencyQuery : selectedAgencyLabel}
@@ -1188,9 +1250,6 @@ export function EquipmentForCalibrationForm({
                       listId="efc-agency-list"
                     />
                   </ScheduleFieldTile>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <ScheduleFieldTile span="auto">
                     <Label htmlFor="efc-cal-temp">Calibration Temperature</Label>
                     <Input
@@ -1240,19 +1299,19 @@ export function EquipmentForCalibrationForm({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-1.5 border-teal-600/40 text-teal-800 hover:bg-teal-50"
-                      disabled={form.calibrationPointsColumns.length === 0}
+                      className={cn('h-8 gap-1.5', limsOutlineBtnClass)}
+                      disabled={tableColumns.length === 0}
                       onClick={openFormulaDialog}
                       aria-label="Generate calibration points by formula"
                     >
                       <Sigma size={14} />
-                      Generate by Formula
+                      Generate New Points
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 border-teal-600/40 text-teal-800 hover:bg-teal-50"
+                      className={cn('h-8', limsOutlineBtnClass)}
                       onClick={openPointsSetup}
                     >
                       {form.calibrationPointsColumns.length > 0
@@ -1265,6 +1324,11 @@ export function EquipmentForCalibrationForm({
                     <p className="rounded-md border border-dashed border-slate-200 bg-white/50 px-3 py-6 text-center text-sm text-slate-500">
                       No table yet. Click <span className="font-medium">Create Table</span> to set
                       column count and headers.
+                    </p>
+                  ) : tableColumns.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-slate-200 bg-white/50 px-3 py-6 text-center text-sm text-slate-500">
+                      No columns visible. In <span className="font-medium">Edit Table Columns</span>,
+                      tick <span className="font-medium">Required</span> to show a column here.
                     </p>
                   ) : (
                     <div className="overflow-x-auto rounded-md border border-slate-200/80 bg-white/70">
@@ -1284,14 +1348,14 @@ export function EquipmentForCalibrationForm({
                             aria-label="Select all calibration points"
                           />
                         </label>
-                        {form.calibrationPointsColumns.map((col) => {
+                        {tableColumns.map((col) => {
                           const active = pointsSortColId === col.id
                           const isFormula = col.type === 'formula'
                           return (
                             <button
                               key={col.id}
                               type="button"
-                              className="flex min-w-0 items-center gap-1 truncate text-left text-[12px] font-medium text-slate-600 hover:text-teal-800"
+                              className="flex min-w-0 items-center gap-1 truncate text-left text-[12px] font-medium text-slate-600 hover:text-amber-800"
                               title={
                                 isFormula
                                   ? `${col.header} (Calculated)`
@@ -1306,9 +1370,9 @@ export function EquipmentForCalibrationForm({
                                 </span>
                               ) : null}
                               {active && pointsSortDir === 'asc' ? (
-                                <ArrowUp size={12} className="shrink-0 text-teal-700" />
+                                <ArrowUp size={12} className="shrink-0 text-amber-700" />
                               ) : active && pointsSortDir === 'desc' ? (
-                                <ArrowDown size={12} className="shrink-0 text-teal-700" />
+                                <ArrowDown size={12} className="shrink-0 text-amber-700" />
                               ) : (
                                 <ArrowUpDown size={12} className="shrink-0 text-slate-400" />
                               )}
@@ -1347,7 +1411,7 @@ export function EquipmentForCalibrationForm({
                                   aria-label={`Select point ${index + 1}`}
                                 />
                               </label>
-                              {form.calibrationPointsColumns.map((col) => {
+                              {tableColumns.map((col) => {
                                 const isFormula = col.type === 'formula'
                                 return isFormula ? (
                                   <Input
@@ -1410,7 +1474,7 @@ export function EquipmentForCalibrationForm({
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="h-10 w-10 border-teal-600/40 px-0 text-teal-800 hover:bg-teal-50"
+                                    className={cn('h-10 w-10 px-0', limsOutlineBtnClass)}
                                     onClick={addPoint}
                                     aria-label="Add calibration point"
                                   >
@@ -1439,21 +1503,17 @@ export function EquipmentForCalibrationForm({
               </div>
             </div>
 
-            <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+            <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+              {nestedSaveHint ? (
+                <p className="mr-auto text-xs text-destructive">{nestedSaveHint}</p>
+              ) : null}
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => setCalibrationDialogOpen(false)}
-              >
-                Close
-              </Button>
-              <Button
-                type="button"
-                className="bg-teal-600 text-white hover:bg-teal-500"
-                disabled={!canSave || saveLoading}
+                className={limsPrimaryBtnClass}
+                disabled={saveLoading}
                 onClick={() => saveAndCloseNested(() => setCalibrationDialogOpen(false))}
               >
-                {saveLoading ? 'Saving…' : 'Save'}
+                {saveLoading ? 'Saving…' : 'Save & Close'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1471,39 +1531,32 @@ export function EquipmentForCalibrationForm({
           <DialogContent
             persistOnFocusLoss
             layer="stacked"
-            className="flex max-h-[min(90dvh,44rem)] w-[calc(100vw-1.5rem)] max-w-2xl flex-col gap-0 overflow-hidden border-0 bg-white p-0 shadow-xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+            overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+            className={cn(
+              limsDialogClass,
+              'flex max-h-[min(90dvh,44rem)] w-[calc(100vw-1.5rem)] max-w-2xl flex-col',
+              'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
+              'md:w-[min(42rem,calc(100vw-268px-2rem))] md:max-w-[min(42rem,calc(100vw-268px-2rem))]',
+              'md:!-translate-x-1/2 md:!-translate-y-1/2',
+            )}
             aria-describedby={undefined}
           >
-            <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-              <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-              <DialogHeader className="relative pr-10 text-left">
-                <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  Calibration Points
-                </p>
-                <DialogTitle className="text-lg font-semibold tracking-tight text-white">
-                  Generate by Formula
-                </DialogTitle>
-                <p className="mt-1 text-xs text-slate-300">
-                  Set the formula, then enter each <span className="font-mono text-teal-200">x</span>{' '}
-                  value in a row. New points are appended — existing readings stay unchanged.
-                </p>
-              </DialogHeader>
-            </div>
+            <ClientThemeDialogChrome title="Generate by Formula" />
 
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-5">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
               <div className="w-full space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Column for x</Label>
+                    <Label>Column for X</Label>
                     <Select
                       value={formulaSourceColId || undefined}
                       onValueChange={setFormulaSourceColId}
                     >
-                      <SelectTrigger aria-label="Column for x">
+                      <SelectTrigger aria-label="Column for X">
                         <SelectValue placeholder="Select column" />
                       </SelectTrigger>
                       <SelectContent className="z-[80]">
-                        {form.calibrationPointsColumns.map((col) => (
+                        {tableColumns.map((col) => (
                           <SelectItem key={col.id} value={col.id}>
                             {col.header}
                           </SelectItem>
@@ -1512,16 +1565,16 @@ export function EquipmentForCalibrationForm({
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Result column (formula output)</Label>
+                    <Label>Result Column</Label>
                     <Select
                       value={formulaTargetColId || undefined}
                       onValueChange={setFormulaTargetColId}
                     >
-                      <SelectTrigger aria-label="Result column">
+                      <SelectTrigger aria-label="Result Column">
                         <SelectValue placeholder="Select column" />
                       </SelectTrigger>
                       <SelectContent className="z-[80]">
-                        {form.calibrationPointsColumns
+                        {tableColumns
                           .filter((c) => c.id !== formulaSourceColId)
                           .map((col) => (
                             <SelectItem key={col.id} value={col.id}>
@@ -1536,29 +1589,29 @@ export function EquipmentForCalibrationForm({
                 {formulaTargetColId && formulaTargetColId !== formulaSourceColId ? (
                   <ScientificFormulaPad
                     id="efc-series-formula"
-                    label="Formula (uses x)"
                     value={formulaExpr}
                     onChange={(next) => {
                       setFormulaExpr(next)
                       setFormulaHint(null)
                     }}
-                    hint="After the formula is set, enter x values in the rows below."
+                    decimals={formulaDecimals}
+                    onDecimalsChange={setFormulaDecimals}
                   />
                 ) : (
-                  <p className="rounded-md border border-dashed border-slate-200 bg-white/50 px-3 py-4 text-center text-sm text-slate-500">
+                  <p className="rounded-none border border-dashed border-stone-400 bg-white/50 px-3 py-4 text-center text-sm text-stone-500">
                     Select x and result columns to enter a formula.
                   </p>
                 )}
 
                 {formulaReady && formulaTargetColId && formulaTargetColId !== formulaSourceColId ? (
                   <div className="space-y-3">
-                    <div className="flex items-end justify-between gap-3 border-b border-slate-200 pb-2">
-                      <p className="text-[12px] font-medium text-slate-600">X input values</p>
+                    <div className="flex items-end justify-between gap-3 border-b border-stone-300 pb-2">
+                      <p className="text-[12px] font-medium text-stone-600">X input values</p>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1.5 border-teal-600/40 text-teal-800 hover:bg-teal-50"
+                        className={cn('h-8 gap-1.5', limsOutlineBtnClass)}
                         onClick={() =>
                           setFormulaXInputs((prev) => [
                             ...prev,
@@ -1570,14 +1623,14 @@ export function EquipmentForCalibrationForm({
                         Add x row
                       </Button>
                     </div>
-                    <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-                      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,1fr)_2.5rem] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                    <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
+                      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,1fr)_2.5rem] gap-2 border-b border-stone-700 bg-stone-800 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                         <span className="text-center">#</span>
                         <span>x value</span>
                         <span>Result</span>
                         <span className="sr-only">Actions</span>
                       </div>
-                      <div className="divide-y divide-slate-100">
+                      <div className="divide-y divide-stone-200">
                         {formulaXInputs.map((row, index) => {
                           const xNum = Number(row.x.trim())
                           const xOk = row.x.trim() !== '' && Number.isFinite(xNum)
@@ -1612,7 +1665,7 @@ export function EquipmentForCalibrationForm({
                                     ? ''
                                     : result == null
                                       ? '—'
-                                      : formatFormulaResult(result)
+                                      : formatFormulaResult(result, formulaDecimals)
                                 }
                                 readOnly
                                 className="bg-slate-50 font-mono"
@@ -1624,7 +1677,7 @@ export function EquipmentForCalibrationForm({
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="h-10 w-10 border-teal-600/40 px-0 text-teal-800 hover:bg-teal-50"
+                                    className={cn('h-10 w-10 px-0', limsOutlineBtnClass)}
                                     onClick={() =>
                                       setFormulaXInputs((prev) => [
                                         ...prev,
@@ -1668,16 +1721,13 @@ export function EquipmentForCalibrationForm({
               </div>
             </div>
 
-            <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
-              <Button type="button" variant="outline" onClick={() => setFormulaDialogOpen(false)}>
-                Cancel
-              </Button>
+            <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
               <Button
                 type="button"
-                className="bg-teal-600 text-white hover:bg-teal-500"
+                className={limsPrimaryBtnClass}
                 onClick={applyFormulaGenerate}
               >
-                Generate New Points
+                Save & Close
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1690,24 +1740,14 @@ export function EquipmentForCalibrationForm({
           <DialogContent
             persistOnFocusLoss
             layer="nested"
+            overlayClassName={NESTED_FULLSCREEN_OVERLAY}
             className={NESTED_FULLSCREEN_DIALOG_CLASS}
-            style={NESTED_FULLSCREEN_DIALOG_STYLE}
             aria-describedby={undefined}
           >
-            <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-              <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-              <DialogHeader className="relative pr-10 text-left">
-                <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  Equipment For Calibration
-                </p>
-                <DialogTitle className="text-xl font-semibold tracking-tight text-white">
-                  Intermediate Check Form
-                </DialogTitle>
-              </DialogHeader>
-            </div>
+            <ClientThemeDialogChrome title="Intermediate Check Form" />
 
             <div
-              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5 ${labRegistryFormClass}`}
+              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5 ${labRegistryFormClass}`}
             >
               <div className="space-y-6">
                 <SectionTitle>Intermediate Check Schedule</SectionTitle>
@@ -1715,7 +1755,7 @@ export function EquipmentForCalibrationForm({
                   <ScheduleFieldTile span={6}>
                     <Label>Frequency</Label>
                     <Select
-                      value={frequencySelectValue(form.intermediateCheckFrequency)}
+                      value={frequencySelectValue(form.intermediateCheckFrequency) || 'Quarterly'}
                       onValueChange={(v) => setIcFreq(v as Frequency)}
                     >
                       <SelectTrigger>
@@ -1732,7 +1772,7 @@ export function EquipmentForCalibrationForm({
                     {frequencySelectValue(form.intermediateCheckFrequency) === 'Manual' ? (
                       <button
                         type="button"
-                        className="mt-1 text-left text-[11px] font-medium text-teal-700 hover:underline"
+                        className="mt-1 text-left text-[11px] font-medium text-amber-800 hover:underline"
                         onClick={() => openManualDaysDialog('intermediate')}
                       >
                         {icManualDays !== null
@@ -1755,7 +1795,7 @@ export function EquipmentForCalibrationForm({
                       }}
                       open={performedByOpen}
                       onOpenChange={setPerformedByOpen}
-                      placeholder="Name / employee"
+                      placeholder="Name of Employee"
                     />
                   </ScheduleFieldTile>
                   <ScheduleFieldTile span={12}>
@@ -1817,6 +1857,34 @@ export function EquipmentForCalibrationForm({
                     </div>
                   </ScheduleFieldTile>
                 </div>
+
+                <div className="flex flex-wrap items-center gap-2 border-t border-stone-300 pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={limsOutlineBtnClass}
+                    onClick={() => setIcEnvSetupOpen(true)}
+                  >
+                    Environ Condition
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={limsOutlineBtnClass}
+                    onClick={() => setIcCheckSetupOpen(true)}
+                  >
+                    Check Point Table
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={limsOutlineBtnClass}
+                    onClick={() => setIcIqcSetupOpen(true)}
+                  >
+                    IQC Master Selection
+                  </Button>
+                </div>
+
                 {currentIntermediatePayload.readings.length > 0 ? (
                   <p className="text-[11px] text-slate-500">
                     Latest result: {currentIntermediatePayload.summaryLine || 'Recorded'}
@@ -1825,32 +1893,23 @@ export function EquipmentForCalibrationForm({
                       : ''}
                     . Use Conduct to record a new check.
                   </p>
-                ) : (
-                  <p className="text-[11px] text-slate-500">
-                    Open Conduct Check to record temperature, humidity, master standards and
-                    Std/Obs readings. Performed By is required before completing.
-                  </p>
-                )}
+                ) : null}
               </div>
             </div>
 
-            <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+            <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+              {nestedSaveHint ? (
+                <p className="mr-auto text-xs text-destructive">{nestedSaveHint}</p>
+              ) : null}
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => setIntermediateCheckDialogOpen(false)}
-              >
-                Close
-              </Button>
-              <Button
-                type="button"
-                className="bg-teal-600 text-white hover:bg-teal-500"
-                disabled={!canSave || saveLoading}
+                className={limsPrimaryBtnClass}
+                disabled={saveLoading}
                 onClick={() =>
                   saveAndCloseNested(() => setIntermediateCheckDialogOpen(false))
                 }
               >
-                {saveLoading ? 'Saving…' : 'Save'}
+                {saveLoading ? 'Saving…' : 'Save & Close'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1860,29 +1919,18 @@ export function EquipmentForCalibrationForm({
           <DialogContent
             persistOnFocusLoss
             layer="nested"
+            overlayClassName={NESTED_FULLSCREEN_OVERLAY}
             className={NESTED_FULLSCREEN_DIALOG_CLASS}
-            style={NESTED_FULLSCREEN_DIALOG_STYLE}
             aria-describedby={undefined}
           >
-            <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-              <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-              <DialogHeader className="relative pr-10 text-left">
-                <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  Equipment For Calibration
-                </p>
-                <DialogTitle className="text-xl font-semibold tracking-tight text-white">
-                  Maintenance Form
-                </DialogTitle>
-              </DialogHeader>
-            </div>
+            <ClientThemeDialogChrome title="Maintenance Schedule Form" />
 
             <div
-              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5 ${labRegistryFormClass}`}
+              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5 ${labRegistryFormClass}`}
             >
               <div className="space-y-6">
-                <SectionTitle>Maintenance Schedule</SectionTitle>
                 <div className="grid grid-cols-12 gap-3">
-                  <ScheduleFieldTile>
+                  <ScheduleFieldTile span={3}>
                     <Label>Schedule Frequency</Label>
                     <Select
                       value={frequencySelectValue(form.maintenanceScheduleFrequency)}
@@ -1902,7 +1950,7 @@ export function EquipmentForCalibrationForm({
                     {frequencySelectValue(form.maintenanceScheduleFrequency) === 'Manual' ? (
                       <button
                         type="button"
-                        className="mt-1 text-left text-[11px] font-medium text-teal-700 hover:underline"
+                        className="mt-1 text-left text-[11px] font-medium text-amber-800 hover:underline"
                         onClick={() => openManualDaysDialog('maintenance')}
                       >
                         {maintManualDays !== null
@@ -1911,7 +1959,35 @@ export function EquipmentForCalibrationForm({
                       </button>
                     ) : null}
                   </ScheduleFieldTile>
-                  <ScheduleFieldTile>
+                  <ScheduleFieldTile span={3}>
+                    <Label htmlFor="efc-last-m">Last Date</Label>
+                    <ScheduleDateInput
+                      id="efc-last-m"
+                      value={form.lastMaintenanceDate}
+                      onCommit={setLastMaint}
+                    />
+                  </ScheduleFieldTile>
+                  <ScheduleFieldTile span={3}>
+                    <Label htmlFor="efc-next-m">
+                      {maintNextDueEditable
+                        ? 'Next Due'
+                        : maintManualDays !== null
+                          ? `Next Due (Auto · ${maintManualDays}d)`
+                          : 'Next Due (Auto)'}
+                    </Label>
+                    <ScheduleDateInput
+                      id="efc-next-m"
+                      value={form.nextMaintenanceDate}
+                      disabled={!maintNextDueEditable}
+                      className={
+                        maintNextDueEditable
+                          ? undefined
+                          : 'bg-slate-50 font-mono text-slate-600'
+                      }
+                      onCommit={(next) => set('nextMaintenanceDate', next)}
+                    />
+                  </ScheduleFieldTile>
+                  <ScheduleFieldTile span={3}>
                     <Label htmlFor="efc-done-by">Maintenance Done By</Label>
                     <FilterCombobox
                       inputId="efc-done-by"
@@ -1925,103 +2001,52 @@ export function EquipmentForCalibrationForm({
                       }}
                       open={doneByOpen}
                       onOpenChange={setDoneByOpen}
-                      placeholder="Name / employee"
+                      placeholder="Name of Employee"
                     />
                   </ScheduleFieldTile>
-                  <ScheduleFieldTile span={12}>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="efc-last-m">Last Date</Label>
-                        <ScheduleDateInput
-                          id="efc-last-m"
-                          value={form.lastMaintenanceDate}
-                          onCommit={setLastMaint}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="efc-next-m">
-                          {maintNextDueEditable
-                            ? 'Next Due'
-                            : maintManualDays !== null
-                              ? `Next Due (Auto · ${maintManualDays}d)`
-                              : 'Next Due (Auto)'}
-                        </Label>
-                        <ScheduleDateInput
-                          id="efc-next-m"
-                          value={form.nextMaintenanceDate}
-                          disabled={!maintNextDueEditable}
-                          className={
-                            maintNextDueEditable
-                              ? undefined
-                              : 'bg-slate-50 font-mono text-slate-600'
-                          }
-                          onCommit={(next) => set('nextMaintenanceDate', next)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Conduct Maintenance</Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-10 w-full gap-1.5 text-xs"
-                          onClick={() => setConductMaintenanceOpen(true)}
-                        >
-                          <Wrench size={14} />
-                          Conduct
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>View Old Checklist</Label>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="h-10 w-full gap-1.5 text-xs"
-                          disabled={!hasMaintenanceChecklistHistory}
-                          onClick={() => setMaintenanceHistoryViewOpen(true)}
-                        >
-                          <History size={14} />
-                          View
-                          {form.maintenanceHistory.length > 0
-                            ? ` (${form.maintenanceHistory.length})`
-                            : ''}
-                        </Button>
-                      </div>
-                    </div>
+                  <ScheduleFieldTile span={3}>
+                    <Label>Conduct Maintenance</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 w-full gap-1.5 text-xs"
+                      onClick={() => setConductMaintenanceOpen(true)}
+                    >
+                      <Wrench size={14} />
+                      Conduct
+                    </Button>
+                  </ScheduleFieldTile>
+                  <ScheduleFieldTile span={3}>
+                    <Label>View Old Checklist</Label>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-10 w-full gap-1.5 text-xs"
+                      disabled={!hasMaintenanceChecklistHistory}
+                      onClick={() => setMaintenanceHistoryViewOpen(true)}
+                    >
+                      <History size={14} />
+                      View
+                      {form.maintenanceHistory.length > 0
+                        ? ` (${form.maintenanceHistory.length})`
+                        : ''}
+                    </Button>
                   </ScheduleFieldTile>
                 </div>
-                {form.maintenanceChecklist.length > 0 ? (
-                  <p className="text-[11px] text-slate-500">
-                    Current checklist: {form.maintenanceChecklist.length} check point
-                    {form.maintenanceChecklist.length === 1 ? '' : 's'}
-                    {form.lastMaintenanceDate
-                      ? ` · last conducted ${form.lastMaintenanceDate}`
-                      : ''}
-                    . Use Conduct for AI-assisted checklist and to complete maintenance.
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-slate-500">
-                    Open Conduct Maintenance to build a checklist (manual or AI) and log
-                    completion. Done By is required before completing.
-                  </p>
-                )}
               </div>
             </div>
 
-            <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+            <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+              {nestedSaveHint ? (
+                <p className="mr-auto text-xs text-destructive">{nestedSaveHint}</p>
+              ) : null}
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => setMaintenanceDialogOpen(false)}
-              >
-                Close
-              </Button>
-              <Button
-                type="button"
-                className="bg-teal-600 text-white hover:bg-teal-500"
-                disabled={!canSave || saveLoading}
+                className={limsPrimaryBtnClass}
+                disabled={saveLoading}
                 onClick={() => saveAndCloseNested(() => setMaintenanceDialogOpen(false))}
               >
-                {saveLoading ? 'Saving…' : 'Save'}
+                {saveLoading ? 'Saving…' : 'Save & Close'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2081,6 +2106,14 @@ export function EquipmentForCalibrationForm({
           currentLastDate={form.lastMaintenanceDate}
           currentDoneByName={form.maintenanceDoneBy}
           currentChecklist={form.maintenanceChecklist}
+          onDirectorChange={(next) =>
+            patchForm({
+              maintenanceHistory: next.history,
+              lastMaintenanceDate: next.currentLastDate,
+              maintenanceDoneBy: next.currentDoneByName,
+              maintenanceChecklist: next.currentChecklist,
+            })
+          }
         />
 
         <ConductIntermediateCheckDialog
@@ -2092,6 +2125,7 @@ export function EquipmentForCalibrationForm({
           layer="stacked"
           equipmentName={form.equipmentName}
           assetCode={form.assetCode}
+          acceptanceCriteria={form.accuracyAcceptanceCriteria}
           onComplete={completeIntermediateCheck}
         >
           <IntermediateCheckCalculator
@@ -2102,6 +2136,59 @@ export function EquipmentForCalibrationForm({
             message={intermediateCompleteMessage}
           />
         </ConductIntermediateCheckDialog>
+
+        <CalibrationPointsTableSetupDialog
+          open={icEnvSetupOpen}
+          onOpenChange={setIcEnvSetupOpen}
+          title="Environ Condition"
+          layer="stacked"
+          columns={
+            intermediateDraft.envColumns.length > 0
+              ? intermediateDraft.envColumns
+              : [
+                  emptyCalibrationPointsColumn('Temperature (°C)', 'number'),
+                  emptyCalibrationPointsColumn('Humidity (% RH)', 'number'),
+                ]
+          }
+          rows={intermediateDraft.envRows}
+          onApply={(columns, rows) =>
+            setIntermediateDraft({ ...intermediateDraft, envColumns: columns, envRows: rows })
+          }
+        />
+
+        <CalibrationPointsTableSetupDialog
+          open={icCheckSetupOpen}
+          onOpenChange={setIcCheckSetupOpen}
+          title="Check Point Table"
+          layer="stacked"
+          columns={
+            intermediateDraft.checkColumns.length > 0
+              ? intermediateDraft.checkColumns
+              : [
+                  emptyCalibrationPointsColumn('Check Point', 'number'),
+                  emptyCalibrationPointsColumn('Std Value', 'number'),
+                  emptyCalibrationPointsColumn('Obs Value', 'number'),
+                ]
+          }
+          rows={intermediateDraft.checkRows}
+          onApply={(columns, rows) =>
+            setIntermediateDraft({
+              ...intermediateDraft,
+              checkColumns: columns,
+              checkRows: rows,
+            })
+          }
+        />
+
+        <IqcMasterSelectionDialog
+          open={icIqcSetupOpen}
+          onOpenChange={setIcIqcSetupOpen}
+          masters={masterEquipmentOptions}
+          selectedIds={intermediateDraft.masterIds}
+          onSelectedIdsChange={(masterIds) =>
+            setIntermediateDraft({ ...intermediateDraft, masterIds })
+          }
+        />
 
         <IntermediateCheckHistoryDialog
           open={intermediateHistoryViewOpen}
@@ -2121,22 +2208,12 @@ export function EquipmentForCalibrationForm({
           currentNextDueDate={form.nextIntermediateCheckDate}
           acceptanceCriteria={form.accuracyAcceptanceCriteria}
         />
-
-        <div className="space-y-2">
-          <Label htmlFor="efc-remarks">Remarks</Label>
-          <Textarea
-            id="efc-remarks"
-            rows={2}
-            value={form.remarks}
-            onChange={(e) => set('remarks', e.target.value)}
-          />
-        </div>
       </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+      <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-300 pt-4">
         <Button
           type="button"
-          className="bg-teal-600 text-white hover:bg-teal-500"
+          className={limsPrimaryBtnClass}
           onClick={() => onSave({ ...latestFormSnapshot() })}
           disabled={!canSave || saveLoading}
         >

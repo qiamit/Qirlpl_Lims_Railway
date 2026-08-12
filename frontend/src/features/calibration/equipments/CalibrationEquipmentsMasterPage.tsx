@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsPageShellClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
@@ -23,6 +28,8 @@ import {
   muCalculationTemplateFromRow,
   generateReportConfigFromRow,
   certificateTemplateFromRow,
+  outgoingChecklistFromRow,
+  inwardChecklistFromRow,
   resolveEquipmentModeOfCalibration,
   resolveEquipmentMethodUsed,
   serializeEquipmentRawDataSheetTemplate,
@@ -39,6 +46,43 @@ import {
   LAB_NAME_STORAGE_KEY,
 } from '@/features/settings/lab-settings/brandMark'
 import { LAB_SETTINGS_SINGLETON_ID } from '@/features/settings/lab-settings/labSettingsDb'
+import { serializeEquipmentChecklistTemplate } from '@/features/calibration/handling/jobs/conductOutsideChecklist'
+
+function equipmentFormToDbPayload(form: CalibrationEquipmentForm) {
+  const legacy = legacyRangeColumnsFromRanges(form.ranges)
+  const syncedTemplates = equipmentTemplatesFromRanges(form.ranges, {
+    rawDataSheetTemplate: form.rawDataSheetTemplate,
+    muCalculationTemplate: form.muCalculationTemplate,
+    generateReportConfig: form.generateReportConfig,
+    certificateTemplate: form.certificateTemplate,
+  })
+  return {
+    asset_code: normalizeText(form.assetCode),
+    equipment_name: normalizeText(form.equipmentName),
+    serial_number: normalizeText(form.serialNumber) || null,
+    equipment_status: form.equipmentStatus,
+    range_capacity: legacy.range_capacity,
+    resolution_least_count: legacy.resolution_least_count,
+    measurement_ranges: serializeMeasurementRanges(form.ranges),
+    calibration_method_is_code_id: form.calibrationMethodIsCodeId.trim() || null,
+    calibration_method_label: normalizeText(form.calibrationMethodLabel) || null,
+    master_equipment_id: primaryMasterEquipmentIdFromRanges(form.ranges),
+    raw_data_sheet_template: serializeEquipmentRawDataSheetTemplate(
+      syncedTemplates.rawDataSheetTemplate,
+    ),
+    mu_calculation_template: serializeEquipmentMuCalculationTemplate(
+      syncedTemplates.muCalculationTemplate,
+    ),
+    generate_report_config: serializeEquipmentGenerateReportConfig(
+      syncedTemplates.generateReportConfig,
+    ),
+    certificate_template_config: serializeEquipmentCertificateTemplate(
+      syncedTemplates.certificateTemplate,
+    ),
+    outgoing_checklist_template: serializeEquipmentChecklistTemplate(form.outgoingChecklist),
+    inward_checklist_template: serializeEquipmentChecklistTemplate(form.inwardChecklist),
+  }
+}
 
 function formatSupabaseError(err: unknown) {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -242,6 +286,17 @@ export default function CalibrationEquipmentsMasterPage() {
     return window.localStorage.getItem(LAB_NAME_STORAGE_KEY)?.trim() ?? ''
   })
   const [form, setForm] = useState<CalibrationEquipmentForm>(() => emptyCalibrationEquipmentForm())
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>(
+    'idle',
+  )
+  const formRef = useRef(form)
+  formRef.current = form
+  const editingIdRef = useRef(editingId)
+  editingIdRef.current = editingId
+  const lastSavedJsonRef = useRef('')
+  const persistInFlightRef = useRef(false)
+  const persistAgainRef = useRef(false)
+  const persistCloseAfterRef = useRef(false)
 
   const canSave =
     !saveLoading &&
@@ -302,6 +357,7 @@ export default function CalibrationEquipmentsMasterPage() {
       const { data, error } = await supabase
         .from('equipment_for_calibration')
         .select('id, asset_code, equipment_name')
+        .eq('is_iqc_master', false)
         .order('equipment_name', { ascending: true })
       if (error) throw error
       const list = Array.isArray(data)
@@ -334,7 +390,7 @@ export default function CalibrationEquipmentsMasterPage() {
       const { data, error } = await supabase
         .from('equipment_master')
         .select(
-          'id, asset_code, equipment_name, serial_number, equipment_status, range_capacity, resolution_least_count, measurement_ranges, calibration_method_is_code_id, calibration_method_label, master_equipment_id, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, created_at, updated_at',
+          'id, asset_code, equipment_name, serial_number, equipment_status, range_capacity, resolution_least_count, measurement_ranges, calibration_method_is_code_id, calibration_method_label, master_equipment_id, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, outgoing_checklist_template, inward_checklist_template, created_at, updated_at',
         )
         .order('asset_code', { ascending: true })
       if (error) throw error
@@ -440,96 +496,140 @@ export default function CalibrationEquipmentsMasterPage() {
     muCalculationTemplate: muCalculationTemplateFromRow(row),
     generateReportConfig: generateReportConfigFromRow(row),
     certificateTemplate: certificateTemplateFromRow(row),
+    outgoingChecklist: outgoingChecklistFromRow(row),
+    inwardChecklist: inwardChecklistFromRow(row),
     modeOfCalibration: resolveEquipmentModeOfCalibration(rangesFromRow(row), ''),
     methodUsed: resolveEquipmentMethodUsed(rangesFromRow(row), ''),
   })
 
   const openNew = () => {
-    setEditingId(null)
-    setForm({
+    const next = {
       ...emptyCalibrationEquipmentForm(),
       assetCode: makeNextAssetCode(),
-    })
+    }
+    lastSavedJsonRef.current = JSON.stringify(next)
+    setEditingId(null)
+    setForm(next)
+    setAutoSaveStatus('idle')
     setSaveMessage(null)
     setShowForm(true)
   }
 
   const openEdit = (row: CalibrationEquipmentRow) => {
+    const next = rowToForm(row)
+    lastSavedJsonRef.current = JSON.stringify(next)
     setEditingId(row.id)
-    setForm(rowToForm(row))
+    setForm(next)
+    setAutoSaveStatus('idle')
     setSaveMessage(null)
     setShowForm(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const openCopy = (row: CalibrationEquipmentRow) => {
+    const next = rowToForm(row, true)
+    lastSavedJsonRef.current = JSON.stringify(next)
     setEditingId(null)
-    setForm(rowToForm(row, true))
+    setForm(next)
+    setAutoSaveStatus('idle')
     setSaveMessage(null)
     setShowForm(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleSave = async () => {
-    if (!canSave) return
-    setSaveLoading(true)
-    setSaveMessage(null)
-    try {
-      const legacy = legacyRangeColumnsFromRanges(form.ranges)
-      const syncedTemplates = equipmentTemplatesFromRanges(form.ranges, {
-        rawDataSheetTemplate: form.rawDataSheetTemplate,
-        muCalculationTemplate: form.muCalculationTemplate,
-        generateReportConfig: form.generateReportConfig,
-        certificateTemplate: form.certificateTemplate,
-      })
-      // Do not write manufacturer/model_number — Equipment Master still owns those columns
-      // on the shared equipment_master table.
-      const payload = {
-        asset_code: normalizeText(form.assetCode),
-        equipment_name: normalizeText(form.equipmentName),
-        serial_number: normalizeText(form.serialNumber) || null,
-        equipment_status: form.equipmentStatus,
-        range_capacity: legacy.range_capacity,
-        resolution_least_count: legacy.resolution_least_count,
-        measurement_ranges: serializeMeasurementRanges(form.ranges),
-        calibration_method_is_code_id: form.calibrationMethodIsCodeId.trim() || null,
-        calibration_method_label: normalizeText(form.calibrationMethodLabel) || null,
-        master_equipment_id: primaryMasterEquipmentIdFromRanges(form.ranges),
-        raw_data_sheet_template: serializeEquipmentRawDataSheetTemplate(
-          syncedTemplates.rawDataSheetTemplate,
-        ),
-        mu_calculation_template: serializeEquipmentMuCalculationTemplate(
-          syncedTemplates.muCalculationTemplate,
-        ),
-        generate_report_config: serializeEquipmentGenerateReportConfig(
-          syncedTemplates.generateReportConfig,
-        ),
-        certificate_template_config: serializeEquipmentCertificateTemplate(
-          syncedTemplates.certificateTemplate,
-        ),
+  const persistForm = useCallback(
+    async (opts?: { close?: boolean }) => {
+      const current = formRef.current
+      const ready =
+        normalizeText(current.assetCode).length > 0 &&
+        normalizeText(current.equipmentName).length > 0
+      if (!ready) {
+        if (opts?.close) setSaveMessage('Equipment name is required.')
+        return
       }
 
-      if (editingId) {
-        const { error } = await supabase
-          .from('equipment_master')
-          .update(payload)
-          .eq('id', editingId)
-        if (error) throw error
-        setSaveMessage(`Saved ${payload.asset_code}.`)
-      } else {
-        const { error } = await supabase.from('equipment_master').insert(payload)
-        if (error) throw error
-        setSaveMessage(`Saved ${payload.asset_code}.`)
+      if (opts?.close) persistCloseAfterRef.current = true
+
+      const snap = JSON.stringify(current)
+      if (!opts?.close && snap === lastSavedJsonRef.current) return
+
+      if (persistInFlightRef.current) {
+        persistAgainRef.current = true
+        return
       }
 
-      setShowForm(false)
-      setEditingId(null)
-      await loadRows()
-    } catch (err) {
-      setSaveMessage(formatSupabaseError(err))
-    } finally {
-      setSaveLoading(false)
+      persistInFlightRef.current = true
+      setAutoSaveStatus('saving')
+      if (opts?.close) {
+        setSaveLoading(true)
+        setSaveMessage(null)
+      }
+
+      try {
+        do {
+          persistAgainRef.current = false
+          const toSave = formRef.current
+          const payload = equipmentFormToDbPayload(toSave)
+
+          if (editingIdRef.current) {
+            const { error } = await supabase
+              .from('equipment_master')
+              .update(payload)
+              .eq('id', editingIdRef.current)
+            if (error) throw error
+          } else {
+            const { data, error } = await supabase
+              .from('equipment_master')
+              .insert(payload)
+              .select('id')
+              .single()
+            if (error) throw error
+            const newId = String(data?.id ?? '').trim()
+            if (newId) {
+              editingIdRef.current = newId
+              setEditingId(newId)
+            }
+          }
+
+          lastSavedJsonRef.current = JSON.stringify(toSave)
+          if (JSON.stringify(formRef.current) !== lastSavedJsonRef.current) {
+            persistAgainRef.current = true
+          }
+        } while (persistAgainRef.current)
+
+        setAutoSaveStatus('saved')
+        if (persistCloseAfterRef.current) {
+          persistCloseAfterRef.current = false
+          setShowForm(false)
+          setEditingId(null)
+          await loadRows()
+        }
+      } catch (err) {
+        setAutoSaveStatus('error')
+        setSaveMessage(formatSupabaseError(err))
+      } finally {
+        persistInFlightRef.current = false
+        setSaveLoading(false)
+      }
+    },
+    [loadRows],
+  )
+
+  useEffect(() => {
+    if (!showForm) return
+    const timer = window.setTimeout(() => {
+      void persistForm()
+    }, 650)
+    return () => window.clearTimeout(timer)
+  }, [form, showForm, persistForm])
+
+  const handleSave = () => {
+    void persistForm({ close: true })
+  }
+
+  const handleFormDialogOpenChange = (open: boolean) => {
+    if (!open && typeof document !== 'undefined' && document.visibilityState !== 'hidden') {
+      void persistForm()
     }
+    handleFormOpenChange(open)
   }
 
   const toggleRow = (id: string) => {
@@ -675,40 +775,40 @@ export default function CalibrationEquipmentsMasterPage() {
       <CalibrationEquipmentsHeaderBar
         search={search}
         onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
         onNew={openNew}
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadRows()}
       />
 
-      <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
+      <Dialog open={showForm} onOpenChange={handleFormDialogOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+            'left-0 top-0',
+            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+          )}
         >
-          <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }}
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                {editingId
-                  ? 'Calibration Equipments · Edit Entry'
-                  : 'Calibration Equipments · New Entry'}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId ? 'Edit Equipment' : 'Add New Equipment'}
               </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#fafbfc]">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-stone-100/80 to-white">
             {saveMessage && showForm ? (
               <p className="shrink-0 border-l-2 border-destructive bg-destructive/5 px-4 py-2 text-sm text-destructive sm:px-6">
                 {saveMessage}
@@ -721,7 +821,8 @@ export default function CalibrationEquipmentsMasterPage() {
               masterEquipmentOptions={masterEquipmentOptions}
               canSave={canSave}
               saveLoading={saveLoading}
-              onSave={() => void handleSave()}
+              autoSaveStatus={autoSaveStatus}
+              onSave={handleSave}
             />
           </div>
         </DialogContent>

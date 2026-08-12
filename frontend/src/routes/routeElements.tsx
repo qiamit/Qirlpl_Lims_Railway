@@ -25,6 +25,7 @@ import CalibrationEquipmentsPage from '@/features/calibration/equipments/Calibra
 import CalibrationHandlingPage from '@/features/calibration/handling/CalibrationHandlingPage'
 import CalibrationServiceRequestPage from '@/features/calibration/handling/CalibrationServiceRequestPage'
 import EquipmentForCalibrationPage from '@/features/calibration/equipment-for-calibration/EquipmentForCalibrationPage'
+import MastersForIqcPage from '@/features/calibration/equipment-for-calibration/MastersForIqcPage'
 import JobAllocationPage from '@/features/calibration/handling/job-allocation/JobAllocationPage'
 import CalibrationConductPage from '@/features/calibration/handling/calibration-conduct/CalibrationConductPage'
 import CalibrationConductInsidePage from '@/features/calibration/handling/calibration-conduct-inside/CalibrationConductInsidePage'
@@ -174,6 +175,10 @@ export function EquipmentForCalibrationRoute() {
   return <EquipmentForCalibrationPage />
 }
 
+export function MastersForIqcRoute() {
+  return <MastersForIqcPage />
+}
+
 export function SaleQuotationRoute() {
   return <QuotationPage />
 }
@@ -270,5 +275,6 @@ export {
   CalibrationHandlingPage,
   CalibrationServiceRequestPage,
   EquipmentForCalibrationPage,
+  MastersForIqcPage,
 }
 

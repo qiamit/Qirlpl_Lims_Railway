@@ -315,10 +315,11 @@ export function buildSectionChatAiPrompt(input: {
   pdfFileNames: string[]
   catalogText?: string
 }): string {
-  const pdfNote =
-    input.pdfFileNames.length > 0
-      ? `Attached reference PDF(s): ${input.pdfFileNames.join(', ')}. Use extracted PDF text from context when relevant.`
-      : 'No PDFs attached.'
+  const hasPdfs = input.pdfFileNames.length > 0
+  const userMsg = input.userMessage.trim()
+  const pdfNote = hasPdfs
+    ? `Attached reference PDF(s): ${input.pdfFileNames.join(', ')}. Extract and use PDF text from context as the primary source to draft/update this section.`
+    : 'No PDFs attached — rely on the user instruction and current HTML only.'
 
   const registerBlock = input.catalogText?.trim()
     ? [
@@ -331,8 +332,33 @@ export function buildSectionChatAiPrompt(input: {
         'No document register was provided — avoid inventing document numbers; keep existing Doc Nos unchanged unless the user names a real one.',
       ]
 
+  const instructionBlock = userMsg
+    ? [
+        'User instruction (apply while drafting — do NOT quote or restate this instruction in the output):',
+        userMsg,
+      ]
+    : [
+        'User instruction: none — draft/update this section primarily from the attached PDF(s).',
+      ]
+
+  const draftMission = hasPdfs
+    ? [
+        'MISSION — UPDATE THIS SECTION ONLY:',
+        '- Use attached PDF(s) and any user instruction as source material.',
+        '- Produce a clear ISO 17025 controlled-document body for THIS section only — not the whole manual.',
+        '- Match the section title/purpose; pull relevant requirements, procedures, and wording from the PDFs.',
+        '- If current HTML is empty or placeholder-like, draft full section content from the sources.',
+        '- If current HTML has useful content, improve/merge it with the sources (do not drop critical existing points unless they conflict with the sources).',
+        '- Write professional controlled-document English suitable for print.',
+      ]
+    : [
+        'MISSION — UPDATE THIS SECTION ONLY:',
+        '- Apply the user instruction to draft or improve this section body only — not other sections or the whole manual.',
+        '- Write professional controlled-document English suitable for a Quality Manual section.',
+      ]
+
   return [
-    'You update ONE Quality Manual / controlled-document SECTION body for an ISO 17025 LIMS.',
+    'You draft/update ONE Quality Manual / controlled-document SECTION body for an ISO 17025 LIMS.',
     'STRICT SCOPE:',
     '- Update ONLY this section body HTML.',
     '- Do NOT change letterhead, page header, page footer, cover page, TOC, or other sections.',
@@ -342,15 +368,15 @@ export function buildSectionChatAiPrompt(input: {
     `Section No: ${input.sectionNo || '(blank)'}`,
     `Section Title: ${input.sectionTitle || '(blank)'}`,
     pdfNote,
+    ...draftMission,
     ...registerBlock,
-    'User instruction (apply to the section body — do NOT quote or restate this instruction in the output):',
-    input.userMessage.trim(),
+    ...instructionBlock,
     'CRITICAL OUTPUT RULES:',
     '1. Your entire reply MUST be the section body HTML only. Start with <p> or <ul> or <table> or <h2>/<h3>.',
     '2. FORBIDDEN in the reply: greetings, explanations, "Here is the update", "Sure", "However", "as requested", notes about the instruction, markdown, or code fences.',
     '3. Do not mention the user instruction, PDFs, or that you are an AI.',
     '4. Keep tables if present unless the user asks to change them. Tables must use real HTML <table> with <th>/<td> and <p> inside cells.',
-    '5. If the instruction cannot be applied, return the original HTML unchanged — still with zero commentary.',
+    '5. If sources/instruction cannot be applied, return the original HTML unchanged — still with zero commentary.',
     'Current section HTML:',
     input.bodyHtml.slice(0, 14000),
   ].join('\n')

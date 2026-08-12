@@ -27,46 +27,83 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { parseCalibrationPointsTable } from '@/features/calibration/equipment-for-calibration/types'
 import {
+  SCIENTIFIC_PAD_KEYS,
+  applyFormulaPadInsert,
+  type FormulaPadKey,
+} from '@/features/calibration/equipment-for-calibration/pointFormula'
+import {
   EMPTY_RAW_DATA_ENVIRONMENT,
   ENV_PARAMETER_OPTIONS,
-  ENV_STANDARD_FIELD_OPTIONS,
   defaultEnvStatFormulaExpression,
   emptyColumnFormula,
   emptyEnvParameterColumn,
   emptyEnvironmentReadingRow,
   emptyRawDataSheetColumn,
+  emptyRawDataSheetTableBlock,
   emptyVerificationItem,
+  allRawDataSheetColumns,
+  DEFAULT_RAW_DATA_TABLE_NAME,
+  PRIMARY_RAW_DATA_TABLE_ID,
   envParameterFormulaColumns,
   ENV_FORMULA_REF_PREFIX,
   evaluateEnvParameterFormula,
   extractExpressionSourceKeys,
+  wrapBareFormulaColumnRef,
   formulaOpMeta,
+  isEnvRowCalculated,
   isEnvStandardFieldLabel,
   resolveEnvParameterColumns,
+  resolveEnvRowFieldType,
   analyzeColumnFormulaExpression,
   COLUMN_FORMULA_HELP_ROWS,
   type FormulaValidationIssue,
   type EnvParameterColumn,
+  type EnvRowFieldType,
   type EnvParameterKey,
   type RawDataColumnFormula,
   type RawDataEnvironmentReadingRow,
   type RawDataSheetColumn,
   type RawDataSheetTemplate,
 } from '@/features/calibration/rawDataSheetTypes'
-import { masterEquipmentFormulaRefColumns } from '@/features/calibration/masterEquipmentFormulaRefs'
-import { masterPointsFormulaRefColumns } from '@/features/calibration/masterEquipmentFormulaRefs'
+import {
+  masterEquipmentFormulaRefColumns,
+  masterPointsFormulaRefColumns,
+} from '@/features/calibration/masterEquipmentFormulaRefs'
 import {
   deleteSavedColumnFormula,
   loadSavedColumnFormulas,
   saveColumnFormula,
   type SavedColumnFormula,
 } from '@/features/calibration/equipments/savedColumnFormulas'
+import {
+  MU_CALIBRATION_POINT_FIELD_KEY,
+  isMuEquipmentRangeFieldKey,
+} from '@/features/calibration/equipments/muCalculationTypes'
+
+const thClass =
+  'border border-stone-700 bg-stone-800 px-2 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200'
+const addBtnClass = 'h-8 w-8 px-0 text-amber-800 hover:bg-amber-500/15 hover:text-amber-950'
 
 function bracketLabel(label: string): string {
   return `[${label.trim() || 'Untitled'}]`
+}
+
+export function formulaRefLocation(col: RawDataSheetColumn): string {
+  if (col.key.startsWith(ENV_FORMULA_REF_PREFIX)) return 'Environment'
+  if (col.key.startsWith('eq:')) return 'Master Equipment'
+  if (col.key.startsWith('pt:')) return 'Calibration Points'
+  if (col.key === MU_CALIBRATION_POINT_FIELD_KEY) return 'Calibration Point'
+  if (isMuEquipmentRangeFieldKey(col.key)) return 'Range'
+  return 'This Table'
 }
 
 /** Build editable Excel-style expression from legacy op/sources. */
@@ -181,18 +218,41 @@ function renderFormulaWithErrorHighlight(value: string, errorToken: string | nul
   return <>{parts}</>
 }
 
+function columnPadKeyClass(variant: FormulaPadKey['variant']): string {
+  switch (variant) {
+    case 'accent':
+      return 'rounded-none border-amber-700/50 bg-amber-700 text-white hover:bg-amber-800'
+    case 'fn':
+      return 'rounded-none border-stone-400 bg-stone-100 text-amber-900 hover:bg-amber-50'
+    case 'muted':
+      return 'rounded-none border-stone-400 bg-stone-50 text-stone-700 hover:bg-stone-100'
+    case 'danger':
+      return 'rounded-none border-red-300 bg-red-50 text-red-800 hover:bg-red-100'
+    default:
+      return 'rounded-none border-stone-400 bg-white text-stone-800 hover:bg-stone-100'
+  }
+}
+
 function ColumnFormulaInput({
   id,
   value,
   onChange,
   sourceColumns,
   errorToken = null,
+  toolbarExtra,
+  toolbarAfter,
+  formulaFor,
+  locationOf,
 }: {
   id: string
   value: string
   onChange: (next: string) => void
   sourceColumns: RawDataSheetColumn[]
   errorToken?: string | null
+  toolbarExtra?: ReactNode
+  toolbarAfter?: ReactNode
+  formulaFor?: string
+  locationOf?: (col: RawDataSheetColumn) => string
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [cursor, setCursor] = useState(0)
@@ -200,6 +260,7 @@ function ColumnFormulaInput({
   const [highlight, setHighlight] = useState(0)
   const [focused, setFocused] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
+  const [keypadOpen, setKeypadOpen] = useState(false)
   const [formulaName, setFormulaName] = useState('')
   const [savedFormulas, setSavedFormulas] = useState<SavedColumnFormula[]>([])
   const [libraryHint, setLibraryHint] = useState<string | null>(null)
@@ -208,12 +269,18 @@ function ColumnFormulaInput({
     setSavedFormulas(loadSavedColumnFormulas())
   }, [])
 
-  /** Grow the box as the formula wraps to more lines. */
-  useEffect(() => {
+  const syncFormulaHeight = () => {
     const el = inputRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
+    const next = Math.min(Math.max(el.scrollHeight, 40), 192)
+    el.style.height = `${next}px`
+    el.style.overflowY = el.scrollHeight > 192 ? 'auto' : 'hidden'
+  }
+
+  /** Grow the box as the formula wraps to more lines. */
+  useEffect(() => {
+    syncFormulaHeight()
   }, [value])
 
   const token = useMemo(() => findAutocompleteToken(value, cursor), [value, cursor])
@@ -334,13 +401,9 @@ function ColumnFormulaInput({
     setLibraryHint(`Deleted “${item.name}”.`)
   }
 
-  return (
-    <div className="relative space-y-1">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Label htmlFor={id} className="text-[11px]">
-          Formula
-        </Label>
-        <div className="flex flex-wrap items-center gap-1.5">
+  const toolbar = (
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {toolbarExtra}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -420,8 +483,127 @@ function ColumnFormulaInput({
             <BookmarkPlus size={13} />
             Save
           </Button>
+          {toolbarAfter}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+              'h-7 gap-1.5 px-2 text-[11px]',
+              keypadOpen ? limsPrimaryBtnClass : limsOutlineBtnClass,
+            )}
+            aria-expanded={keypadOpen}
+            aria-controls={`${id}-keypad`}
+            onClick={() => setKeypadOpen((v) => !v)}
+          >
+            <Calculator size={13} />
+            {keypadOpen ? 'Hide Calculator' : 'Calculator'}
+          </Button>
         </div>
+  )
+
+  return (
+    <div className="relative space-y-1">
+      <Label htmlFor={id} className="text-[11px]">
+        {formulaFor?.trim() ? `Formula for ${formulaFor.trim()}` : 'Formula'}
+      </Label>
+
+      <div
+        className={cn(
+          'relative min-h-10 overflow-hidden rounded-none border bg-white shadow-sm',
+          hasError ? 'border-red-400 ring-1 ring-red-200' : 'border-input',
+        )}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 whitespace-pre-wrap break-words px-3 py-2 font-mono text-sm leading-6 text-slate-900"
+        >
+          {renderFormulaWithErrorHighlight(value, errorToken)}
+        </div>
+        <textarea
+          ref={inputRef}
+          id={id}
+          rows={1}
+          value={value}
+          spellCheck={false}
+          autoComplete="off"
+          placeholder='=AVERAGE([Reading at 0],[Reading at 120]) or =[Error]&" °C"'
+          className="relative block w-full resize-none overflow-hidden whitespace-pre-wrap break-words bg-transparent px-3 py-2 font-mono text-sm leading-6 text-transparent caret-slate-900 outline-none placeholder:text-muted-foreground"
+          onChange={(e) => {
+            onChange(e.target.value.replace(/\r?\n/g, ''))
+            setCursor(e.target.selectionStart ?? e.target.value.length)
+            requestAnimationFrame(syncFormulaHeight)
+          }}
+          onFocus={(e) => {
+            setFocused(true)
+            setCursor(e.currentTarget.selectionStart ?? e.currentTarget.value.length)
+          }}
+          onBlur={() => {
+            window.setTimeout(() => setFocused(false), 120)
+          }}
+          onClick={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
+          onKeyUp={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
+          onKeyDown={(e) => {
+            if (!open || suggestions.length === 0) {
+              // Keep the formula on one logical line — wrapping is visual only
+              if (e.key === 'Enter') e.preventDefault()
+              return
+            }
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setHighlight((h) => (h + 1) % suggestions.length)
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setHighlight((h) => (h - 1 + suggestions.length) % suggestions.length)
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+              e.preventDefault()
+              const pick = suggestions[highlight]
+              if (pick) insertColumn(pick)
+            } else if (e.key === 'Escape') {
+              setOpen(false)
+            }
+          }}
+          aria-label="Column formula"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-invalid={hasError || undefined}
+        />
       </div>
+      {open ? (
+        <ul
+          className="relative z-30 mt-1 max-h-48 w-full overflow-y-auto rounded-none border border-stone-400 bg-white py-1 shadow-lg"
+          role="listbox"
+        >
+          {suggestions.map((col, i) => {
+            const location = locationOf?.(col) ?? formulaRefLocation(col)
+            return (
+            <li key={col.key}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={i === highlight}
+                className={cn(
+                  'flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm',
+                  i === highlight ? 'bg-amber-50 text-stone-900' : 'text-stone-700 hover:bg-stone-50',
+                )}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  insertColumn(col)
+                }}
+                onMouseEnter={() => setHighlight(i)}
+              >
+                <span className="min-w-0 truncate font-medium">
+                  {col.label || 'Untitled column'}
+                </span>
+                <span className="shrink-0 text-right text-[11px] text-stone-500">
+                  {location}
+                </span>
+              </button>
+            </li>
+            )
+          })}
+        </ul>
+      ) : null}
 
       {saveOpen ? (
         <div
@@ -462,117 +644,51 @@ function ColumnFormulaInput({
         <p className="text-[11px] text-indigo-800">{libraryHint}</p>
       ) : null}
 
-      <div
-        className={cn(
-          'relative min-h-10 overflow-hidden rounded-md border bg-white shadow-sm',
-          hasError ? 'border-red-400 ring-1 ring-red-200' : 'border-input',
-        )}
-      >
+      {toolbar}
+
+      {keypadOpen ? (
         <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 whitespace-pre-wrap break-words px-3 py-2 font-mono text-sm leading-6 text-slate-900"
+          id={`${id}-keypad`}
+          className="border border-stone-400 bg-stone-50 p-2"
+          role="group"
+          aria-label="Scientific calculator keypad"
         >
-          {renderFormulaWithErrorHighlight(value, errorToken)}
-        </div>
-        <textarea
-          ref={inputRef}
-          id={id}
-          rows={1}
-          value={value}
-          spellCheck={false}
-          autoComplete="off"
-          placeholder='=AVERAGE([Reading at 0],[Reading at 120]) or =[Error]&" °C"'
-          className="relative block w-full resize-none overflow-hidden whitespace-pre-wrap break-words bg-transparent px-3 py-2 font-mono text-sm leading-6 text-transparent caret-slate-900 outline-none placeholder:text-muted-foreground"
-          onChange={(e) => {
-            onChange(e.target.value.replace(/\r?\n/g, ''))
-            setCursor(e.target.selectionStart ?? e.target.value.length)
-          }}
-          onFocus={(e) => {
-            setFocused(true)
-            setCursor(e.currentTarget.selectionStart ?? e.currentTarget.value.length)
-          }}
-          onBlur={() => {
-            window.setTimeout(() => setFocused(false), 120)
-          }}
-          onClick={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
-          onKeyUp={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
-          onKeyDown={(e) => {
-            if (!open || suggestions.length === 0) {
-              // Keep the formula on one logical line — wrapping is visual only
-              if (e.key === 'Enter') e.preventDefault()
-              return
-            }
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setHighlight((h) => (h + 1) % suggestions.length)
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setHighlight((h) => (h - 1 + suggestions.length) % suggestions.length)
-            } else if (e.key === 'Enter' || e.key === 'Tab') {
-              e.preventDefault()
-              const pick = suggestions[highlight]
-              if (pick) insertColumn(pick)
-            } else if (e.key === 'Escape') {
-              setOpen(false)
-            }
-          }}
-          aria-label="Column formula"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-invalid={hasError || undefined}
-        />
-      </div>
-      {open ? (
-        <ul
-          className="absolute z-[90] mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg"
-          role="listbox"
-        >
-          {suggestions.map((col, i) => {
-            const isEnv = col.key.startsWith(ENV_FORMULA_REF_PREFIX)
-            const isEq = col.key.startsWith('eq:')
-            const isPt = col.key.startsWith('pt:')
-            return (
-            <li key={col.key}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={i === highlight}
-                className={cn(
-                  'flex w-full items-center justify-between px-3 py-1.5 text-left text-sm',
-                  i === highlight ? 'bg-indigo-50 text-indigo-900' : 'text-slate-700 hover:bg-slate-50',
-                )}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  insertColumn(col)
-                }}
-                onMouseEnter={() => setHighlight(i)}
+          <div className="space-y-1.5">
+            {SCIENTIFIC_PAD_KEYS.map((row, rowIndex) => (
+              <div
+                key={`col-pad-row-${rowIndex}`}
+                className="grid gap-1.5"
+                style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}
               >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate font-medium">{col.label || 'Untitled column'}</span>
-                  {isEnv ? (
-                    <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
-                      Env
-                    </span>
-                  ) : null}
-                  {isEq ? (
-                    <span className="shrink-0 rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-teal-800">
-                      Master
-                    </span>
-                  ) : null}
-                  {isPt ? (
-                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-900">
-                      Points
-                    </span>
-                  ) : null}
-                </span>
-                <span className="ml-2 shrink-0 font-mono text-[10px] text-slate-400">
-                  {bracketLabel(col.label || col.key)}
-                </span>
-              </button>
-            </li>
-            )
-          })}
-        </ul>
+                {row.map((key) => (
+                  <button
+                    key={`${rowIndex}-${key.label}-${key.ariaLabel}`}
+                    type="button"
+                    aria-label={key.ariaLabel}
+                    onClick={() => {
+                      const el = inputRef.current
+                      const start = el?.selectionStart ?? cursor
+                      const end = el?.selectionEnd ?? cursor
+                      const next = applyFormulaPadInsert(value, start, end, key.insert)
+                      const nextValue = next.value.replace(/\r?\n/g, '')
+                      onChange(nextValue)
+                      requestAnimationFrame(() => {
+                        const box = inputRef.current
+                        if (!box) return
+                        box.focus()
+                        box.setSelectionRange(next.caret, next.caret)
+                        setCursor(next.caret)
+                      })
+                    }}
+                    className={`h-9 border font-mono text-[12px] font-medium transition-colors ${columnPadKeyClass(key.variant)}`}
+                  >
+                    {key.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       ) : null}
     </div>
   )
@@ -739,7 +855,7 @@ function EnvCellFormulaInput({
       />
       {open ? (
         <ul
-          className="absolute z-[90] mt-1 max-h-40 w-full min-w-[12rem] overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute z-[90] mt-1 max-h-40 w-full min-w-[12rem] overflow-y-auto rounded-md border border-[#e7e0d4] bg-white py-1 shadow-lg"
           role="listbox"
         >
           {suggestions.map((label, i) => (
@@ -781,6 +897,7 @@ export function ColumnCalculationDialog({
   envColumns,
   onUpdateFormula,
   layer = 'nested',
+  locationOf,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -790,19 +907,26 @@ export function ColumnCalculationDialog({
   onUpdateFormula: (col: RawDataSheetColumn, patch: Partial<RawDataColumnFormula>) => void
   /** Dialog stack level — use `top` when parent is already `stacked` (z-70). */
   layer?: 'default' | 'nested' | 'stacked' | 'top'
+  locationOf?: (col: RawDataSheetColumn) => string
 }) {
   const formula = column?.formula ?? emptyColumnFormula()
   const columnIndex = column ? columns.findIndex((c) => c.key === column.key) : -1
   const sourceOptions = useMemo(() => {
-    if (!column || columnIndex < 0) return []
+    if (!column) return [...envColumns]
     const dataCols = columns.filter(
-      (c, i) => c.key !== column.key && (c.type !== 'formula' || i < columnIndex),
+      (c, i) => c.key !== column.key && (c.type !== 'formula' || columnIndex < 0 || i < columnIndex),
     )
-    return [...dataCols, ...envColumns]
+    const seen = new Set(dataCols.map((c) => c.key))
+    const extras = envColumns.filter((c) => c.key !== column.key && !seen.has(c.key))
+    return [...dataCols, ...extras]
   }, [column, columns, columnIndex, envColumns])
 
   const labelOf = (key: string) =>
-    (columns.find((c) => c.key === key)?.label || key).trim()
+    (
+      columns.find((c) => c.key === key)?.label ||
+      envColumns.find((c) => c.key === key)?.label ||
+      key
+    ).trim()
 
   const [draftExpr, setDraftExpr] = useState('=')
   const [helpOpen, setHelpOpen] = useState(false)
@@ -825,9 +949,10 @@ export function ColumnCalculationDialog({
   if (!column) return null
 
   const commitExpression = (nextExpr: string) => {
-    setDraftExpr(nextExpr)
-    const sources = extractExpressionSourceKeys(nextExpr, sourceOptions)
-    const trimmed = nextExpr.trim()
+    const wrapped = wrapBareFormulaColumnRef(nextExpr, sourceOptions)
+    setDraftExpr(wrapped)
+    const sources = extractExpressionSourceKeys(wrapped, sourceOptions)
+    const trimmed = wrapped.trim()
     let nextOp = formula.op
     if (/^\s*=?\s*AVERAGE\s*\(/i.test(trimmed)) nextOp = 'average'
     else if (/^\s*=?\s*SUM\s*\(/i.test(trimmed)) nextOp = 'sum'
@@ -852,68 +977,72 @@ export function ColumnCalculationDialog({
       <DialogContent
         persistOnFocusLoss
         layer={layer}
-        className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-xl flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
         aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          'flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-xl flex-col',
+          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
+          'md:w-[min(36rem,calc(100vw-268px-2rem))] md:max-w-[min(36rem,calc(100vw-268px-2rem))]',
+          'md:!-translate-x-1/2 md:!-translate-y-1/2',
+        )}
       >
-        <div className="shrink-0 border-b border-slate-200 bg-slate-900 px-4 py-3 text-white sm:px-5">
-          <DialogHeader className="text-left">
-            <div className="min-w-0 pr-8">
-              <p className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-indigo-300/90">
-                Calculated Column
-              </p>
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
               <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 Column Calculation
               </DialogTitle>
-              <p className="mt-1 text-xs text-slate-300">
-                {column.label.trim() || 'Untitled column'}
-              </p>
-            </div>
-          </DialogHeader>
+            </DialogHeader>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
           <ColumnFormulaInput
             id={`rds-formula-${column.key}`}
             value={draftExpr}
             onChange={commitExpression}
             sourceColumns={sourceOptions}
             errorToken={validationIssue?.errorToken ?? null}
+            formulaFor={column.label.trim() || 'Column'}
+            locationOf={locationOf}
+            toolbarExtra={
+              <>
+                <Label htmlFor={`rds-dec-${column.key}`} className="text-[11px]">
+                  Decimals
+                </Label>
+                <Input
+                  id={`rds-dec-${column.key}`}
+                  type="number"
+                  min={0}
+                  max={6}
+                  className="h-7 w-14 bg-white px-1.5 text-center"
+                  value={formula.decimals ?? 2}
+                  onChange={(e) => {
+                    const t = e.target.value.trim()
+                    const n = Number(t)
+                    onUpdateFormula(column, {
+                      decimals:
+                        !t || !Number.isFinite(n) || n < 0 || n > 6 ? 2 : Math.round(n),
+                    })
+                  }}
+                />
+              </>
+            }
+            toolbarAfter={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn('h-7 px-2 text-[11px]', limsOutlineBtnClass)}
+                onClick={() => setHelpOpen(true)}
+                aria-label="Formula help — list and usage"
+              >
+                <CircleHelp size={13} className="mr-1" aria-hidden />
+                Formulas
+              </Button>
+            }
           />
-
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label htmlFor={`rds-dec-${column.key}`} className="text-[11px]">
-                Decimals
-              </Label>
-              <Input
-                id={`rds-dec-${column.key}`}
-                type="number"
-                min={0}
-                max={6}
-                className="h-9 w-[110px] bg-white"
-                value={formula.decimals ?? 2}
-                onChange={(e) => {
-                  const t = e.target.value.trim()
-                  const n = Number(t)
-                  onUpdateFormula(column, {
-                    decimals:
-                      !t || !Number.isFinite(n) || n < 0 || n > 6 ? 2 : Math.round(n),
-                  })
-                }}
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 border-indigo-600/40 text-indigo-800 hover:bg-indigo-50"
-              onClick={() => setHelpOpen(true)}
-              aria-label="Formula help — list and usage"
-            >
-              <CircleHelp size={14} className="mr-1.5" aria-hidden />
-              Formulas
-            </Button>
-          </div>
 
           {sourceOptions.length === 0 ? (
             <p className="text-xs text-amber-700">
@@ -923,10 +1052,10 @@ export function ColumnCalculationDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
           <Button
             type="button"
-            className="bg-indigo-600 text-white hover:bg-indigo-500"
+            className={limsPrimaryBtnClass}
             onClick={() => {
               const dp = formula.decimals != null ? formula.decimals : 2
               if (formula.decimals == null) {
@@ -936,7 +1065,7 @@ export function ColumnCalculationDialog({
               onOpenChange(false)
             }}
           >
-            Done
+            Save & Close
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -945,43 +1074,48 @@ export function ColumnCalculationDialog({
         <DialogContent
           persistOnFocusLoss
           layer={layer === 'default' ? 'nested' : layer}
-          className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col',
+            'left-0 top-0',
+            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          )}
         >
-          <div className="shrink-0 border-b border-slate-200 bg-slate-900 px-4 py-3 text-white sm:px-5">
-            <DialogHeader className="text-left">
-              <p className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-indigo-300/90">
-                Column Calculation
-              </p>
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
               <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 Formula List &amp; Use
               </DialogTitle>
             </DialogHeader>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
-            <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+            <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
               <table className="w-full min-w-[640px] border-collapse text-center text-sm">
-                <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <thead className="bg-stone-800 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                   <tr>
-                    <th className="border border-slate-200 px-2 py-2">Formula</th>
-                    <th className="border border-slate-200 px-2 py-2">Syntax</th>
-                    <th className="border border-slate-200 px-2 py-2">Example</th>
-                    <th className="border border-slate-200 px-2 py-2">Use</th>
+                    <th className="border border-stone-700 px-2 py-2">Formula</th>
+                    <th className="border border-stone-700 px-2 py-2">Syntax</th>
+                    <th className="border border-stone-700 px-2 py-2">Example</th>
+                    <th className="border border-stone-700 px-2 py-2">Use</th>
                   </tr>
                 </thead>
                 <tbody>
                   {COLUMN_FORMULA_HELP_ROWS.map((row) => (
                     <tr key={row.name}>
-                      <td className="border border-slate-200 px-2 py-2 font-medium text-slate-900">
+                      <td className="border border-stone-300 px-2 py-2 font-medium text-stone-900">
                         {row.name}
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 font-mono text-xs text-slate-700">
+                      <td className="border border-stone-300 px-2 py-2 font-mono text-xs text-stone-700">
                         {row.syntax}
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 font-mono text-xs text-indigo-900">
+                      <td className="border border-stone-300 px-2 py-2 font-mono text-xs text-amber-900">
                         {row.example}
                       </td>
-                      <td className="border border-slate-200 px-2 py-2 text-slate-600">
+                      <td className="border border-stone-300 px-2 py-2 text-stone-600">
                         {row.use}
                       </td>
                     </tr>
@@ -990,8 +1124,13 @@ export function ColumnCalculationDialog({
               </table>
             </div>
           </div>
-          <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
-            <Button type="button" variant="outline" onClick={() => setHelpOpen(false)}>
+          <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
+            <Button
+              type="button"
+              variant="outline"
+              className={limsOutlineBtnClass}
+              onClick={() => setHelpOpen(false)}
+            >
               Close
             </Button>
           </DialogFooter>
@@ -1005,11 +1144,19 @@ export function ColumnCalculationDialog({
 function EnvironmentConditionEditor({
   value,
   onChange,
+  open,
+  onOpenChange,
 }: {
   value: RawDataSheetTemplate
   onChange: (next: RawDataSheetTemplate) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
   const [paramsOpen, setParamsOpen] = useState(false)
+  const [envCalcTarget, setEnvCalcTarget] = useState<{
+    rowId: string
+    paramId: string
+  } | null>(null)
   const envDefaults = value.environmentDefaults ?? {
     selectedParameters: [...EMPTY_RAW_DATA_ENVIRONMENT.selectedParameters],
     parameterColumns: [],
@@ -1019,15 +1166,6 @@ function EnvironmentConditionEditor({
   const parameterColumns = resolveEnvParameterColumns(envDefaults)
   const [draftColumns, setDraftColumns] = useState<EnvParameterColumn[]>(parameterColumns)
   const envRows = envDefaults.rows ?? []
-  const cols = value.columns.filter((c) => c.type !== 'formula')
-  const readingLike = cols.filter((c) =>
-    /reading|indicator|obs|observed|as\s*found|as\s*left/i.test(c.label),
-  )
-  const readingLabels = [
-    ...new Set(
-      (readingLike.length > 0 ? readingLike : cols).map((c) => c.label.trim()).filter(Boolean),
-    ),
-  ]
 
   const patchEnvDefaults = (next: {
     selectedParameters?: EnvParameterKey[]
@@ -1080,11 +1218,15 @@ function EnvironmentConditionEditor({
   }
 
   const addEnvRow = () => {
-    const used = new Set(envRows.map((r) => r.readingLabel.trim()))
-    const nextLabel =
-      readingLabels.find((label) => !used.has(label)) ?? `Reading ${envRows.length + 1}`
     patchEnvDefaults({
-      rows: [...envRows, emptyEnvironmentReadingRow(nextLabel)],
+      rows: [
+        ...envRows,
+        {
+          ...emptyEnvironmentReadingRow('Average', 'number'),
+          fieldType: 'number',
+          values: Object.fromEntries(parameterColumns.map((c) => [c.id, ''])),
+        },
+      ],
     })
   }
 
@@ -1092,6 +1234,7 @@ function EnvironmentConditionEditor({
     rowId: string,
     patch: {
       readingLabel?: string
+      fieldType?: EnvRowFieldType
       values?: Record<string, string>
       formulas?: Record<string, string> | null
       clearFormulas?: boolean
@@ -1109,6 +1252,7 @@ function EnvironmentConditionEditor({
         return {
           ...rest,
           readingLabel: patch.readingLabel ?? row.readingLabel,
+          fieldType: patch.fieldType ?? row.fieldType,
           values: patch.values ? { ...row.values, ...patch.values } : row.values,
           ...(nextFormulas && Object.keys(nextFormulas).length > 0
             ? { formulas: nextFormulas }
@@ -1118,20 +1262,11 @@ function EnvironmentConditionEditor({
     })
   }
 
-  /** Only Environment Field rows (data rows) — not Raw Data Sheet columns. */
-  const envDataFieldLabels = [
-    ...new Set(
-      envRows
-        .map((r) => r.readingLabel.trim())
-        .filter((label) => label.length > 0 && !isEnvStandardFieldLabel(label)),
-    ),
-  ]
-
   const applyStandardField = (rowId: string, fieldLabel: string) => {
     const sourceLabels = envRows
-      .filter((r) => r.id !== rowId)
+      .filter((r) => r.id !== rowId && !isEnvRowCalculated(r))
       .map((r) => r.readingLabel.trim())
-      .filter((label) => label.length > 0 && !isEnvStandardFieldLabel(label))
+      .filter((label) => label.length > 0)
     const expr = defaultEnvStatFormulaExpression(fieldLabel, sourceLabels)
     const formulas: Record<string, string> = {}
     for (const col of parameterColumns) {
@@ -1139,10 +1274,58 @@ function EnvironmentConditionEditor({
     }
     patchEnvRow(rowId, {
       readingLabel: fieldLabel,
+      fieldType: 'formula',
       formulas,
       values: Object.fromEntries(parameterColumns.map((c) => [c.id, ''])),
     })
   }
+
+  const changeEnvFieldType = (rowId: string, type: EnvRowFieldType) => {
+    if (type === 'formula') {
+      const row = envRows.find((r) => r.id === rowId)
+      const label = row?.readingLabel.trim() || 'Average'
+      applyStandardField(rowId, isEnvStandardFieldLabel(label) ? label : 'Average')
+      return
+    }
+    patchEnvRow(rowId, {
+      fieldType: type,
+      clearFormulas: true,
+    })
+  }
+
+  const seededAverageRef = useRef(false)
+  useEffect(() => {
+    if (!open) {
+      seededAverageRef.current = false
+      return
+    }
+    if (seededAverageRef.current || parameterColumns.length === 0) return
+    if (envRows.length === 0) {
+      seededAverageRef.current = true
+      patchEnvDefaults({
+        rows: [
+          {
+            ...emptyEnvironmentReadingRow('Average', 'number'),
+            fieldType: 'number',
+            values: Object.fromEntries(parameterColumns.map((c) => [c.id, ''])),
+          },
+        ],
+      })
+      return
+    }
+    if (envRows.length === 1) {
+      const first = envRows[0]!
+      const label = first.readingLabel.trim()
+      if (!first.fieldType && (!label || /^Reading \d+$/i.test(label))) {
+        seededAverageRef.current = true
+        patchEnvRow(first.id, {
+          readingLabel: label || 'Average',
+          fieldType: 'number',
+          clearFormulas: true,
+        })
+      }
+    }
+  }, [open, parameterColumns, envRows])
 
   const removeEnvRow = (rowId: string) => {
     patchEnvDefaults({
@@ -1150,53 +1333,111 @@ function EnvironmentConditionEditor({
     })
   }
 
-  return (
-    <div className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-800">
-          <Thermometer size={18} aria-hidden />
-        </div>
-        <p className="min-w-0 flex-1 text-sm font-medium text-slate-900">Environment Condition</p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 border-sky-600/40 text-sky-900 hover:bg-sky-50"
-          onClick={openParams}
-          aria-label="Edit environment parameter column headers"
-        >
-          <Settings2 size={14} className="mr-1.5" aria-hidden />
-          Parameters
-          {parameterColumns.length > 0 ? (
-            <span className="ml-1.5 rounded-full bg-sky-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-900">
-              {parameterColumns.length}
-            </span>
-          ) : null}
-        </Button>
-      </div>
+  const envCalcRow = envCalcTarget
+    ? (envRows.find((r) => r.id === envCalcTarget.rowId) ?? null)
+    : null
+  const envCalcParam = envCalcTarget
+    ? (parameterColumns.find((c) => c.id === envCalcTarget.paramId) ?? null)
+    : null
+  const envCalcSourceColumns: RawDataSheetColumn[] = envRows
+    .filter(
+      (r) =>
+        r.id !== envCalcTarget?.rowId &&
+        r.readingLabel.trim().length > 0 &&
+        !isEnvRowCalculated(r),
+    )
+    .map((r) => ({
+      key: r.id,
+      label: r.readingLabel.trim(),
+      type: 'number',
+      required: false,
+    }))
+  const envCalcColumn: RawDataSheetColumn | null =
+    envCalcRow && envCalcParam
+      ? {
+          key: `envcalc_${envCalcRow.id}_${envCalcParam.id}`,
+          label: `${envCalcRow.readingLabel.trim() || 'Field'} — ${envCalcParam.header}`,
+          type: 'formula',
+          required: false,
+          formula: {
+            ...emptyColumnFormula(),
+            op: 'average',
+            expression: envCalcRow.formulas?.[envCalcParam.id]?.trim() || '=',
+          },
+        }
+      : null
+  const envCalcColumns: RawDataSheetColumn[] = envCalcColumn
+    ? [...envCalcSourceColumns, envCalcColumn]
+    : envCalcSourceColumns
 
-      <div className="overflow-x-auto rounded-md border border-slate-200">
-        <table className="w-full min-w-[520px] border-collapse text-sm">
-          <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+  return (
+    <>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        persistOnFocusLoss
+        layer="stacked"
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+          'left-0 top-0',
+          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+        )}
+        aria-describedby={undefined}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <div className="flex items-center justify-between gap-3">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                Environment Condition
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn('h-8 shrink-0', limsOutlineBtnClass)}
+                onClick={openParams}
+                aria-label="Edit environment parameter column headers"
+              >
+                <Settings2 size={14} className="mr-1.5" aria-hidden />
+                Parameters
+                {parameterColumns.length > 0 ? (
+                  <span className="ml-1.5 rounded-none bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                    {parameterColumns.length}
+                  </span>
+                ) : null}
+              </Button>
+            </div>
+          </DialogHeader>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
+
+      <div className="overflow-x-auto rounded-none border-2 border-stone-400">
+        <table className="w-full min-w-[820px] border-collapse text-sm">
+          <thead>
             <tr>
-              <th className="min-w-[180px] border border-slate-200 px-2 py-2 text-left">Field</th>
+              <th className={cn(thClass, 'min-w-[160px] text-left')}>Field Label</th>
+              <th className={cn(thClass, 'w-36 text-center')}>Field Type</th>
               {parameterColumns.map((opt) => (
                 <th
                   key={opt.id}
-                  className="min-w-[120px] border border-slate-200 px-2 py-2 text-center"
+                  className={cn(thClass, 'min-w-[120px] text-center')}
                 >
                   {opt.header}
                 </th>
               ))}
-              <th className="w-16 border border-slate-200 px-2 py-2 text-center">Action</th>
+              <th className={cn(thClass, 'w-16 text-center')}>Action</th>
             </tr>
           </thead>
           <tbody>
             {parameterColumns.length === 0 ? (
               <tr>
                 <td
-                  colSpan={2}
-                  className="border border-slate-200 px-3 py-8 text-center text-sm text-slate-500"
+                  colSpan={3}
+                  className="border border-[#e7e0d4] bg-[#fffcf7] px-3 py-8 text-center text-sm text-stone-500"
                 >
                   Open Parameters and add column headers (e.g. Temperature, Humidity, Pressure).
                 </td>
@@ -1204,17 +1445,17 @@ function EnvironmentConditionEditor({
             ) : envRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={parameterColumns.length + 1}
-                  className="border border-slate-200 px-3 py-8 text-center text-sm text-slate-500"
+                  colSpan={parameterColumns.length + 2}
+                  className="border border-[#e7e0d4] bg-[#fffcf7] px-3 py-8 text-center text-sm text-stone-500"
                 >
                   No rows yet. Click + to add a Field (reading / point).
                 </td>
-                <td className="border border-slate-200 px-1 text-center">
+                <td className="border border-[#e7e0d4] px-1 text-center">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                    className={addBtnClass}
                     onClick={addEnvRow}
                     aria-label="Add environment row"
                   >
@@ -1224,102 +1465,68 @@ function EnvironmentConditionEditor({
               </tr>
             ) : (
               envRows.map((row, index) => {
-                const isStandard = isEnvStandardFieldLabel(row.readingLabel)
-                const known = readingLabels.includes(row.readingLabel) || isStandard
+                const fieldType = resolveEnvRowFieldType(row)
+                const isCalc = fieldType === 'formula'
                 return (
                   <tr key={row.id}>
-                    <td className="border border-slate-200 px-1.5 py-1.5 align-top">
-                      <Select
-                        value={
-                          known
-                            ? row.readingLabel
-                            : row.readingLabel
-                              ? '__custom__'
-                              : undefined
+                    <td className="border border-[#e7e0d4] px-1.5 py-1.5 align-top">
+                      <Input
+                        className="h-9"
+                        placeholder="e.g. Average"
+                        value={row.readingLabel}
+                        onChange={(e) =>
+                          patchEnvRow(row.id, { readingLabel: e.target.value })
                         }
-                        onValueChange={(v) => {
-                          if (v === '__custom__') {
-                            patchEnvRow(row.id, {
-                              readingLabel: `Reading ${index + 1}`,
-                              clearFormulas: true,
-                            })
-                            return
-                          }
-                          if (isEnvStandardFieldLabel(v)) {
-                            applyStandardField(row.id, v)
-                            return
-                          }
-                          patchEnvRow(row.id, {
-                            readingLabel: v,
-                            clearFormulas: true,
-                          })
-                        }}
+                        aria-label={`Field label for environment row ${index + 1}`}
+                      />
+                    </td>
+                    <td className="border border-[#e7e0d4] px-1.5 py-1.5 text-center align-top">
+                      <Select
+                        value={fieldType}
+                        onValueChange={(v) =>
+                          changeEnvFieldType(
+                            row.id,
+                            v === 'text' ? 'text' : v === 'formula' ? 'formula' : 'number',
+                          )
+                        }
                       >
                         <SelectTrigger
-                          className="h-9"
-                          aria-label={`Field for environment row ${index + 1}`}
+                          className="mx-auto h-9 w-[120px]"
+                          aria-label={`Field type for environment row ${index + 1}`}
                         >
-                          <SelectValue placeholder="Select field" />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="z-[80]">
-                          {readingLabels.map((label) => (
-                            <SelectItem key={label} value={label}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                          {readingLabels.length > 0 ? (
-                            <SelectSeparator />
-                          ) : null}
-                          {ENV_STANDARD_FIELD_OPTIONS.map((label) => (
-                            <SelectItem key={label} value={label}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                          <SelectSeparator />
-                          <SelectItem value="__custom__">Custom label…</SelectItem>
+                          <SelectItem value="number">Number</SelectItem>
+                          <SelectItem value="text">Text</SelectItem>
+                          <SelectItem value="formula">Calculated</SelectItem>
                         </SelectContent>
                       </Select>
-                      {!known ? (
-                        <Input
-                          className="mt-1.5 h-8 text-xs"
-                          placeholder="Custom field label"
-                          value={row.readingLabel}
-                          onChange={(e) =>
-                            patchEnvRow(row.id, { readingLabel: e.target.value })
-                          }
-                        />
-                      ) : null}
                     </td>
                     {parameterColumns.map((opt) => {
-                      const sameColumnFields = envRows
-                        .filter(
-                          (r) =>
-                            r.id !== row.id &&
-                            r.readingLabel.trim().length > 0 &&
-                            !isEnvStandardFieldLabel(r.readingLabel),
-                        )
-                        .map((r) => r.readingLabel.trim())
-                      const uniqueSameColumnFields = [...new Set(sameColumnFields)]
                       return (
-                      <td key={opt.id} className="border border-slate-200 px-1.5 py-1">
-                        {isStandard ? (
-                          <EnvCellFormulaInput
-                            value={row.formulas?.[opt.id] ?? '='}
-                            onChange={(next) =>
-                              patchEnvRow(row.id, {
-                                formulas: { [opt.id]: next },
-                                values: { [opt.id]: '' },
-                              })
+                      <td key={opt.id} className="border border-[#e7e0d4] px-1.5 py-1">
+                        {isCalc ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                              'mx-auto flex h-9 w-full max-w-[11rem] items-center justify-center gap-1.5 px-2 text-xs',
+                              limsOutlineBtnClass,
+                            )}
+                            onClick={() =>
+                              setEnvCalcTarget({ rowId: row.id, paramId: opt.id })
                             }
-                            sourceFields={uniqueSameColumnFields}
-                            envRows={envRows}
-                            parameterColumnId={opt.id}
-                            placeholder={`=AVERAGE([${uniqueSameColumnFields[0] ?? envDataFieldLabels[0] ?? 'Reading at 0'}])`}
-                            ariaLabel={`${opt.header} formula for row ${index + 1}`}
-                          />
+                            aria-label={`Set formula for ${opt.header} row ${index + 1}`}
+                            title={row.formulas?.[opt.id]?.trim() || 'Set formula'}
+                          >
+                            <Calculator size={14} aria-hidden />
+                            Set Formula
+                          </Button>
                         ) : (
                           <Input
-                            inputMode="decimal"
+                            inputMode={fieldType === 'number' ? 'decimal' : 'text'}
                             placeholder={opt.header}
                             value={row.values[opt.id] ?? ''}
                             onChange={(e) =>
@@ -1334,13 +1541,13 @@ function EnvironmentConditionEditor({
                       </td>
                       )
                     })}
-                    <td className="border border-slate-200 px-1 text-center">
+                    <td className="border border-[#e7e0d4] px-1 text-center">
                       {index === envRows.length - 1 ? (
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                          className={addBtnClass}
                           onClick={addEnvRow}
                           aria-label="Add environment row"
                         >
@@ -1370,28 +1577,27 @@ function EnvironmentConditionEditor({
       <Dialog open={paramsOpen} onOpenChange={setParamsOpen}>
         <DialogContent
           persistOnFocusLoss
-          layer="nested"
-          className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-lg flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
+          layer="top"
+          className={cn(limsDialogClass, 'flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-lg flex-col gap-0 overflow-hidden p-0')}
           aria-describedby={undefined}
         >
-          <div className="shrink-0 border-b border-slate-200 bg-slate-900 px-4 py-3 text-white sm:px-5">
-            <DialogHeader className="text-left">
-              <p className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300/90">
-                Environment Condition
-              </p>
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
               <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 Parameter Columns
               </DialogTitle>
             </DialogHeader>
           </div>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#fafbfc] px-4 py-4 sm:px-5">
-            <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+            <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
               <table className="w-full border-collapse text-sm">
-                <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <thead>
                   <tr>
-                    <th className="w-12 border border-slate-200 px-2 py-2 text-center">#</th>
-                    <th className="border border-slate-200 px-2 py-2 text-left">Column header</th>
-                    <th className="w-16 border border-slate-200 px-2 py-2 text-center">Action</th>
+                    <th className={cn(thClass, 'w-12 text-center')}>#</th>
+                    <th className={cn(thClass, 'text-left')}>Column header</th>
+                    <th className={cn(thClass, 'w-16 text-center')}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1399,7 +1605,7 @@ function EnvironmentConditionEditor({
                     <tr>
                       <td
                         colSpan={3}
-                        className="border border-slate-200 px-3 py-6 text-center text-muted-foreground"
+                        className="border border-[#e7e0d4] px-3 py-6 text-center text-muted-foreground"
                       >
                         No parameters yet. Click Add Parameter.
                       </td>
@@ -1407,10 +1613,10 @@ function EnvironmentConditionEditor({
                   ) : (
                     draftColumns.map((col, index) => (
                       <tr key={col.id}>
-                        <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center text-slate-500">
                           {index + 1}
                         </td>
-                        <td className="border border-slate-200 px-2 py-2">
+                        <td className="border border-[#e7e0d4] px-2 py-2">
                           <Input
                             value={col.header}
                             onChange={(e) =>
@@ -1425,7 +1631,7 @@ function EnvironmentConditionEditor({
                             aria-label={`Parameter header ${index + 1}`}
                           />
                         </td>
-                        <td className="border border-slate-200 px-2 py-2 text-center">
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center">
                           {index === draftColumns.length - 1 ? (
                             <Button
                               type="button"
@@ -1466,21 +1672,49 @@ function EnvironmentConditionEditor({
               </table>
             </div>
           </div>
-          <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
-            <Button type="button" variant="outline" onClick={() => setParamsOpen(false)}>
-              Cancel
-            </Button>
+          <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
             <Button
               type="button"
-              className="bg-sky-700 text-white hover:bg-sky-600"
+              className={limsPrimaryBtnClass}
               onClick={saveParams}
             >
-              Done
+              Save & Close
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+        </div>
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={() => onOpenChange(false)}
+          >
+            Save & Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <ColumnCalculationDialog
+      open={envCalcTarget != null}
+      onOpenChange={(next) => {
+        if (!next) setEnvCalcTarget(null)
+      }}
+      layer="top"
+      column={envCalcColumn}
+      columns={envCalcColumns}
+      envColumns={[]}
+      onUpdateFormula={(_col, patch) => {
+        if (!envCalcTarget) return
+        const expr = String(patch.expression ?? '').trim() || '='
+        patchEnvRow(envCalcTarget.rowId, {
+          formulas: { [envCalcTarget.paramId]: expr },
+          values: { [envCalcTarget.paramId]: '' },
+        })
+      }}
+    />
+    </>
   )
 }
 
@@ -1489,6 +1723,10 @@ export function RawDataSheetTemplateEditor({
   onChange,
   masterPointsTables = [],
   masterEquipmentIds = [],
+  environmentDialogOpen = false,
+  onEnvironmentDialogOpenChange,
+  verificationDialogOpen = false,
+  onVerificationDialogOpenChange,
 }: {
   value: RawDataSheetTemplate
   onChange: (next: RawDataSheetTemplate) => void
@@ -1496,6 +1734,10 @@ export function RawDataSheetTemplateEditor({
   masterPointsTables?: Array<{ columns: Array<{ header: string }> }>
   /** When tables are not loaded yet, fetch column headers from these master ids. */
   masterEquipmentIds?: string[]
+  environmentDialogOpen?: boolean
+  onEnvironmentDialogOpenChange?: (open: boolean) => void
+  verificationDialogOpen?: boolean
+  onVerificationDialogOpenChange?: (open: boolean) => void
 }) {
   const [calculationColumnKey, setCalculationColumnKey] = useState<string | null>(null)
   const [fetchedPointsTables, setFetchedPointsTables] = useState<
@@ -1533,7 +1775,9 @@ export function RawDataSheetTemplateEditor({
 
   const pointsTablesForRefs = useMemo(() => {
     const fromProps = masterPointsTables.filter((t) => (t.columns?.length ?? 0) > 0)
-    return fromProps.length > 0 ? fromProps : fetchedPointsTables
+    if (fromProps.length === 0) return fetchedPointsTables
+    if (fetchedPointsTables.length === 0) return fromProps
+    return [...fromProps, ...fetchedPointsTables]
   }, [masterPointsTables, fetchedPointsTables])
 
   const envFormulaColumns = useMemo(
@@ -1545,67 +1789,134 @@ export function RawDataSheetTemplateEditor({
     [value.environmentDefaults, pointsTablesForRefs],
   )
 
-  const updateColumn = (key: string, patch: Partial<RawDataSheetColumn>) => {
+  const mapTableColumns = (
+    tableId: string,
+    mapper: (cols: RawDataSheetColumn[]) => RawDataSheetColumn[],
+  ) => {
+    if (tableId === PRIMARY_RAW_DATA_TABLE_ID) {
+      onChange({ ...value, columns: mapper(value.columns) })
+      return
+    }
     onChange({
       ...value,
-      columns: value.columns.map((c) => (c.key === key ? { ...c, ...patch } : c)),
+      extraTables: (value.extraTables ?? []).map((table) =>
+        table.id === tableId ? { ...table, columns: mapper(table.columns) } : table,
+      ),
     })
   }
 
-  const changeColumnType = (col: RawDataSheetColumn, type: RawDataSheetColumn['type']) => {
+  const updateColumn = (tableId: string, key: string, patch: Partial<RawDataSheetColumn>) => {
+    mapTableColumns(tableId, (cols) => cols.map((c) => (c.key === key ? { ...c, ...patch } : c)))
+  }
+
+  const changeColumnType = (
+    tableId: string,
+    col: RawDataSheetColumn,
+    type: RawDataSheetColumn['type'],
+  ) => {
     if (type === 'formula') {
-      updateColumn(col.key, {
+      updateColumn(tableId, col.key, {
         type,
         required: false,
+        requiredMode: 'auto',
         formula: col.formula ?? emptyColumnFormula(),
       })
       setCalculationColumnKey(col.key)
       return
     }
-    onChange({
-      ...value,
-      columns: value.columns.map((c) => {
+    mapTableColumns(tableId, (cols) =>
+      cols.map((c) => {
         if (c.key !== col.key) return c
         const next: RawDataSheetColumn = { ...c, type }
         delete next.formula
+        delete next.requiredMode
         return next
       }),
-    })
+    )
     if (calculationColumnKey === col.key) setCalculationColumnKey(null)
   }
 
   const updateFormula = (col: RawDataSheetColumn, patch: Partial<RawDataColumnFormula>) => {
-    updateColumn(col.key, {
+    const tableId =
+      value.columns.some((c) => c.key === col.key)
+        ? PRIMARY_RAW_DATA_TABLE_ID
+        : (value.extraTables ?? []).find((t) => t.columns.some((c) => c.key === col.key))?.id ??
+          PRIMARY_RAW_DATA_TABLE_ID
+    updateColumn(tableId, col.key, {
       formula: { ...(col.formula ?? emptyColumnFormula()), ...patch },
     })
   }
 
-  const addColumn = () => {
-    onChange({
-      ...value,
-      columns: [...value.columns, emptyRawDataSheetColumn()],
+  const addColumn = (tableId: string) => {
+    mapTableColumns(tableId, (cols) => [...cols, emptyRawDataSheetColumn()])
+  }
+
+  const removeColumn = (tableId: string, key: string) => {
+    if (calculationColumnKey === key) setCalculationColumnKey(null)
+    mapTableColumns(tableId, (cols) => {
+      if (cols.length <= 1) return [emptyRawDataSheetColumn()]
+      return cols.filter((c) => c.key !== key)
     })
   }
 
-  const removeColumn = (key: string) => {
-    if (calculationColumnKey === key) setCalculationColumnKey(null)
-    if (value.columns.length <= 1) {
-      onChange({ ...value, columns: [emptyRawDataSheetColumn()] })
+  const moveColumn = (tableId: string, index: number, dir: -1 | 1) => {
+    mapTableColumns(tableId, (cols) => {
+      const next = index + dir
+      if (next < 0 || next >= cols.length) return cols
+      const copy = [...cols]
+      ;[copy[index], copy[next]] = [copy[next]!, copy[index]!]
+      return copy
+    })
+  }
+
+  const setTableName = (tableId: string, name: string) => {
+    if (tableId === PRIMARY_RAW_DATA_TABLE_ID) {
+      onChange({ ...value, tableName: name })
       return
     }
     onChange({
       ...value,
-      columns: value.columns.filter((c) => c.key !== key),
+      extraTables: (value.extraTables ?? []).map((table) =>
+        table.id === tableId ? { ...table, name } : table,
+      ),
     })
   }
 
-  const moveColumn = (index: number, dir: -1 | 1) => {
-    const next = index + dir
-    if (next < 0 || next >= value.columns.length) return
-    const cols = [...value.columns]
-    ;[cols[index], cols[next]] = [cols[next]!, cols[index]!]
-    onChange({ ...value, columns: cols })
+  const addRawDataTable = () => {
+    const nextNo = (value.extraTables?.length ?? 0) + 2
+    onChange({
+      ...value,
+      extraTables: [
+        ...(value.extraTables ?? []),
+        emptyRawDataSheetTableBlock(`Raw data table ${nextNo}`),
+      ],
+    })
   }
+
+  const removeRawDataTable = (tableId: string) => {
+    if (tableId === PRIMARY_RAW_DATA_TABLE_ID) return
+    const removed = (value.extraTables ?? []).find((t) => t.id === tableId)
+    if (removed?.columns.some((c) => c.key === calculationColumnKey)) {
+      setCalculationColumnKey(null)
+    }
+    onChange({
+      ...value,
+      extraTables: (value.extraTables ?? []).filter((table) => table.id !== tableId),
+    })
+  }
+
+  const editorTables = [
+    {
+      id: PRIMARY_RAW_DATA_TABLE_ID,
+      name: value.tableName ?? DEFAULT_RAW_DATA_TABLE_NAME,
+      columns: value.columns,
+      isPrimary: true,
+    },
+    ...(value.extraTables ?? []).map((table) => ({
+      ...table,
+      isPrimary: false,
+    })),
+  ]
 
   const updateItem = (id: string, patch: Partial<{ label: string; required: boolean }>) => {
     onChange({
@@ -1644,217 +1955,104 @@ export function RawDataSheetTemplateEditor({
   }
 
   const calculationColumn =
-    value.columns.find((c) => c.key === calculationColumnKey && c.type === 'formula') ?? null
+    allRawDataSheetColumns(value).find(
+      (c) => c.key === calculationColumnKey && c.type === 'formula',
+    ) ?? null
 
   return (
-    <div className="space-y-5 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-            Verification checklist
-          </p>
-        </div>
-
-        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-          <table className="w-full min-w-[480px] border-collapse text-sm">
-            <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="w-12 border border-slate-200 px-2 py-2 text-center">#</th>
-                <th className="border border-slate-200 px-2 py-2 text-left">Check item</th>
-                <th className="w-24 border border-slate-200 px-2 py-2 text-center">Required</th>
-                <th className="w-16 border border-slate-200 px-2 py-2 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {value.verification.items.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="border border-slate-200 px-3 py-6 text-center text-muted-foreground">
-                    No verification items yet.
-                  </td>
-                </tr>
-              ) : (
-                value.verification.items.map((item, index) => (
-                  <tr key={item.id}>
-                    <td className="border border-slate-200 px-2 py-2 text-center text-slate-500">
-                      {index + 1}
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2">
-                      <Input
-                        value={item.label}
-                        onChange={(e) => updateItem(item.id, { label: e.target.value })}
-                        placeholder="e.g. Visual inspection OK"
-                        className="h-9"
-                        aria-label={`Verification item ${index + 1}`}
-                      />
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        className="mx-auto block h-4 w-4 accent-teal-600"
-                        checked={item.required}
-                        onChange={(e) => updateItem(item.id, { required: e.target.checked })}
-                        aria-label={`Required verification ${index + 1}`}
-                      />
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 text-center">
-                      {index === value.verification.items.length - 1 ? (
+    <div className="space-y-5 rounded-none border-2 border-stone-400 bg-[#f7f3eb] p-4 ring-1 ring-amber-700/20">
+      <Dialog
+        open={verificationDialogOpen}
+        onOpenChange={onVerificationDialogOpenChange ?? (() => undefined)}
+      >
+        <DialogContent
+          persistOnFocusLoss
+          layer="stacked"
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+            'left-0 top-0',
+            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+          )}
+          aria-describedby={undefined}
+        >
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                Verification Checklist
+              </DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
+            <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
+              <table className="w-full min-w-[480px] border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className={cn(thClass, 'w-12 text-center')}>#</th>
+                    <th className={cn(thClass, 'text-left')}>Check item</th>
+                    <th className={cn(thClass, 'w-24 text-center')}>Required</th>
+                    <th className={cn(thClass, 'w-16 text-center')}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {value.verification.items.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="border border-[#e7e0d4] bg-[#fffcf7] px-3 py-6 text-center text-stone-500"
+                      >
+                        No verification items yet. Click + to add a check item.
+                      </td>
+                      <td className="border border-[#e7e0d4] bg-[#fffcf7] px-2 py-2 text-center">
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="mx-auto h-8 w-8 px-0 text-teal-700 hover:bg-teal-50 hover:text-teal-800"
+                          className={cn('mx-auto', addBtnClass)}
                           onClick={addItem}
                           aria-label="Add verification item"
                         >
                           <Plus size={16} />
                         </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="mx-auto h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
-                          onClick={() => removeItem(item.id)}
-                          aria-label={`Delete verification ${index + 1}`}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <EnvironmentConditionEditor value={value} onChange={onChange} />
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-            Raw data columns
-          </p>
-        </div>
-        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-          <table className="w-full min-w-[700px] border-collapse text-sm">
-            <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="w-16 border border-slate-200 px-2 py-2 text-center">Order</th>
-                <th className="border border-slate-200 px-2 py-2 text-left">Column label</th>
-                <th className="w-28 border border-slate-200 px-2 py-2 text-center">Type</th>
-                <th className="w-24 border border-slate-200 px-2 py-2 text-center">Required</th>
-                <th className="w-40 border border-slate-200 px-2 py-2 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {value.columns.map((col, index) => {
-                const isFormula = col.type === 'formula'
-                return (
-                  <Fragment key={col.key}>
-                    <tr>
-                      <td className="border border-slate-200 px-1 py-2 text-center">
-                        <div className="flex items-center justify-center gap-0.5">
-                          <GripVertical size={14} className="text-slate-400" aria-hidden />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-1 text-xs"
-                            disabled={index === 0}
-                            onClick={() => moveColumn(index, -1)}
-                            aria-label={`Move column ${index + 1} up`}
-                          >
-                            ↑
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-1 text-xs"
-                            disabled={index === value.columns.length - 1}
-                            onClick={() => moveColumn(index, 1)}
-                            aria-label={`Move column ${index + 1} down`}
-                          >
-                            ↓
-                          </Button>
-                        </div>
                       </td>
-                      <td className="border border-slate-200 px-2 py-2">
-                        <div className="flex items-center gap-2">
+                    </tr>
+                  ) : (
+                    value.verification.items.map((item, index) => (
+                      <tr key={item.id}>
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center text-stone-500">
+                          {index + 1}
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2">
                           <Input
-                            value={col.label}
-                            onChange={(e) => updateColumn(col.key, { label: e.target.value })}
-                            placeholder={isFormula ? 'e.g. Average Reading' : 'e.g. As Found'}
+                            value={item.label}
+                            onChange={(e) => updateItem(item.id, { label: e.target.value })}
+                            placeholder="e.g. Visual inspection OK"
                             className="h-9"
-                            aria-label={`Column label ${index + 1}`}
+                            aria-label={`Verification item ${index + 1}`}
                           />
-                          {isFormula ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-9 w-9 shrink-0 border-indigo-600/40 text-indigo-800 hover:bg-indigo-50"
-                              onClick={() => setCalculationColumnKey(col.key)}
-                              aria-label={`Column calculation for ${col.label || `column ${index + 1}`}`}
-                              title="Set formula"
-                            >
-                              <Calculator size={16} />
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
-                        <Select
-                          value={col.type}
-                          onValueChange={(v) =>
-                            changeColumnType(
-                              col,
-                              v === 'number' ? 'number' : v === 'formula' ? 'formula' : 'text',
-                            )
-                          }
-                        >
-                          <SelectTrigger
-                            className="mx-auto h-9 w-[110px]"
-                            aria-label={`Column type ${index + 1}`}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="number">Number</SelectItem>
-                            <SelectItem value="text">Text</SelectItem>
-                            <SelectItem value="formula">Calculated</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
-                        {isFormula ? (
-                          <span className="text-[11px] text-muted-foreground">Auto</span>
-                        ) : (
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center">
                           <input
                             type="checkbox"
-                            className="mx-auto block h-4 w-4 accent-teal-600"
-                            checked={col.required}
-                            onChange={(e) =>
-                              updateColumn(col.key, {
-                                required: e.target.checked,
-                              })
-                            }
-                            aria-label={`Required column ${index + 1}`}
+                            className="mx-auto block h-4 w-4 accent-amber-700"
+                            checked={item.required}
+                            onChange={(e) => updateItem(item.id, { required: e.target.checked })}
+                            aria-label={`Required verification ${index + 1}`}
                           />
-                        )}
-                      </td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {index === value.columns.length - 1 ? (
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center">
+                          {index === value.verification.items.length - 1 ? (
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 px-0 text-teal-700 hover:bg-teal-50 hover:text-teal-800"
-                              onClick={addColumn}
-                              aria-label="Add column"
+                              className={cn('mx-auto', addBtnClass)}
+                              onClick={addItem}
+                              aria-label="Add verification item"
                             >
                               <Plus size={16} />
                             </Button>
@@ -1863,23 +2061,239 @@ export function RawDataSheetTemplateEditor({
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
-                              onClick={() => removeColumn(col.key)}
-                              aria-label={`Delete column ${index + 1}`}
+                              className="mx-auto h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
+                              onClick={() => removeItem(item.id)}
+                              aria-label={`Delete verification ${index + 1}`}
                             >
                               <Trash2 size={16} />
                             </Button>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+            <Button
+              type="button"
+              className={limsPrimaryBtnClass}
+              onClick={() => onVerificationDialogOpenChange?.(false)}
+            >
+              Save & Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <EnvironmentConditionEditor
+        value={value}
+        onChange={onChange}
+        open={environmentDialogOpen}
+        onOpenChange={onEnvironmentDialogOpenChange ?? (() => undefined)}
+      />
+
+      {editorTables.map((table) => (
+        <div key={table.id} className="space-y-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <label
+              htmlFor={`rds-table-name-${table.id}`}
+              className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+            >
+              Table name
+            </label>
+            <Input
+              id={`rds-table-name-${table.id}`}
+              value={table.name}
+              onChange={(e) => setTableName(table.id, e.target.value)}
+              placeholder="e.g. Raw data columns"
+              className="h-9 min-w-0 flex-1"
+              aria-label="Raw data table name"
+            />
+            {table.isPrimary ? (
+              <Button
+                type="button"
+                variant="outline"
+                className={cn('h-9', limsOutlineBtnClass)}
+                onClick={addRawDataTable}
+              >
+                <Plus size={16} className="mr-1.5" aria-hidden />
+                Add table
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2 text-destructive hover:bg-destructive/10"
+                onClick={() => removeRawDataTable(table.id)}
+                aria-label={`Delete table ${table.name || 'extra'}`}
+              >
+                <Trash2 size={16} />
+              </Button>
+            )}
+          </div>
+          <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
+            <table className="w-full min-w-[820px] border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th className={cn(thClass, 'w-16 text-center')}>Order</th>
+                  <th className={cn(thClass, 'text-left')}>Column label</th>
+                  <th className={cn(thClass, 'w-28 text-center')}>Type</th>
+                  <th className={cn(thClass, 'w-32 text-center')}>Required in Raw Data</th>
+                  <th className={cn(thClass, 'w-32 text-center')}>Required in Certificate</th>
+                  <th className={cn(thClass, 'w-16 text-center')}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {table.columns.map((col, index) => {
+                  const isFormula = col.type === 'formula'
+                  return (
+                    <Fragment key={col.key}>
+                      <tr>
+                        <td className="border border-[#e7e0d4] px-1 py-2 text-center">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <GripVertical size={14} className="text-slate-400" aria-hidden />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-1 text-xs"
+                              disabled={index === 0}
+                              onClick={() => moveColumn(table.id, index, -1)}
+                              aria-label={`Move column ${index + 1} up`}
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-1 text-xs"
+                              disabled={index === table.columns.length - 1}
+                              onClick={() => moveColumn(table.id, index, 1)}
+                              aria-label={`Move column ${index + 1} down`}
+                            >
+                              ↓
+                            </Button>
+                          </div>
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={col.label}
+                              onChange={(e) =>
+                                updateColumn(table.id, col.key, { label: e.target.value })
+                              }
+                              placeholder={isFormula ? 'e.g. Average Reading' : 'e.g. As Found'}
+                              className="h-9"
+                              aria-label={`Column label ${index + 1}`}
+                            />
+                            {isFormula ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9 shrink-0 border-indigo-600/40 text-indigo-800 hover:bg-indigo-50"
+                                onClick={() => setCalculationColumnKey(col.key)}
+                                aria-label={`Column calculation for ${col.label || `column ${index + 1}`}`}
+                                title="Set formula"
+                              >
+                                <Calculator size={16} />
+                              </Button>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center">
+                          <Select
+                            value={col.type}
+                            onValueChange={(v) =>
+                              changeColumnType(
+                                table.id,
+                                col,
+                                v === 'number' ? 'number' : v === 'formula' ? 'formula' : 'text',
+                              )
+                            }
+                          >
+                            <SelectTrigger
+                              className="mx-auto h-9 w-[110px]"
+                              aria-label={`Column type ${index + 1}`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="number">Number</SelectItem>
+                              <SelectItem value="text">Text</SelectItem>
+                              <SelectItem value="formula">Calculated</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            className="mx-auto block h-4 w-4 accent-amber-700"
+                            checked={col.required}
+                            onChange={(e) =>
+                              updateColumn(table.id, col.key, {
+                                required: e.target.checked,
+                                requiredMode: e.target.checked ? 'yes' : 'no',
+                              })
+                            }
+                            aria-label={`Required column ${index + 1}`}
+                          />
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            className="mx-auto block h-4 w-4 accent-amber-700"
+                            checked={col.requiredInCertificate !== false}
+                            onChange={(e) =>
+                              updateColumn(table.id, col.key, {
+                                requiredInCertificate: e.target.checked,
+                              })
+                            }
+                            aria-label={`Required in certificate for ${col.label || `column ${index + 1}`}`}
+                            title="If checked, this column is shown on the calibration certificate"
+                          />
+                        </td>
+                        <td className="border border-[#e7e0d4] px-2 py-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {index === table.columns.length - 1 ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className={addBtnClass}
+                                onClick={() => addColumn(table.id)}
+                                aria-label="Add column"
+                              >
+                                <Plus size={16} />
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
+                                onClick={() => removeColumn(table.id, col.key)}
+                                aria-label={`Delete column ${index + 1}`}
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ))}
 
       <ColumnCalculationDialog
         open={calculationColumn != null}
@@ -1887,7 +2301,7 @@ export function RawDataSheetTemplateEditor({
           if (!open) setCalculationColumnKey(null)
         }}
         column={calculationColumn}
-        columns={value.columns}
+        columns={allRawDataSheetColumns(value)}
         envColumns={envFormulaColumns}
         onUpdateFormula={updateFormula}
       />

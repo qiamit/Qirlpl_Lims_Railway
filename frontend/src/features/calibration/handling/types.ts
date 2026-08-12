@@ -68,6 +68,10 @@ export type CalibrationJobRow = {
   service_request_id: string
   equipment_line_index: number
   srf_number: string
+  /** From linked service request (joined at fetch). */
+  srf_date?: string | null
+  /** Lab committed / expected completion date from SRF. */
+  required_completion_date?: string | null
   client_id: string | null
   client_name: string | null
   equipment_label: string
@@ -81,6 +85,8 @@ export type CalibrationJobRow = {
   remarks: string | null
   allocated_engineer_id: string | null
   allocated_engineer_name: string | null
+  /** Snapshot of designation chosen during Job Allocation. */
+  allocated_engineer_designation?: string | null
   /** Outside Conduct — pre-cal outgoing checklist (jsonb). */
   outgoing_checklist?: CalibrationJobOutsideChecklist | Record<string, unknown> | null
   /** Outside Conduct — post-cal inward checklist (jsonb). */

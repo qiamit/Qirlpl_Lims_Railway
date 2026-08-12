@@ -1,11 +1,14 @@
 import {
+  computeFormulaValue,
   defaultRawDataSheetTemplate,
   parseRawDataSheetTemplate,
   serializeRawDataSheetTemplate,
+  wrapBareFormulaColumnRef,
   type RawDataSheetColumn,
   type RawDataSheetRowValues,
   type RawDataSheetTemplate,
 } from '@/features/calibration/rawDataSheetTypes'
+import { computeCalibrationPointRowValuesFromMaster } from '@/features/calibration/equipment-for-calibration/calibrationPointsFormula'
 import {
   parseCalibrationPointsTable,
   serializeCalibrationPointsTable,
@@ -26,11 +29,22 @@ import {
 } from './muCalculationTypes'
 import { buildMuBuiltinValues, type MuEquipmentRangeContext } from './muCalcEngine'
 import {
+  POINTS_FORMULA_REF_PREFIX,
+  isPointsFormulaRefKey,
+  masterPointsFormulaRefColumns,
+  pointsHeaderSlug,
+} from '@/features/calibration/masterEquipmentFormulaRefs'
+import {
   defaultCalibrationCertificateTemplate,
   parseCalibrationCertificateTemplate,
   serializeCalibrationCertificateTemplate,
   type CalibrationCertificateTemplate,
 } from './certificateTemplateTypes'
+import {
+  emptyEquipmentChecklistItems,
+  parseEquipmentChecklistTemplate,
+  type ConductOutsideChecklistItem,
+} from '@/features/calibration/handling/jobs/conductOutsideChecklist'
 
 export type { RawDataSheetTemplate }
 export type { CalibrationPointsStored, CalibrationPointsColumn, CalibrationPointRow }
@@ -171,6 +185,8 @@ export type CalibrationEquipmentRow = {
   generate_report_config?: GenerateReportConfig | Record<string, unknown> | null
   /** Calibration Certificate template defaults for Certificate Preparation. */
   certificate_template_config?: CalibrationCertificateTemplate | Record<string, unknown> | null
+  outgoing_checklist_template?: Record<string, unknown> | null
+  inward_checklist_template?: Record<string, unknown> | null
   created_at?: string
   updated_at?: string
 }
@@ -781,15 +797,14 @@ export function findEquipmentRangeForPoint(
   if (containing.length === 0) return null
   if (containing.length === 1) return containing[0]!
 
-  const pointNumber = Number(String(pointValue ?? '').trim())
-  if (Number.isFinite(pointNumber)) {
+  const pointNumber = parseGenerateReportReferenceNumber(String(pointValue ?? ''))
+  if (pointNumber != null && Number.isFinite(pointNumber)) {
     const inBounds = containing.find((range) => {
-      const min = Number(String(range.rangeMin ?? '').trim())
-      const max = Number(String(range.rangeMax ?? '').trim())
-      if (!Number.isFinite(min) || !Number.isFinite(max)) return false
+      const bounds = resolveGenerateReportRangeBoundsForRangeEntry(range)
+      if (bounds.rangeMin == null || bounds.rangeMax == null) return false
       return (
-        pointNumber >= Math.min(min, max) &&
-        pointNumber <= Math.max(min, max)
+        pointNumber >= Math.min(bounds.rangeMin, bounds.rangeMax) &&
+        pointNumber <= Math.max(bounds.rangeMin, bounds.rangeMax)
       )
     })
     if (inBounds) return inBounds
@@ -868,6 +883,93 @@ function buildSheetValuesFromCalibrationPoint(
   return values
 }
 
+/** `pt:<slug>` values from one Master calibration-points row (after formula compute). */
+function pointsRefValuesFromCalibrationRow(
+  table: CalibrationPointsStored,
+  rowValues: Record<string, string>,
+): RawDataSheetRowValues {
+  const out: RawDataSheetRowValues = {}
+  for (const col of table.columns) {
+    const slug = pointsHeaderSlug(col.header)
+    if (!slug) continue
+    const raw = String(rowValues[col.id] ?? '').trim()
+    if (!raw) continue
+    out[`${POINTS_FORMULA_REF_PREFIX}${slug}`] = raw
+  }
+  return out
+}
+
+/**
+ * Master points tables + `pt:*` cell values for one Conduct / Generate Report sheet row.
+ * Prefers the row's master tab, then point-value match, then row index in that master group.
+ */
+export function resolveMasterPointRefsForSheetRow(
+  range: EquipmentRangeEntry | null | undefined,
+  options: {
+    pointValue?: string | null
+    masterEquipmentId?: string | null
+    rowIndexInMaster?: number
+  } = {},
+): { tables: CalibrationPointsStored[]; values: RawDataSheetRowValues } {
+  if (!range) return { tables: [], values: {} }
+
+  const masterId = String(options.masterEquipmentId ?? '').trim()
+  const preferred: CalibrationPointsStored[] = []
+  const seen = new Set<CalibrationPointsStored>()
+  const push = (table: CalibrationPointsStored | null | undefined) => {
+    if (!table || seen.has(table)) return
+    seen.add(table)
+    preferred.push(table)
+  }
+
+  if (masterId) {
+    const tab = (range.masterPointsTabs ?? []).find(
+      (t) => t.masterEquipmentId.trim() === masterId,
+    )
+    if (tab) push(tab.calibrationPointsTable)
+  }
+  for (const tab of range.masterPointsTabs ?? []) push(tab.calibrationPointsTable)
+  push(range.calibrationPointsTable)
+
+  const tables = preferred.filter((t) => (t.columns?.length ?? 0) > 0)
+  let matchTable: CalibrationPointsStored | null = null
+  let matchRow: CalibrationPointRow | null = null
+
+  const point = String(options.pointValue ?? '').trim()
+  if (point) {
+    for (const table of preferred) {
+      const row = findCalibrationTableRowForPoint(table, point)
+      if (row) {
+        matchTable = table
+        matchRow = row
+        break
+      }
+    }
+  }
+
+  if (!matchRow && options.rowIndexInMaster != null && options.rowIndexInMaster >= 0) {
+    const table = preferred[0]
+    const row = table?.rows[options.rowIndexInMaster]
+    if (table && row) {
+      matchTable = table
+      matchRow = row
+    }
+  }
+
+  if (!matchTable || !matchRow) return { tables, values: {} }
+
+  const computed = computeCalibrationPointRowValuesFromMaster(
+    matchTable.columns,
+    matchRow.values,
+    null,
+    6,
+  )
+  return {
+    tables,
+    values: pointsRefValuesFromCalibrationRow(matchTable, computed),
+  }
+}
+
 /**
  * Resolve Reference for a specific range + calibration table row (no cross-range pick).
  */
@@ -900,11 +1002,52 @@ export function resolveGenerateReportReferenceValueForRangePoint(
     }
   }
   if (!matchRow || !matchTable) return ''
+
+  const computedValues = computeCalibrationPointRowValuesFromMaster(
+    matchTable.columns,
+    matchRow.values,
+    null,
+    6,
+  )
+  const computedRow: CalibrationPointRow = { ...matchRow, values: computedValues }
+
+  if (isPointsFormulaRefKey(key)) {
+    const slug = key.slice(POINTS_FORMULA_REF_PREFIX.length)
+    const col = matchTable.columns.find((c) => pointsHeaderSlug(c.header) === slug)
+    return col ? String(computedValues[col.id] ?? '').trim() : ''
+  }
+
   const sheetValues = buildSheetValuesFromCalibrationPoint(
     matchTable,
-    matchRow,
+    computedRow,
     sheetColumns,
   )
+  const sheetCol = sheetColumns.find((c) => c.key === key)
+  if (sheetCol?.type === 'formula') {
+    const ptValues = pointsRefValuesFromCalibrationRow(matchTable, computedValues)
+    const ptCols = masterPointsFormulaRefColumns([matchTable])
+    // Prefer Master point headers so `=[Load in kN]` uses the master cell,
+    // not an empty same-label sheet column.
+    const wrapCols = [...ptCols, ...sheetColumns]
+    const columnsForEval = sheetColumns.map((col) => {
+      const expr = col.formula?.expression?.trim() ?? ''
+      if (col.type !== 'formula' || !expr) return col
+      return {
+        ...col,
+        formula: {
+          ...col.formula,
+          expression: wrapBareFormulaColumnRef(expr, wrapCols),
+        },
+      }
+    })
+    const dp = sheetCol.formula?.decimals ?? 6
+    const next: RawDataSheetRowValues = { ...sheetValues, ...ptValues }
+    for (const col of columnsForEval) {
+      if (col.type !== 'formula') continue
+      next[col.key] = computeFormulaValue(col, next, dp, wrapCols)
+    }
+    return String(next[key] ?? '').trim()
+  }
   return String(sheetValues[key] ?? '').trim()
 }
 
@@ -1000,19 +1143,129 @@ export function resolveGenerateReportRangeBoundsForRangeId(
   return resolveGenerateReportRangeBoundsForRangeEntry(range)
 }
 
+function boundsFromMinMaxText(
+  rangeMin: string | null | undefined,
+  rangeMax: string | null | undefined,
+): { rangeMin: number | null; rangeMax: number | null; rangeSpan: number | null } {
+  let min = parseGenerateReportRangeBoundNumber(rangeMin)
+  let max = parseGenerateReportRangeBoundNumber(rangeMax)
+  if (min == null || max == null) {
+    const split = splitRangeCapacityToMinMax(
+      formatRangeCapacityFromMinMax(String(rangeMin ?? ''), String(rangeMax ?? '')),
+    )
+    if (min == null) min = parseGenerateReportRangeBoundNumber(split.rangeMin)
+    if (max == null) max = parseGenerateReportRangeBoundNumber(split.rangeMax)
+  }
+  const rangeSpan =
+    min != null && max != null && Number.isFinite(min) && Number.isFinite(max)
+      ? Math.abs(max - min)
+      : null
+  return { rangeMin: min, rangeMax: max, rangeSpan }
+}
+
 function resolveGenerateReportRangeBoundsForRangeEntry(
   range: EquipmentRangeEntry | null,
 ): { rangeMin: number | null; rangeMax: number | null; rangeSpan: number | null } {
   if (!range) return { rangeMin: null, rangeMax: null, rangeSpan: null }
 
-  const min = parseGenerateReportRangeBoundNumber(range.rangeMin)
-  const max = parseGenerateReportRangeBoundNumber(range.rangeMax)
-  const rangeSpan =
-    min != null && max != null && Number.isFinite(min) && Number.isFinite(max)
-      ? Math.abs(max - min)
-      : null
+  const fromFields = boundsFromMinMaxText(range.rangeMin, range.rangeMax)
+  if (fromFields.rangeSpan != null) return fromFields
 
-  return { rangeMin: min, rangeMax: max, rangeSpan }
+  const fromCapacity = splitRangeCapacityToMinMax(range.rangeCapacity)
+  const merged = boundsFromMinMaxText(
+    fromFields.rangeMin != null ? String(fromFields.rangeMin) : fromCapacity.rangeMin,
+    fromFields.rangeMax != null ? String(fromFields.rangeMax) : fromCapacity.rangeMax,
+  )
+  return merged
+}
+
+/** Measurement range that lists this master (for per-equipment Generate Report bounds). */
+export function findEquipmentRangeForMaster(
+  ranges: EquipmentRangeEntry[],
+  masterEquipmentId: string,
+): EquipmentRangeEntry | null {
+  const id = String(masterEquipmentId ?? '').trim()
+  if (!id) return null
+  return (
+    ranges.find(
+      (range) =>
+        range.masterEquipmentIds.includes(id) ||
+        (range.masterPointsTabs ?? []).some((tab) => tab.masterEquipmentId.trim() === id),
+    ) ?? null
+  )
+}
+
+/**
+ * Range Min / Max / Span for Generate Report Apply — particular equipment range.
+ * Prefers the range that owns the check-point, then the job-matched range,
+ * then any range with Min+Max, then capacity / job labels.
+ */
+export function resolveGenerateReportRangeBoundsForEquipment(params: {
+  ranges: EquipmentRangeEntry[]
+  pointValue?: string | null
+  masterEquipmentId?: string | null
+  preferredRange?: EquipmentRangeEntry | null
+  fallbackCapacity?: string | null
+  jobRangeLabel?: string | null
+}): { rangeMin: number | null; rangeMax: number | null; rangeSpan: number | null } {
+  const point = String(params.pointValue ?? '').trim()
+  const fromPoint = point
+    ? resolveGenerateReportRangeBoundsForPoint(params.ranges, point)
+    : { rangeMin: null, rangeMax: null, rangeSpan: null }
+  if (fromPoint.rangeSpan != null && fromPoint.rangeSpan > 0) return fromPoint
+
+  const fromMaster = params.masterEquipmentId
+    ? resolveGenerateReportRangeBoundsForRangeEntry(
+        findEquipmentRangeForMaster(params.ranges, params.masterEquipmentId),
+      )
+    : { rangeMin: null, rangeMax: null, rangeSpan: null }
+  if (fromMaster.rangeSpan != null && fromMaster.rangeSpan > 0) return fromMaster
+
+  const fromPreferred = resolveGenerateReportRangeBoundsForRangeEntry(
+    params.preferredRange ?? null,
+  )
+  if (fromPreferred.rangeSpan != null && fromPreferred.rangeSpan > 0) return fromPreferred
+
+  for (const range of params.ranges) {
+    const bounds = resolveGenerateReportRangeBoundsForRangeEntry(range)
+    if (bounds.rangeSpan != null && bounds.rangeSpan > 0) return bounds
+  }
+
+  const capacity = String(params.fallbackCapacity ?? '').trim()
+  if (capacity) {
+    const split = splitRangeCapacityToMinMax(capacity)
+    const fromCapacity = boundsFromMinMaxText(split.rangeMin, split.rangeMax)
+    if (fromCapacity.rangeMax != null) return fromCapacity
+  }
+
+  const jobLabel = String(params.jobRangeLabel ?? '').trim()
+  if (jobLabel) {
+    const split = splitRangeCapacityToMinMax(jobLabel)
+    const fromJob = boundsFromMinMaxText(split.rangeMin, split.rangeMax)
+    if (fromJob.rangeMax != null) return fromJob
+  }
+
+  if (fromPoint.rangeMax != null || fromPoint.rangeMin != null) return fromPoint
+  if (fromPreferred.rangeMax != null || fromPreferred.rangeMin != null) return fromPreferred
+  return { rangeMin: null, rangeMax: null, rangeSpan: null }
+}
+
+/** Keep a generated reading inside equipment Range Min / Max when the reference is in-range. */
+export function clampGenerateReportReadingToEquipmentRange(
+  value: number,
+  reference: number,
+  rangeMin: number | null,
+  rangeMax: number | null,
+): number {
+  if (!Number.isFinite(value)) return value
+  if (rangeMin == null || rangeMax == null) return value
+  if (!Number.isFinite(rangeMin) || !Number.isFinite(rangeMax)) return value
+  const lo = Math.min(rangeMin, rangeMax)
+  const hi = Math.max(rangeMin, rangeMax)
+  if (hi === lo) return value
+  // Only clamp load/point-like values (same domain as the range), never indicator counts.
+  if (reference < lo || reference > hi) return value
+  return Math.min(hi, Math.max(lo, value))
 }
 
 /**
@@ -1132,9 +1385,10 @@ export function computeGenerateReportOutputMinMaxPreview(params: {
   }
 
   const rangeId = String(params.rangeId ?? '').trim()
-  const { rangeSpan, rangeMax } = rangeId
+  const rangeBounds = rangeId
     ? resolveGenerateReportRangeBoundsForRangeId(params.ranges, rangeId)
     : resolveGenerateReportRangeBoundsForPoint(params.ranges, params.pointValue)
+  const { rangeSpan, rangeMax } = rangeBounds
   const band = computeGenerateReportBand({
     mode: params.mode,
     randomnessFactor: factor,
@@ -1154,8 +1408,18 @@ export function computeGenerateReportOutputMinMaxPreview(params: {
       ? params.multiple
       : 1
   const scaled = ref * multiple
-  const minRaw = scaled - band
-  const maxRaw = scaled + band
+  const minRaw = clampGenerateReportReadingToEquipmentRange(
+    scaled - band,
+    scaled,
+    rangeBounds.rangeMin,
+    rangeBounds.rangeMax,
+  )
+  const maxRaw = clampGenerateReportReadingToEquipmentRange(
+    scaled + band,
+    scaled,
+    rangeBounds.rangeMin,
+    rangeBounds.rangeMax,
+  )
   return {
     outputMin: formatGenerateReportOutputNumber(
       snapGenerateReportToRoundOff(minRaw, roundOff),
@@ -1209,7 +1473,7 @@ export function emptyGenerateReportConfigRow(
 }
 
 export const DEFAULT_GENERATE_REPORT_CONFIG: GenerateReportConfig = {
-  enabled: false,
+  enabled: true,
   rows: [emptyGenerateReportConfigRow()],
 }
 
@@ -1260,6 +1524,10 @@ export type CalibrationEquipmentForm = {
   generateReportConfig: GenerateReportConfig
   /** Per-equipment Calibration Certificate template (UTM default). */
   certificateTemplate: CalibrationCertificateTemplate
+  /** Outgoing checklist template for Calibration Conduct Outside. */
+  outgoingChecklist: ConductOutsideChecklistItem[]
+  /** Inward checklist template for Calibration Conduct Outside. */
+  inwardChecklist: ConductOutsideChecklistItem[]
   /** Default Mode of Calibration for certificate (manual; ranges may override). */
   modeOfCalibration: string
   /** Default Method Used for certificate (manual; ranges may override). */
@@ -1555,20 +1823,30 @@ export function emptyCalibrationEquipmentForm(): CalibrationEquipmentForm {
       rows: DEFAULT_GENERATE_REPORT_CONFIG.rows.map((r) => ({ ...r, id: newGenerateReportRowId() })),
     },
     certificateTemplate: defaultCalibrationCertificateTemplate(),
+    outgoingChecklist: emptyEquipmentChecklistItems('outgoing'),
+    inwardChecklist: emptyEquipmentChecklistItems('inward'),
     modeOfCalibration: '',
     methodUsed: '',
   }
 }
 
+export function outgoingChecklistFromRow(row: CalibrationEquipmentRow): ConductOutsideChecklistItem[] {
+  return parseEquipmentChecklistTemplate(row.outgoing_checklist_template, 'outgoing')
+}
+
+export function inwardChecklistFromRow(row: CalibrationEquipmentRow): ConductOutsideChecklistItem[] {
+  return parseEquipmentChecklistTemplate(row.inward_checklist_template, 'inward')
+}
+
 export function parseGenerateReportConfig(raw: unknown): GenerateReportConfig {
   if (!raw || typeof raw !== 'object') {
     return {
-      enabled: false,
+      enabled: true,
       rows: [emptyGenerateReportConfigRow()],
     }
   }
   const o = raw as Record<string, unknown>
-  const enabled = Boolean(o.enabled)
+  const enabled = true
 
   if (Array.isArray(o.rows)) {
     const rows = o.rows
@@ -1670,7 +1948,7 @@ export function serializeEquipmentGenerateReportConfig(
       })
     })
   return {
-    enabled: Boolean(config.enabled),
+    enabled: true,
     rows: rows.length > 0 ? rows : [emptyGenerateReportConfigRow()],
   }
 }

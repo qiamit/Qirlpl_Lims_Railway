@@ -38,12 +38,31 @@ import {
   type CalibrationCertificateTemplate,
 } from '@/features/calibration/equipments/certificateTemplateTypes'
 import {
+  allRawDataSheetColumns,
   parseRawDataSheetPayload,
   getEnvironmentAverageParamValue,
+  isRawDataColumnRequiredInCertificate,
   type RawDataEnvironmentConditions,
   type RawDataSheetPayload,
 } from '@/features/calibration/rawDataSheetTypes'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+
+const CERT_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const CERT_FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  'certificate-draft-dialog !flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
 import type { CalibrationJobRow } from '../types'
 import {
   fetchCertificateDraftByJobId,
@@ -614,12 +633,10 @@ function parseJobEquipmentFields(job: CalibrationJobRow) {
 }
 
 function formatDisplayDate(value: string | null | undefined): string {
+  const formatted = formatDate(value)
+  if (formatted !== '—') return formatted
   const raw = (value ?? '').trim()
-  if (!raw) return '—'
-  const d = raw.slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return cellText(raw)
-  const [y, m, day] = d.split('-')
-  return `${day}-${m}-${y}`
+  return raw ? cellText(raw) : '—'
 }
 
 function collectMasterIdsFromEquipment(
@@ -1275,11 +1292,12 @@ export function CertificateDraftDialog({
       const defaultNotes = template.defaultNotes.trim() || DEFAULT_CERTIFICATE_NOTES
       const defaultRemarks = template.defaultRemarks.trim() || DEFAULT_CERTIFICATE_REMARKS
 
+      const sheetColumns = parsedSheet ? allRawDataSheetColumns(parsedSheet.template) : []
       const loadCol =
-        (parsedSheet?.template.columns ?? []).find((c) =>
+        sheetColumns.find((c) =>
           /load/i.test(`${c.label} ${c.key}`),
         ) ??
-        (parsedSheet?.template.columns ?? []).find((c) =>
+        sheetColumns.find((c) =>
           /k\s*n/i.test(`${c.label} ${c.key}`),
         ) ??
         null
@@ -1651,15 +1669,16 @@ export function CertificateDraftDialog({
     }
   }
 
-  const columns = payload?.template.columns ?? []
+  const allTemplateColumns = payload ? allRawDataSheetColumns(payload.template) : []
+  const columns = allTemplateColumns.filter(isRawDataColumnRequiredInCertificate)
   const loadColumn = useMemo(() => {
-    if (columns.length === 0) return null
+    if (allTemplateColumns.length === 0) return null
     return (
-      columns.find((c) => /load/i.test(`${c.label} ${c.key}`)) ??
-      columns.find((c) => /k\s*n/i.test(`${c.label} ${c.key}`)) ??
+      allTemplateColumns.find((c) => /load/i.test(`${c.label} ${c.key}`)) ??
+      allTemplateColumns.find((c) => /k\s*n/i.test(`${c.label} ${c.key}`)) ??
       null
     )
-  }, [columns])
+  }, [allTemplateColumns])
 
   const rows = useMemo(() => {
     const list = payload?.rows ?? []
@@ -1946,12 +1965,12 @@ export function CertificateDraftDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-certificate-draft-preview=""
-        className={cn(
-          'certificate-draft-dialog !flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none',
+        overlayClassName={silentMode ? undefined : CERT_OVERLAY}
+        className={
           silentMode
-            ? 'bg-white'
-            : 'bg-[#e8eaed] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100',
-        )}
+            ? 'certificate-draft-dialog !flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none'
+            : CERT_FULLSCREEN_DIALOG_CLASS
+        }
         layer="nested"
         aria-describedby={undefined}
         showCloseButton={!silentMode}
@@ -2135,15 +2154,16 @@ export function CertificateDraftDialog({
         ) : null}
 
         {!silentMode ? (
-        <div className="certificate-draft-no-print relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-12 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Certificate Preparation · Draft · US Letter
-            </p>
+        <div className="certificate-draft-no-print relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-6 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <DialogTitle className="text-xl font-semibold tracking-tight text-white">
+                <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                   Certificate Draft — {cellText(equipmentLabel || job?.equipment_label)}
                 </DialogTitle>
               </div>
@@ -2152,7 +2172,7 @@ export function CertificateDraftDialog({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-8 border-white/25 bg-white/5 text-xs text-white hover:bg-white/10 hover:text-white"
+                  className={cn('h-8 text-xs', limsDarkBarBtnClass)}
                   disabled={loading || saving || issuing || !job}
                   onClick={() => void saveDraft()}
                   aria-label="Save certificate draft"
@@ -2164,7 +2184,7 @@ export function CertificateDraftDialog({
                   <Button
                     type="button"
                     size="sm"
-                    className="h-8 gap-1.5 bg-teal-600 text-xs text-white hover:bg-teal-500"
+                    className={cn('h-8 gap-1.5 text-xs', limsPrimaryBtnClass)}
                     disabled={loading || saving || issuing || !job}
                     onClick={() => void handleIssueAndForward()}
                     aria-label="Issue certificate and forward to Certificates"
@@ -2182,7 +2202,7 @@ export function CertificateDraftDialog({
         <div
           className={cn(
             'min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-6 sm:py-5',
-            silentMode ? 'bg-white pt-28' : 'bg-[#e8eaed]',
+            silentMode ? 'bg-white pt-28' : 'bg-gradient-to-b from-stone-100/80 to-stone-50',
           )}
         >
           {loading ? (
@@ -2680,12 +2700,11 @@ export function CertificateDraftDialog({
               ) : null}
               </CertificateLetterPage>
 
-              <div className="certificate-draft-no-print flex flex-wrap items-center justify-end gap-2 pb-6">
+              <div className="certificate-draft-no-print flex flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-3 py-3 sm:px-4">
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  className="gap-1.5"
+                  className={cn('h-9 gap-1.5', limsOutlineBtnClass)}
                   disabled={loading || saving || issuing || downloading || !job}
                   onClick={() => {
                     void (async () => {
@@ -2702,8 +2721,7 @@ export function CertificateDraftDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  className="gap-1.5"
+                  className={cn('h-9 gap-1.5', limsOutlineBtnClass)}
                   disabled={loading || saving || issuing || downloading || !job}
                   onClick={() => void handleDownloadPdf()}
                   aria-label="Download calibration certificate as PDF"
@@ -2715,8 +2733,7 @@ export function CertificateDraftDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  className="gap-1.5"
+                  className={cn('h-9 gap-1.5', limsOutlineBtnClass)}
                   disabled={loading || saving || issuing || downloading || !job}
                   onClick={() => void saveDraft()}
                   aria-label="Save certificate draft"
@@ -2727,8 +2744,7 @@ export function CertificateDraftDialog({
                 {onIssueAndForward ? (
                   <Button
                     type="button"
-                    size="sm"
-                    className="gap-1.5 bg-teal-600 text-white hover:bg-teal-500"
+                    className={cn('h-9 gap-1.5', limsPrimaryBtnClass)}
                     disabled={loading || saving || issuing || downloading || !job}
                     onClick={() => void handleIssueAndForward()}
                     aria-label="Issue certificate and forward to Certificates"

@@ -1,15 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsPrimaryBtnClass,
+  limsTableBodyToneClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import type { CalibrationJobRow } from '../types'
-import { updateCalibrationJobOutsideChecklist } from './calibrationJobApi'
+import {
+  resolveEquipmentMasterForJob,
+  updateCalibrationJobOutsideChecklist,
+} from './calibrationJobApi'
 import {
   allItemsChecked,
+  applyStoredChecksToTemplate,
   checklistKindLabel,
-  emptyChecklistPayload,
   parseConductOutsideChecklist,
+  parseEquipmentChecklistTemplate,
   type ConductOutsideChecklistItem,
   type ConductOutsideChecklistKind,
   type ConductOutsideChecklistPayload,
@@ -17,6 +29,16 @@ import {
 
 const checkboxClass =
   'h-4 w-4 shrink-0 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
+const FULLSCREEN_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const FULLSCREEN_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
 
 function formatError(err: unknown) {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -29,37 +51,66 @@ export function ConductOutsideChecklistDialog({
   open,
   onOpenChange,
   onSaved,
+  readOnly = false,
 }: {
   job: CalibrationJobRow | null
   kind: ConductOutsideChecklistKind
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (jobId: string, kind: ConductOutsideChecklistKind, payload: ConductOutsideChecklistPayload) => void
+  readOnly?: boolean
 }) {
   const [items, setItems] = useState<ConductOutsideChecklistItem[]>([])
   const [remarks, setRemarks] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const selectAllRef = useRef<HTMLInputElement>(null)
+  const allChecked = allItemsChecked(items)
+  const someChecked = items.some((item) => item.checked)
 
   useEffect(() => {
     if (!open || !job) return
+    let cancelled = false
     const source =
       kind === 'outgoing' ? job.outgoing_checklist : job.inward_checklist
     const parsed = parseConductOutsideChecklist(source, kind)
-    setItems(parsed.items.map((i) => ({ ...i })))
     setRemarks(parsed.remarks)
     setError(null)
     setSaving(false)
+
+    const loadItems = async () => {
+      try {
+        const equipment = await resolveEquipmentMasterForJob(job)
+        if (cancelled) return
+        const raw =
+          kind === 'outgoing'
+            ? equipment?.outgoing_checklist_template
+            : equipment?.inward_checklist_template
+        const templateItems = parseEquipmentChecklistTemplate(raw, kind)
+        if (templateItems.some((item) => item.label.trim())) {
+          setItems(applyStoredChecksToTemplate(templateItems, parsed.items))
+          return
+        }
+      } catch {
+        // Fall back to job / built-in items
+      }
+      if (!cancelled) setItems(parsed.items.map((i) => ({ ...i })))
+    }
+
+    void loadItems()
+    return () => {
+      cancelled = true
+    }
   }, [open, job, kind])
+
+  useEffect(() => {
+    if (!selectAllRef.current) return
+    selectAllRef.current.indeterminate = someChecked && !allChecked
+  }, [someChecked, allChecked])
 
   if (!job) return null
 
   const title = checklistKindLabel(kind)
-  const subtitle =
-    kind === 'outgoing'
-      ? 'Complete before opening the Raw Data Sheet (pre-calibration / dispatch).'
-      : 'Complete before forwarding to Review Data (post-calibration / return).'
-  const allChecked = allItemsChecked(items)
 
   const toggleItem = (id: string) => {
     setItems((prev) =>
@@ -71,17 +122,13 @@ export function ConductOutsideChecklistDialog({
     setItems((prev) => prev.map((item) => ({ ...item, checked })))
   }
 
-  const handleSave = async (markComplete: boolean) => {
-    if (markComplete && !allChecked) {
-      setError('Check all items before marking the checklist as completed.')
-      return
-    }
+  const handleSaveAndClose = async () => {
     setSaving(true)
     setError(null)
     try {
       const payload: ConductOutsideChecklistPayload = {
-        completed: markComplete,
-        completedAt: markComplete ? new Date().toISOString() : null,
+        completed: allChecked,
+        completedAt: allChecked ? new Date().toISOString() : null,
         remarks: remarks.trim(),
         items,
       }
@@ -95,139 +142,105 @@ export function ConductOutsideChecklistDialog({
     }
   }
 
-  const handleReset = () => {
-    const fresh = emptyChecklistPayload(kind)
-    setItems(fresh.items)
-    setRemarks('')
-    setError(null)
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg"
-        layer="nested"
+        persistOnFocusLoss
+        overlayClassName={FULLSCREEN_OVERLAY}
+        className={FULLSCREEN_DIALOG_CLASS}
         aria-describedby={undefined}
       >
-        <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-6">
-          <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-12 text-left">
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Calibration Conduct Outside
-            </p>
-            <DialogTitle className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
-              <ClipboardCheck size={18} aria-hidden />
-              {title}
-            </DialogTitle>
-            <p className="mt-1 text-xs text-slate-300">{job.equipment_label}</p>
-            <p className="mt-1 text-xs text-slate-400">{subtitle}</p>
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <DialogTitle className="flex min-w-0 shrink-0 items-center gap-2 text-base font-semibold tracking-tight text-white sm:text-lg">
+                <ClipboardCheck size={18} aria-hidden />
+                {title}
+              </DialogTitle>
+              <p className="min-w-0 truncate text-right text-xs text-stone-300 sm:text-sm">
+                {job.equipment_label}
+              </p>
+            </div>
           </DialogHeader>
         </div>
 
-        <div className="max-h-[min(60vh,520px)] space-y-3 overflow-y-auto bg-[#fafbfc] px-4 py-4 sm:px-6">
-          <div className="flex items-center justify-between gap-2">
-            <Label className="text-xs font-medium text-muted-foreground">Checklist items</Label>
-            <div className="flex gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => toggleAll(true)}
-                disabled={saving}
-              >
-                Check all
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => toggleAll(false)}
-                disabled={saving}
-              >
-                Clear
-              </Button>
-            </div>
-          </div>
-
-          <ul className="space-y-2">
-            {items.map((item) => (
-              <li key={item.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm hover:border-teal-300/60">
-                  <input
-                    type="checkbox"
-                    className={checkboxClass}
-                    checked={item.checked}
-                    onChange={() => toggleItem(item.id)}
-                    disabled={saving}
-                    aria-label={item.label}
-                  />
-                  <span className={item.checked ? 'text-slate-700' : 'text-slate-900'}>
-                    {item.label}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-
-          <div className="space-y-1.5">
-            <Label htmlFor={`checklist-remarks-${kind}`} className="text-xs">
-              Remarks (optional)
-            </Label>
-            <textarea
-              id={`checklist-remarks-${kind}`}
-              className="min-h-[72px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              disabled={saving}
-              placeholder="Notes for this checklist…"
-            />
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
+          <div className="overflow-hidden rounded-none border-2 border-stone-700">
+            <table className={cn(limsTableClass, 'table-fixed')}>
+              <colgroup>
+                <col className="w-10" />
+                <col />
+                <col className="w-[4.5rem]" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className={cn(limsTableHeadClass, 'px-1 py-1.5')}>#</th>
+                  <th className={cn(limsTableHeadClass, 'px-2 py-1.5')}>Description</th>
+                  <th className={cn(limsTableHeadClass, 'px-1 py-1.5')}>
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      className={cn(checkboxClass, 'mx-auto accent-amber-400')}
+                      checked={allChecked && items.length > 0}
+                      onChange={(e) => toggleAll(e.target.checked)}
+                      disabled={saving || readOnly || items.length === 0}
+                      aria-label="Select all"
+                      title="Select all / Deselect all"
+                    />
+                  </th>
+                </tr>
+              </thead>
+              <tbody className={limsTableBodyToneClass}>
+                {items.map((item, index) => (
+                  <tr key={item.id} className="hover:bg-[#fff7ed]">
+                    <td className="px-1 py-1.5 text-center text-xs font-semibold text-stone-700">
+                      {index + 1}
+                    </td>
+                    <td className="px-2 py-1.5 text-left text-sm text-stone-900">
+                      {item.label}
+                    </td>
+                    <td className="px-1 py-1.5 text-center">
+                      <input
+                        type="checkbox"
+                        className={cn(checkboxClass, 'mx-auto')}
+                        checked={item.checked}
+                        onChange={() => toggleItem(item.id)}
+                        disabled={saving || readOnly}
+                        aria-label={item.label}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           {error ? (
-            <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <p className="rounded-none border-2 border-amber-700/40 bg-[#fff7ed] px-3 py-2 text-sm text-amber-950">
               {error}
             </p>
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground"
-            onClick={handleReset}
-            disabled={saving}
-          >
-            Reset template
-          </Button>
-          <div className="flex flex-wrap gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:px-5">
+          {readOnly ? (
+            <p className="text-xs text-stone-500">View only</p>
+          ) : (
             <Button
               type="button"
-              variant="outline"
               size="sm"
+              className={limsPrimaryBtnClass}
               disabled={saving}
-              onClick={() => void handleSave(false)}
+              onClick={() => void handleSaveAndClose()}
             >
-              Save draft
+              {saving ? 'Saving…' : 'Save & Close'}
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="bg-teal-600 text-white hover:bg-teal-500"
-              disabled={saving || !allChecked}
-              title={
-                allChecked
-                  ? 'Save and mark checklist completed'
-                  : 'Check all items to mark completed'
-              }
-              onClick={() => void handleSave(true)}
-            >
-              {saving ? 'Saving…' : 'Save & Complete'}
-            </Button>
-          </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

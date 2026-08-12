@@ -12,10 +12,19 @@ import {
 } from './types'
 
 const GRID_TABLE =
-  'min-w-[720px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'min-w-[720px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4]'
+
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/80 hover:bg-[#fde68a]/80'
+
+const stickyEven = 'bg-[#f7f3eb]'
+const stickyOdd = 'bg-[#fffcf7]'
+const stickySelected = 'bg-[#fde68a]/80'
+const stickyHover = 'group-hover:bg-[#f3e9d8]'
 
 const checkboxClass =
-  'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
 
 function cellText(value: string | null | undefined): string {
   const t = (value ?? '').trim()
@@ -208,7 +217,7 @@ export function CalibrationEquipmentsTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="overflow-hidden overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
+    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-[#f7f3eb] shadow-sm ring-1 ring-amber-700/20">
       {error ? <p className="px-3 pt-3 text-sm text-destructive sm:px-5 sm:pt-4">{error}</p> : null}
 
       {loading ? (
@@ -255,16 +264,24 @@ export function CalibrationEquipmentsTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => {
+              {rows.map((r, index) => {
                 const selected = selectedIds.has(r.id)
                 const ranges = rangesFromRow(r)
+                const even = index % 2 === 0
+                const rowTone = selected ? rowSelectedClass : even ? rowEvenClass : rowOddClass
+                const stickyBg = selected ? stickySelected : even ? stickyEven : stickyOdd
 
                 return (
-                  <TableRow key={r.id} data-state={selected ? 'selected' : undefined}>
+                  <TableRow
+                    key={r.id}
+                    data-state={selected ? 'selected' : undefined}
+                    className={cn('group border-[#e7e0d4] transition-colors', rowTone)}
+                  >
                     <TableCell
                       className={cn(
                         'sticky left-0 z-10 text-center align-middle',
-                        selected ? 'bg-muted' : 'bg-card',
+                        stickyBg,
+                        !selected && stickyHover,
                       )}
                     >
                       <input
@@ -278,7 +295,8 @@ export function CalibrationEquipmentsTable({
                     <TableCell
                       className={cn(
                         'sticky left-12 z-10 align-middle text-left sm:left-14',
-                        selected ? 'bg-muted' : 'bg-card',
+                        stickyBg,
+                        !selected && stickyHover,
                       )}
                     >
                       <p

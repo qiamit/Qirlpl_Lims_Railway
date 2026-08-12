@@ -1,10 +1,15 @@
-import { SaleModulePlaceholder } from '../SaleModulePlaceholder'
+import { SaleDocumentMasterPage } from '../shared/SaleDocumentMasterPage'
 
 export default function PaymentReceiptPage() {
   return (
-    <SaleModulePlaceholder
-      title="Payment Receipt"
-      description="Capture and acknowledge customer payment receipts."
+    <SaleDocumentMasterPage
+      config={{
+        title: 'Payment Receipt',
+        documentKind: 'paymentReceipt',
+        addLabel: 'Add New Payment Receipt',
+        emptyHint: 'No payment receipts added yet.',
+        numberColumnLabel: 'Receipt No.',
+      }}
     />
   )
 }

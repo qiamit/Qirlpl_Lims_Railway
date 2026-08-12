@@ -19,6 +19,13 @@ import {
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
 import { AiSettingsFooterBar } from './AiSettingsFooterBar'
 import { deleteAiModel, fetchAiModels, upsertAiModel } from './aiSettingsApi'
 import {
@@ -39,8 +46,13 @@ const GRID_TABLE =
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-const fieldControlClass =
-  'h-10 rounded-none border-0 border-b border-slate-300 bg-transparent px-0 shadow-none text-slate-900 placeholder:text-slate-400 focus-visible:border-teal-600 focus-visible:ring-0'
+const AI_MODEL_DIALOG_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const AI_MODEL_DIALOG_CLASS = cn(
+  limsDialogClass,
+  'max-h-[92vh] w-[calc(100vw-1rem)] max-w-2xl',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(42rem,calc(100vw-268px-2rem))] md:max-w-[min(42rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+)
 
 export type AiModelsPanelHandle = {
   openCreate: () => void
@@ -396,25 +408,32 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent
-          className="max-h-[92vh] max-w-2xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100 [&>button]:hover:bg-white/10"
           aria-describedby={undefined}
+          overlayClassName={AI_MODEL_DIALOG_OVERLAY}
+          className={AI_MODEL_DIALOG_CLASS}
         >
-          <div className="relative bg-slate-900 px-6 py-5 text-white">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                AI Registry · {editId ? 'Edit Entry' : 'New Entry'}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white">
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editId ? 'Edit AI Model' : 'Add AI Model'}
               </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="max-h-[min(62vh,480px)] space-y-5 overflow-y-auto bg-[#fafbfc] px-6 py-6">
+          <div
+            className={cn(
+              limsRegistryFormClass,
+              'max-h-[min(62vh,480px)] space-y-5 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
+            )}
+          >
             <div className="grid grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-[12px] font-medium text-slate-600">Provider</Label>
+                <Label>Provider</Label>
                 <Select
                   value={form.provider}
                   onValueChange={(v) => {
@@ -437,10 +456,10 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
                     }))
                   }}
                 >
-                  <SelectTrigger className={fieldControlClass}>
+                  <SelectTrigger className={limsFieldClass}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[80]">
                     {AI_PROVIDERS.map((p) => (
                       <SelectItem key={p.value} value={p.value}>
                         {p.label}
@@ -450,36 +469,30 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ai-display-name" className="text-[12px] font-medium text-slate-600">
-                  Display Name
-                </Label>
+                <Label htmlFor="ai-display-name">Display Name</Label>
                 <Input
                   id="ai-display-name"
-                  className={fieldControlClass}
+                  className={limsFieldClass}
                   value={form.displayName}
                   onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
                   placeholder="GPT-4o Production"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ai-model-id" className="text-[12px] font-medium text-slate-600">
-                  Model ID
-                </Label>
+                <Label htmlFor="ai-model-id">Model ID</Label>
                 <Input
                   id="ai-model-id"
-                  className={fieldControlClass}
+                  className={limsFieldClass}
                   value={form.modelId}
                   onChange={(e) => setForm((p) => ({ ...p, modelId: e.target.value }))}
                   placeholder={AI_PROVIDER_MODEL_HINTS[form.provider]}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ai-base-url" className="text-[12px] font-medium text-slate-600">
-                  API Base URL
-                </Label>
+                <Label htmlFor="ai-base-url">API Base URL</Label>
                 <Input
                   id="ai-base-url"
-                  className={fieldControlClass}
+                  className={limsFieldClass}
                   value={form.apiBaseUrl}
                   onChange={(e) => setForm((p) => ({ ...p, apiBaseUrl: e.target.value }))}
                   placeholder={
@@ -488,14 +501,12 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
                 />
               </div>
               <div className="space-y-1.5 md:col-span-2">
-                <Label htmlFor="ai-api-key" className="text-[12px] font-medium text-slate-600">
-                  API Key
-                </Label>
+                <Label htmlFor="ai-api-key">API Key</Label>
                 <Input
                   id="ai-api-key"
                   type="password"
                   autoComplete="off"
-                  className={fieldControlClass}
+                  className={limsFieldClass}
                   value={form.apiKey}
                   onChange={(e) => setForm((p) => ({ ...p, apiKey: e.target.value }))}
                   placeholder={editId && hadExistingKey ? 'Leave blank to keep existing key' : 'Enter API Key'}
@@ -503,17 +514,19 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
               </div>
             </div>
             <div className="flex flex-wrap gap-4 pt-1">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
+              <label className="flex items-center gap-2 text-sm text-stone-800">
                 <input
                   type="checkbox"
+                  className="h-4 w-4 rounded-none border-stone-500 text-amber-700 focus-visible:ring-amber-500/30"
                   checked={form.isDefault}
                   onChange={(e) => setForm((p) => ({ ...p, isDefault: e.target.checked }))}
                 />
                 Default model
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-700">
+              <label className="flex items-center gap-2 text-sm text-stone-800">
                 <input
                   type="checkbox"
+                  className="h-4 w-4 rounded-none border-stone-500 text-amber-700 focus-visible:ring-amber-500/30"
                   checked={form.isActive}
                   onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
                 />
@@ -522,10 +535,10 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
             </div>
           </div>
 
-          <DialogFooter className="gap-2 border-t border-slate-200 bg-white px-6 py-4 sm:justify-end">
+          <DialogFooter className="border-t-2 border-stone-500 bg-stone-50 px-4 py-3 sm:justify-end sm:px-5">
             <Button
               type="button"
-              className="min-w-[140px] rounded-sm bg-teal-700 text-white hover:bg-teal-800"
+              className={cn('min-w-[140px]', limsPrimaryBtnClass)}
               onClick={handleSave}
               disabled={saving}
             >

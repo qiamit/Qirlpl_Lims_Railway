@@ -18,6 +18,7 @@ import {
   isValidIndianPin,
   isValidMobile,
   toContinuousText,
+  toProperTitleCase,
   type ClientForm as ClientFormType,
   type ClientRow,
 } from './types'
@@ -537,12 +538,12 @@ export default function ClientsMasterPage() {
           gst_number: form.gstNumber.trim().toUpperCase() || null,
           company_type: form.companyType,
           company_scale: form.companyScale,
-          company_name: form.companyName.trim(),
+          company_name: toProperTitleCase(form.companyName),
           contact_person_name: form.contactPersonName.trim() || null,
           country_code: form.countryCode || null,
           mobile: form.mobile.trim() || null,
           email: form.email.trim() || null,
-          address: toContinuousText(form.address) || null,
+          address: toContinuousText(toProperTitleCase(form.address)) || null,
           pin_code: form.pinCode.trim() || null,
           district: form.district.trim() || null,
           state: form.state || null,
@@ -867,12 +868,12 @@ export default function ClientsMasterPage() {
             gst_number: normalizeText(get('gst_number')).toUpperCase() || null,
             company_type: (normalizeText(get('company_type')) || 'Manufacturer') as ClientRow['company_type'],
             company_scale: (normalizeText(get('company_scale')) || 'Medium') as ClientRow['company_scale'],
-            company_name: normalizeText(get('company_name')),
+            company_name: toProperTitleCase(normalizeText(get('company_name'))),
             contact_person_name: normalizeText(get('contact_person_name')) || null,
             country_code: normalizeText(get('country_code')) || null,
             mobile: normalizeText(get('mobile')) || null,
             email: normalizeText(get('email')) || null,
-            address: normalizeText(get('address')) || null,
+            address: toProperTitleCase(normalizeText(get('address'))) || null,
             pin_code: normalizeText(get('pin_code')) || null,
             district: normalizeText(get('district')) || null,
             state: normalizeText(get('state')) || null,
@@ -908,6 +909,11 @@ export default function ClientsMasterPage() {
       <ClientsHeaderBar
         search={search}
         onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         onNew={handleNew}
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadClients()}
@@ -916,8 +922,9 @@ export default function ClientsMasterPage() {
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none [&>button]:!rounded-none [&>button]:opacity-100"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none [&>button]:!rounded-none [&>button]:opacity-100 md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(64rem,calc(100vw-268px-2rem))] md:max-w-[min(64rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2"
         >
           <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
             <div
@@ -1054,14 +1061,8 @@ export default function ClientsMasterPage() {
         message={saveMessage}
         loading={saveLoading}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={page}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onImport={handleImport}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}

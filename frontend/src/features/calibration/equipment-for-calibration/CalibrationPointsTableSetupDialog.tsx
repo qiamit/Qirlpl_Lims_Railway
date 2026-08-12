@@ -17,6 +17,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { ColumnCalculationDialog } from '@/features/calibration/equipments/RawDataSheetTemplateEditor'
 import {
   emptyColumnFormula,
@@ -44,6 +51,8 @@ type Props = {
   columns: CalibrationPointsColumn[]
   rows: CalibrationPointRow[]
   onApply: (columns: CalibrationPointsColumn[], rows: CalibrationPointRow[]) => void
+  title?: string
+  layer?: 'nested' | 'stacked' | 'top'
 }
 
 export function CalibrationPointsTableSetupDialog({
@@ -52,6 +61,8 @@ export function CalibrationPointsTableSetupDialog({
   columns,
   rows,
   onApply,
+  title,
+  layer = 'stacked',
 }: Props) {
   const [draft, setDraft] = useState<CalibrationPointsColumn[]>([])
   const [calculationColumnId, setCalculationColumnId] = useState<string | null>(null)
@@ -70,12 +81,7 @@ export function CalibrationPointsTableSetupDialog({
         })),
       )
     } else {
-      setDraft([
-        emptyCalibrationPointsColumn('Nominal', 'number'),
-        emptyCalibrationPointsColumn('Actual', 'number'),
-        emptyCalibrationPointsColumn('Correction', 'number'),
-        emptyCalibrationPointsColumn('Uncertainty', 'number'),
-      ])
+      setDraft([emptyCalibrationPointsColumn('', 'number')])
     }
     setCalculationColumnId(null)
     // Re-init only when Create Table opens — not when parent columns identity changes mid-edit.
@@ -187,34 +193,42 @@ export function CalibrationPointsTableSetupDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          layer="stacked"
-          className="flex max-h-[min(90dvh,44rem)] w-[calc(100vw-1.5rem)] max-w-3xl flex-col gap-0 overflow-hidden border-0 bg-white p-0 shadow-xl sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
+          layer={layer}
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'flex max-h-[min(90dvh,44rem)] w-[calc(100vw-1.5rem)] max-w-3xl flex-col',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
+            'md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))]',
+            'md:!-translate-x-1/2 md:!-translate-y-1/2',
+          )}
         >
-          <div className="relative shrink-0 bg-slate-900 px-4 py-4 text-white sm:px-5">
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-10 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                Calibration Points
-              </p>
-              <DialogTitle className="text-lg font-semibold tracking-tight text-white">
-                Create Table
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                {title ?? (columns.length > 0 ? 'Edit Table' : 'Create Table')}
               </DialogTitle>
             </DialogHeader>
           </div>
 
           <div
-            className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-5 ${labRegistryFormClass}`}
+            className={cn(
+              'min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5',
+              labRegistryFormClass,
+            )}
           >
-            <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+            <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
               <table className="w-full min-w-[640px] border-collapse text-sm">
-                <thead className="bg-slate-50 text-center text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <thead className="bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
                   <tr>
-                    <th className="border border-slate-200 px-2 py-2 w-10">#</th>
-                    <th className="border border-slate-200 px-2 py-2 text-left">Column Name</th>
-                    <th className="border border-slate-200 px-2 py-2 w-[120px]">Type</th>
-                    <th className="border border-slate-200 px-2 py-2 w-16">Req.</th>
-                    <th className="border border-slate-200 px-2 py-2 w-20">Actions</th>
+                    <th className="border border-stone-700 px-2 py-2 w-10">#</th>
+                    <th className="border border-stone-700 px-2 py-2 text-left">Column Name</th>
+                    <th className="border border-stone-700 px-2 py-2 w-[120px]">Type</th>
+                    <th className="border border-stone-700 px-2 py-2 w-24">Required</th>
+                    <th className="border border-stone-700 px-2 py-2 w-20">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -223,7 +237,7 @@ export function CalibrationPointsTableSetupDialog({
                     return (
                       <Fragment key={col.id}>
                         <tr className="align-middle">
-                          <td className="border border-slate-200 px-1 py-2 text-center">
+                          <td className="border border-stone-300 px-1 py-2 text-center">
                             <div className="flex flex-col items-center gap-0.5">
                               <span className="text-[11px] text-slate-500">{index + 1}</span>
                               <div className="flex gap-0.5">
@@ -252,7 +266,7 @@ export function CalibrationPointsTableSetupDialog({
                               </div>
                             </div>
                           </td>
-                          <td className="border border-slate-200 px-2 py-2">
+                          <td className="border border-stone-300 px-2 py-2">
                             <div className="flex items-center gap-2">
                               <Input
                                 value={col.header}
@@ -268,7 +282,7 @@ export function CalibrationPointsTableSetupDialog({
                                   type="button"
                                   variant="outline"
                                   size="icon"
-                                  className="h-9 w-9 shrink-0 border-indigo-600/40 text-indigo-800 hover:bg-indigo-50"
+                                  className={cn('h-9 w-9 shrink-0', limsOutlineBtnClass)}
                                   onClick={() => setCalculationColumnId(col.id)}
                                   aria-label={`Set formula for ${col.header || `column ${index + 1}`}`}
                                   title="Set formula"
@@ -278,7 +292,7 @@ export function CalibrationPointsTableSetupDialog({
                               ) : null}
                             </div>
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className="border border-stone-300 px-2 py-2 text-center">
                             <Select
                               value={col.type || 'number'}
                               onValueChange={(v) =>
@@ -305,29 +319,30 @@ export function CalibrationPointsTableSetupDialog({
                               </SelectContent>
                             </Select>
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className="border border-stone-300 px-2 py-2 text-center">
                             {isFormula ? (
                               <span className="text-[11px] text-muted-foreground">Auto</span>
                             ) : (
                               <input
                                 type="checkbox"
-                                className="mx-auto block h-4 w-4 accent-teal-600"
+                                className="mx-auto block h-4 w-4 accent-amber-700"
                                 checked={Boolean(col.required)}
                                 onChange={(e) =>
                                   updateColumn(col.id, { required: e.target.checked })
                                 }
-                                aria-label={`Required column ${index + 1}`}
+                                title="Show this column in the generated table"
+                                aria-label={`Show column ${index + 1} in generated table`}
                               />
                             )}
                           </td>
-                          <td className="border border-slate-200 px-2 py-2 text-center">
+                          <td className="border border-stone-300 px-2 py-2 text-center">
                             <div className="flex items-center justify-center gap-1">
                               {index === draft.length - 1 ? (
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 px-0 text-teal-700 hover:bg-teal-50 hover:text-teal-800"
+                                  className="h-8 w-8 px-0 text-amber-800 hover:bg-amber-500/15 hover:text-amber-950"
                                   disabled={draft.length >= MAX_SETUP_COLUMNS}
                                   onClick={addColumn}
                                   aria-label="Add column"
@@ -357,12 +372,14 @@ export function CalibrationPointsTableSetupDialog({
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-5">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={apply} disabled={draft.length === 0}>
-              {columns.length > 0 ? 'Update Table' : 'Generate Table'}
+          <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-5">
+            <Button
+              type="button"
+              className={limsPrimaryBtnClass}
+              onClick={apply}
+              disabled={draft.length === 0}
+            >
+              Save & Close
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  limsAddLinkClass,
+  FILTER_COMBOBOX_DROPDOWN_ATTR,
+} from '@/features/sample-handling/receiving/FilterCombobox'
+import {
   limsDarkBarGlowStyle,
   limsDialogClass,
   limsFieldClass,
@@ -32,6 +35,7 @@ export function MeasurementUnitSelect({
   showManageButton = true,
   className,
   inputClassName,
+  shellClassName,
   placeholder,
   disabled,
 }: {
@@ -44,13 +48,21 @@ export function MeasurementUnitSelect({
   showManageButton?: boolean
   className?: string
   inputClassName?: string
+  shellClassName?: string
   placeholder?: string
   disabled?: boolean
 }) {
   const { units } = useMeasurementUnits()
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const fieldRef = useRef<HTMLDivElement | null>(null)
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
+  const [dropdownPos, setDropdownPos] = useState<{
+    left: number
+    width: number
+    top?: number
+    bottom?: number
+  } | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [newUnitName, setNewUnitName] = useState('')
@@ -77,6 +89,44 @@ export function MeasurementUnitSelect({
   useEffect(() => {
     setHighlight((prev) => (totalOptions === 0 ? 0 : Math.min(prev, totalOptions - 1)))
   }, [totalOptions])
+
+  const showDropdown = open && !disabled && (filteredUnits.length > 0 || showAddUnitAction)
+
+  useLayoutEffect(() => {
+    if (!showDropdown) {
+      setDropdownPos(null)
+      return
+    }
+    const update = () => {
+      const el = fieldRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const estimatedHeight = Math.min(totalOptions * 36, 224)
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      const openUp = spaceBelow < estimatedHeight + 8 && spaceAbove > spaceBelow
+      setDropdownPos(
+        openUp
+          ? {
+              left: rect.left,
+              width: Math.max(rect.width, 140),
+              bottom: window.innerHeight - rect.top + 4,
+            }
+          : {
+              left: rect.left,
+              width: Math.max(rect.width, 140),
+              top: rect.bottom + 4,
+            },
+      )
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [showDropdown, totalOptions, value])
 
   useEffect(() => {
     if (!dialogOpen) {
@@ -174,81 +224,106 @@ export function MeasurementUnitSelect({
         ) : null}
 
         <div className="relative">
-          <Input
-            ref={inputRef}
-            id={id}
-            value={value}
-            disabled={disabled}
-            onChange={(e) => {
-              setOpen(true)
-              onChange(e.target.value)
-              setHighlight(0)
-            }}
-            onFocus={() => setOpen(true)}
-            onBlur={() => setTimeout(() => setOpen(false), 150)}
-            onKeyDown={handleKeyDown}
-            placeholder={resolvedPlaceholder}
-            autoComplete="off"
-            className={cn(limsFieldClass, showManageButton && 'pr-9', inputClassName)}
-          />
-          {showManageButton ? (
-            <button
-              type="button"
-              className={cn(
-                limsAddLinkClass,
-                'absolute inset-y-0 right-0 z-10 inline-flex w-8 items-center justify-center hover:no-underline',
-              )}
-              onClick={() => openManageDialog()}
-              onMouseDown={(e) => e.preventDefault()}
-              aria-label="Add measurement unit"
-              title="Add New"
+          <div
+            ref={fieldRef}
+            className={cn(
+              'flex h-10 overflow-hidden rounded-none border border-stone-500 bg-stone-50',
+              'focus-within:border-amber-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-amber-500/20',
+              disabled && 'opacity-50',
+              shellClassName,
+            )}
+          >
+            <Input
+              ref={inputRef}
+              id={id}
+              value={value}
               disabled={disabled}
-            >
-              <Plus size={14} />
-            </button>
-          ) : null}
-          {(filteredUnits.length > 0 || showAddUnitAction) && open && !disabled && (
-            <div
-              className="absolute z-30 mt-1 w-full rounded-none border border-stone-500 bg-white shadow-lg"
-              tabIndex={-1}
-            >
-              <ul className="max-h-56 overflow-auto text-sm">
-                {filteredUnits.map((unit, index) => (
-                  <li key={unit.id}>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onMouseEnter={() => setHighlight(index)}
-                      onClick={() => pickUnit(unit.name)}
-                    >
-                      {unit.name}
-                    </button>
-                  </li>
-                ))}
-                {showAddUnitAction && (
-                  <li>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      className={`w-full px-3 py-2 text-left text-amber-800 ${
-                        highlight === filteredUnits.length ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
-                      }`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onMouseEnter={() => setHighlight(filteredUnits.length)}
-                      onClick={() => {
-                        openManageDialog(value)
-                        setOpen(false)
-                      }}
-                    >
-                      Add &quot;{value.trim()}&quot; as new unit
-                    </button>
-                  </li>
-                )}
-              </ul>
-            </div>
-          )}
+              onChange={(e) => {
+                setOpen(true)
+                onChange(e.target.value)
+                setHighlight(0)
+              }}
+              onFocus={() => setOpen(true)}
+              onBlur={() => setTimeout(() => setOpen(false), 150)}
+              onKeyDown={handleKeyDown}
+              placeholder={resolvedPlaceholder}
+              autoComplete="off"
+              className={cn(
+                'h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 shadow-none',
+                'focus-visible:border-transparent focus-visible:bg-transparent focus-visible:ring-0',
+                inputClassName,
+              )}
+            />
+            {showManageButton ? (
+              <button
+                type="button"
+                className="inline-flex h-full w-9 shrink-0 items-center justify-center border-l border-stone-500 bg-stone-100 text-amber-800 transition-colors hover:bg-amber-500/15 hover:text-amber-950 disabled:pointer-events-none"
+                onClick={() => openManageDialog()}
+                onMouseDown={(e) => e.preventDefault()}
+                aria-label="Add measurement unit"
+                title="Add New"
+                disabled={disabled}
+              >
+                <Plus size={14} strokeWidth={2.25} aria-hidden />
+              </button>
+            ) : null}
+          </div>
+          {showDropdown && dropdownPos
+            ? createPortal(
+                <div
+                  {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
+                  className="fixed z-[9999] rounded-none border border-stone-500 bg-white shadow-lg"
+                  style={{
+                    left: dropdownPos.left,
+                    width: dropdownPos.width,
+                    top: dropdownPos.top,
+                    bottom: dropdownPos.bottom,
+                  }}
+                  tabIndex={-1}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <ul className="max-h-56 overflow-auto text-sm">
+                    {filteredUnits.map((unit, index) => (
+                      <li key={unit.id}>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setHighlight(index)}
+                          onClick={() => pickUnit(unit.name)}
+                        >
+                          {unit.name}
+                        </button>
+                      </li>
+                    ))}
+                    {showAddUnitAction ? (
+                      <li>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          className={`w-full px-3 py-2 text-left text-amber-800 ${
+                            highlight === filteredUnits.length
+                              ? 'bg-[#f3e9d8] font-semibold'
+                              : 'hover:bg-[#f7f3eb]'
+                          }`}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setHighlight(filteredUnits.length)}
+                          onClick={() => {
+                            openManageDialog(value)
+                            setOpen(false)
+                          }}
+                        >
+                          Add &quot;{value.trim()}&quot; as new unit
+                        </button>
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>,
+                document.body,
+              )
+            : null}
         </div>
       </div>
 

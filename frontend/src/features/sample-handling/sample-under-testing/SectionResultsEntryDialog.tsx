@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { limsDarkBarBtnClass, limsDarkBarGlowStyle, limsDialogClass, limsFieldClass, limsPrimaryBtnClass, limsTableHeadClass } from '@/lib/limsThemeUi'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Eye, FileText, Plus } from 'lucide-react'
 import type { TestAllocationRow } from '../types'
 import { AddSectionTestDialog } from './AddSectionTestDialog'
@@ -75,12 +75,7 @@ const isCompleteIsoDate = (value: string) => {
   return year >= 1000
 }
 
-const formatDateDisplay = (v: string | null | undefined) => {
-  const input = toDateInput(v)
-  if (!input) return '—'
-  const [y, m, d] = input.split('-')
-  return `${d}/${m}/${y}`
-}
+const formatDateDisplay = (v: string | null | undefined) => formatDate(toDateInput(v) || v)
 
 export function SectionResultsEntryDialog({
   open,

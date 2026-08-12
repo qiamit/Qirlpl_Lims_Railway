@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, History, Thermometer, Droplets } from 'lucide-react'
+import { formatDate } from '@/lib/utils'
 import {
   filterIntermediateCheckHistoryLastYears,
   INTERMEDIATE_CHECK_HISTORY_YEARS,
@@ -10,10 +11,7 @@ import {
 } from './intermediateCheckHistory'
 
 function formatDisplayDate(dateStr: string): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return dateStr
-  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  return formatDate(dateStr)
 }
 
 function extractAcceptanceCriteriaUnit(criteria: string): string {

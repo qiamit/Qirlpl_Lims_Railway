@@ -12,8 +12,16 @@ export const SERVICE_REQUEST_STATUSES: ServiceRequestStatus[] = [
   'Closed',
 ]
 
-export type PhysicalCondition = '' | 'Ok' | 'Not Ok'
-export const PHYSICAL_CONDITIONS: Exclude<PhysicalCondition, ''>[] = ['Ok', 'Not Ok']
+export type PhysicalCondition = string
+export const PHYSICAL_CONDITIONS = [
+  'Ok',
+  'Good',
+  'Satisfactory',
+  'Fair',
+  'Damaged',
+  'Needs Repair',
+  'Not Ok',
+] as const
 
 export type AccreditationStatus = '' | 'Accredited' | 'Non-Accredited'
 export const ACCREDITATION_STATUSES: Exclude<AccreditationStatus, ''>[] = [
@@ -288,8 +296,8 @@ export function emptyServiceRequestForm(): ServiceRequestForm {
     srfDate,
     clientId: '',
     clientName: '',
-    customerReferenceNo: '',
-    customerReferenceDate: '',
+    customerReferenceNo: 'Not Applicable',
+    customerReferenceDate: srfDate,
     calibrationLocation: 'In Lab',
     equipmentDescription: '',
     quantity: '1',

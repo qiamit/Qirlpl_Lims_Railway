@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, Pencil, Upload } from 'lucide-react'
+import { Eye, Pencil, Printer, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -63,8 +63,9 @@ export function ManagementDocumentsTable({
   selectedIds,
   onToggle,
   onToggleAll,
-  onEdit,
+  onPrint,
   onView,
+  onEdit,
   onUpload,
   onStatusChange,
   statusUpdatingId,
@@ -76,8 +77,9 @@ export function ManagementDocumentsTable({
   selectedIds: Set<string>
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
-  onEdit: (row: ManagementDocumentRow) => void
+  onPrint: (row: ManagementDocumentRow) => void
   onView: (row: ManagementDocumentRow) => void
+  onEdit: (row: ManagementDocumentRow) => void
   onUpload: (row: ManagementDocumentRow) => void
   onStatusChange: (row: ManagementDocumentRow, status: ManagementDocStatus) => void
   statusUpdatingId?: string | null
@@ -121,7 +123,7 @@ export function ManagementDocumentsTable({
               <TableHead className="min-w-[110px] text-center text-xs">Doc No</TableHead>
               <TableHead className="min-w-[120px] text-center text-xs">Rev / Issue / Amendment</TableHead>
               <TableHead className="min-w-[100px] text-center text-xs">Status</TableHead>
-              <TableHead className="min-w-[160px] text-center text-xs">Actions</TableHead>
+              <TableHead className="min-w-[180px] text-center text-xs">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -185,21 +187,12 @@ export function ManagementDocumentsTable({
                     </Select>
                   </TableCell>
                   <TableCell className="align-middle text-center">
-                    <div className="inline-flex items-center justify-center gap-0.5">
+                    <div className="inline-flex flex-nowrap items-center justify-center gap-0.5">
                       <Button
                         type="button"
-                        size="sm"
+                        size="icon"
                         variant="ghost"
-                        aria-label={`View ${r.doc_number}`}
-                        title="View"
-                        onClick={() => onView(r)}
-                      >
-                        <Eye size={16} />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
+                        className="h-8 w-8 shrink-0 rounded-none"
                         aria-label={`Edit ${r.doc_number}`}
                         title="Edit"
                         onClick={() => onEdit(r)}
@@ -208,8 +201,31 @@ export function ManagementDocumentsTable({
                       </Button>
                       <Button
                         type="button"
-                        size="sm"
+                        size="icon"
                         variant="ghost"
+                        className="h-8 w-8 shrink-0 rounded-none"
+                        aria-label={`View ${r.doc_number}`}
+                        title="View"
+                        onClick={() => onView(r)}
+                      >
+                        <Eye size={16} />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0 rounded-none"
+                        aria-label={`Print ${r.doc_number}`}
+                        title="Print"
+                        onClick={() => onPrint(r)}
+                      >
+                        <Printer size={16} />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0 rounded-none"
                         aria-label={`Upload document for ${r.doc_number}`}
                         title="Upload"
                         onClick={() => onUpload(r)}

@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_COUNTRY, DEFAULT_STATE, emptyClientForm, toContinuousText, type ClientForm } from '@/features/masters/clients/types'
 import { ClientsForm } from '@/features/masters/clients/ClientsForm'
+import { limsDarkBarGlowStyle, limsDialogClass, limsPrimaryBtnClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
 function useClientDialogState(open: boolean) {
   const [form, setForm] = useState<ClientForm>(emptyClientForm)
@@ -44,17 +43,25 @@ function useClientDialogState(open: boolean) {
       const by = (cat: string) => rows.filter((r) => r.category === cat)
       setStates((prev) => {
         const fromDb = by('state').map((r) => ({ id: r.id, label: r.label }))
-        return [...prev.filter((p) => p.id.startsWith('default-')), ...fromDb]
+        const merged = [...prev.filter((p) => p.id.startsWith('default-')), ...fromDb]
+        const uniq = new Map(merged.map((x) => [x.label.toLowerCase(), x]))
+        return Array.from(uniq.values()).sort((a, b) => a.label.localeCompare(b.label))
       })
       setCountries((prev) => {
         const fromDb = by('country').map((r) => ({ id: r.id, label: r.label }))
-        return [...prev.filter((p) => p.id.startsWith('default-')), ...fromDb]
+        const merged = [...prev.filter((p) => p.id.startsWith('default-')), ...fromDb]
+        const uniq = new Map(merged.map((x) => [x.label.toLowerCase(), x]))
+        return Array.from(uniq.values()).sort((a, b) => a.label.localeCompare(b.label))
       })
       setDistricts(by('district').map((r) => ({ id: r.id, label: r.label })))
       setPinCodes(by('pin_code').map((r) => ({ id: r.id, label: r.label })))
       setCountryCodes((prev) => {
-        const fromDb = by('country_code').map((r) => ({ id: r.id, value: r.value ?? r.label, label: r.label })).filter((x) => x.value)
-        return [...prev.filter((p) => p.id.startsWith('default-')), ...fromDb]
+        const fromDb = by('country_code')
+          .map((r) => ({ id: r.id, value: r.value ?? r.label, label: r.label }))
+          .filter((x) => x.value)
+        const merged = [...prev.filter((p) => p.id.startsWith('default-')), ...fromDb]
+        const uniq = new Map(merged.map((x) => [x.value.toLowerCase(), x]))
+        return Array.from(uniq.values())
       })
       setCompanyTypes(by('company_type').map((r) => ({ id: r.id, label: r.label })))
       setCompanyScales(by('company_scale').map((r) => ({ id: r.id, label: r.label })))
@@ -72,7 +79,11 @@ function useClientDialogState(open: boolean) {
     const { data, error } = await supabase.from('client_master_options').insert({ category: 'state', label: name, value: name }).select('id').single()
     if (error) return
     const id = (data as { id: string } | null)?.id ?? `tmp-${name}`
-    setStates((prev) => [...prev, { id, label: name }])
+    setStates((prev) => {
+      const merged = [...prev, { id, label: name }]
+      const uniq = new Map(merged.map((x) => [x.label.toLowerCase(), x]))
+      return Array.from(uniq.values()).sort((a, b) => a.label.localeCompare(b.label))
+    })
     setForm((prev) => ({ ...prev, state: name }))
     setNewStateName('')
     setStateDialogOpen(false)
@@ -83,7 +94,11 @@ function useClientDialogState(open: boolean) {
     const { data, error } = await supabase.from('client_master_options').insert({ category: 'country', label: name, value: name }).select('id').single()
     if (error) return
     const id = (data as { id: string } | null)?.id ?? `tmp-${name}`
-    setCountries((prev) => [...prev, { id, label: name }])
+    setCountries((prev) => {
+      const merged = [...prev, { id, label: name }]
+      const uniq = new Map(merged.map((x) => [x.label.toLowerCase(), x]))
+      return Array.from(uniq.values()).sort((a, b) => a.label.localeCompare(b.label))
+    })
     setForm((prev) => ({ ...prev, country: name }))
     setNewCountryName('')
     setCountryDialogOpen(false)
@@ -286,21 +301,40 @@ export function AddClientDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-2xl w-[66vw] max-h-[90vh] overflow-y-auto"
+        className={cn(
+          limsDialogClass,
+          'flex w-[min(1100px,94vw)] max-w-none flex-col',
+          'max-h-[min(92vh,920px)]',
+        )}
         aria-describedby={undefined}
         layer={nested ? 'nested' : 'default'}
+        persistOnFocusLoss
       >
-        <DialogHeader>
-          <DialogTitle>Add new Client (same as Client Directory form)</DialogTitle>
-        </DialogHeader>
-        {saveMessage && <p className="text-sm text-destructive">{saveMessage}</p>}
-        <div className="max-h-[70vh] overflow-y-auto pr-2">
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Add New Client
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+
+        {saveMessage ? (
+          <p className="shrink-0 border-l-2 border-destructive bg-destructive/5 px-4 py-2 text-sm text-destructive sm:px-5">
+            {saveMessage}
+          </p>
+        ) : null}
+
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
           <ClientsForm
             form={state.form}
             onChange={state.setForm}
             canSave={canSave}
             saveLoading={saveLoading}
             onSave={handleSave}
+            hideFooter
+            compact
             states={state.states}
             countries={state.countries}
             districts={state.districts}
@@ -360,9 +394,17 @@ export function AddClientDialog({
             onDeletePaymentTerm={state.onDeletePaymentTerm}
           />
         </div>
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="button" onClick={handleSave} disabled={!canSave || saveLoading}>{saveLoading ? 'Saving…' : 'Save Client'}</Button>
+
+        <DialogFooter className="shrink-0 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end sm:px-5">
+          {/* Single primary action — close via header X */}
+          <Button
+            type="button"
+            className={cn(limsPrimaryBtnClass, 'h-9 px-4 text-sm')}
+            onClick={handleSave}
+            disabled={!canSave || saveLoading}
+          >
+            {saveLoading ? 'Saving…' : 'Save & Close'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

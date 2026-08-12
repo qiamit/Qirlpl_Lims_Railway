@@ -8,9 +8,10 @@ import {
 } from './sampleReceivingEditLock'
 import { getSampleWorkflowStatusLabel } from '../sampleWorkflowStatus'
 import type { SampleReceivingSortKey } from './sortSampleReceivingRows'
+import { formatDate } from '@/lib/utils'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '-')
-const fmtDate = (v: string | null | undefined) => (v ? v.slice(0, 10) : '-')
+const fmtDate = (v: string | null | undefined) => formatDate(v)
 
 function SortableHead({
   label,

@@ -1,4 +1,4 @@
-import { ExternalLink, Pencil } from 'lucide-react'
+import { FolderOpen, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
@@ -102,7 +102,7 @@ export function IsCodesTable({
                         aria-label={`View files for ${r.is_number}`}
                       >
                         View Files
-                        <ExternalLink size={12} />
+                        <FolderOpen size={12} />
                       </Button>
                     </div>
                   </TableCell>
@@ -126,7 +126,7 @@ export function IsCodesTable({
                     <div className="space-y-0.5">
                       <p className="text-sm text-foreground">{r.aspect}</p>
                       <p className="text-xs text-muted-foreground">
-                        Testing Charges: Rs {Number(r.testing_charges ?? 0).toFixed(2)}
+                        Rs {Number(r.testing_charges ?? 0).toFixed(2)}
                       </p>
                     </div>
                   </TableCell>

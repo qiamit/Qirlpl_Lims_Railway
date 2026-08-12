@@ -1,8 +1,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
-import { Plus, Trash2 } from 'lucide-react'
+import { LimsFieldWithAdd, LimsFieldAddButton } from '@/components/lims/LimsFieldWithAdd'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,22 +14,19 @@ import { RegistrationDocumentsTab } from './lab-settings/RegistrationDocumentsTa
 import { PrefixesTab } from './lab-settings/PrefixesTab'
 import { LetterheadTab } from './lab-settings/LetterheadTab'
 import { LabSettingsHeaderBar } from './lab-settings/LabSettingsHeaderBar'
-import { LabSettingsPanel, labAddLinkClass } from './lab-settings/labSettingsUi'
+import { LabManageDialogContent } from './lab-settings/LabManageDialogContent'
+import { LabSettingsPanel } from './lab-settings/labSettingsUi'
 import { persistLabNameLocal } from './lab-settings/brandMark'
 import {
   Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
-  DialogDescription,
 } from '@/components/ui/dialog'
 import {
   deleteLabMasterOption,
   fetchLabMasterOptionsGrouped,
   insertLabMasterOption,
   slugifyLabOptionValue,
+  updateLabMasterOption,
   type LabMasterOptionCategory,
 } from './lab-settings/labMasterOptions'
 import type { OptionItem } from './lab-settings/types'
@@ -59,12 +55,14 @@ export default function LabSettingsPage() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'laboratory-details'
     const stored = window.localStorage.getItem('labSettings.activeTab') ?? 'laboratory-details'
-    return stored === 'print' ? 'laboratory-details' : stored
+    if (stored === 'print' || stored === 'templates') return 'laboratory-details'
+    return stored
   })
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   const [labName, setLabName] = useState('')
+  const [gstNumber, setGstNumber] = useState('')
   const [contactPersonName, setContactPersonName] = useState('')
   const [mobile, setMobile] = useState('')
   const [email, setEmail] = useState('')
@@ -143,11 +141,12 @@ export default function LabSettingsPage() {
   const [currencyDialogOpen, setCurrencyDialogOpen] = useState(false)
   const [newCurrency, setNewCurrency] = useState('')
   const [dateFormats, setDateFormats] = useState([
+    { value: 'dd-mmm-yy', label: 'DD-Mmm-YY' },
     { value: 'dd-mm-yyyy', label: 'DD-MM-YYYY' },
     { value: 'mm-dd-yyyy', label: 'MM-DD-YYYY' },
     { value: 'yyyy-mm-dd', label: 'YYYY-MM-DD' },
   ])
-  const [selectedDateFormat, setSelectedDateFormat] = useState('dd-mm-yyyy')
+  const [selectedDateFormat, setSelectedDateFormat] = useState('dd-mmm-yy')
   const [dateDialogOpen, setDateDialogOpen] = useState(false)
   const [newDateFormat, setNewDateFormat] = useState('')
   const [timeFormats, setTimeFormats] = useState([
@@ -375,6 +374,19 @@ export default function LabSettingsPage() {
       () => setCurrencyDialogOpen(false),
     )
   }
+  const handleUpdateCurrency = (value: string) => {
+    if (!newCurrency.trim()) return
+    persistUpdateMasterOption(
+      'currency',
+      value,
+      newCurrency.trim(),
+      setCurrencies,
+      selectedCurrency,
+      setSelectedCurrency,
+      () => setNewCurrency(''),
+      () => setCurrencyDialogOpen(false),
+    )
+  }
   const handleDeleteCurrency = (value: string) => {
     if (currencies.length <= 1) return
     persistDeleteMasterOption('currency', value, currencies, setCurrencies, selectedCurrency, setSelectedCurrency)
@@ -393,6 +405,20 @@ export default function LabSettingsPage() {
       () => setDateDialogOpen(false),
     )
   }
+  const handleUpdateDateFormat = (value: string) => {
+    if (!newDateFormat.trim()) return
+    const label = newDateFormat.trim().toUpperCase()
+    persistUpdateMasterOption(
+      'date_format',
+      value,
+      label,
+      setDateFormats,
+      selectedDateFormat,
+      setSelectedDateFormat,
+      () => setNewDateFormat(''),
+      () => setDateDialogOpen(false),
+    )
+  }
   const handleDeleteDateFormat = (value: string) => {
     if (dateFormats.length <= 1) return
     persistDeleteMasterOption('date_format', value, dateFormats, setDateFormats, selectedDateFormat, setSelectedDateFormat)
@@ -406,6 +432,19 @@ export default function LabSettingsPage() {
       label,
       value,
       setTimeFormats,
+      setSelectedTimeFormat,
+      () => setNewTimeFormat(''),
+      () => setTimeDialogOpen(false),
+    )
+  }
+  const handleUpdateTimeFormat = (value: string) => {
+    if (!newTimeFormat.trim()) return
+    persistUpdateMasterOption(
+      'time_format',
+      value,
+      newTimeFormat.trim(),
+      setTimeFormats,
+      selectedTimeFormat,
       setSelectedTimeFormat,
       () => setNewTimeFormat(''),
       () => setTimeDialogOpen(false),
@@ -506,6 +545,43 @@ export default function LabSettingsPage() {
     })()
   }
 
+  const persistUpdateMasterOption = (
+    category: LabMasterOptionCategory,
+    oldValue: string,
+    label: string,
+    setOptions: Dispatch<SetStateAction<OptionItem[]>>,
+    selected: string,
+    setSelected: (value: string) => void,
+    clearInput: () => void,
+    closeDialog: () => void,
+    nextValue?: string,
+  ) => {
+    const trimmed = label.trim()
+    if (!trimmed || !oldValue) return
+    void (async () => {
+      try {
+        await updateLabMasterOption(category, oldValue, trimmed, nextValue)
+        const value = nextValue?.trim() || oldValue
+        setOptions((prev) =>
+          sortOptions(
+            prev.map((o) => (o.value === oldValue ? { value, label: trimmed } : o)),
+          ),
+        )
+        if (selected === oldValue) setSelected(value)
+        clearInput()
+        closeDialog()
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to update option')
+      }
+    })()
+  }
+
+  function sortOptions(items: OptionItem[]): OptionItem[] {
+    return [...items].sort((a, b) => a.label.localeCompare(b.label))
+  }
+
+  const toManageItems = (items: OptionItem[]) => items.map((o) => ({ id: o.value, label: o.label }))
+
   const handleAddLabType = () => {
     if (!newLabType.trim()) return
     const label = newLabType.trim()
@@ -515,6 +591,20 @@ export default function LabSettingsPage() {
       label,
       value,
       setLabTypes,
+      setSelectedLabType,
+      () => setNewLabType(''),
+      () => setLabTypeDialogOpen(false),
+    )
+  }
+
+  const handleUpdateLabType = (value: string) => {
+    if (!newLabType.trim()) return
+    persistUpdateMasterOption(
+      'laboratory_type',
+      value,
+      newLabType.trim(),
+      setLabTypes,
+      selectedLabType,
       setSelectedLabType,
       () => setNewLabType(''),
       () => setLabTypeDialogOpen(false),
@@ -651,6 +741,19 @@ export default function LabSettingsPage() {
       () => setLabScaleDialogOpen(false),
     )
   }
+  const handleUpdateLabScale = (value: string) => {
+    if (!newLabScale.trim()) return
+    persistUpdateMasterOption(
+      'laboratory_scale',
+      value,
+      newLabScale.trim(),
+      setLabScales,
+      selectedLabScale,
+      setSelectedLabScale,
+      () => setNewLabScale(''),
+      () => setLabScaleDialogOpen(false),
+    )
+  }
   const handleDeleteLabScale = (value: string) => {
     if (labScales.length <= 1) return
     persistDeleteMasterOption('laboratory_scale', value, labScales, setLabScales, selectedLabScale, setSelectedLabScale)
@@ -664,6 +767,19 @@ export default function LabSettingsPage() {
       label,
       value,
       setDesignations,
+      setSelectedDesignation,
+      () => setNewDesignation(''),
+      () => setDesignationDialogOpen(false),
+    )
+  }
+  const handleUpdateDesignation = (value: string) => {
+    if (!newDesignation.trim()) return
+    persistUpdateMasterOption(
+      'designation',
+      value,
+      newDesignation.trim(),
+      setDesignations,
+      selectedDesignation,
       setSelectedDesignation,
       () => setNewDesignation(''),
       () => setDesignationDialogOpen(false),
@@ -693,6 +809,21 @@ export default function LabSettingsPage() {
       setSelectedCountryCode,
       () => setNewCountryCode(''),
       () => setCountryCodeDialogOpen(false),
+    )
+  }
+  const handleUpdateCountryCode = (oldValue: string) => {
+    if (!newCountryCode.trim()) return
+    const formatted = newCountryCode.startsWith('+') ? newCountryCode.trim() : `+${newCountryCode.trim()}`
+    persistUpdateMasterOption(
+      'country_code',
+      oldValue,
+      formatted,
+      setCountryCodes,
+      selectedCountryCode,
+      setSelectedCountryCode,
+      () => setNewCountryCode(''),
+      () => setCountryCodeDialogOpen(false),
+      formatted,
     )
   }
   const handleDeleteCountryCode = (value: string) => {
@@ -742,6 +873,19 @@ export default function LabSettingsPage() {
       () => setStateDialogOpen(false),
     )
   }
+  const handleUpdateState = (value: string) => {
+    if (!newState.trim()) return
+    persistUpdateMasterOption(
+      'state',
+      value,
+      newState.trim(),
+      setStates,
+      selectedState,
+      setSelectedState,
+      () => setNewState(''),
+      () => setStateDialogOpen(false),
+    )
+  }
   const handleDeleteState = (value: string) => {
     if (states.length <= 1) return
     persistDeleteMasterOption('state', value, states, setStates, selectedState, setSelectedState)
@@ -755,6 +899,19 @@ export default function LabSettingsPage() {
       label,
       value,
       setCountries,
+      setSelectedCountry,
+      () => setNewCountry(''),
+      () => setCountryDialogOpen(false),
+    )
+  }
+  const handleUpdateCountry = (value: string) => {
+    if (!newCountry.trim()) return
+    persistUpdateMasterOption(
+      'country',
+      value,
+      newCountry.trim(),
+      setCountries,
+      selectedCountry,
       setSelectedCountry,
       () => setNewCountry(''),
       () => setCountryDialogOpen(false),
@@ -835,6 +992,7 @@ export default function LabSettingsPage() {
 
       const parsed = parseLabSettingsRow(data as Record<string, unknown>)
       setLabName(parsed.labName)
+      setGstNumber(parsed.gstNumber)
       setContactPersonName(parsed.contactPersonName)
       setMobile(parsed.mobile)
       setEmail(parsed.email)
@@ -881,7 +1039,8 @@ export default function LabSettingsPage() {
     let canceled = false
 
     const loadLists = async () => {
-      const [documentsResult, prefixesResult, letterheadsResult, accreditationsResult] = await Promise.all([
+      const [documentsResult, prefixesResult, letterheadsResult, accreditationsResult] =
+        await Promise.all([
         supabase
           .from('lab_documents')
           .select('category, name, remarks, file_path')
@@ -1023,6 +1182,7 @@ export default function LabSettingsPage() {
         await upsertLabSettings(
           labDetailsPayload({
             labName,
+            gstNumber,
             address,
             mobile,
             email,
@@ -1128,10 +1288,10 @@ export default function LabSettingsPage() {
 
         {/* Tab 1: Laboratory Details */}
         <TabsContent value="laboratory-details" className="mt-0 focus-visible:outline-none">
-          <LabSettingsPanel eyebrow="Lab Registry · Profile" title="Laboratory Details">
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
-                <div className="min-w-0 space-y-2 xl:col-span-2">
-                  <div className="flex items-center min-h-[20px]">
+          <LabSettingsPanel>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:gap-6">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex h-5 items-center">
                     <Label htmlFor="lab-name">Name of the Laboratory</Label>
                   </div>
                   <Input
@@ -1146,358 +1306,221 @@ export default function LabSettingsPage() {
                     }}
                   />
                 </div>
-
-                <div className="min-w-0 space-y-2 xl:col-span-1">
-                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                    <Label htmlFor="lab-type" className="shrink-0">Laboratory Type</Label>
-                    <Dialog open={labTypeDialogOpen} onOpenChange={setLabTypeDialogOpen}>
-                      <DialogTrigger asChild>
-                        <button type="button" className={labAddLinkClass}>
-                          <Plus size={12} />
-                          Add New Type
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent aria-describedby={undefined}>
-                        <DialogHeader>
-                          <DialogTitle>Add New Laboratory Type</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-lab-type">Type Name</Label>
-                            <Input
-                              id="new-lab-type"
-                              value={newLabType}
-                              onChange={(e) => setNewLabType(e.target.value)}
-                              placeholder="e.g., Environmental Testing"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground mb-2">Existing Types</p>
-                            <div className="space-y-1">
-                              {labTypes.map((type) => (
-                                <div
-                                  key={type.value}
-                                  className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                >
-                                  <span>{type.label}</span>
-                                  {labTypes.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteLabType(type.value)}
-                                      className="text-destructive hover:text-destructive/80"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setNewLabType('')
-                              setLabTypeDialogOpen(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="button" onClick={handleAddLabType} disabled={!newLabType.trim()}>
-                            Save Type
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex h-5 items-center">
+                    <Label htmlFor="lab-gst-number">GST Number</Label>
                   </div>
-                  <Select value={selectedLabType} onValueChange={setSelectedLabType}>
-                    <SelectTrigger id="lab-type" className="w-full">
-                      <SelectValue placeholder="Select laboratory type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {labTypes.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    id="lab-gst-number"
+                    className="w-full uppercase"
+                    placeholder="e.g. 22AAAAA0000A1Z5"
+                    value={gstNumber}
+                    onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
+                    maxLength={15}
+                    autoComplete="off"
+                  />
                 </div>
-
-                <div className="min-w-0 space-y-2 xl:col-span-1">
-                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                    <Label htmlFor="lab-scale" className="shrink-0">Laboratory Scale</Label>
-                    <Dialog open={labScaleDialogOpen} onOpenChange={setLabScaleDialogOpen}>
-                      <DialogTrigger asChild>
-                        <button type="button" className={labAddLinkClass}>
-                          <Plus size={12} />
-                          Add New Scale
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent aria-describedby={undefined}>
-                        <DialogHeader>
-                          <DialogTitle>Add New Laboratory Scale</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-lab-scale">Scale Name</Label>
-                            <Input
-                              id="new-lab-scale"
-                              value={newLabScale}
-                              onChange={(e) => setNewLabScale(e.target.value)}
-                              placeholder="e.g., Mega Facility"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground mb-2">Existing Scales</p>
-                            <div className="space-y-1">
-                              {labScales.map((scale) => (
-                                <div
-                                  key={scale.value}
-                                  className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                >
-                                  <span>{scale.label}</span>
-                                  {labScales.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteLabScale(scale.value)}
-                                      className="text-destructive hover:text-destructive/80"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setNewLabScale('')
-                              setLabScaleDialogOpen(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="button" onClick={handleAddLabScale} disabled={!newLabScale.trim()}>
-                            Save Scale
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <Select value={selectedLabScale} onValueChange={setSelectedLabScale}>
-                    <SelectTrigger id="lab-scale" className="w-full">
-                      <SelectValue placeholder="Select laboratory scale" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {labScales.map((scale) => (
-                        <SelectItem key={scale.value} value={scale.value}>
-                          {scale.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
               </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end lg:col-span-4">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex items-center min-h-[20px]">
-                      <Label htmlFor="contact-person">Contact Person Name</Label>
-                    </div>
-                    <Input
-                      id="contact-person"
-                      className="w-full"
-                      placeholder="Enter Contact Person Name"
-                      value={contactPersonName}
-                      onChange={(e) => setContactPersonName(e.target.value)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-6 items-end">
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="lab-type">Laboratory Type</Label>
+                  <Dialog open={labTypeDialogOpen} onOpenChange={setLabTypeDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
+                        <DialogTrigger asChild>
+                          <LimsFieldAddButton aria-label="Manage laboratory types" />
+                        </DialogTrigger>
+                      }
+                    >
+                      <Select value={selectedLabType} onValueChange={setSelectedLabType}>
+                        <SelectTrigger id="lab-type" className="w-full">
+                          <SelectValue placeholder="Select laboratory type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {labTypes.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={labTypeDialogOpen}
+                      title="Manage Laboratory Types"
+                      addLabel="Add Laboratory Type"
+                      inputId="new-lab-type"
+                      placeholder="e.g., Environmental Testing"
+                      value={newLabType}
+                      onValueChange={setNewLabType}
+                      onSave={handleAddLabType}
+                      onUpdate={handleUpdateLabType}
+                      saveDisabled={!newLabType.trim()}
+                      items={toManageItems(labTypes)}
+                      canDelete={() => labTypes.length > 1}
+                      onDelete={handleDeleteLabType}
                     />
-                  </div>
+                  </Dialog>
+                </div>
 
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                      <Label htmlFor="contact-designation" className="shrink-0">Designation</Label>
-                      <Dialog open={designationDialogOpen} onOpenChange={setDesignationDialogOpen}>
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="lab-scale">Laboratory Scale</Label>
+                  <Dialog open={labScaleDialogOpen} onOpenChange={setLabScaleDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
                         <DialogTrigger asChild>
-                          <button type="button" className={labAddLinkClass}>
-                            <Plus size={12} />
-                            Add New Designation
-                          </button>
+                          <LimsFieldAddButton aria-label="Manage laboratory scales" />
                         </DialogTrigger>
-                        <DialogContent aria-describedby={undefined}>
-                          <DialogHeader>
-                            <DialogTitle>Add New Designation</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="new-designation">Designation Name</Label>
-                              <Input
-                                id="new-designation"
-                                value={newDesignation}
-                                onChange={(e) => setNewDesignation(e.target.value)}
-                                placeholder="e.g., Compliance Officer"
-                              />
-                            </div>
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-2">Existing Designations</p>
-                              <div className="space-y-1">
-                                {designations.map((designation) => (
-                                  <div
-                                    key={designation.value}
-                                    className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                  >
-                                    <span>{designation.label}</span>
-                                    {designations.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteDesignation(designation.value)}
-                                        className="text-destructive hover:text-destructive/80"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          <DialogFooter>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              onClick={() => {
-                                setNewDesignation('')
-                                setDesignationDialogOpen(false)
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                            <Button type="button" onClick={handleAddDesignation} disabled={!newDesignation.trim()}>
-                              Save Designation
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                    <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
-                      <SelectTrigger id="contact-designation" className="w-full">
-                        <SelectValue placeholder="Select designation" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {designations.map((designation) => (
-                          <SelectItem key={designation.value} value={designation.value}>
-                            {designation.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      }
+                    >
+                      <Select value={selectedLabScale} onValueChange={setSelectedLabScale}>
+                        <SelectTrigger id="lab-scale" className="w-full">
+                          <SelectValue placeholder="Select laboratory scale" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {labScales.map((scale) => (
+                            <SelectItem key={scale.value} value={scale.value}>
+                              {scale.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={labScaleDialogOpen}
+                      title="Manage Laboratory Scales"
+                      addLabel="Add Laboratory Scale"
+                      inputId="new-lab-scale"
+                      placeholder="e.g., Mega Facility"
+                      value={newLabScale}
+                      onValueChange={setNewLabScale}
+                      onSave={handleAddLabScale}
+                      onUpdate={handleUpdateLabScale}
+                      saveDisabled={!newLabScale.trim()}
+                      items={toManageItems(labScales)}
+                      canDelete={() => labScales.length > 1}
+                      onDelete={handleDeleteLabScale}
+                    />
+                  </Dialog>
+                </div>
 
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                      <Label htmlFor="mobile" className="shrink-0">Mobile Number</Label>
-                      <Dialog open={countryCodeDialogOpen} onOpenChange={setCountryCodeDialogOpen}>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex items-center h-5">
+                    <Label htmlFor="contact-person">Contact Person Name</Label>
+                  </div>
+                  <Input
+                    id="contact-person"
+                    className="w-full"
+                    placeholder="Enter Contact Person Name"
+                    value={contactPersonName}
+                    onChange={(e) => setContactPersonName(e.target.value)}
+                  />
+                </div>
+
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="contact-designation">Designation</Label>
+                  <Dialog open={designationDialogOpen} onOpenChange={setDesignationDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
                         <DialogTrigger asChild>
-                          <button type="button" className={labAddLinkClass}>
-                            <Plus size={12} />
-                            Manage Codes
-                          </button>
+                          <LimsFieldAddButton aria-label="Manage designations" />
                         </DialogTrigger>
-                        <DialogContent aria-describedby={undefined}>
-                          <DialogHeader>
-                            <DialogTitle>Add Country Code</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="new-country-code">Country Code</Label>
-                              <Input
-                                id="new-country-code"
-                                value={newCountryCode}
-                                onChange={(e) => setNewCountryCode(e.target.value)}
-                                placeholder="e.g., +44"
-                              />
-                            </div>
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-2">Existing Codes</p>
-                              <div className="space-y-1 max-h-40 overflow-auto">
+                      }
+                    >
+                      <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
+                        <SelectTrigger id="contact-designation" className="w-full">
+                          <SelectValue placeholder="Select designation" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {designations.map((designation) => (
+                            <SelectItem key={designation.value} value={designation.value}>
+                              {designation.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={designationDialogOpen}
+                      title="Manage Designations"
+                      addLabel="Add Designation"
+                      inputId="new-designation"
+                      placeholder="e.g., Compliance Officer"
+                      value={newDesignation}
+                      onValueChange={setNewDesignation}
+                      onSave={handleAddDesignation}
+                      onUpdate={handleUpdateDesignation}
+                      saveDisabled={!newDesignation.trim()}
+                      items={toManageItems(designations)}
+                      canDelete={() => designations.length > 1}
+                      onDelete={handleDeleteDesignation}
+                    />
+                  </Dialog>
+                </div>
+              </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6 items-end">
+                  <div className="min-w-0 space-y-2">
+                    <Label htmlFor="mobile">Mobile Number</Label>
+                    <Dialog open={countryCodeDialogOpen} onOpenChange={setCountryCodeDialogOpen}>
+                      <LimsFieldWithAdd
+                        addButton={
+                          <DialogTrigger asChild>
+                            <LimsFieldAddButton aria-label="Manage country codes" />
+                          </DialogTrigger>
+                        }
+                      >
+                        <div className="grid w-full grid-cols-3 gap-2">
+                          <div>
+                            <Select value={selectedCountryCode} onValueChange={setSelectedCountryCode}>
+                              <SelectTrigger id="country-code" className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
                                 {countryCodes.map((code) => (
-                                  <div
-                                    key={code.value}
-                                    className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                  >
-                                    <span>{code.label}</span>
-                                    {countryCodes.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteCountryCode(code.value)}
-                                        className="text-destructive hover:text-destructive/80"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
-                                  </div>
+                                  <SelectItem key={code.value} value={code.value}>
+                                    {code.label}
+                                  </SelectItem>
                                 ))}
-                              </div>
-                            </div>
+                              </SelectContent>
+                            </Select>
                           </div>
-                          <DialogFooter>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              onClick={() => {
-                                setNewCountryCode('')
-                                setCountryCodeDialogOpen(false)
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                            <Button type="button" onClick={handleAddCountryCode} disabled={!newCountryCode.trim()}>
-                              Save Code
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                    <div className="grid w-full grid-cols-3 gap-2">
-                      <div>
-                        <Select value={selectedCountryCode} onValueChange={setSelectedCountryCode}>
-                          <SelectTrigger id="country-code" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {countryCodes.map((code) => (
-                              <SelectItem key={code.value} value={code.value}>
-                                {code.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Input
-                        id="mobile"
-                        type="tel"
-                        placeholder="Enter Mobile Number"
-                        className="col-span-2"
-                        value={mobile}
-                        onChange={(e) => setMobile(e.target.value)}
-                        maxLength={10}
-                        minLength={10}
-                        pattern="\d{10}"
-                        inputMode="numeric"
-                        title="Enter a 10-digit mobile number"
+                          <Input
+                            id="mobile"
+                            type="tel"
+                            placeholder="Enter Mobile Number"
+                            className="col-span-2"
+                            value={mobile}
+                            onChange={(e) => setMobile(e.target.value)}
+                            maxLength={10}
+                            minLength={10}
+                            pattern="\d{10}"
+                            inputMode="numeric"
+                            title="Enter a 10-digit mobile number"
+                          />
+                        </div>
+                      </LimsFieldWithAdd>
+                      <LabManageDialogContent
+                        open={countryCodeDialogOpen}
+                        title="Manage Country Codes"
+                        addLabel="Add Country Code"
+                        inputId="new-country-code"
+                        placeholder="e.g., +44"
+                        value={newCountryCode}
+                        onValueChange={setNewCountryCode}
+                        onSave={handleAddCountryCode}
+                        onUpdate={handleUpdateCountryCode}
+                        saveDisabled={!newCountryCode.trim()}
+                        items={toManageItems(countryCodes)}
+                        canDelete={() => countryCodes.length > 1}
+                        onDelete={handleDeleteCountryCode}
                       />
-                    </div>
+                    </Dialog>
                   </div>
 
                   <div className="min-w-0 space-y-2">
-                    <div className="flex items-center min-h-[20px]">
+                    <div className="flex items-center h-5">
                       <Label htmlFor="email">Email ID</Label>
                     </div>
                     <Input
@@ -1511,36 +1534,38 @@ export default function LabSettingsPage() {
                       title="Enter a valid email address"
                     />
                   </div>
-                </div>
 
-              <div className="min-w-0 max-w-xl space-y-2">
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  className="w-full"
-                  type="url"
-                  placeholder="Enter Website URL"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  title="Enter company website"
-                />
-              </div>
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex items-center h-5">
+                      <Label htmlFor="website">Website</Label>
+                    </div>
+                    <Input
+                      id="website"
+                      className="w-full"
+                      type="url"
+                      placeholder="Enter Website URL"
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                      title="Enter company website"
+                    />
+                  </div>
+                </div>
 
               <div className="space-y-2">
                 <Label htmlFor="address">Current Address</Label>
                 <Textarea
                   id="address"
                   placeholder="Enter Complete Address"
-                  rows={3}
-                  className="!h-auto !min-h-[88px] resize-y rounded-md border border-slate-300 bg-white focus-visible:ring-teal-600/30"
+                  rows={1}
+                  className="!h-10 !min-h-10 resize-none"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-6 items-end">
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center min-h-[20px]">
+                  <div className="flex items-center h-5">
                     <Label htmlFor="pincode">PIN Code</Label>
                   </div>
                   <Input
@@ -1555,7 +1580,7 @@ export default function LabSettingsPage() {
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center min-h-[20px]">
+                  <div className="flex items-center h-5">
                     <Label htmlFor="district">District</Label>
                   </div>
                   <Input
@@ -1568,161 +1593,85 @@ export default function LabSettingsPage() {
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                    <Label htmlFor="state" className="shrink-0">State</Label>
-                    <Dialog open={stateDialogOpen} onOpenChange={setStateDialogOpen}>
-                      <DialogTrigger asChild>
-                        <button type="button" className={labAddLinkClass}>
-                          <Plus size={12} />
-                          Add New State
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent aria-describedby={undefined}>
-                        <DialogHeader>
-                          <DialogTitle>Add New State</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-state">State Name</Label>
-                            <Input
-                              id="new-state"
-                              value={newState}
-                              onChange={(e) => setNewState(e.target.value)}
-                              placeholder="e.g., Karnataka"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground mb-2">Existing States</p>
-                            <div className="space-y-1 max-h-40 overflow-auto">
-                              {states.map((state) => (
-                                <div
-                                  key={state.value}
-                                  className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                >
-                                  <span>{state.label}</span>
-                                  {states.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteState(state.value)}
-                                      className="text-destructive hover:text-destructive/80"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setNewState('')
-                              setStateDialogOpen(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="button" onClick={handleAddState} disabled={!newState.trim()}>
-                            Save State
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <Select value={selectedState} onValueChange={setSelectedState}>
-                    <SelectTrigger id="state" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {states.map((state) => (
-                        <SelectItem key={state.value} value={state.value}>
-                          {state.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="state">State</Label>
+                  <Dialog open={stateDialogOpen} onOpenChange={setStateDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
+                        <DialogTrigger asChild>
+                          <LimsFieldAddButton aria-label="Manage states" />
+                        </DialogTrigger>
+                      }
+                    >
+                      <Select value={selectedState} onValueChange={setSelectedState}>
+                        <SelectTrigger id="state" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {states.map((state) => (
+                            <SelectItem key={state.value} value={state.value}>
+                              {state.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={stateDialogOpen}
+                      title="Manage States"
+                      addLabel="Add State"
+                      inputId="new-state"
+                      placeholder="e.g., Karnataka"
+                      value={newState}
+                      onValueChange={setNewState}
+                      onSave={handleAddState}
+                      onUpdate={handleUpdateState}
+                      saveDisabled={!newState.trim()}
+                      items={toManageItems(states)}
+                      canDelete={() => states.length > 1}
+                      onDelete={handleDeleteState}
+                    />
+                  </Dialog>
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                    <Label htmlFor="country" className="shrink-0">Country</Label>
-                    <Dialog open={countryDialogOpen} onOpenChange={setCountryDialogOpen}>
-                      <DialogTrigger asChild>
-                        <button type="button" className={labAddLinkClass}>
-                          <Plus size={12} />
-                          Add New Country
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent aria-describedby={undefined}>
-                        <DialogHeader>
-                          <DialogTitle>Add New Country</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-country">Country Name</Label>
-                            <Input
-                              id="new-country"
-                              value={newCountry}
-                              onChange={(e) => setNewCountry(e.target.value)}
-                              placeholder="e.g., Sri Lanka"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground mb-2">Existing Countries</p>
-                            <div className="space-y-1 max-h-40 overflow-auto">
-                              {countries.map((country) => (
-                                <div
-                                  key={country.value}
-                                  className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                >
-                                  <span>{country.label}</span>
-                                  {countries.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteCountry(country.value)}
-                                      className="text-destructive hover:text-destructive/80"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setNewCountry('')
-                              setCountryDialogOpen(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="button" onClick={handleAddCountry} disabled={!newCountry.trim()}>
-                            Save Country
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                    <SelectTrigger id="country" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {countries.map((country) => (
-                        <SelectItem key={country.value} value={country.value}>
-                          {country.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="country">Country</Label>
+                  <Dialog open={countryDialogOpen} onOpenChange={setCountryDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
+                        <DialogTrigger asChild>
+                          <LimsFieldAddButton aria-label="Manage countries" />
+                        </DialogTrigger>
+                      }
+                    >
+                      <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                        <SelectTrigger id="country" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {countries.map((country) => (
+                            <SelectItem key={country.value} value={country.value}>
+                              {country.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={countryDialogOpen}
+                      title="Manage Countries"
+                      addLabel="Add Country"
+                      inputId="new-country"
+                      placeholder="e.g., Sri Lanka"
+                      value={newCountry}
+                      onValueChange={setNewCountry}
+                      onSave={handleAddCountry}
+                      onUpdate={handleUpdateCountry}
+                      saveDisabled={!newCountry.trim()}
+                      items={toManageItems(countries)}
+                      canDelete={() => countries.length > 1}
+                      onDelete={handleDeleteCountry}
+                    />
+                  </Dialog>
                 </div>
               </div>
 
@@ -1749,7 +1698,7 @@ export default function LabSettingsPage() {
 
         {/* Tab 2: Bank Details */}
         <TabsContent value="bank-details" className="mt-0 focus-visible:outline-none">
-          <LabSettingsPanel eyebrow="Lab Registry · Banking" title="Bank Details">
+          <LabSettingsPanel>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="bank-name">Bank Name</Label>
@@ -1938,253 +1887,133 @@ export default function LabSettingsPage() {
 
         {/* Tab 7: Settings */}
         <TabsContent value="settings" className="mt-0 focus-visible:outline-none">
-          <LabSettingsPanel eyebrow="Lab Registry · Preferences" title="System Setting">
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-6 items-end">
+          <LabSettingsPanel>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-6 items-end">
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                    <Label htmlFor="currency" className="shrink-0">Currency Setting</Label>
-                    <Dialog open={currencyDialogOpen} onOpenChange={setCurrencyDialogOpen}>
-                      <DialogTrigger asChild>
-                        <button type="button" className={labAddLinkClass}>
-                          <Plus size={12} />
-                          Add New Currency
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent aria-describedby={undefined}>
-                        <DialogHeader>
-                          <DialogTitle>Add New Currency</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-currency">Currency Name</Label>
-                            <Input
-                              id="new-currency"
-                              placeholder="e.g., SGD ($) - Singapore Dollar"
-                              value={newCurrency}
-                              onChange={(e) => setNewCurrency(e.target.value)}
-                            />
-                          </div>
-                          {currencies.length > 0 && (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-2">Existing Currencies</p>
-                              <div className="space-y-1 max-h-40 overflow-auto">
-                                {currencies.map((currency) => (
-                                  <div
-                                    key={currency.value}
-                                    className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                  >
-                                    <span>{currency.label}</span>
-                                    {currencies.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteCurrency(currency.value)}
-                                        className="text-destructive hover:text-destructive/80"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setCurrencyDialogOpen(false)
-                              setNewCurrency('')
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="button" onClick={handleAddCurrency} disabled={!newCurrency.trim()}>
-                            Save Currency
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-                    <SelectTrigger id="currency" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currencies.map((currency) => (
-                        <SelectItem key={currency.value} value={currency.value}>
-                          {currency.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="currency">Currency Setting</Label>
+                  <Dialog open={currencyDialogOpen} onOpenChange={setCurrencyDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
+                        <DialogTrigger asChild>
+                          <LimsFieldAddButton aria-label="Manage currencies" />
+                        </DialogTrigger>
+                      }
+                    >
+                      <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+                        <SelectTrigger id="currency" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {currencies.map((currency) => (
+                            <SelectItem key={currency.value} value={currency.value}>
+                              {currency.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={currencyDialogOpen}
+                      title="Manage Currencies"
+                      addLabel="Add Currency"
+                      inputId="new-currency"
+                      placeholder="e.g., SGD ($) - Singapore Dollar"
+                      value={newCurrency}
+                      onValueChange={setNewCurrency}
+                      onSave={handleAddCurrency}
+                      onUpdate={handleUpdateCurrency}
+                      saveDisabled={!newCurrency.trim()}
+                      items={toManageItems(currencies)}
+                      canDelete={() => currencies.length > 1}
+                      onDelete={handleDeleteCurrency}
+                    />
+                  </Dialog>
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                    <Label htmlFor="date-format" className="shrink-0">Date Setting</Label>
-                    <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
-                      <DialogTrigger asChild>
-                        <button type="button" className={labAddLinkClass}>
-                          <Plus size={12} />
-                          Add New Format
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent aria-describedby={undefined}>
-                        <DialogHeader>
-                          <DialogTitle>Add Date Format</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-date-format">Format</Label>
-                            <Input
-                              id="new-date-format"
-                              placeholder="e.g., DD/MM/YYYY"
-                              value={newDateFormat}
-                              onChange={(e) => setNewDateFormat(e.target.value)}
-                            />
-                          </div>
-                          {dateFormats.length > 0 && (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-2">Existing Formats</p>
-                              <div className="space-y-1 max-h-40 overflow-auto">
-                                {dateFormats.map((format) => (
-                                  <div
-                                    key={format.value}
-                                    className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                  >
-                                    <span>{format.label}</span>
-                                    {dateFormats.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteDateFormat(format.value)}
-                                        className="text-destructive hover:text-destructive/80"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setDateDialogOpen(false)
-                              setNewDateFormat('')
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="button" onClick={handleAddDateFormat} disabled={!newDateFormat.trim()}>
-                            Save Format
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <Select value={selectedDateFormat} onValueChange={setSelectedDateFormat}>
-                    <SelectTrigger id="date-format" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {dateFormats.map((format) => (
-                        <SelectItem key={format.value} value={format.value}>
-                          {format.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="date-format">Date Setting</Label>
+                  <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
+                        <DialogTrigger asChild>
+                          <LimsFieldAddButton aria-label="Manage date formats" />
+                        </DialogTrigger>
+                      }
+                    >
+                      <Select value={selectedDateFormat} onValueChange={setSelectedDateFormat}>
+                        <SelectTrigger id="date-format" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {dateFormats.map((format) => (
+                            <SelectItem key={format.value} value={format.value}>
+                              {format.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={dateDialogOpen}
+                      title="Manage Date Formats"
+                      addLabel="Add Date Format"
+                      inputId="new-date-format"
+                      placeholder="e.g., DD/MM/YYYY"
+                      value={newDateFormat}
+                      onValueChange={setNewDateFormat}
+                      onSave={handleAddDateFormat}
+                      onUpdate={handleUpdateDateFormat}
+                      saveDisabled={!newDateFormat.trim()}
+                      items={toManageItems(dateFormats)}
+                      canDelete={() => dateFormats.length > 1}
+                      onDelete={handleDeleteDateFormat}
+                    />
+                  </Dialog>
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center justify-between gap-2 min-h-[20px]">
-                    <Label htmlFor="time-format" className="shrink-0">Time Setting</Label>
-                    <Dialog open={timeDialogOpen} onOpenChange={setTimeDialogOpen}>
-                      <DialogTrigger asChild>
-                        <button type="button" className={labAddLinkClass}>
-                          <Plus size={12} />
-                          Add New Format
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent aria-describedby={undefined}>
-                        <DialogHeader>
-                          <DialogTitle>Add Time Format</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-time-format">Format</Label>
-                            <Input
-                              id="new-time-format"
-                              placeholder="e.g., HH:MM:ss"
-                              value={newTimeFormat}
-                              onChange={(e) => setNewTimeFormat(e.target.value)}
-                            />
-                          </div>
-                          {timeFormats.length > 0 && (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-2">Existing Formats</p>
-                              <div className="space-y-1 max-h-40 overflow-auto">
-                                {timeFormats.map((format) => (
-                                  <div
-                                    key={format.value}
-                                    className="flex items-center justify-between rounded-md border border-border px-3 py-1 text-sm"
-                                  >
-                                    <span>{format.label}</span>
-                                    {timeFormats.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteTimeFormat(format.value)}
-                                        className="text-destructive hover:text-destructive/80"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setTimeDialogOpen(false)
-                              setNewTimeFormat('')
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button type="button" onClick={handleAddTimeFormat} disabled={!newTimeFormat.trim()}>
-                            Save Format
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <Select value={selectedTimeFormat} onValueChange={setSelectedTimeFormat}>
-                    <SelectTrigger id="time-format" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timeFormats.map((format) => (
-                        <SelectItem key={format.value} value={format.value}>
-                          {format.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="time-format">Time Setting</Label>
+                  <Dialog open={timeDialogOpen} onOpenChange={setTimeDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
+                        <DialogTrigger asChild>
+                          <LimsFieldAddButton aria-label="Manage time formats" />
+                        </DialogTrigger>
+                      }
+                    >
+                      <Select value={selectedTimeFormat} onValueChange={setSelectedTimeFormat}>
+                        <SelectTrigger id="time-format" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {timeFormats.map((format) => (
+                            <SelectItem key={format.value} value={format.value}>
+                              {format.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <LabManageDialogContent
+                      open={timeDialogOpen}
+                      title="Manage Time Formats"
+                      addLabel="Add Time Format"
+                      inputId="new-time-format"
+                      placeholder="e.g., HH:MM:ss"
+                      value={newTimeFormat}
+                      onValueChange={setNewTimeFormat}
+                      onSave={handleAddTimeFormat}
+                      onUpdate={handleUpdateTimeFormat}
+                      saveDisabled={!newTimeFormat.trim()}
+                      items={toManageItems(timeFormats)}
+                      canDelete={() => timeFormats.length > 1}
+                      onDelete={handleDeleteTimeFormat}
+                    />
+                  </Dialog>
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  <div className="flex items-center min-h-[20px]">
+                  <div className="flex items-center h-5">
                     <Label htmlFor="theme">Theme</Label>
                   </div>
                   <Select value={selectedTheme} onValueChange={(value) => setSelectedTheme(value as 'light' | 'dark' | 'system')}>
@@ -2200,15 +2029,14 @@ export default function LabSettingsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 space-y-2 border-t border-slate-200 pt-5">
-                <Label htmlFor="generate-report-feature">Calibration Generate Report</Label>
+              <div className="mt-6 space-y-2 border-t border-stone-300 pt-5">
+                <Label htmlFor="generate-report-feature">Active Button - On & Off</Label>
                 <label
                   htmlFor="generate-report-feature"
-                  className="flex max-w-xl cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-slate-300"
+                  className="flex max-w-xs cursor-pointer items-center justify-between gap-3 rounded-none border border-stone-500 bg-stone-50 px-3 py-2.5 transition-colors hover:bg-white"
                 >
-                  <span className="min-w-0 flex-1 text-xs font-medium leading-snug text-slate-700">
-                    Show Generate Report Format (Calibration Equipments) and Generate Report
-                    (Calibration Conduct)
+                  <span className="text-xs font-semibold uppercase tracking-wide text-stone-700">
+                    {generateReportEnabled ? 'On' : 'Off'}
                   </span>
                   <span className="relative inline-flex h-5 w-9 shrink-0 items-center">
                     <input
@@ -2218,7 +2046,7 @@ export default function LabSettingsPage() {
                       checked={generateReportEnabled}
                       onChange={(e) => setGenerateReportEnabled(e.target.checked)}
                     />
-                    <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-teal-600 peer-focus-visible:ring-2 peer-focus-visible:ring-teal-600/40" />
+                    <span className="absolute inset-0 rounded-full bg-stone-300 transition-colors peer-checked:bg-amber-700 peer-focus-visible:ring-2 peer-focus-visible:ring-amber-500/40" />
                     <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
                   </span>
                 </label>

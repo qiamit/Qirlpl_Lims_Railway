@@ -32,13 +32,15 @@ const dialogLayerZClass = (layer: DialogLayer) => {
 const DialogPortal = ({
   children,
   layer = 'default',
+  className,
   ...props
-}: DialogPrimitive.DialogPortalProps & { layer?: DialogLayer }) => (
+}: DialogPrimitive.DialogPortalProps & { layer?: DialogLayer; className?: string }) => (
   <DialogPrimitive.Portal {...props}>
     <div
       className={cn(
         'fixed inset-0 flex items-start justify-center sm:items-center',
         dialogLayerZClass(layer),
+        className,
       )}
     >
       {children}
@@ -87,6 +89,8 @@ const DialogContent = React.forwardRef<
     layer?: DialogLayer
     /** Optional classes for the dimmed backdrop (e.g. leave app sidebar uncovered) */
     overlayClassName?: string
+    /** Optional classes for the full-screen portal flex wrapper (centering region). */
+    portalClassName?: string
   }
 >(
   (
@@ -97,6 +101,7 @@ const DialogContent = React.forwardRef<
       showCloseButton = true,
       layer = 'default',
       overlayClassName,
+      portalClassName,
       onFocusOutside,
       onPointerDownOutside,
       onInteractOutside,
@@ -105,7 +110,7 @@ const DialogContent = React.forwardRef<
     },
     ref,
   ) => (
-    <DialogPortal layer={layer}>
+    <DialogPortal layer={layer} className={portalClassName}>
       <DialogOverlay layer={layer} className={overlayClassName} />
       <DialogPrimitive.Content
         ref={ref}

@@ -11,6 +11,7 @@ import { Loader2, Paperclip, Printer, Settings2, Sparkles, X } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -34,7 +35,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
 import { sendQiAssistantMessage, validateAssistantPdfFile } from '@/components/qi-assistant/qiAssistantApi'
 import { fetchActiveUserProfiles } from '@/features/sample-handling/shared/fetchActiveUserProfiles'
@@ -71,6 +80,34 @@ import {
 } from './fetchManagementDocLetterhead'
 import type { ManagementDocumentRow } from './types'
 import { MANAGEMENT_DOC_STATUSES } from './types'
+
+/** Fullscreen preview — main content area only (sidebar 268px stays visible). */
+const MGMT_A4_PREVIEW_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const MGMT_A4_PREVIEW_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden border-0 bg-white p-0 shadow-none ring-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 sm:rounded-none',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
+
+const MGMT_A4_SECTION_EDIT_DIALOG_CLASS = cn(
+  limsDialogClass,
+  '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden border-0 p-0 shadow-none ring-0',
+  'left-0 top-0',
+  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:rounded-none',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+)
+
+const MGMT_A4_NESTED_DIALOG_CLASS = cn(
+  limsDialogClass,
+  'max-w-2xl !gap-0 overflow-hidden p-0',
+  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+  '[&>button]:text-white [&>button]:hover:bg-white/10',
+)
 
 type PageOrientation = 'portrait' | 'landscape'
 
@@ -135,6 +172,21 @@ const SECTION_TITLE_SIZE_OPTIONS = [
   { id: 18, label: '18 px' },
 ] as const
 
+const SECTION_TITLE_CASE_OPTIONS = [
+  { id: 'none' as const, label: 'As typed' },
+  { id: 'capitalize' as const, label: 'Capitalize' },
+  { id: 'uppercase' as const, label: 'Uppercase' },
+] as const
+
+const SECTION_TITLE_TRACKING_OPTIONS = [
+  { id: 0, label: 'Normal (0)' },
+  { id: 0.02, label: 'Slight (0.02em)' },
+  { id: 0.06, label: 'Wide (0.06em)' },
+  { id: 0.12, label: 'Extra wide (0.12em)' },
+] as const
+
+type SectionTitleCase = (typeof SECTION_TITLE_CASE_OPTIONS)[number]['id']
+
 const SECTION_TEXT_SIZE_OPTIONS = [
   { id: 11, label: '11 px' },
   { id: 12, label: '12 px' },
@@ -144,7 +196,22 @@ const SECTION_TEXT_SIZE_OPTIONS = [
   { id: 15, label: '15 px' },
 ] as const
 
+const SECTION_TEXT_TRACKING_OPTIONS = [
+  { id: 0, label: 'Normal (0)' },
+  { id: 0.01, label: 'Slight (0.01em)' },
+  { id: 0.03, label: 'Wide (0.03em)' },
+  { id: 0.05, label: 'Extra wide (0.05em)' },
+] as const
+
+const SECTION_TEXT_INDENT_OPTIONS = [
+  { id: 0, label: 'None (0)' },
+  { id: 0.5, label: 'Small (0.5em)' },
+  { id: 1, label: 'Standard (1em)' },
+  { id: 1.5, label: 'Large (1.5em)' },
+] as const
+
 const FONT_WEIGHT_OPTIONS = [
+  { id: 400, label: 'Regular' },
   { id: 500, label: 'Medium' },
   { id: 600, label: 'Semibold' },
   { id: 700, label: 'Bold' },
@@ -165,6 +232,11 @@ type PreviewTypography = {
   sectionTextSizePx: number
   sectionNoWeight: number
   sectionTitleWeight: number
+  sectionTitleCase: SectionTitleCase
+  sectionTitleTrackingEm: number
+  sectionTextWeight: number
+  sectionTextTrackingEm: number
+  sectionTextFirstLineIndentEm: number
   lineSpacing: number
   paragraphGapEm: number
   textAlign: TextAlign
@@ -193,16 +265,16 @@ function docBodyClass(textAlign: TextAlign = 'justify'): string {
     '[&_h2]:mb-0.5 [&_h2]:mt-1 [&_h2]:text-left [&_h2]:text-[1em] [&_h2]:font-semibold',
     '[&_h3]:mb-0.5 [&_h3]:mt-0.5 [&_h3]:text-left [&_h3]:text-[1em] [&_h3]:font-semibold',
     '[&_h4]:mb-0.5 [&_h4]:mt-0.5 [&_h4]:text-left [&_h4]:text-[1em] [&_h4]:font-semibold',
-    '[&_p]:mb-[var(--para-gap,0.1em)]',
+    '[&_p]:mb-[var(--para-gap,0.1em)] [&_p]:[text-indent:var(--para-indent,0)]',
     textAlignChildClass(textAlign, '[&_p]'),
-    '[&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-6',
-    '[&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-6',
+    '[&_ul]:my-0.5 [&_ul]:list-disc [&_ul]:pl-[var(--list-indent,1.5rem)]',
+    '[&_ol]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-[var(--list-indent,1.5rem)]',
     '[&_li]:mb-0',
     textAlignChildClass(textAlign, '[&_li]'),
     '[&_ul_ul]:mt-0 [&_ul_ul]:mb-0 [&_ul_ul]:list-circle [&_ul_ul]:pl-5',
     '[&_ul_ul_ul]:list-square',
     '[&_ol_ol]:mt-0 [&_ol_ol]:mb-0 [&_ol_ol]:pl-5',
-    '[&_li>p]:mb-0',
+    '[&_li>p]:mb-0 [&_li>p]:[text-indent:0]',
     '[&_table]:my-1 [&_table]:w-full [&_table]:border-collapse',
     '[&_th]:border [&_td]:border [&_th]:border-slate-400 [&_td]:border-slate-400',
     '[&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold',
@@ -218,11 +290,14 @@ function docBodyClass(textAlign: TextAlign = 'justify'): string {
 function docBodyStyle(typography: PreviewTypography): CSSProperties {
   return {
     fontSize: `${typography.sectionTextSizePx}px`,
+    fontWeight: typography.sectionTextWeight,
+    letterSpacing: `${typography.sectionTextTrackingEm}em`,
     lineHeight: typography.lineSpacing,
     textAlign: typography.textAlign,
     ['--sec-no-size' as string]: `${typography.sectionNoSizePx}px`,
     ['--sec-no-weight' as string]: String(typography.sectionNoWeight),
     ['--para-gap' as string]: `${typography.paragraphGapEm}em`,
+    ['--para-indent' as string]: `${typography.sectionTextFirstLineIndentEm}em`,
   }
 }
 
@@ -282,6 +357,11 @@ const DEFAULT_PREVIEW_SETTINGS: PreviewLayoutSettings = {
   sectionTextSizePx: 13,
   sectionNoWeight: 600,
   sectionTitleWeight: 600,
+  sectionTitleCase: 'none',
+  sectionTitleTrackingEm: 0,
+  sectionTextWeight: 400,
+  sectionTextTrackingEm: 0,
+  sectionTextFirstLineIndentEm: 0,
   showLetterhead: true,
   showPageFooter: true,
   showPageNumbers: true,
@@ -292,15 +372,6 @@ const DEFAULT_PREVIEW_SETTINGS: PreviewLayoutSettings = {
   pageOrientation: 'portrait',
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value?.trim()) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const yyyy = d.getFullYear()
-  return `${dd}/${mm}/${yyyy}`
-}
 
 /** Split rich HTML into top-level siblings so large sections can paginate cleanly. */
 function splitHtmlIntoChunks(html: string): string[] {
@@ -437,6 +508,47 @@ function buildContentBlocks(
   return blocks
 }
 
+/** Shrink font until text fits one line inside its box (letterhead / cover). */
+function FitSingleLineText({
+  text,
+  className,
+  minPx = 7,
+}: {
+  text: string
+  className?: string
+  minPx?: number
+}) {
+  const ref = useRef<HTMLParagraphElement>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const fitToBox = () => {
+      el.style.fontSize = ''
+      const base = Number.parseFloat(window.getComputedStyle(el).fontSize) || 13
+      let size = base
+      el.style.whiteSpace = 'nowrap'
+      while (el.scrollWidth > el.clientWidth + 0.5 && size > minPx) {
+        size -= 0.25
+        el.style.fontSize = `${size}px`
+      }
+    }
+
+    fitToBox()
+    const ro = new ResizeObserver(fitToBox)
+    ro.observe(el)
+    if (el.parentElement) ro.observe(el.parentElement)
+    return () => ro.disconnect()
+  }, [text, minPx])
+
+  return (
+    <p ref={ref} className={className} title={text}>
+      {text}
+    </p>
+  )
+}
+
 function DocumentLetterhead({
   lh,
   row,
@@ -471,11 +583,12 @@ function DocumentLetterhead({
           'grid-rows-[auto_auto_auto]',
         )}
       >
-        <div className="col-span-2 row-span-2 flex flex-col items-center justify-center border-b border-r-2 border-slate-900 px-2 py-1 text-center">
-          <p className="text-sm font-bold leading-tight tracking-tight text-slate-900 sm:text-base">
-            {companyName}
-          </p>
-          <p className="mt-0.5 text-[11px] font-semibold leading-tight text-slate-700">
+        <div className="col-span-2 row-span-2 flex min-w-0 flex-col items-center justify-center border-b border-r-2 border-slate-900 px-1.5 py-1 text-center">
+          <FitSingleLineText
+            text={companyName}
+            className="w-full max-w-full whitespace-nowrap text-center text-[13px] font-bold leading-none tracking-tight text-slate-900"
+          />
+          <p className="mt-0.5 w-full truncate text-[11px] font-semibold leading-tight text-slate-700">
             {row.title?.trim() || '—'}
           </p>
         </div>
@@ -517,7 +630,6 @@ function DocumentCoverBody({
   const phone = lh.labPhone.trim()
   const email = lh.labEmail.trim()
   const contact = lh.contactPerson.trim()
-  const labType = lh.labType.trim()
 
   const controlPairs: Array<[string, string]> = [
     ['Document No', row.doc_number || '—'],
@@ -580,24 +692,23 @@ function DocumentCoverBody({
           </h2>
         </div>
         <div className="grid sm:grid-cols-[1.25fr_1fr]">
-          <div className="space-y-1 border-b border-slate-300 px-3 py-2.5 sm:border-b-0 sm:border-r-2 sm:border-slate-900">
-            <p className="text-[13px] font-bold text-slate-900">{companyName}</p>
-            {labType ? (
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                {labType}
-              </p>
-            ) : null}
+          <div className="min-w-0 space-y-1 border-b border-slate-300 px-3 py-2.5 sm:border-b-0 sm:border-r-2 sm:border-slate-900">
+            <FitSingleLineText
+              text={companyName}
+              className="w-full max-w-full whitespace-nowrap text-[13px] font-bold leading-none text-slate-900"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Testing & Calibration
+            </p>
             {addressLines.length > 0 ? (
-              <div className="pt-1 text-[11px] leading-snug text-slate-700">
-                {addressLines.map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </div>
+              <p className="pt-1 text-[13px] leading-snug text-slate-700">
+                {addressLines.join(', ')}
+              </p>
             ) : (
-              <p className="pt-1 text-[11px] italic text-slate-400">Address not set</p>
+              <p className="pt-1 text-[13px] italic text-slate-400">Address not set</p>
             )}
           </div>
-          <div className="grid grid-cols-1 gap-2 px-3 py-2.5 text-[11px] text-slate-700">
+          <div className="grid grid-cols-1 gap-2 px-3 py-2.5 text-right text-[11px] text-slate-700">
             <div>
               <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Phone</p>
               <p className="font-medium text-slate-900">{phone || '—'}</p>
@@ -630,6 +741,9 @@ function DocumentCoverBody({
               key={label}
               className={cn(
                 'min-w-0 px-2.5 py-2',
+                i === 0 && 'text-left',
+                (i === 1 || i === 2) && 'text-center',
+                i === 3 && 'text-right',
                 i !== controlPairs.length - 1 && 'border-r border-slate-300',
                 i < 2 && 'border-b border-slate-300 sm:border-b-0',
               )}
@@ -647,7 +761,7 @@ function DocumentCoverBody({
                 <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{l1}</p>
                 <p className="font-mono text-[12px] font-semibold text-slate-900">{v1}</p>
               </div>
-              <div className="px-2.5 py-2">
+              <div className="px-2.5 py-2 text-right">
                 <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{l2}</p>
                 <p className="text-[12px] font-semibold tabular-nums text-slate-900">{v2}</p>
               </div>
@@ -729,14 +843,14 @@ function SectionHoverActions({
     <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 print:hidden">
       <button
         type="button"
-        className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-700 hover:bg-teal-100"
+        className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 hover:bg-amber-100"
         onClick={() => onEditSection?.(section)}
       >
         Edit
       </button>
       <button
         type="button"
-        className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-800 hover:bg-teal-100"
+        className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900 hover:bg-amber-100"
         onClick={() => onAiSection?.(section)}
         title="Update this section with AI"
         aria-label={`AI update section ${label}`}
@@ -836,7 +950,7 @@ function ContentBlockView({
           {onAddSection ? (
             <button
               type="button"
-              className="text-[10px] font-semibold uppercase tracking-wide text-teal-700 hover:underline print:hidden"
+              className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 hover:underline print:hidden"
               onClick={onAddSection}
             >
               + Add Section
@@ -872,7 +986,7 @@ function ContentBlockView({
                     className={cn(
                       'group flex w-full items-baseline gap-1.5 rounded-sm text-left text-slate-800',
                       'print:pointer-events-none',
-                      'hover:bg-teal-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
+                      'hover:bg-amber-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600',
                       pad,
                     )}
                     style={{ lineHeight: typography.lineSpacing }}
@@ -896,6 +1010,8 @@ function ContentBlockView({
                       style={{
                         fontSize: `${typography.sectionTitleSizePx}px`,
                         fontWeight: typography.sectionTitleWeight,
+                        textTransform: typography.sectionTitleCase,
+                        letterSpacing: `${typography.sectionTitleTrackingEm}em`,
                       }}
                     >
                       {title || (!no ? 'Untitled' : '')}
@@ -929,7 +1045,7 @@ function ContentBlockView({
           {onAddSection ? (
             <button
               type="button"
-              className="text-sm font-medium text-teal-700 hover:underline print:hidden"
+              className="text-sm font-medium text-amber-800 hover:underline print:hidden"
               onClick={onAddSection}
             >
               Click to add the first section
@@ -946,7 +1062,7 @@ function ContentBlockView({
           className={cn(
             'group relative w-full rounded-sm',
             hasBreak && 'border-t-2 border-dashed border-slate-400 pt-2',
-            'hover:bg-teal-50/80',
+            'hover:bg-amber-50/80',
           )}
         >
           {hasBreak ? (
@@ -960,7 +1076,7 @@ function ContentBlockView({
               className={cn(
                 'min-w-0 flex-1 rounded-sm text-left text-slate-900',
                 'print:pointer-events-none',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600',
               )}
               style={{ lineHeight: typography.lineSpacing }}
               onClick={() => onEditSection?.(block.section)}
@@ -984,6 +1100,8 @@ function ContentBlockView({
                     style={{
                       fontSize: `${typography.sectionTitleSizePx}px`,
                       fontWeight: typography.sectionTitleWeight,
+                      textTransform: typography.sectionTitleCase,
+                      letterSpacing: `${typography.sectionTitleTrackingEm}em`,
                     }}
                   >
                     {title}
@@ -1016,7 +1134,7 @@ function ContentBlockView({
           className={cn(
             'group relative w-full rounded-sm',
             hasBreak && 'border-t-2 border-dashed border-slate-400 pt-2',
-            'hover:bg-teal-50/60',
+            'hover:bg-amber-50/60',
           )}
         >
           {hasBreak ? (
@@ -1030,7 +1148,7 @@ function ContentBlockView({
               className={cn(
                 'min-w-0 flex-1 rounded-sm text-left',
                 'print:pointer-events-none',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600',
               )}
               onClick={() => onEditSection?.(block.section)}
               title="Click to edit this section"
@@ -1101,31 +1219,32 @@ function SectionEditDialog({
     <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
       <DialogContent
         layer="stacked"
-        className={cn(
-          '!flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden',
-          'rounded-none border-0 p-0 sm:rounded-none',
-          'left-0 top-0 translate-x-0 translate-y-0',
-          'data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100',
-        )}
+        overlayClassName={MGMT_A4_PREVIEW_OVERLAY}
+        className={MGMT_A4_SECTION_EDIT_DIALOG_CLASS}
       >
-        <div className="shrink-0 bg-slate-900 px-5 py-4 text-white sm:px-6">
-          <DialogHeader className="text-left">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Section Editor · {docLabel}
-            </p>
-            <DialogTitle className="text-lg font-semibold text-white">
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white sm:px-6 sm:py-3.5">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative flex flex-row items-center justify-between gap-3 space-y-0 pr-10 text-left">
+            <DialogTitle className="shrink-0 text-base font-semibold tracking-tight text-white sm:text-lg">
               {form.id ? 'Edit Section' : 'Add Section'}
             </DialogTitle>
+            <p className="min-w-0 truncate text-right text-xs text-stone-300" title={docLabel}>
+              {docLabel}
+            </p>
           </DialogHeader>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-[#fafbfc] px-5 py-5 sm:px-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-gradient-to-b from-stone-100/80 to-white px-5 py-5 sm:px-6">
           <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-[120px_140px_1fr]">
             <div className="space-y-1.5">
               <Label htmlFor="sec-level">Level</Label>
               <select
                 id="sec-level"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className={cn(limsFieldClass, 'flex w-full px-3 text-sm')}
                 value={form.level}
                 onChange={(e) =>
                   onChange({ ...form, level: Number(e.target.value) as DraftSectionLevel })
@@ -1144,6 +1263,7 @@ function SectionEditDialog({
                 value={form.sectionNo}
                 onChange={(e) => onChange({ ...form, sectionNo: e.target.value })}
                 placeholder="4.1"
+                className={limsFieldClass}
               />
             </div>
             <div className="space-y-1.5">
@@ -1153,6 +1273,7 @@ function SectionEditDialog({
                 value={form.title}
                 onChange={(e) => onChange({ ...form, title: e.target.value })}
                 placeholder="Impartiality"
+                className={limsFieldClass}
               />
             </div>
           </div>
@@ -1172,18 +1293,15 @@ function SectionEditDialog({
           {error ? <p className="shrink-0 text-sm text-destructive">{error}</p> : null}
         </div>
 
-        <DialogFooter className="shrink-0 border-t border-slate-200 bg-white px-5 py-3 sm:px-6">
+        <DialogFooter className="shrink-0 border-t-2 border-stone-500 bg-stone-50 px-5 py-3 sm:px-6">
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            className={cn('h-9', limsPrimaryBtnClass)}
             disabled={saving}
-            onClick={() => onOpenChange(false)}
+            onClick={onSave}
           >
-            Cancel
-          </Button>
-          <Button type="button" size="sm" disabled={saving} onClick={onSave}>
-            {saving ? 'Saving…' : 'Save Section'}
+            {saving ? 'Saving…' : 'Save & Close'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1246,7 +1364,7 @@ function ReferenceCheckReport({ result }: { result: ReferenceCheckResult }) {
         <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-800">
           Issues: {problems.length}
         </span>
-        <span className="rounded-full bg-teal-50 px-2 py-0.5 font-medium text-teal-800">
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-900">
           Matched refs: {okRefs.length}
         </span>
       </div>
@@ -1291,12 +1409,15 @@ export function ManagementDocumentA4PreviewDialog({
   row,
   onOpenChange,
   onDraftUpdated,
+  autoPrint = false,
 }: {
   open: boolean
   row: ManagementDocumentRow | null
   onOpenChange: (open: boolean) => void
   /** Called after AI / section save so parent list + preview stay in sync. */
   onDraftUpdated?: (row: ManagementDocumentRow) => void
+  /** When true, open print dialog once pages are ready, then close. */
+  autoPrint?: boolean
 }) {
   const [letterhead, setLetterhead] = useState<ManagementDocLetterhead | null>(null)
   const [pages, setPages] = useState<ContentBlock[][]>([[]])
@@ -1318,6 +1439,9 @@ export function ManagementDocumentA4PreviewDialog({
   const [aiChatMessage, setAiChatMessage] = useState('')
   const [aiAttachedPdfs, setAiAttachedPdfs] = useState<File[]>([])
   const aiPdfInputRef = useRef<HTMLInputElement>(null)
+  const autoPrintFiredRef = useRef(false)
+  const onOpenChangeRef = useRef(onOpenChange)
+  onOpenChangeRef.current = onOpenChange
 
   const [sectionEditOpen, setSectionEditOpen] = useState(false)
   const [sectionForm, setSectionForm] = useState<SectionEditForm>({
@@ -1390,8 +1514,46 @@ export function ManagementDocumentA4PreviewDialog({
       setAiOpen(false)
       setSectionEditOpen(false)
       setSettingsOpen(false)
+      autoPrintFiredRef.current = false
     }
   }, [open, row])
+
+  useEffect(() => {
+    if (!open || !autoPrint || !workingRow || !letterhead) return
+    if (autoPrintFiredRef.current) return
+
+    let cancelled = false
+    let fallbackTimer = 0
+
+    const closeAfterPrint = () => {
+      if (fallbackTimer) window.clearTimeout(fallbackTimer)
+      onOpenChangeRef.current(false)
+    }
+
+    const runPrint = () => {
+      if (cancelled || autoPrintFiredRef.current) return
+      autoPrintFiredRef.current = true
+      window.addEventListener('afterprint', closeAfterPrint, { once: true })
+      fallbackTimer = window.setTimeout(closeAfterPrint, 120_000)
+      try {
+        window.print()
+      } catch {
+        window.removeEventListener('afterprint', closeAfterPrint)
+        if (fallbackTimer) window.clearTimeout(fallbackTimer)
+        autoPrintFiredRef.current = false
+      }
+    }
+
+    // Wait for pagination measure to settle
+    const t = window.setTimeout(runPrint, 700)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+      if (fallbackTimer) window.clearTimeout(fallbackTimer)
+      window.removeEventListener('afterprint', closeAfterPrint)
+    }
+  }, [open, autoPrint, workingRow?.id, letterhead, pages.length])
 
   useEffect(() => {
     if (!open) return
@@ -1761,81 +1923,85 @@ export function ManagementDocumentA4PreviewDialog({
     }
   }
 
-  /** Updates ONLY selected draft sections — never letterhead / footer / cover. */
+  /** Draft/update ONE draft section from chat + attached PDFs — never whole manual / letterhead / footer / cover. */
   const runSectionChat = async () => {
     if (!workingRow) return
     const message = aiChatMessage.trim()
-    if (!message) {
-      setAiError('Enter a chat message describing what to change.')
-      return
-    }
-    if (aiSelectedSectionIds.length === 0) {
-      setAiError('Select at least one section from the dropdown.')
+    const hasPdfs = aiAttachedPdfs.length > 0
+    if (!message && !hasPdfs) {
+      setAiError('Attach a PDF and/or enter Chat Message for this section update.')
       return
     }
 
     const current = parseDraftContent(workingRow.draft_content).sections
-    const selected = current.filter((s) => aiSelectedSectionIds.includes(s.id))
-    if (selected.length === 0) {
-      setAiError('Selected sections were not found. Re-open AI and try again.')
+    if (current.length === 0) {
+      setAiError('No draft sections found. Add a section before updating.')
       return
     }
+
+    const sectionId = aiSelectedSectionIds[0]
+    if (!sectionId) {
+      setAiError('Select one section to update.')
+      return
+    }
+    const section = current.find((s) => s.id === sectionId)
+    if (!section) {
+      setAiError('Selected section was not found. Re-open AI and try again.')
+      return
+    }
+
+    const effectiveMessage =
+      message ||
+      'Draft or update this section using the attached reference document(s). Align with the section title and ISO/IEC 17025 controlled-document style.'
 
     setAiLoading(true)
     setAiError(null)
     setAiProgress(null)
 
     try {
-      const updatedById = new Map<string, string>()
       const pdfNames = aiAttachedPdfs.map((f) => f.name)
 
       setAiProgress('Loading Level 1–4 document register…')
       const catalog = await fetchManagementDocCatalog(workingRow.id)
       const catalogText = formatCatalogForPrompt(catalog)
 
-      for (let i = 0; i < selected.length; i++) {
-        const section = selected[i]!
-        setAiProgress(
-          `Updating section ${i + 1} of ${selected.length}: ${displaySectionLabel(section)}…`,
-        )
+      setAiProgress(`Updating section: ${displaySectionLabel(section)}…`)
 
-        const { reply } = await sendQiAssistantMessage({
-          page: 'management-docs/a4-section-chat',
-          message: buildSectionChatAiPrompt({
-            docNumber: workingRow.doc_number,
-            title: workingRow.title,
-            sectionLabel: displaySectionLabel(section),
-            sectionNo: section.sectionNo,
-            sectionTitle: section.title,
-            bodyHtml: section.body || '<p></p>',
-            userMessage: message,
-            pdfFileNames: pdfNames,
-            catalogText,
-          }),
-          context: [
-            `SCOPE: Update only section body HTML for ${displaySectionLabel(section)}.`,
-            'Do not modify letterhead, footer, cover page, or other sections.',
-            `Document ${workingRow.doc_number} — ${workingRow.title}`,
-            `Register size: ${catalog.length} (Level 1–4). Use only those Doc Nos/Titles.`,
-          ].join('\n'),
-          attachedPdfs: aiAttachedPdfs.length > 0 ? aiAttachedPdfs : undefined,
-          history: [],
-        })
+      const { reply } = await sendQiAssistantMessage({
+        page: 'management-docs/a4-section-chat',
+        message: buildSectionChatAiPrompt({
+          docNumber: workingRow.doc_number,
+          title: workingRow.title,
+          sectionLabel: displaySectionLabel(section),
+          sectionNo: section.sectionNo,
+          sectionTitle: section.title,
+          bodyHtml: section.body || '<p></p>',
+          userMessage: effectiveMessage,
+          pdfFileNames: pdfNames,
+          catalogText,
+        }),
+        context: [
+          'SCOPE: Draft/update ONLY this one section body HTML — not the whole manual.',
+          `Target section: ${displaySectionLabel(section)}.`,
+          'Do not modify letterhead, footer, cover page, or other sections.',
+          `Document ${workingRow.doc_number} — ${workingRow.title}`,
+          hasPdfs
+            ? `Use attached PDF(s) as source material: ${pdfNames.join(', ')}.`
+            : 'No PDFs — follow the chat message only.',
+          `Register size: ${catalog.length} (Level 1–4). Use only those Doc Nos/Titles.`,
+        ].join('\n'),
+        attachedPdfs: hasPdfs ? aiAttachedPdfs : undefined,
+        history: [],
+      })
 
-        updatedById.set(
-          section.id,
-          normalizeSectionHtml(
-            extractSectionHtmlFromAiReply(reply, section.body || '<p></p>'),
-          ),
-        )
-      }
-
-      const next = current.map((s) =>
-        updatedById.has(s.id) ? { ...s, body: updatedById.get(s.id)! } : s,
+      const nextBody = normalizeSectionHtml(
+        extractSectionHtmlFromAiReply(reply, section.body || '<p></p>'),
       )
+      const next = current.map((s) => (s.id === section.id ? { ...s, body: nextBody } : s))
       await persistFormattedSections(next)
       setAiProgress(null)
       setAiChatMessage('')
+      setAiAttachedPdfs([])
       setAiOpen(false)
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Section update failed.')
@@ -1923,6 +2089,11 @@ export function ManagementDocumentA4PreviewDialog({
     layoutSettings.sectionTextSizePx,
     layoutSettings.sectionNoWeight,
     layoutSettings.sectionTitleWeight,
+    layoutSettings.sectionTitleCase,
+    layoutSettings.sectionTitleTrackingEm,
+    layoutSettings.sectionTextWeight,
+    layoutSettings.sectionTextTrackingEm,
+    layoutSettings.sectionTextFirstLineIndentEm,
     layoutSettings.showTocPageNumbers,
     layoutSettings.showLetterhead,
     layoutSettings.showPageFooter,
@@ -1966,12 +2137,10 @@ export function ManagementDocumentA4PreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        showCloseButton
+        showCloseButton={false}
         data-mgmt-a4-preview=""
-        className={cn(
-          '!flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-slate-200/80 p-0 shadow-none',
-          'data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 sm:rounded-none',
-        )}
+        overlayClassName={MGMT_A4_PREVIEW_OVERLAY}
+        className={MGMT_A4_PREVIEW_DIALOG_CLASS}
       >
         <style>{`
           @media print {
@@ -2071,23 +2240,23 @@ export function ManagementDocumentA4PreviewDialog({
           }
         `}</style>
 
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-slate-900 px-4 py-3 text-white print:hidden sm:px-6">
-          <DialogHeader className="text-left">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-              Document Preview · A4{' '}
-              {layoutSettings.pageOrientation === 'landscape' ? 'Landscape' : 'Portrait'} ·{' '}
-              {pageCount} page{pageCount === 1 ? '' : 's'}
-            </p>
-            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+        <div className="relative flex shrink-0 items-center justify-between gap-3 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white print:hidden sm:px-6 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative min-w-0 flex-1 text-left">
+            <DialogTitle className="truncate text-base font-semibold tracking-tight text-white sm:text-lg">
               {workingRow.doc_number} — {workingRow.title}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="relative flex shrink-0 items-center gap-2">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              className="gap-1.5 border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white"
+              className={cn('h-8 gap-1.5 text-xs', limsDarkBarBtnClass)}
               onClick={() => {
                 setDraftLayoutSettings(layoutSettings)
                 setSettingsOpen(true)
@@ -2101,7 +2270,7 @@ export function ManagementDocumentA4PreviewDialog({
               type="button"
               size="sm"
               variant="outline"
-              className="gap-1.5 border-teal-400/50 bg-teal-500/10 text-teal-100 hover:bg-teal-500/20 hover:text-white"
+              className={cn('h-8 gap-1.5 text-xs', limsDarkBarBtnClass)}
               onClick={() => {
                 setAiError(null)
                 setAiProgress(null)
@@ -2109,10 +2278,11 @@ export function ManagementDocumentA4PreviewDialog({
                 setAiTask('chat')
                 setAiChatMessage('')
                 setAiAttachedPdfs([])
-                setAiSelectedSectionIds(sections.map((s) => s.id))
+                // One section only — keep current single selection, else none (user picks in dialog)
+                setAiSelectedSectionIds((prev) => (prev.length === 1 ? prev : []))
                 setAiOpen(true)
               }}
-              aria-label="AI section chat, format, or reference check"
+              aria-label="AI update section"
             >
               <Sparkles size={14} />
               AI
@@ -2121,16 +2291,23 @@ export function ManagementDocumentA4PreviewDialog({
               type="button"
               size="sm"
               variant="outline"
-              className="gap-1.5 border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white"
+              className={cn('h-8 gap-1.5 text-xs', limsDarkBarBtnClass)}
               onClick={() => window.print()}
             >
               <Printer size={14} />
               Print
             </Button>
+            <DialogClose
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none border !border-red-600 !bg-red-600 !text-white shadow-sm transition-colors hover:!border-red-700 hover:!bg-red-700 hover:!text-white focus:outline-none focus:ring-2 focus:!ring-red-500 focus:ring-offset-2"
+              aria-label="Close"
+            >
+              <X className="h-3.5 w-3.5 !text-white" strokeWidth={2.75} aria-hidden />
+              <span className="sr-only">Close</span>
+            </DialogClose>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6 print:overflow-visible print:p-0">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-stone-50 px-3 py-4 sm:px-6 sm:py-6 print:overflow-visible print:bg-white print:p-0">
           {/* Measure: full block list at real page content width */}
           {lh ? (
             <article
@@ -2274,12 +2451,14 @@ export function ManagementDocumentA4PreviewDialog({
           </div>
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-white px-4 py-3 print:hidden sm:px-6">
-          <Button type="button" size="sm" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-          <Button type="button" size="sm" onClick={() => window.print()}>
-            Print / Save PDF
+        <div className="flex shrink-0 justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 print:hidden sm:px-6">
+          <Button
+            type="button"
+            size="sm"
+            className={cn('h-9', limsPrimaryBtnClass)}
+            onClick={() => onOpenChange(false)}
+          >
+            Save & Close
           </Button>
         </div>
 
@@ -2297,200 +2476,58 @@ export function ManagementDocumentA4PreviewDialog({
         >
           <DialogContent
             layer="nested"
-            className="max-w-2xl gap-0 overflow-hidden border-slate-300 p-0 sm:rounded-lg"
+            overlayClassName={MGMT_A4_PREVIEW_OVERLAY}
+            className={MGMT_A4_NESTED_DIALOG_CLASS}
           >
-            <div className="bg-slate-900 px-5 py-4 text-white">
-              <DialogHeader className="text-left">
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  A4 Document Layout
-                </p>
-                <DialogTitle className="text-lg font-semibold text-white">
+            <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3.5 text-white">
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                style={limsDarkBarGlowStyle}
+              />
+              <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <DialogHeader className="relative pr-10 text-left">
+                <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                   Preview Settings
                 </DialogTitle>
-                <p className="mt-1 text-sm text-slate-300">
-                  Adjust cover, TOC, page margins, letterhead, typography, and spacing. Click Done
-                  to apply on the A4 preview.
-                </p>
               </DialogHeader>
             </div>
 
-            <div className="max-h-[min(72vh,640px)] space-y-4 overflow-y-auto bg-[#fafbfc] px-5 py-5">
-              {/* Live sample */}
-              <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-                  Live sample
-                </p>
-                <p style={{ lineHeight: draftLayoutSettings.lineSpacing }}>
-                  <span
-                    className="tabular-nums text-slate-900"
-                    style={{
-                      fontSize: `${draftLayoutSettings.sectionNoSizePx}px`,
-                      fontWeight: draftLayoutSettings.sectionNoWeight,
-                    }}
-                  >
-                    4.1
-                  </span>{' '}
-                  <span
-                    className="text-slate-900"
-                    style={{
-                      fontSize: `${draftLayoutSettings.sectionTitleSizePx}px`,
-                      fontWeight: draftLayoutSettings.sectionTitleWeight,
-                    }}
-                  >
-                    Impartiality
-                  </span>
-                </p>
-                <p
-                  className="mt-1 text-slate-700"
-                  style={{
-                    fontSize: `${draftLayoutSettings.sectionTextSizePx}px`,
-                    lineHeight: draftLayoutSettings.lineSpacing,
-                    textAlign: draftLayoutSettings.textAlign,
-                    marginBottom: `${draftLayoutSettings.paragraphGapEm}em`,
-                  }}
-                >
-                  The laboratory shall conduct activities impartially and structure its management
-                  to safeguard independence and objectivity.
-                </p>
-              </div>
-
-              {/* Document structure */}
-              <section className="space-y-2 rounded-lg border border-slate-200 bg-white p-3.5">
+            <div className="max-h-[min(72vh,640px)] space-y-4 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-5 py-5">
+              {/* Page settings — layout, margins, chrome & structure */}
+              <section className="space-y-2.5 rounded-none border-2 border-stone-500 bg-white p-3.5 ring-1 ring-amber-700/15">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
-                    Document structure
-                  </h3>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    Choose which front-matter blocks appear in the A4 preview.
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {(
-                    [
-                      ['showCover', 'Cover Page', 'First page with lab + control details'],
-                      ['showToc', 'Table of Contents', 'Section index before body'],
-                      [
-                        'showContentHeading',
-                        'Content header',
-                        '“Document Content” bar + Add Section',
-                      ],
-                      [
-                        'showTocPageNumbers',
-                        'TOC page nos.',
-                        'Show page numbers in TOC rows',
-                      ],
-                    ] as const
-                  ).map(([key, label, hint]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={cn(
-                        'rounded-md border px-2.5 py-2 text-left text-sm transition-colors',
-                        draftLayoutSettings[key]
-                          ? 'border-teal-600 bg-teal-50 text-teal-900'
-                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white',
-                      )}
-                      onClick={() =>
-                        setDraftLayoutSettings((s) => ({ ...s, [key]: !s[key] }))
-                      }
-                      aria-pressed={draftLayoutSettings[key]}
-                      title={hint}
-                    >
-                      <span className="block text-[13px] font-medium leading-tight">{label}</span>
-                      <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">
-                        {draftLayoutSettings[key] ? 'On' : 'Off'} · {hint}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              {/* Page settings */}
-              <section className="space-y-2.5 rounded-lg border border-slate-200 bg-white p-3.5">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
+                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-stone-700">
                     Page settings
                   </h3>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    Page layout, margins, letterhead / footer chrome, page numbers, and auto
-                    page breaks.
-                  </p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="preview-page-layout" className="text-[11px] text-slate-500">
-                    Page layout
-                  </Label>
-                  <Select
-                    value={draftLayoutSettings.pageOrientation}
-                    onValueChange={(value) =>
-                      setDraftLayoutSettings((s) => ({
-                        ...s,
-                        pageOrientation: value as PageOrientation,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="preview-page-layout" className="bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAGE_ORIENTATION_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.id} value={opt.id}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {(
-                    [
-                      [
-                        'showLetterhead',
-                        'Letterhead',
-                        'Lab header block on every page',
-                      ],
-                      [
-                        'showPageFooter',
-                        'Page footer',
-                        'Prepared / Reviewed / Approved strip',
-                      ],
-                      [
-                        'showPageNumbers',
-                        'Page numbers',
-                        'Show “n of N” in the letterhead',
-                      ],
-                      [
-                        'breakLevel1Sections',
-                        'Break L1 sections',
-                        'Each Level-1 clause starts on a new page',
-                      ],
-                    ] as const
-                  ).map(([key, label, hint]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={cn(
-                        'rounded-md border px-2.5 py-2 text-left text-sm transition-colors',
-                        draftLayoutSettings[key]
-                          ? 'border-teal-600 bg-teal-50 text-teal-900'
-                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white',
-                      )}
-                      onClick={() =>
-                        setDraftLayoutSettings((s) => ({ ...s, [key]: !s[key] }))
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-page-layout" className="text-[11px] text-stone-500">
+                      Page layout
+                    </Label>
+                    <Select
+                      value={draftLayoutSettings.pageOrientation}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          pageOrientation: value as PageOrientation,
+                        }))
                       }
-                      aria-pressed={draftLayoutSettings[key]}
-                      title={hint}
                     >
-                      <span className="block text-[13px] font-medium leading-tight">{label}</span>
-                      <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">
-                        {draftLayoutSettings[key] ? 'On' : 'Off'} · {hint}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-margin-x" className="text-[11px] text-slate-500">
+                      <SelectTrigger id="preview-page-layout" className={cn(limsFieldClass, 'bg-white')}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAGE_ORIENTATION_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-margin-x" className="text-[11px] text-stone-500">
                       Side margins
                     </Label>
                     <Select
@@ -2502,7 +2539,7 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-margin-x" className="bg-white">
+                      <SelectTrigger id="preview-margin-x" className={cn(limsFieldClass, 'bg-white')}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2514,8 +2551,8 @@ export function ManagementDocumentA4PreviewDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-margin-top" className="text-[11px] text-slate-500">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-margin-top" className="text-[11px] text-stone-500">
                       Top margin
                     </Label>
                     <Select
@@ -2527,7 +2564,7 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-margin-top" className="bg-white">
+                      <SelectTrigger id="preview-margin-top" className={cn(limsFieldClass, 'bg-white')}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2539,8 +2576,8 @@ export function ManagementDocumentA4PreviewDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-body-pad" className="text-[11px] text-slate-500">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-body-pad" className="text-[11px] text-stone-500">
                       Body padding
                     </Label>
                     <Select
@@ -2552,7 +2589,7 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-body-pad" className="bg-white">
+                      <SelectTrigger id="preview-body-pad" className={cn(limsFieldClass, 'bg-white')}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2565,89 +2602,62 @@ export function ManagementDocumentA4PreviewDialog({
                     </Select>
                   </div>
                 </div>
-              </section>
 
-              {/* Section No */}
-              <section className="space-y-2.5 rounded-lg border border-slate-200 bg-white p-3.5">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
-                    Section No
-                  </h3>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    Numbering style for clauses such as 4, 4.1, 4.1.1.
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-section-no-size" className="text-[11px] text-slate-500">
-                      Font size
-                    </Label>
-                    <Select
-                      value={String(draftLayoutSettings.sectionNoSizePx)}
-                      onValueChange={(value) =>
-                        setDraftLayoutSettings((s) => ({
-                          ...s,
-                          sectionNoSizePx: Number(value),
-                        }))
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(
+                    [
+                      ['showCover', 'Cover Page', 'First page with lab + control details'],
+                      ['showToc', 'Table of Contents', 'Section index before body'],
+                      ['showContentHeading', 'Content header', 'Document Content bar + Add Section'],
+                      ['showTocPageNumbers', 'TOC page nos.', 'Show page numbers in TOC rows'],
+                      ['showLetterhead', 'Letterhead', 'Lab header block on every page'],
+                      ['showPageFooter', 'Page footer', 'Prepared / Reviewed / Approved strip'],
+                      ['showPageNumbers', 'Page numbers', 'Show n of N in the letterhead'],
+                      [
+                        'breakLevel1Sections',
+                        'Break L1 sections',
+                        'Each Level-1 clause starts on a new page',
+                      ],
+                    ] as const
+                  ).map(([key, label, hint]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={cn(
+                        'rounded-none border px-2.5 py-2 text-left text-sm transition-colors',
+                        draftLayoutSettings[key]
+                          ? 'border-amber-700 bg-amber-50 text-amber-950 ring-1 ring-amber-700/30'
+                          : 'border-stone-500 bg-stone-50 text-stone-800 hover:bg-white',
+                      )}
+                      onClick={() =>
+                        setDraftLayoutSettings((s) => ({ ...s, [key]: !s[key] }))
                       }
+                      aria-pressed={draftLayoutSettings[key]}
+                      title={hint}
                     >
-                      <SelectTrigger id="preview-section-no-size" className="bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SECTION_NO_SIZE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.id} value={String(opt.id)}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-section-no-weight" className="text-[11px] text-slate-500">
-                      Font weight
-                    </Label>
-                    <Select
-                      value={String(draftLayoutSettings.sectionNoWeight)}
-                      onValueChange={(value) =>
-                        setDraftLayoutSettings((s) => ({
-                          ...s,
-                          sectionNoWeight: Number(value),
-                        }))
-                      }
-                    >
-                      <SelectTrigger id="preview-section-no-weight" className="bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {FONT_WEIGHT_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.id} value={String(opt.id)}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      <span className="block text-[13px] font-medium leading-tight">{label}</span>
+                      <span className="mt-0.5 block text-[10px] leading-snug text-stone-500">
+                        {draftLayoutSettings[key] ? 'On' : 'Off'} · {hint}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </section>
 
               {/* Section Title */}
-              <section className="space-y-2.5 rounded-lg border border-slate-200 bg-white p-3.5">
+              <section className="space-y-2.5 rounded-none border-2 border-stone-500 bg-white p-3.5 ring-1 ring-amber-700/15">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
+                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-stone-700">
                     Section Title
                   </h3>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    Heading text after the section number (e.g. Impartiality).
-                  </p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                  <div className="min-w-0 space-y-1.5">
                     <Label
                       htmlFor="preview-section-title-size"
-                      className="text-[11px] text-slate-500"
+                      className="text-[11px] text-stone-500"
                     >
-                      Font size
+                      Title size
                     </Label>
                     <Select
                       value={String(draftLayoutSettings.sectionTitleSizePx)}
@@ -2658,7 +2668,10 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-section-title-size" className="bg-white">
+                      <SelectTrigger
+                        id="preview-section-title-size"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2670,12 +2683,12 @@ export function ManagementDocumentA4PreviewDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <Label
                       htmlFor="preview-section-title-weight"
-                      className="text-[11px] text-slate-500"
+                      className="text-[11px] text-stone-500"
                     >
-                      Font weight
+                      Title weight
                     </Label>
                     <Select
                       value={String(draftLayoutSettings.sectionTitleWeight)}
@@ -2686,7 +2699,131 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-section-title-weight" className="bg-white">
+                      <SelectTrigger
+                        id="preview-section-title-weight"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FONT_WEIGHT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={String(opt.id)}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label
+                      htmlFor="preview-section-title-case"
+                      className="text-[11px] text-stone-500"
+                    >
+                      Title case
+                    </Label>
+                    <Select
+                      value={draftLayoutSettings.sectionTitleCase}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          sectionTitleCase: value as SectionTitleCase,
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-section-title-case"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SECTION_TITLE_CASE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label
+                      htmlFor="preview-section-title-tracking"
+                      className="text-[11px] text-stone-500"
+                    >
+                      Letter spacing
+                    </Label>
+                    <Select
+                      value={String(draftLayoutSettings.sectionTitleTrackingEm)}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          sectionTitleTrackingEm: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-section-title-tracking"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SECTION_TITLE_TRACKING_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={String(opt.id)}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-section-no-size" className="text-[11px] text-stone-500">
+                      Section No size
+                    </Label>
+                    <Select
+                      value={String(draftLayoutSettings.sectionNoSizePx)}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          sectionNoSizePx: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-section-no-size"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SECTION_NO_SIZE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={String(opt.id)}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label
+                      htmlFor="preview-section-no-weight"
+                      className="text-[11px] text-stone-500"
+                    >
+                      Section No weight
+                    </Label>
+                    <Select
+                      value={String(draftLayoutSettings.sectionNoWeight)}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          sectionNoWeight: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-section-no-weight"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2702,20 +2839,17 @@ export function ManagementDocumentA4PreviewDialog({
               </section>
 
               {/* Section Text */}
-              <section className="space-y-2.5 rounded-lg border border-slate-200 bg-white p-3.5">
+              <section className="space-y-2.5 rounded-none border-2 border-stone-500 bg-white p-3.5 ring-1 ring-amber-700/15">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
+                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-stone-700">
                     Section Text
                   </h3>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    Body paragraphs, lists, and tables under each section.
-                  </p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                  <div className="min-w-0 space-y-1.5">
                     <Label
                       htmlFor="preview-section-text-size"
-                      className="text-[11px] text-slate-500"
+                      className="text-[11px] text-stone-500"
                     >
                       Font size
                     </Label>
@@ -2728,7 +2862,10 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-section-text-size" className="bg-white">
+                      <SelectTrigger
+                        id="preview-section-text-size"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2740,8 +2877,39 @@ export function ManagementDocumentA4PreviewDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-text-align" className="text-[11px] text-slate-500">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label
+                      htmlFor="preview-section-text-weight"
+                      className="text-[11px] text-stone-500"
+                    >
+                      Font weight
+                    </Label>
+                    <Select
+                      value={String(draftLayoutSettings.sectionTextWeight)}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          sectionTextWeight: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-section-text-weight"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FONT_WEIGHT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={String(opt.id)}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-text-align" className="text-[11px] text-stone-500">
                       Alignment
                     </Label>
                     <Select
@@ -2753,7 +2921,10 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-text-align" className="bg-white">
+                      <SelectTrigger
+                        id="preview-text-align"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2765,8 +2936,8 @@ export function ManagementDocumentA4PreviewDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-line-spacing" className="text-[11px] text-slate-500">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-line-spacing" className="text-[11px] text-stone-500">
                       Line spacing
                     </Label>
                     <Select
@@ -2778,7 +2949,10 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-line-spacing" className="bg-white">
+                      <SelectTrigger
+                        id="preview-line-spacing"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2790,8 +2964,8 @@ export function ManagementDocumentA4PreviewDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="preview-para-gap" className="text-[11px] text-slate-500">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-para-gap" className="text-[11px] text-stone-500">
                       Paragraph gap
                     </Label>
                     <Select
@@ -2803,7 +2977,10 @@ export function ManagementDocumentA4PreviewDialog({
                         }))
                       }
                     >
-                      <SelectTrigger id="preview-para-gap" className="bg-white">
+                      <SelectTrigger
+                        id="preview-para-gap"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2815,61 +2992,107 @@ export function ManagementDocumentA4PreviewDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-              </section>
-
-              {/* Spacing between blocks */}
-              <section className="space-y-2.5 rounded-lg border border-slate-200 bg-white p-3.5">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
-                    Block spacing
-                  </h3>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    Vertical gap between headings, paragraphs, tables, and TOC blocks.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="preview-block-gap" className="text-[11px] text-slate-500">
-                    Section / block gap
-                  </Label>
-                  <Select
-                    value={String(draftLayoutSettings.blockGapPx)}
-                    onValueChange={(value) =>
-                      setDraftLayoutSettings((s) => ({
-                        ...s,
-                        blockGapPx: Number(value),
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="preview-block-gap" className="bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BLOCK_GAP_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.id} value={String(opt.id)}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label
+                      htmlFor="preview-section-text-tracking"
+                      className="text-[11px] text-stone-500"
+                    >
+                      Letter spacing
+                    </Label>
+                    <Select
+                      value={String(draftLayoutSettings.sectionTextTrackingEm)}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          sectionTextTrackingEm: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-section-text-tracking"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SECTION_TEXT_TRACKING_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={String(opt.id)}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label
+                      htmlFor="preview-section-text-indent"
+                      className="text-[11px] text-stone-500"
+                    >
+                      First-line indent
+                    </Label>
+                    <Select
+                      value={String(draftLayoutSettings.sectionTextFirstLineIndentEm)}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          sectionTextFirstLineIndentEm: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-section-text-indent"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SECTION_TEXT_INDENT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={String(opt.id)}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label htmlFor="preview-block-gap" className="text-[11px] text-stone-500">
+                      Block gap
+                    </Label>
+                    <Select
+                      value={String(draftLayoutSettings.blockGapPx)}
+                      onValueChange={(value) =>
+                        setDraftLayoutSettings((s) => ({
+                          ...s,
+                          blockGapPx: Number(value),
+                        }))
+                      }
+                    >
+                      <SelectTrigger
+                        id="preview-block-gap"
+                        className={cn(limsFieldClass, 'bg-white')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BLOCK_GAP_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.id} value={String(opt.id)}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </section>
             </div>
 
-            <DialogFooter className="border-t border-slate-200 bg-white px-5 py-3 sm:justify-between">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setDraftLayoutSettings(DEFAULT_PREVIEW_SETTINGS)}
-              >
-                Reset defaults
-              </Button>
+            <DialogFooter className="border-t-2 border-stone-500 bg-stone-50 px-5 py-3 sm:justify-end">
               <div className="flex gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
+                  className={cn('h-9', limsOutlineBtnClass)}
                   onClick={() => setSettingsOpen(false)}
                 >
                   Cancel
@@ -2877,6 +3100,7 @@ export function ManagementDocumentA4PreviewDialog({
                 <Button
                   type="button"
                   size="sm"
+                  className={cn('h-9', limsPrimaryBtnClass)}
                   onClick={() => {
                     setLayoutSettings(draftLayoutSettings)
                     setSettingsOpen(false)
@@ -2893,67 +3117,57 @@ export function ManagementDocumentA4PreviewDialog({
         <Dialog open={aiOpen} onOpenChange={(o) => !aiLoading && setAiOpen(o)}>
           <DialogContent
             layer="nested"
-            className="max-w-xl gap-0 overflow-hidden border-slate-300 p-0 sm:rounded-lg"
+            aria-describedby={undefined}
+            overlayClassName={MGMT_A4_PREVIEW_OVERLAY}
+            className={cn(MGMT_A4_NESTED_DIALOG_CLASS, 'max-w-xl')}
           >
-            <div className="bg-slate-900 px-5 py-4 text-white">
-              <DialogHeader className="text-left">
-                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                  QI Assistant
-                </p>
-                <DialogTitle className="text-lg font-semibold text-white">
-                  Document AI tools
+            <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3.5 text-white">
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                style={limsDarkBarGlowStyle}
+              />
+              <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+              <DialogHeader className="relative pr-10 text-left">
+                <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                  Document AI Tools
                 </DialogTitle>
-                <p className="mt-1 text-sm text-slate-300">
-                  Updates selected sections only — letterhead, footer, and cover are never changed.
-                </p>
               </DialogHeader>
             </div>
-            <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto bg-[#fafbfc] px-5 py-5">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium text-slate-600">Task</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ['chat', 'Section chat', 'Message + PDFs → selected sections'],
-                      ['format', 'Format', 'Clean section HTML for print'],
-                      ['references', 'References', 'Audit vs document register'],
-                    ] as const
-                  ).map(([id, label, hint]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      disabled={aiLoading}
-                      className={cn(
-                        'rounded-md border px-2.5 py-2 text-left text-sm transition-colors',
-                        aiTask === id
-                          ? 'border-teal-600 bg-teal-50 text-teal-900'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-                      )}
-                      onClick={() => {
-                        setAiTask(id)
-                        setAiError(null)
-                        if (id !== 'references') setReferenceResult(null)
-                      }}
-                    >
-                      <span className="block text-[13px] font-medium leading-tight">{label}</span>
-                      <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">
-                        {hint}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+            <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-5 py-5">
               {aiTask === 'chat' ? (
                 <div className="space-y-3">
-                  <p className="rounded-md border border-teal-200 bg-teal-50/80 px-3 py-2 text-[12px] text-teal-900">
-                    Scope locked: only draft <strong>sections</strong> update. Cover page, letterhead,
-                    and footer stay unchanged.
-                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="a4-ai-section" className="text-xs font-medium text-slate-600">
+                      Section
+                    </Label>
+                    <Select
+                      value={aiSelectedSectionIds[0] ?? ''}
+                      onValueChange={(id) => {
+                        setAiSelectedSectionIds(id ? [id] : [])
+                        setAiError(null)
+                      }}
+                      disabled={aiLoading || sections.length === 0}
+                    >
+                      <SelectTrigger id="a4-ai-section" className={cn(limsFieldClass, 'bg-white')}>
+                        <SelectValue
+                          placeholder={
+                            sections.length === 0 ? 'No sections yet' : 'Select section…'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="z-[80]">
+                        {sections.map((section) => (
+                          <SelectItem key={section.id} value={section.id}>
+                            {displaySectionLabel(section)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium text-slate-600">
-                      Attach PDF references (optional, multiple)
+                      Attach the File
                     </Label>
                     <input
                       ref={aiPdfInputRef}
@@ -2978,7 +3192,6 @@ export function ManagementDocumentA4PreviewDialog({
                         <Paperclip size={14} />
                         Add PDF
                       </Button>
-                      <span className="text-[11px] text-slate-500">Max 5 MB each</span>
                     </div>
                     {aiAttachedPdfs.length > 0 ? (
                       <ul className="m-0 space-y-1 p-0">
@@ -3008,100 +3221,14 @@ export function ManagementDocumentA4PreviewDialog({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-slate-600">
-                      Sections to update
-                    </Label>
-                    <DropdownMenu modal={false}>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-10 w-full justify-between bg-white font-normal"
-                          disabled={aiLoading || sections.length === 0}
-                        >
-                          <span className="truncate">
-                            {sections.length === 0
-                              ? 'No sections yet'
-                              : aiSelectedSectionIds.length === 0
-                                ? 'Select section(s)…'
-                                : aiSelectedSectionIds.length === sections.length
-                                  ? `All sections (${sections.length})`
-                                  : `${aiSelectedSectionIds.length} section(s) selected`}
-                          </span>
-                          <span className="text-slate-400">▾</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="start"
-                        className="z-[80] max-h-64 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
-                        onCloseAutoFocus={(e) => e.preventDefault()}
-                      >
-                        <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-slate-500">
-                          Section No / Title
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem
-                          checked={
-                            sections.length > 0 &&
-                            aiSelectedSectionIds.length === sections.length
-                          }
-                          onCheckedChange={(checked) => {
-                            setAiSelectedSectionIds(
-                              checked ? sections.map((s) => s.id) : [],
-                            )
-                          }}
-                          onSelect={(e) => e.preventDefault()}
-                        >
-                          Select all
-                        </DropdownMenuCheckboxItem>
-                        <DropdownMenuSeparator />
-                        {sections.map((section) => (
-                          <DropdownMenuCheckboxItem
-                            key={section.id}
-                            checked={aiSelectedSectionIds.includes(section.id)}
-                            onCheckedChange={() => toggleAiSection(section.id)}
-                            onSelect={(e) => e.preventDefault()}
-                          >
-                            {displaySectionLabel(section)}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-[11px]"
-                        disabled={aiLoading || sections.length === 0}
-                        onClick={() => setAiSelectedSectionIds(sections.map((s) => s.id))}
-                      >
-                        All
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-[11px]"
-                        disabled={aiLoading}
-                        onClick={() => setAiSelectedSectionIds([])}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
                     <Label htmlFor="a4-ai-chat" className="text-xs font-medium text-slate-600">
-                      Chat message
+                      Chat Message
                     </Label>
                     <Textarea
                       id="a4-ai-chat"
                       value={aiChatMessage}
                       onChange={(e) => setAiChatMessage(e.target.value)}
                       disabled={aiLoading}
-                      placeholder="e.g. Align this section with the attached ISO PDF; keep tables; use proper bullet lists…"
                       className="min-h-[100px] resize-y bg-white text-sm"
                     />
                   </div>
@@ -3155,21 +3282,21 @@ export function ManagementDocumentA4PreviewDialog({
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <Label className="text-xs font-medium text-slate-600">Format mode</Label>
+                  <Label className="text-xs font-medium text-stone-600">Format mode</Label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       disabled={aiLoading}
                       className={cn(
-                        'rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                        'rounded-none border px-3 py-2 text-left text-sm transition-colors',
                         aiMode === 'ai'
-                          ? 'border-teal-600 bg-teal-50 text-teal-900'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                          ? 'border-amber-700 bg-amber-50 text-amber-950 ring-1 ring-amber-700/30'
+                          : 'border-stone-500 bg-white text-stone-800 hover:bg-stone-50',
                       )}
                       onClick={() => setAiMode('ai')}
                     >
                       <span className="font-medium">AI Format</span>
-                      <span className="mt-0.5 block text-[11px] text-slate-500">
+                      <span className="mt-0.5 block text-[11px] text-stone-500">
                         Deep rewrite via QI Assistant
                       </span>
                     </button>
@@ -3177,10 +3304,10 @@ export function ManagementDocumentA4PreviewDialog({
                       type="button"
                       disabled={aiLoading}
                       className={cn(
-                        'rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                        'rounded-none border px-3 py-2 text-left text-sm transition-colors',
                         aiMode === 'local'
-                          ? 'border-teal-600 bg-teal-50 text-teal-900'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                          ? 'border-amber-700 bg-amber-50 text-amber-950 ring-1 ring-amber-700/30'
+                          : 'border-stone-500 bg-white text-stone-800 hover:bg-stone-50',
                       )}
                       onClick={() => setAiMode('local')}
                     >
@@ -3203,23 +3330,14 @@ export function ManagementDocumentA4PreviewDialog({
                 </div>
               ) : null}
 
-              {aiProgress ? <p className="text-xs text-teal-700">{aiProgress}</p> : null}
+              {aiProgress ? <p className="text-xs text-amber-800">{aiProgress}</p> : null}
               {aiError ? <p className="text-sm text-destructive">{aiError}</p> : null}
             </div>
-            <DialogFooter className="border-t border-slate-200 bg-white px-5 py-3">
+            <DialogFooter className="border-t-2 border-stone-500 bg-stone-50 px-5 py-3">
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                disabled={aiLoading}
-                onClick={() => setAiOpen(false)}
-              >
-                {referenceResult && aiTask === 'references' ? 'Close' : 'Cancel'}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="gap-1.5"
+                className={cn('h-9 gap-1.5', limsPrimaryBtnClass)}
                 disabled={aiLoading}
                 onClick={() => {
                   if (aiTask === 'chat') void runSectionChat()
@@ -3235,7 +3353,7 @@ export function ManagementDocumentA4PreviewDialog({
                       ? 'Checking…'
                       : 'Formatting…'
                   : aiTask === 'chat'
-                    ? 'Send to sections'
+                    ? 'Update Section'
                     : aiTask === 'references'
                       ? referenceResult
                         ? 'Re-run check'
