@@ -150,6 +150,15 @@
   .sidebar-section-panel {
     @apply min-w-0 max-w-full overflow-hidden rounded-none border border-stone-600/80 bg-stone-900/50 p-1 shadow-sm shadow-black/20;
   }
+
+  /* View-only Module Access: block common save / delete actions */
+  .module-access-view-only button.bg-amber-700,
+  .module-access-view-only button[class*='bg-amber-700'],
+  .module-access-view-only button[class*='bg-red-'],
+  .module-access-view-only button[class*='text-destructive'] {
+    pointer-events: none !important;
+    opacity: 0.45;
+  }
 }
 
 @layer utilities {

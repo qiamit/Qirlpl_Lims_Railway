@@ -12,6 +12,7 @@ import RetainDisposedMasterPage from '@/features/sample-handling/retain-disposed
 import ResultValidationPage from '@/features/quality/ResultValidationPage'
 import LabSettingsPage from '@/features/settings/LabSettingsPage'
 import UserManagementPage from '@/features/settings/UserManagementPage'
+import ModuleAccessPage from '@/features/settings/ModuleAccessPage'
 import AiSettingsPage from '@/features/settings/AiSettingsPage'
 import ClientsPage from '@/features/masters/ClientsPage'
 import IsCodesPage from '@/features/masters/IsCodesPage'
@@ -103,6 +104,14 @@ export function UserManagementRoute() {
   return (
     <RequireLaboratoryDirector>
       <UserManagementPage />
+    </RequireLaboratoryDirector>
+  )
+}
+
+export function ModuleAccessRoute() {
+  return (
+    <RequireLaboratoryDirector>
+      <ModuleAccessPage />
     </RequireLaboratoryDirector>
   )
 }

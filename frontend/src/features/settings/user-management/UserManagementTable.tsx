@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -15,6 +15,9 @@ const checkboxClass =
 type UserManagementTableProps = {
   users: UserAccount[]
   searchActive?: boolean
+  selectedIds: Set<string>
+  onToggle: (id: string) => void
+  onToggleAll: (checked: boolean) => void
   userUpdateLoadingId: string | null
   onEdit: (user: UserAccount) => void
   onDelete: (user: UserAccount) => void
@@ -22,32 +25,9 @@ type UserManagementTableProps = {
 }
 
 export function UserManagementTable(props: UserManagementTableProps) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-
   const userIds = useMemo(() => props.users.map((u) => u.id), [props.users])
-
-  useEffect(() => {
-    setSelectedIds((prev) => {
-      const next = new Set([...prev].filter((id) => userIds.includes(id)))
-      return next.size === prev.size ? prev : next
-    })
-  }, [userIds])
-
-  const allSelected = userIds.length > 0 && selectedIds.size === userIds.length
-  const someSelected = selectedIds.size > 0 && !allSelected
-
-  const toggleAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(userIds))
-  }
-
-  const toggleOne = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  const allSelected = userIds.length > 0 && userIds.every((id) => props.selectedIds.has(id))
+  const someSelected = userIds.some((id) => props.selectedIds.has(id)) && !allSelected
 
   return (
     <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20 overflow-hidden">
@@ -63,7 +43,7 @@ export function UserManagementTable(props: UserManagementTableProps) {
                   ref={(el) => {
                     if (el) el.indeterminate = someSelected
                   }}
-                  onChange={toggleAll}
+                  onChange={(e) => props.onToggleAll(e.target.checked)}
                   aria-label="Select all users"
                 />
               </TableHead>
@@ -79,13 +59,13 @@ export function UserManagementTable(props: UserManagementTableProps) {
               const busy = props.userUpdateLoadingId === user.id
 
               return (
-                <TableRow key={user.id} data-state={selectedIds.has(user.id) ? 'selected' : undefined}>
+                <TableRow key={user.id} data-state={props.selectedIds.has(user.id) ? 'selected' : undefined}>
                   <TableCell className="text-center align-middle">
                     <input
                       type="checkbox"
                       className={checkboxClass}
-                      checked={selectedIds.has(user.id)}
-                      onChange={() => toggleOne(user.id)}
+                      checked={props.selectedIds.has(user.id)}
+                      onChange={() => props.onToggle(user.id)}
                       aria-label={`Select ${user.name}`}
                     />
                   </TableCell>

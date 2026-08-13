@@ -30,6 +30,7 @@ import {
   TestParameterPage,
   TestReportPreparationMasterPage,
   UserManagementRoute,
+  ModuleAccessRoute,
   ManagementDocsLevel1Route,
   ManagementDocsLevel2Route,
   ManagementDocsLevel3Route,
@@ -236,6 +237,7 @@ export default function App() {
           {/* Top Bar Pages */}
           <Route path="lab-settings" element={<LabSettingsRoute />} />
           <Route path="lab-settings/user-management" element={<UserManagementRoute />} />
+          <Route path="lab-settings/module-access" element={<ModuleAccessRoute />} />
           <Route path="lab-settings/ai-settings" element={<AiSettingsRoute />} />
           <Route path="help" element={<HelpRoute />} />
           <Route path="contact-us" element={<ContactUsRoute />} />

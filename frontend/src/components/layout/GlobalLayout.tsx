@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ElementType } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ElementType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FileSignature,
@@ -6,6 +6,7 @@ import {
   Users,
   TestTube,
   ShieldCheck,
+  Shield,
   BookOpen,
   ClipboardCheck,
   ClipboardList,
@@ -52,7 +53,8 @@ import {
 import { useAuth, signOut } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
-import { canAccessNavItem as checkNavAccess, isRestrictedModuleRole, type UserAccessContext } from '@/lib/moduleAccess'
+import { canAccessNavItem as checkNavAccess, isRestrictedModuleRole } from '@/lib/moduleAccess'
+import { useModuleAccessOptional } from '@/features/settings/module-access/ModuleAccessProvider'
 import { RequireModuleAccess } from '@/components/auth/RequireModuleAccess'
 import {
   RESULT_VALIDATION_MODULES,
@@ -86,8 +88,28 @@ const formatNavLabel = (value: string) =>
     })
     .join(' ')
 
-function navItemAccessible(item: NavItem, ctx: UserAccessContext): boolean {
-  return checkNavAccess(item.requiredDesignations, item.to, ctx)
+function navItemAccessible(
+  item: NavItem,
+  canAccess: (requiredDesignations: string[] | undefined, to: string | undefined) => boolean,
+): boolean {
+  return canAccess(item.requiredDesignations, item.to)
+}
+
+function useNavCanAccess() {
+  const moduleAccess = useModuleAccessOptional()
+  const { designation, departmentName } = useAuth()
+  const legacyCtx = useMemo(
+    () => ({ designation: designation ?? '', departmentName: departmentName ?? '' }),
+    [designation, departmentName],
+  )
+
+  return useCallback(
+    (requiredDesignations: string[] | undefined, to: string | undefined) => {
+      if (moduleAccess) return moduleAccess.canAccessNavItem(requiredDesignations, to)
+      return checkNavAccess(requiredDesignations, to, legacyCtx)
+    },
+    [moduleAccess, legacyCtx],
+  )
 }
 
 /** Expandable nav: starts closed; stays open until user collapses manually */
@@ -95,6 +117,33 @@ function useNavSectionOpen(initialOpen = false) {
   const [open, setOpen] = useState(initialOpen)
   const toggleOpen = () => setOpen((v) => !v)
   return { open, setOpen, toggleOpen }
+}
+
+function SidebarMainNav() {
+  const [openSectionId, setOpenSectionId] = useState<string | null>(null)
+
+  return (
+    <nav className="w-full min-w-0 max-w-full space-y-2 overflow-x-hidden px-2 pb-3" aria-label="Main navigation">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-none border border-stone-600/80 bg-stone-900/50 p-1">
+        <NavItemLink
+          item={{ label: 'Dashboard', to: '/', icon: LayoutDashboard }}
+          collapsed={false}
+        />
+      </div>
+
+      {NAV_SECTIONS.map((section) => (
+        <NavSectionGroup
+          key={section.clause}
+          section={section}
+          collapsed={false}
+          open={openSectionId === section.clause}
+          onToggle={() =>
+            setOpenSectionId((prev) => (prev === section.clause ? null : section.clause))
+          }
+        />
+      ))}
+    </nav>
+  )
 }
 
 const RESULT_VALIDATION_NAV: NavItem = {
@@ -496,6 +545,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/training/effectiveness-review': 'Training Management / Effectiveness Review',
   '/lab-settings': 'Lab Settings',
   '/lab-settings/user-management': 'User Management',
+  '/lab-settings/module-access': 'Module Access',
   '/lab-settings/ai-settings': 'AI Settings',
   '/help': 'Help',
   '/contact-us': 'Contact Us',
@@ -521,24 +571,26 @@ function Breadcrumbs() {
 function NavSectionGroup({
   section,
   collapsed,
-  access,
+  open,
+  onToggle,
 }: {
   section: NavSection
   collapsed: boolean
-  access: UserAccessContext
+  open: boolean
+  onToggle: () => void
 }) {
-  const { open, toggleOpen } = useNavSectionOpen(false)
   const SectionIcon = section.icon
+  const canAccess = useNavCanAccess()
 
   const visibleItems = useMemo(
     () =>
       section.items.filter((item) => {
         if (item.children && item.children.length > 0) {
-          return item.children.some((c) => navItemAccessible(c, access))
+          return item.children.some((c) => navItemAccessible(c, canAccess))
         }
-        return navItemAccessible(item, access)
+        return navItemAccessible(item, canAccess)
       }),
-    [section.items, access],
+    [section.items, canAccess],
   )
 
   if (visibleItems.length === 0 && section.items.length > 0) return null
@@ -550,9 +602,9 @@ function NavSectionGroup({
         {visibleItems.map((item) => (
           <div key={item.to ?? item.label}>
             {item.children && item.children.length > 0 ? (
-              <NavItemGroup item={item} collapsed={collapsed} access={access} />
+              <NavItemGroup item={item} collapsed={collapsed} />
             ) : (
-              <NavItemLink item={item} collapsed={collapsed} access={access} />
+              <NavItemLink item={item} collapsed={collapsed} />
             )}
           </div>
         ))}
@@ -564,7 +616,7 @@ function NavSectionGroup({
     <div className="sidebar-section-panel">
       <button
         type="button"
-        onClick={toggleOpen}
+        onClick={onToggle}
         className="flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-none px-1.5 py-2 text-left transition-colors hover:bg-white/10"
         aria-expanded={open}
         title={formatNavLabel(section.title)}
@@ -591,9 +643,9 @@ function NavSectionGroup({
           {visibleItems.map((item) => (
             <li key={item.to ?? item.label}>
               {item.children && item.children.length > 0 ? (
-                <NavItemGroup item={item} collapsed={collapsed} access={access} />
+                <NavItemGroup item={item} collapsed={collapsed} />
               ) : (
-                <NavItemLink item={item} collapsed={collapsed} access={access} />
+                <NavItemLink item={item} collapsed={collapsed} />
               )}
             </li>
           ))}
@@ -603,14 +655,15 @@ function NavSectionGroup({
   )
 }
 
-function NavItemGroup({ item, collapsed, access }: { item: NavItem; collapsed: boolean; access: UserAccessContext }) {
+function NavItemGroup({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const location = useLocation()
   const Icon = item.icon
+  const canAccess = useNavCanAccess()
 
   const children = item.children ?? []
   const visibleChildren = useMemo(
-    () => children.filter((c) => navItemAccessible(c, access)),
-    [children, access],
+    () => children.filter((c) => navItemAccessible(c, canAccess)),
+    [children, canAccess],
   )
   const isAnyChildActive = useMemo(() => {
     return visibleChildren.some((c) => {
@@ -692,7 +745,7 @@ function NavItemGroup({ item, collapsed, access }: { item: NavItem; collapsed: b
         <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-amber-500/25 pl-2">
           {visibleChildren.map((c) => (
             <li key={c.to ?? c.label}>
-              <NavItemLink item={c} collapsed={false} access={access} nested />
+              <NavItemLink item={c} collapsed={false} nested />
             </li>
           ))}
         </ul>
@@ -704,18 +757,17 @@ function NavItemGroup({ item, collapsed, access }: { item: NavItem; collapsed: b
 function NavItemLink({
   item,
   collapsed,
-  access,
   nested = false,
 }: {
   item: NavItem
   collapsed: boolean
-  access: UserAccessContext
   nested?: boolean
 }) {
   const Icon = item.icon
+  const canAccess = useNavCanAccess()
 
   if (!item.to) return null
-  if (!navItemAccessible(item, access)) return null
+  if (!navItemAccessible(item, canAccess)) return null
 
   const link = (
     <NavLink
@@ -929,24 +981,7 @@ export default function GlobalLayout() {
       </div>
 
       <ScrollArea className="min-w-0 flex-1 overflow-hidden py-3">
-        <nav className="w-full min-w-0 max-w-full space-y-2 overflow-x-hidden px-2 pb-3" aria-label="Main navigation">
-          <div className="min-w-0 max-w-full overflow-hidden rounded-none border border-stone-600/80 bg-stone-900/50 p-1">
-            <NavItemLink
-              item={{ label: 'Dashboard', to: '/', icon: LayoutDashboard }}
-              collapsed={false}
-              access={access}
-            />
-          </div>
-
-          {NAV_SECTIONS.map((section) => (
-            <NavSectionGroup
-              key={section.clause}
-              section={section}
-              collapsed={false}
-              access={access}
-            />
-          ))}
-        </nav>
+        <SidebarMainNav />
       </ScrollArea>
     </>
     )
@@ -1070,6 +1105,12 @@ export default function GlobalLayout() {
                       <NavLink to="/lab-settings/user-management" className="flex items-center gap-2">
                         <Users size={14} />
                         User Management
+                      </NavLink>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <NavLink to="/lab-settings/module-access" className="flex items-center gap-2">
+                        <Shield size={14} />
+                        Module Access
                       </NavLink>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

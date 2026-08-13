@@ -3,9 +3,12 @@ import { useEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { canAccessPath } from '@/lib/moduleAccess'
 import { AccessDeniedPage } from '@/components/auth/AccessDeniedPage'
+import { useModuleAccessOptional } from '@/features/settings/module-access/ModuleAccessProvider'
+import { cn } from '@/lib/utils'
 
 export function RequireModuleAccess({ children }: { children: React.ReactNode }) {
   const { user, loading, designation, departmentName, profileReady } = useAuth()
+  const moduleAccess = useModuleAccessOptional()
   const location = useLocation()
   const profileLoadedRef = useRef(false)
 
@@ -15,7 +18,7 @@ export function RequireModuleAccess({ children }: { children: React.ReactNode })
 
   if (profileReady && user) profileLoadedRef.current = true
 
-  const waitingForProfile = loading || !profileReady
+  const waitingForProfile = loading || !profileReady || (Boolean(user) && Boolean(moduleAccess?.loading))
   const keepOutletMounted = profileLoadedRef.current && Boolean(user)
 
   if (waitingForProfile && !keepOutletMounted) {
@@ -27,8 +30,11 @@ export function RequireModuleAccess({ children }: { children: React.ReactNode })
   }
 
   const ctx = { designation, departmentName }
+  const allowed = moduleAccess
+    ? moduleAccess.canAccessPath(location.pathname)
+    : canAccessPath(location.pathname, ctx)
 
-  if (!canAccessPath(location.pathname, ctx)) {
+  if (!allowed) {
     return (
       <AccessDeniedPage
         message="You do not have permission to access this module. Contact your Laboratory Director if you need additional access."
@@ -38,5 +44,14 @@ export function RequireModuleAccess({ children }: { children: React.ReactNode })
     )
   }
 
-  return <>{children}</>
+  const viewOnly = moduleAccess?.accessLevelFor(location.pathname) === 'view'
+
+  return (
+    <div
+      className={cn(viewOnly && 'module-access-view-only')}
+      data-module-access={viewOnly ? 'view' : 'edit'}
+    >
+      {children}
+    </div>
+  )
 }

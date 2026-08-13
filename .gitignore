@@ -127,3 +127,4 @@ backend/supabase/baseline_from_*.sql
 *.temp
 *.orig
 )
+.vercel

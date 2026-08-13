@@ -40,6 +40,12 @@ import {
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import { supabase } from '@/lib/supabaseClient'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  limsDarkBarAccentClass,
+  limsDarkBarGlowStyle,
+  limsPageShellClass,
+  limsPanelClass,
+} from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 
 interface StatCardProps {
@@ -59,42 +65,111 @@ type DashboardSection = {
   cards: StatCardProps[]
 }
 
-function StatCard({
+type HeroTone = 'neutral' | 'ok' | 'warn' | 'danger'
+
+type HeroKpi = {
+  id: string
+  label: string
+  value: string | number
+  hint: string
+  icon: ElementType
+  tone: HeroTone
+  href?: string
+}
+
+const heroToneClass: Record<HeroTone, string> = {
+  neutral: 'border-stone-500 bg-white text-stone-900',
+  ok: 'border-emerald-700/50 bg-emerald-50/80 text-emerald-950',
+  warn: 'border-amber-600/60 bg-amber-50 text-amber-950',
+  danger: 'border-red-700/50 bg-red-50 text-red-950',
+}
+
+const heroIconClass: Record<HeroTone, string> = {
+  neutral: 'bg-stone-800 text-amber-200',
+  ok: 'bg-emerald-700 text-white',
+  warn: 'bg-amber-700 text-white',
+  danger: 'bg-red-700 text-white',
+}
+
+function HeroKpiCard({ label, value, hint, icon: Icon, tone, href }: HeroKpi) {
+  const body = (
+    <div
+      className={cn(
+        'group flex h-full min-h-[7.5rem] flex-col justify-between border-2 p-4 transition-colors',
+        heroToneClass[tone],
+        href && 'hover:ring-2 hover:ring-amber-600/30',
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center',
+            heroIconClass[tone],
+          )}
+        >
+          <Icon size={18} aria-hidden />
+        </div>
+        {href ? (
+          <ArrowRight
+            size={16}
+            className="shrink-0 text-stone-400 opacity-0 transition-opacity group-hover:opacity-100"
+          />
+        ) : null}
+      </div>
+      <div className="mt-3 min-w-0">
+        <p className="text-3xl font-bold tabular-nums tracking-tight sm:text-4xl">{value}</p>
+        <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-stone-700">{label}</p>
+        <p className="mt-0.5 text-[11px] text-stone-600">{hint}</p>
+      </div>
+    </div>
+  )
+
+  if (href) {
+    return (
+      <NavLink to={href} className="block h-full" aria-label={`${label}: ${value}`}>
+        {body}
+      </NavLink>
+    )
+  }
+  return body
+}
+
+function MetricTile({
   title,
   value,
   icon: Icon,
   badgeLabel,
   badgeVariant = 'info',
   href,
-  colorClass = 'bg-primary/10 text-primary',
 }: StatCardProps) {
   const content = (
-    <div className="group relative flex h-full items-start gap-1.5 app-card px-2 py-1.5 transition-all duration-200 hover:border-primary/25 hover:shadow-card">
-      <div className={cn('mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md', colorClass)}>
-        <Icon size={11} />
+    <div
+      className={cn(
+        'group flex h-full items-center gap-3 border border-stone-400 bg-[#fffcf7] px-3 py-3 transition-colors',
+        href && 'hover:border-amber-600 hover:bg-amber-50/60',
+      )}
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-stone-800 text-amber-200">
+        <Icon size={16} aria-hidden />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-1">
-          <p className="text-sm font-bold leading-none tracking-tight text-foreground tabular-nums">
-            {value}
-          </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-lg font-bold tabular-nums text-stone-900">{value}</p>
           {badgeLabel ? (
             <Badge
               variant={badgeVariant}
-              className="max-w-[4.5rem] shrink-0 truncate px-1 py-0 text-[8px] leading-tight"
+              className="max-w-[5rem] shrink-0 truncate rounded-none px-1.5 py-0 text-[9px]"
             >
               {badgeLabel}
             </Badge>
           ) : null}
         </div>
-        <p className="mt-0.5 truncate text-[10px] font-semibold leading-tight text-foreground/85">
-          {title}
-        </p>
+        <p className="mt-0.5 truncate text-[11px] font-semibold text-stone-600">{title}</p>
       </div>
       {href ? (
         <ArrowRight
-          size={10}
-          className="mt-0.5 shrink-0 text-primary opacity-0 transition-opacity group-hover:opacity-100"
+          size={14}
+          className="shrink-0 text-amber-700 opacity-0 transition-opacity group-hover:opacity-100"
         />
       ) : null}
     </div>
@@ -953,6 +1028,134 @@ export default function DashboardPage() {
     ].filter((section) => section.cards.length > 0)
   }, [stats, access, isDirector])
 
+  const heroKpis = useMemo((): HeroKpi[] => {
+    if (!stats) return []
+
+    const samplePaths = [
+      '/samples/receiving',
+      '/samples/allocation',
+      '/samples/test-allocation',
+      '/samples/under-testing',
+      '/samples/results-review',
+      '/samples/report-preparation',
+      '/samples/completed',
+    ]
+    const canSamples = isDirector || samplePaths.some((p) => canAccessPath(p, access))
+    const canEquipment = isDirector || canAccessPath('/masters/equipment', access)
+    const overdueHref = samplePaths.find((p) => canAccessPath(p, access))
+    const receivingHref = canAccessPath('/samples/receiving', access)
+      ? '/samples/receiving'
+      : overdueHref
+
+    const kpis: HeroKpi[] = []
+
+    if (canSamples) {
+      kpis.push(
+        {
+          id: 'overdue',
+          label: 'Overdue Samples',
+          value: stats.delayedSamplesCount,
+          hint: stats.delayedSamplesCount > 0 ? 'Needs immediate attention' : 'All samples on track',
+          icon: AlertTriangle,
+          tone: stats.delayedSamplesCount > 0 ? 'danger' : 'ok',
+          href: overdueHref,
+        },
+        {
+          id: 'due-soon',
+          label: 'Due in 7 Days',
+          value: stats.dueSoonCount,
+          hint: 'Upcoming lab TAT deadlines',
+          icon: CalendarClock,
+          tone: stats.dueSoonCount > 0 ? 'warn' : 'neutral',
+          href: overdueHref,
+        },
+        {
+          id: 'active',
+          label: 'Active Load',
+          value: stats.activeSamples,
+          hint: `${stats.receivedToday} received today`,
+          icon: FlaskConical,
+          tone: 'neutral',
+          href: receivingHref,
+        },
+        {
+          id: 'tat',
+          label: 'TAT Compliance',
+          value: `${stats.tatComplianceRate}%`,
+          hint: stats.tatComplianceRate >= 90 ? 'Healthy turnaround' : 'Review delayed work',
+          icon: Clock,
+          tone: stats.tatComplianceRate >= 90 ? 'ok' : 'warn',
+        },
+      )
+    } else if (canEquipment) {
+      kpis.push(
+        {
+          id: 'cal-overdue',
+          label: 'Cal. Overdue',
+          value: stats.calibrationOverdue,
+          hint: 'Equipment past calibration due',
+          icon: CalendarClock,
+          tone: stats.calibrationOverdue > 0 ? 'danger' : 'ok',
+          href: '/masters/equipment',
+        },
+        {
+          id: 'ic-maint',
+          label: 'IC / Maint. Overdue',
+          value: `${stats.intermediateOverdue}/${stats.maintenanceOverdue}`,
+          hint: 'Intermediate check & maintenance',
+          icon: Wrench,
+          tone:
+            stats.intermediateOverdue + stats.maintenanceOverdue > 0 ? 'warn' : 'ok',
+          href: '/masters/equipment',
+        },
+        {
+          id: 'equipment',
+          label: 'Equipment Active',
+          value: `${stats.equipmentActiveCount}/${stats.equipmentCount}`,
+          hint: 'Assets in service',
+          icon: Wrench,
+          tone: 'neutral',
+          href: '/masters/equipment',
+        },
+      )
+    }
+
+    return kpis
+  }, [stats, access, isDirector])
+
+  const moduleSections = useMemo(() => {
+    const heroTitles = new Set([
+      'Overdue Samples',
+      'Due in 7 Days',
+      'Active Load',
+      'TAT Compliance',
+      'Cal. Overdue',
+      'IC / Maint. Overdue',
+      'Equipment Active',
+    ])
+    return dashboardSections
+      .map((section) => ({
+        ...section,
+        cards: section.cards.filter((card) => !heroTitles.has(card.title)),
+      }))
+      .filter((section) => section.cards.length > 0)
+  }, [dashboardSections])
+
+  const focusLinks = useMemo(() => {
+    return role.focusStages
+      .map((stage) => {
+        const href = stageHref(stage)
+        if (!href || !canAccessPath(href, access)) return null
+        return {
+          stage,
+          href,
+          label: stage.replace(/_/g, ' '),
+          count: stats?.stageCounts[stage] ?? 0,
+        }
+      })
+      .filter((x): x is NonNullable<typeof x> => Boolean(x))
+  }, [role.focusStages, access, stats])
+
   const renderOverdueCard = () => {
     if (!stats) return null
     const sampleLimit = isDirector ? 10 : 8
@@ -963,141 +1166,143 @@ export default function DashboardPage() {
     const totalOverdue = stats.delayedSamplesCount + stats.calibrationOverdue
 
     return (
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <AlertTriangle size={14} className="text-warning" />
-            Overdue Attention
-            {totalOverdue > 0 ? (
-              <Badge variant="warning" className="ml-1 px-1.5 py-0 text-[10px]">
-                {totalOverdue}
-              </Badge>
-            ) : null}
-          </h3>
-          <p className="text-[11px] text-muted-foreground">
-            Samples {stats.delayedSamplesCount} · Calibration {stats.calibrationOverdue}
-          </p>
+      <div className={cn(limsPanelClass)}>
+        <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className={limsDarkBarAccentClass} />
+          <div className="relative flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+              <AlertTriangle size={16} className="text-amber-300" />
+              Overdue Attention
+              {totalOverdue > 0 ? (
+                <span className="border border-amber-500/50 bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-100">
+                  {totalOverdue}
+                </span>
+              ) : null}
+            </h3>
+            <p className="text-[11px] text-stone-300">
+              Samples {stats.delayedSamplesCount} · Calibration {stats.calibrationOverdue}
+            </p>
+          </div>
         </div>
 
-        <div className="app-card overflow-hidden">
-          <div className="grid grid-cols-1 divide-y divide-border/60 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-            <section className="min-w-0">
-              <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/40 px-3 py-2">
-                <h4 className="text-xs font-semibold text-foreground">Overdue Samples</h4>
-                <Badge
-                  variant={stats.delayedSamplesCount > 0 ? 'warning' : 'success'}
-                  className="px-1.5 py-0 text-[10px]"
-                >
-                  {stats.delayedSamplesCount}
-                </Badge>
-              </div>
-              {sampleList.length > 0 ? (
-                <div className="max-h-[280px] overflow-auto">
-                  <table className="w-full border-collapse text-left text-[11px]">
-                    <thead className="sticky top-0 z-[1] bg-muted/90 backdrop-blur-sm">
-                      <tr className="border-b border-border/60 font-semibold text-muted-foreground">
-                        <th className="px-3 py-2">Sample</th>
-                        <th className="px-3 py-2">Client</th>
-                        <th className="hidden px-3 py-2 md:table-cell">Description</th>
-                        <th className="px-3 py-2">Stage</th>
-                        <th className="px-3 py-2 text-right">Due</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {sampleList.map((sample) => {
-                        const stagePath = stageHref(sample.stage ?? '')
-                        const href =
-                          stagePath && canAccessPath(stagePath, access)
-                            ? stagePath
-                            : role.primaryHref && canAccessPath(role.primaryHref, access)
-                              ? role.primaryHref
-                              : '/'
-                        return (
-                          <tr key={sample.id} className="hover:bg-muted/20">
-                            <td className="px-3 py-1.5 font-semibold text-primary">
-                              <NavLink to={href} className="hover:underline">
-                                {sample.sample_code || '—'}
-                              </NavLink>
-                            </td>
-                            <td className="max-w-[120px] truncate px-3 py-1.5">
-                              {sample.client_name || '—'}
-                            </td>
-                            <td className="hidden max-w-[180px] truncate px-3 py-1.5 md:table-cell">
-                              {sample.description || '—'}
-                            </td>
-                            <td className="px-3 py-1.5">
-                              <Badge variant="warning" className="text-[9px] capitalize">
-                                {(sample.stage ?? 'receiving').replace(/_/g, ' ')}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-1.5 text-right font-medium text-destructive tabular-nums">
-                              {sample.tentative_date_by_lab || '—'}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-                  <ShieldCheck size={22} className="mx-auto mb-1.5 text-success" />
-                  All active samples are within target timelines.
-                </div>
-              )}
-            </section>
-
-            <section className="min-w-0">
-              <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/40 px-3 py-2">
-                <h4 className="text-xs font-semibold text-foreground">Overdue Calibration</h4>
-                <Badge
-                  variant={stats.calibrationOverdue > 0 ? 'destructive' : 'success'}
-                  className="px-1.5 py-0 text-[10px]"
-                >
-                  {stats.calibrationOverdue}
-                </Badge>
-              </div>
-              {calList.length > 0 ? (
-                <div className="max-h-[280px] overflow-auto">
-                  <table className="w-full border-collapse text-left text-[11px]">
-                    <thead className="sticky top-0 z-[1] bg-muted/90 backdrop-blur-sm">
-                      <tr className="border-b border-border/60 font-semibold text-muted-foreground">
-                        <th className="px-3 py-2">Asset</th>
-                        <th className="px-3 py-2">Equipment</th>
-                        <th className="px-3 py-2 text-right">Cal. Due</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {calList.map((eq) => (
-                        <tr key={eq.id} className="hover:bg-muted/20">
-                          <td className="px-3 py-1.5 font-semibold text-primary">
-                            {equipmentHref ? (
-                              <NavLink to={equipmentHref} className="hover:underline">
-                                {eq.asset_code || '—'}
-                              </NavLink>
-                            ) : (
-                              eq.asset_code || '—'
-                            )}
+        <div className="grid grid-cols-1 divide-y divide-stone-300 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+          <section className="min-w-0 bg-[#f7f3eb]/40">
+            <div className="flex items-center justify-between gap-2 border-b border-stone-300 bg-stone-100/80 px-4 py-2">
+              <h4 className="text-xs font-bold uppercase tracking-wide text-stone-800">Overdue Samples</h4>
+              <Badge
+                variant={stats.delayedSamplesCount > 0 ? 'warning' : 'success'}
+                className="rounded-none px-1.5 py-0 text-[10px]"
+              >
+                {stats.delayedSamplesCount}
+              </Badge>
+            </div>
+            {sampleList.length > 0 ? (
+              <div className="max-h-[280px] overflow-auto">
+                <table className="w-full border-collapse text-left text-[11px]">
+                  <thead className="sticky top-0 z-[1] bg-stone-200/95">
+                    <tr className="border-b border-stone-300 font-semibold uppercase tracking-wide text-stone-600">
+                      <th className="px-3 py-2">Sample</th>
+                      <th className="px-3 py-2">Client</th>
+                      <th className="hidden px-3 py-2 md:table-cell">Description</th>
+                      <th className="px-3 py-2">Stage</th>
+                      <th className="px-3 py-2 text-right">Due</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200 bg-white">
+                    {sampleList.map((sample) => {
+                      const stagePath = stageHref(sample.stage ?? '')
+                      const href =
+                        stagePath && canAccessPath(stagePath, access)
+                          ? stagePath
+                          : role.primaryHref && canAccessPath(role.primaryHref, access)
+                            ? role.primaryHref
+                            : '/'
+                      return (
+                        <tr key={sample.id} className="hover:bg-amber-50/50">
+                          <td className="px-3 py-1.5 font-semibold text-amber-900">
+                            <NavLink to={href} className="hover:underline">
+                              {sample.sample_code || '—'}
+                            </NavLink>
                           </td>
-                          <td className="max-w-[220px] truncate px-3 py-1.5">
-                            {eq.equipment_name || '—'}
+                          <td className="max-w-[120px] truncate px-3 py-1.5 text-stone-700">
+                            {sample.client_name || '—'}
                           </td>
-                          <td className="px-3 py-1.5 text-right font-medium text-destructive tabular-nums">
-                            {eq.next_calibration_due || '—'}
+                          <td className="hidden max-w-[180px] truncate px-3 py-1.5 text-stone-600 md:table-cell">
+                            {sample.description || '—'}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <Badge variant="warning" className="rounded-none text-[9px] capitalize">
+                              {(sample.stage ?? 'receiving').replace(/_/g, ' ')}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-medium tabular-nums text-red-700">
+                            {sample.tentative_date_by_lab || '—'}
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-                  <ShieldCheck size={22} className="mx-auto mb-1.5 text-success" />
-                  No equipment calibration is overdue.
-                </div>
-              )}
-            </section>
-          </div>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="bg-white px-4 py-8 text-center text-xs text-stone-600">
+                <ShieldCheck size={22} className="mx-auto mb-1.5 text-emerald-600" />
+                All active samples are within target timelines.
+              </div>
+            )}
+          </section>
+
+          <section className="min-w-0 bg-[#f7f3eb]/40">
+            <div className="flex items-center justify-between gap-2 border-b border-stone-300 bg-stone-100/80 px-4 py-2">
+              <h4 className="text-xs font-bold uppercase tracking-wide text-stone-800">Overdue Calibration</h4>
+              <Badge
+                variant={stats.calibrationOverdue > 0 ? 'destructive' : 'success'}
+                className="rounded-none px-1.5 py-0 text-[10px]"
+              >
+                {stats.calibrationOverdue}
+              </Badge>
+            </div>
+            {calList.length > 0 ? (
+              <div className="max-h-[280px] overflow-auto">
+                <table className="w-full border-collapse text-left text-[11px]">
+                  <thead className="sticky top-0 z-[1] bg-stone-200/95">
+                    <tr className="border-b border-stone-300 font-semibold uppercase tracking-wide text-stone-600">
+                      <th className="px-3 py-2">Asset</th>
+                      <th className="px-3 py-2">Equipment</th>
+                      <th className="px-3 py-2 text-right">Cal. Due</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200 bg-white">
+                    {calList.map((eq) => (
+                      <tr key={eq.id} className="hover:bg-amber-50/50">
+                        <td className="px-3 py-1.5 font-semibold text-amber-900">
+                          {equipmentHref ? (
+                            <NavLink to={equipmentHref} className="hover:underline">
+                              {eq.asset_code || '—'}
+                            </NavLink>
+                          ) : (
+                            eq.asset_code || '—'
+                          )}
+                        </td>
+                        <td className="max-w-[220px] truncate px-3 py-1.5 text-stone-700">
+                          {eq.equipment_name || '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-medium tabular-nums text-red-700">
+                          {eq.next_calibration_due || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="bg-white px-4 py-8 text-center text-xs text-stone-600">
+                <ShieldCheck size={22} className="mx-auto mb-1.5 text-emerald-600" />
+                No equipment calibration is overdue.
+              </div>
+            )}
+          </section>
         </div>
       </div>
     )
@@ -1105,18 +1310,16 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="h-full w-full space-y-3 p-3 sm:p-4">
-        <Skeleton className="h-14 w-full rounded-xl" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, sectionIdx) => (
-            <div key={sectionIdx} className="space-y-1.5">
-              <Skeleton className="h-3 w-24 rounded" />
-              <div className="flex flex-col gap-1.5">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full rounded-lg" />
-                ))}
-              </div>
-            </div>
+      <div className={cn(limsPageShellClass, 'min-h-0')}>
+        <Skeleton className="h-16 w-full rounded-none" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-[7.5rem] w-full rounded-none" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 w-full rounded-none" />
           ))}
         </div>
       </div>
@@ -1125,17 +1328,19 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="mx-auto flex h-full w-full max-w-xl flex-col items-center justify-center space-y-3 p-6 text-center">
-        <AlertTriangle className="text-destructive" size={40} />
-        <h2 className="text-lg font-bold">Failed to Load Dashboard</h2>
-        <p className="text-sm text-muted-foreground">{error}</p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/95"
-        >
-          Retry
-        </button>
+      <div className={cn(limsPageShellClass, 'flex min-h-[50vh] items-center justify-center')}>
+        <div className={cn(limsPanelClass, 'max-w-md space-y-3 p-6 text-center')}>
+          <AlertTriangle className="mx-auto text-red-700" size={40} />
+          <h2 className="text-lg font-bold text-stone-900">Failed to Load Dashboard</h2>
+          <p className="text-sm text-stone-600">{error}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-none bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
@@ -1143,34 +1348,83 @@ export default function DashboardPage() {
   if (!stats) return null
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-3 overflow-auto p-3 sm:p-4">
-      <div className="app-card shrink-0 overflow-hidden">
-        <div className="flex flex-col gap-2 bg-gradient-to-r from-stone-800 via-stone-900 to-amber-900 px-4 py-2.5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <h1 className="min-w-0 truncate text-base font-bold tracking-tight sm:text-lg">
-            {role.title}
-          </h1>
-          <p className="shrink-0 text-[11px] tabular-nums text-amber-100/80">
-            {stats.totalSamples} samples · {stats.activeSamples} active · {stats.tatComplianceRate}% TAT
-          </p>
+    <div className={cn(limsPageShellClass, 'min-h-0 overflow-auto')}>
+      <div className={cn(limsPanelClass)}>
+        <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 text-white sm:px-5 sm:py-4">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+          <div className={limsDarkBarAccentClass} />
+          <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">{role.title}</h1>
+            </div>
+            <p className="shrink-0 text-[11px] tabular-nums text-amber-100/80">
+              {stats.totalSamples} samples · {stats.activeSamples} active · {stats.tatComplianceRate}% TAT
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {dashboardSections.map((section) => (
-          <section key={section.id} className="min-w-0 space-y-1.5">
-            <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {section.title}
-            </h2>
-            <div className="flex flex-col gap-1.5">
-              {section.cards.map((card) => (
-                <StatCard key={`${section.id}-${card.title}`} {...card} />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      {heroKpis.length > 0 ? (
+        <section aria-label="Operations overview">
+          <div
+            className={cn(
+              'grid gap-3',
+              heroKpis.length >= 4
+                ? 'grid-cols-2 lg:grid-cols-4'
+                : heroKpis.length === 3
+                  ? 'grid-cols-1 sm:grid-cols-3'
+                  : 'grid-cols-1 sm:grid-cols-2',
+            )}
+          >
+            {heroKpis.map((kpi) => (
+              <HeroKpiCard key={kpi.id} {...kpi} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-      <div className="min-h-0 flex-1">{renderOverdueCard()}</div>
+      {focusLinks.length > 0 ? (
+        <section aria-label="Your focus stages" className={cn(limsPanelClass, 'p-3 sm:p-4')}>
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-500">
+            Your focus
+          </h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {focusLinks.map((item) => (
+              <NavLink
+                key={item.stage}
+                to={item.href}
+                className="inline-flex items-center gap-2 border-2 border-stone-500 bg-white px-3 py-1.5 text-xs font-semibold capitalize text-stone-800 transition-colors hover:border-amber-600 hover:bg-amber-50"
+              >
+                <span>{item.label}</span>
+                <span className="bg-stone-800 px-1.5 py-0.5 text-[10px] tabular-nums text-amber-200">
+                  {item.count}
+                </span>
+              </NavLink>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {moduleSections.length > 0 ? (
+        <section aria-label="Module metrics" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {moduleSections.map((section) => (
+            <div key={section.id} className={cn(limsPanelClass)}>
+              <div className="border-b-2 border-stone-500 bg-stone-800 px-4 py-2">
+                <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                  {section.title}
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 gap-2 bg-gradient-to-b from-stone-100/80 to-white p-3 sm:grid-cols-2">
+                {section.cards.map((card) => (
+                  <MetricTile key={`${section.id}-${card.title}`} {...card} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {renderOverdueCard()}
     </div>
   )
 }

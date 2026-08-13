@@ -106,7 +106,7 @@ export function FilterCombobox({
     if (!input) return
 
     const rect = input.getBoundingClientRect()
-    const estimatedHeight = Math.min(itemCount * 36, 192)
+    const estimatedHeight = Math.min(Math.max(itemCount, 1) * 44, 224)
     const spaceBelow = window.innerHeight - rect.bottom
     const spaceAbove = rect.top
     const openUp =
@@ -234,17 +234,21 @@ export function FilterCombobox({
   const dropdownList = showList && dropdownPosition ? (
     <div
       {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
-      className="fixed z-[9999] rounded-md border border-border bg-popover shadow-lg"
+      className="fixed z-[9999] overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-xl ring-1 ring-amber-700/25"
       style={{
         left: dropdownPosition.left,
-        width: dropdownPosition.width,
+        width: Math.max(dropdownPosition.width, 240),
         top: dropdownPosition.top,
         bottom: dropdownPosition.bottom,
       }}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <ul id={optionListId} role="listbox" className="max-h-48 overflow-auto text-sm">
+      <ul
+        id={optionListId}
+        role="listbox"
+        className="max-h-56 overflow-auto bg-gradient-to-b from-stone-50 to-white py-1 text-sm"
+      >
         {showOptions ? (
           <>
             {options.map((opt, index) => (
@@ -256,8 +260,11 @@ export function FilterCombobox({
                   tabIndex={-1}
                   aria-selected={highlightIndex === index}
                   className={cn(
-                    'block w-full truncate whitespace-nowrap px-3 py-2 text-left',
-                    highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
+                    'block w-full px-3 py-2 text-left text-[13px] leading-snug text-stone-800 transition-colors',
+                    'whitespace-normal break-words',
+                    highlightIndex === index
+                      ? 'bg-amber-100 text-stone-900'
+                      : 'hover:bg-stone-100 hover:text-stone-950',
                   )}
                   onPointerDown={handleOptionPointerDown(index)}
                   onMouseEnter={() => setHighlightIndex(index)}
@@ -269,7 +276,7 @@ export function FilterCombobox({
             {extraActions.map((action, actionIndex) => {
               const index = options.length + actionIndex
               return (
-                <li key={action.key} role="presentation">
+                <li key={action.key} role="presentation" className="border-t border-stone-200">
                   <button
                     id={`${optionListId}-option-${index}`}
                     type="button"
@@ -277,8 +284,11 @@ export function FilterCombobox({
                     tabIndex={-1}
                     aria-selected={highlightIndex === index}
                     className={cn(
-                      'block w-full truncate whitespace-nowrap px-3 py-2 text-left text-primary',
-                      highlightIndex === index ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
+                      'block w-full px-3 py-2.5 text-left text-[12px] font-semibold text-amber-800 transition-colors',
+                      'whitespace-normal break-words',
+                      highlightIndex === index
+                        ? 'bg-amber-100 text-amber-950'
+                        : 'hover:bg-amber-50 hover:text-amber-950',
                       action.className,
                     )}
                     onPointerDown={handleOptionPointerDown(index)}
@@ -291,7 +301,7 @@ export function FilterCombobox({
             })}
           </>
         ) : (
-          <li className="px-3 py-2 text-sm text-muted-foreground">No results found</li>
+          <li className="px-3 py-2.5 text-sm text-stone-500">No results found</li>
         )}
       </ul>
     </div>

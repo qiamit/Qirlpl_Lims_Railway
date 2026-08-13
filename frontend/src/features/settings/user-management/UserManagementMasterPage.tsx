@@ -10,6 +10,7 @@ import { UserManagementHeaderBar } from './UserManagementHeaderBar'
 import { UserManagementTable } from './UserManagementTable'
 import { UserManagementFooterBar } from './UserManagementFooterBar'
 import { UserManagementForm } from './UserManagementForm'
+import { buildUsersPrintHtml, printUsersViaIframe } from './printSelectedUsers'
 import type { UserAccount, UserForm } from './types'
 
 async function syncUserOptionsToLabMaster(users: UserAccount[]) {
@@ -48,6 +49,8 @@ export default function UserManagementMasterPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<UserAccount | null>(null)
   const [userDeleteTarget, setUserDeleteTarget] = useState<UserAccount | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [printMessage, setPrintMessage] = useState<string | null>(null)
 
   const [designations, setDesignations] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
@@ -308,19 +311,71 @@ export default function UserManagementMasterPage() {
     return filteredUsers.slice(start, start + pageSize)
   }, [filteredUsers, page, pageSize])
 
+  useEffect(() => {
+    const validIds = new Set(users.map((u) => u.id))
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => validIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [users])
+
+  const selectedUsers = useMemo(
+    () => users.filter((u) => selectedIds.has(u.id)),
+    [users, selectedIds],
+  )
+
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllOnPage = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const u of pagedUsers) {
+        if (checked) next.add(u.id)
+        else next.delete(u.id)
+      }
+      return next
+    })
+  }
+
+  const handlePrintSelected = () => {
+    setPrintMessage(null)
+    if (selectedUsers.length === 0) {
+      setPrintMessage('Select at least one team member to print.')
+      return
+    }
+    const ok = printUsersViaIframe(buildUsersPrintHtml(selectedUsers))
+    if (!ok) setPrintMessage('Unable to open print preview.')
+  }
+
   return (
     <div className={limsPageShellClass}>
       <UserManagementHeaderBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
         setUserDialogOpen={setUserDialogOpen}
       />
 
       {usersLoadError && <p className="text-sm text-destructive">{usersLoadError}</p>}
       {userUpdateError && <p className="text-sm text-destructive">{userUpdateError}</p>}
+      {printMessage && <p className="text-sm text-destructive">{printMessage}</p>}
       <UserManagementTable
         users={pagedUsers}
         searchActive={searchQuery.trim().length > 0}
+        selectedIds={selectedIds}
+        onToggle={toggleRow}
+        onToggleAll={toggleAllOnPage}
         userUpdateLoadingId={userUpdateLoadingId}
         onEdit={(user: UserAccount) => {
           setEditTarget(user)
@@ -384,10 +439,8 @@ export default function UserManagementMasterPage() {
         pageCount={pageCount}
         pageSize={pageSize}
         jumpTo={jumpTo}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
+        selectedCount={selectedIds.size}
+        onPrintSelected={handlePrintSelected}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         onJumpToChange={setJumpTo}

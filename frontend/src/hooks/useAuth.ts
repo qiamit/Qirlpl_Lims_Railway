@@ -8,6 +8,7 @@ interface AuthState {
   loading: boolean
   designation: string
   departmentName: string
+  division: string
   profileName: string
   profileReady: boolean
 }
@@ -49,9 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [designation, setDesignation] = useState<string>('')
-  const [departmentName, setDepartmentName] = useState<string>('')
-  const [profileName, setProfileName] = useState<string>('')
+  const [designation, setDesignation] = useState('')
+  const [departmentName, setDepartmentName] = useState('')
+  const [division, setDivision] = useState('')
+  const [profileName, setProfileName] = useState('')
   const [profileReady, setProfileReady] = useState(false)
   const profileUserIdRef = useRef<string | null>(null)
 
@@ -128,11 +130,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileUserIdRef.current = null
       setDesignation('')
       setDepartmentName('')
+      setDivision('')
       setProfileName('')
       setProfileReady(true)
       try {
         localStorage.removeItem('userDesignation')
         localStorage.removeItem('userDepartment')
+        localStorage.removeItem('userDivision')
       } catch { /* ignore */ }
       return
     }
@@ -153,21 +157,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? meta.department
           : ''
     const metaDept = metaDeptRaw.trim()
+    const metaDivision = typeof meta?.division === 'string' ? meta.division.trim() : ''
     const metaName = typeof meta?.full_name === 'string' ? meta.full_name.trim() : ''
 
-    const applyFromProfile = (profileDes: string, profileDept: string, profileNameVal: string) => {
+    const applyFromProfile = (
+      profileDes: string,
+      profileDept: string,
+      profileDivision: string,
+      profileNameVal: string,
+    ) => {
       if (canceled) return
       profileUserIdRef.current = userId
       setDesignation(profileDes)
       setDepartmentName(profileDept || metaDept)
+      setDivision(profileDivision || metaDivision)
       setProfileName(profileNameVal || metaName || user?.email || '')
       setProfileReady(true)
       const dept = profileDept || metaDept
+      const div = profileDivision || metaDivision
       if (profileDes) {
         try { localStorage.setItem('userDesignation', profileDes) } catch { /* ignore */ }
       }
       if (dept) {
         try { localStorage.setItem('userDepartment', dept) } catch { /* ignore */ }
+      }
+      if (div) {
+        try { localStorage.setItem('userDivision', div) } catch { /* ignore */ }
       }
     }
 
@@ -187,10 +202,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })()
 
+    const cachedDivision = (() => {
+      try {
+        return localStorage.getItem('userDivision')
+      } catch {
+        return null
+      }
+    })()
+
     const fetchProfile = async () => {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('designation, department_name, full_name')
+        .select('designation, department_name, division, full_name')
         .eq('id', userId)
         .maybeSingle()
 
@@ -199,19 +222,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         applyFromProfile(
           String(cachedDesignation ?? ''),
           metaDept || String(cachedDepartment ?? ''),
+          metaDivision || String(cachedDivision ?? ''),
           metaName || user.email || '',
         )
         return
       }
 
-      const row = data as { designation?: unknown; department_name?: unknown; full_name?: unknown } | null
+      const row = data as {
+        designation?: unknown
+        department_name?: unknown
+        division?: unknown
+        full_name?: unknown
+      } | null
       const profileDes = typeof row?.designation === 'string' ? row.designation.trim() : ''
       const profileDept =
         typeof row?.department_name === 'string' ? row.department_name.trim() : ''
+      const profileDivision = typeof row?.division === 'string' ? row.division.trim() : ''
       const profileFullName = typeof row?.full_name === 'string' ? row.full_name.trim() : ''
       const finalDes = profileDes || String(cachedDesignation ?? '')
       const finalDept = profileDept || metaDept || String(cachedDepartment ?? '')
-      applyFromProfile(finalDes, finalDept, profileFullName || metaName || user.email || '')
+      const finalDivision = profileDivision || metaDivision || String(cachedDivision ?? '')
+      applyFromProfile(
+        finalDes,
+        finalDept,
+        finalDivision,
+        profileFullName || metaName || user.email || '',
+      )
     }
 
     void fetchProfile()
@@ -228,10 +264,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       designation,
       departmentName,
+      division,
       profileName,
       profileReady,
     }),
-    [user, session, loading, designation, departmentName, profileName, profileReady],
+    [user, session, loading, designation, departmentName, division, profileName, profileReady],
   )
 
   return createElement(AuthContext.Provider, { value }, children)

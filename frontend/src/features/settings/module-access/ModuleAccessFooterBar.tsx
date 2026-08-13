@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Printer } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -9,33 +9,31 @@ import {
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 
-type UserManagementFooterBarProps = {
+type ModuleAccessFooterBarProps = {
   totalCount: number
   page: number
   pageCount: number
   pageSize: number
   jumpTo: string
   selectedCount: number
-  onPrintSelected: () => void
   onPrevPage: () => void
   onNextPage: () => void
   onJumpToChange: (value: string) => void
   onJumpToGo: () => void
 }
 
-export function UserManagementFooterBar({
+export function ModuleAccessFooterBar({
   totalCount,
   page,
   pageCount,
   pageSize,
   jumpTo,
   selectedCount,
-  onPrintSelected,
   onPrevPage,
   onNextPage,
   onJumpToChange,
   onJumpToGo,
-}: UserManagementFooterBarProps) {
+}: ModuleAccessFooterBarProps) {
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
   const to = Math.min(page * pageSize, totalCount)
 
@@ -47,18 +45,6 @@ export function UserManagementFooterBar({
 
         <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
           <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn('h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs', limsDarkBarBtnClass)}
-              onClick={onPrintSelected}
-              disabled={selectedCount === 0}
-              title={selectedCount === 0 ? 'Select team members to print' : 'Print selected'}
-            >
-              <Printer size={14} />
-              <span className="hidden lg:inline">Print</span>
-            </Button>
             {selectedCount > 0 ? (
               <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
                 Selected: {selectedCount}
