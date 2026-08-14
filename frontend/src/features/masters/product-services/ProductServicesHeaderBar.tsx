@@ -37,9 +37,11 @@ export function ProductServicesHeaderBar({
         </h1>
         <div className="md:w-[40%]">
           <Input
-            placeholder="Search discipline, material, parameter, method…"
+            placeholder="Search"
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)} className={limsDarkBarSearchClass}
+            onChange={(e) => onSearchChange(e.target.value)}
+            aria-label="Search"
+            className={limsDarkBarSearchClass}
           />
         </div>
         <div className="w-28">

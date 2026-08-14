@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, Plus, Trash2 } from 'lucide-react'
+import { CopyPlus, Download, History, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPanelClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
+import { ApplyMuOnOtherParameterDialog } from './ApplyMuOnOtherParameterDialog'
 import type { EquipmentRow } from '@/features/masters/equipment-master/types'
 import { FilterCombobox } from '@/features/sample-handling/receiving/FilterCombobox'
 import {
@@ -14,11 +25,11 @@ import {
   filterEquipmentUncertaintyOptions,
   type EquipmentUncertaintyOption,
 } from './equipmentUncertainty'
+import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
 import type { TestParameterRow } from './types'
 import {
   buildUncertaintyCalculationData,
   combineUncertaintyBudget,
-  CONFIDENCE_LEVEL_OPTIONS,
   coverageFactorForConfidenceLevel,
   formatTypeBRelativeUncertainty,
   formatToFourDecimals,
@@ -31,10 +42,16 @@ import {
   TYPE_B_SOURCE_TYPE_OPTIONS,
   typeARelativeUncertaintyPercent,
   relativeUncertaintyFromContributors,
+  defaultTypeAReadingLabel,
   type TypeAMeasurement,
   type UncertaintyCalculationData,
   type UncertaintyContributor,
 } from './testParameterUncertainty'
+import { UncertaintyHistoryDialog } from './UncertaintyHistoryDialog'
+import {
+  parseUncertaintyMuHistory,
+  type UncertaintyHistoryRecord,
+} from './uncertaintyHistory'
 
 const CALIBRATION_CERTIFICATE_SOURCE = 'Calibration Certificate'
 
@@ -78,11 +95,13 @@ function cloneImportedWorksheet(
   return {
     typeAMeasurements:
       data.typeAMeasurements.length > 0
-        ? data.typeAMeasurements.map((m) => ({
+        ? data.typeAMeasurements.map((m, index) => ({
             key: `mv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            label: m.label.trim() || defaultTypeAReadingLabel(index),
             value: m.value.trim() ? formatToFourDecimals(m.value) : '',
+            unit: m.unit.trim() || defaultUnit,
           }))
-        : [newTypeAMeasurement()],
+        : [newTypeAMeasurement(defaultTypeAReadingLabel(0), defaultUnit)],
     typeBContributors:
       data.typeBContributors.length > 0
         ? data.typeBContributors.map((c) => ({
@@ -100,11 +119,18 @@ function cloneImportedWorksheet(
   }
 }
 
-function normalizeTypeAMeasurements(measurements: TypeAMeasurement[]): TypeAMeasurement[] {
-  if (measurements.length === 0) return [newTypeAMeasurement()]
-  return measurements.map((m) => ({
+function normalizeTypeAMeasurements(
+  measurements: TypeAMeasurement[],
+  defaultUnit = '',
+): TypeAMeasurement[] {
+  if (measurements.length === 0) {
+    return [newTypeAMeasurement(defaultTypeAReadingLabel(0), defaultUnit)]
+  }
+  return measurements.map((m, index) => ({
     ...m,
+    label: m.label.trim() || defaultTypeAReadingLabel(index),
     value: m.value.trim() ? formatToFourDecimals(m.value) : '',
+    unit: m.unit.trim() || defaultUnit,
   }))
 }
 
@@ -114,48 +140,84 @@ function TypeAUncertaintySection({
   stats,
   unitLabel,
   onChange,
+  onLinkedUnitChange,
 }: {
   measurements: TypeAMeasurement[]
   subtotal: number
   stats: { n: number; mean: number; s: number }
   unitLabel?: string | null
   onChange: (next: TypeAMeasurement[]) => void
+  onLinkedUnitChange: (unit: string) => void
 }) {
   const unitSuffix = unitLabel?.trim() ? ` (${unitLabel.trim()})` : ''
   const formatValue = (value: number) => `${value.toFixed(4)}${unitSuffix}`
   const relativeUncertaintyPercent =
     stats.n >= 2 && stats.mean !== 0 ? typeARelativeUncertaintyPercent(subtotal, stats.mean) : null
+  const defaultUnit = unitLabel?.trim() ?? ''
 
   return (
-    <div className="space-y-2 rounded-md border border-border p-3">
-      <Label className="text-sm font-semibold">Type A Uncertainty</Label>
+    <div className={cn(limsPanelClass, 'space-y-3 p-3')}>
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+        Type A Uncertainty
+      </p>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-        <div className="min-w-0 flex-1 rounded-md border border-border">
-          <table className="w-full table-fixed text-xs">
+        <div className="min-w-0 flex-1 overflow-hidden rounded-none border-2 border-stone-500">
+          <table className="w-full table-auto border-collapse text-xs">
             <thead className="bg-stone-800">
               <tr>
-                <th className="p-2 text-center font-medium w-[calc(50%-1.5rem)]">Reading</th>
-                <th className="p-2 text-center font-medium w-[calc(50%-1.5rem)]">
-                  Input Value{unitSuffix}
+                <th className="p-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                  Reading
                 </th>
-                <th className="p-2 w-12 text-center" />
+                <th className="p-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                  Input Value
+                </th>
+                <th className="w-0 whitespace-nowrap p-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                  Unit
+                </th>
+                <th className="w-10 p-2 text-center" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-[#e7e0d4] bg-[#fffcf7]">
               {measurements.map((m, index) => {
                 const isLastRow = index === measurements.length - 1
                 return (
-                  <tr key={m.key} className="border-t border-border">
-                    <td className="p-2 text-center font-medium text-muted-foreground">
-                      Value {index + 1}
+                  <tr key={m.key}>
+                    <td className="p-2 text-center">
+                      <Input
+                        className="text-center"
+                        value={m.label}
+                        placeholder={defaultTypeAReadingLabel(index)}
+                        aria-label={`Reading label row ${index + 1}`}
+                        onChange={(e) =>
+                          onChange(
+                            measurements.map((row) =>
+                              row.key === m.key ? { ...row, label: e.target.value } : row,
+                            ),
+                          )
+                        }
+                        onBlur={() => {
+                          const trimmed = m.label.trim()
+                          if (trimmed === m.label) return
+                          onChange(
+                            measurements.map((row) =>
+                              row.key === m.key
+                                ? {
+                                    ...row,
+                                    label: trimmed || defaultTypeAReadingLabel(index),
+                                  }
+                                : row,
+                            ),
+                          )
+                        }}
+                      />
                     </td>
                     <td className="p-2 text-center">
                       <Input
                         className="text-center"
                         inputMode="decimal"
                         value={m.value}
-                        placeholder={`Enter value ${index + 1}`}
+                        placeholder="Enter Value"
                         onChange={(e) =>
                           onChange(
                             measurements.map((row) =>
@@ -176,16 +238,37 @@ function TypeAUncertaintySection({
                         }}
                       />
                     </td>
+                    <td className="w-0 whitespace-nowrap p-2">
+                      <div className="w-[7.5rem]">
+                        <MeasurementUnitSelect
+                          id={`tp-unc-typea-unit-${m.key}`}
+                          value={m.unit || defaultUnit}
+                          onChange={(unit) => onLinkedUnitChange(unit)}
+                          showLabel={false}
+                          showManageButton
+                          placeholder="Unit"
+                          className="space-y-0"
+                        />
+                      </div>
+                    </td>
                     <td className="p-2 text-center">
                       {isLastRow ? (
                         <Button
                           type="button"
                           size="icon"
                           variant="outline"
-                          className="h-8 w-8"
+                          className={cn('h-8 w-8', limsOutlineBtnClass)}
                           aria-label="Add another value"
                           title="Add Another Value"
-                          onClick={() => onChange([...measurements, newTypeAMeasurement()])}
+                          onClick={() =>
+                            onChange([
+                              ...measurements,
+                              newTypeAMeasurement(
+                                defaultTypeAReadingLabel(measurements.length),
+                                defaultUnit,
+                              ),
+                            ])
+                          }
                         >
                           <Plus size={14} />
                         </Button>
@@ -194,7 +277,7 @@ function TypeAUncertaintySection({
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          className="h-8 w-8 text-destructive hover:bg-rose-50 hover:text-destructive"
                           aria-label={`Remove value ${index + 1}`}
                           onClick={() => onChange(measurements.filter((row) => row.key !== m.key))}
                         >
@@ -209,40 +292,42 @@ function TypeAUncertaintySection({
           </table>
         </div>
 
-        <div className="flex w-full shrink-0 flex-col justify-center rounded-md border border-border bg-muted/20 p-3 sm:w-80">
-          <p className="text-xs font-semibold">Type A Calculation</p>
+        <div className="flex w-full shrink-0 flex-col justify-center rounded-none border-2 border-stone-500 bg-stone-50 p-3 sm:w-80">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+            Type A Calculation
+          </p>
           <dl className="mt-3 space-y-2.5 text-xs">
             <div className="flex items-start justify-between gap-3">
-              <dt className="text-muted-foreground">Average</dt>
-              <dd className="text-right font-medium tabular-nums">
+              <dt className="text-stone-500">Average</dt>
+              <dd className="text-right font-medium tabular-nums text-stone-800">
                 {stats.n === 0 ? '—' : formatValue(stats.mean)}
               </dd>
             </div>
             <div className="flex items-start justify-between gap-3">
-              <dt className="text-muted-foreground">Mean</dt>
-              <dd className="text-right font-medium tabular-nums">
+              <dt className="text-stone-500">Mean</dt>
+              <dd className="text-right font-medium tabular-nums text-stone-800">
                 {stats.n === 0 ? '—' : formatValue(stats.mean)}
               </dd>
             </div>
             <div className="flex items-start justify-between gap-3">
-              <dt className="text-muted-foreground">Standard Deviation σ</dt>
-              <dd className="text-right font-medium tabular-nums">
+              <dt className="text-stone-500">Standard Deviation σ</dt>
+              <dd className="text-right font-medium tabular-nums text-stone-800">
                 {stats.n < 2 ? '—' : formatValue(stats.s)}
               </dd>
             </div>
             <div className="flex items-start justify-between gap-3">
-              <dt className="text-muted-foreground">
+              <dt className="text-stone-500">
                 u<sub>A</sub> = σ / √{stats.n || 'n'} (Standard Error of Mean)
               </dt>
-              <dd className="shrink-0 text-right font-medium tabular-nums">
+              <dd className="shrink-0 text-right font-medium tabular-nums text-stone-800">
                 {stats.n < 2 ? '—' : formatValue(subtotal)}
               </dd>
             </div>
-            <div className="flex items-start justify-between gap-3 border-t border-border pt-2.5">
-              <dt className="font-medium">
+            <div className="flex items-start justify-between gap-3 border-t border-stone-300 pt-2.5">
+              <dt className="font-semibold text-stone-700">
                 Type A Relative Uncertainty u<sub>A</sub> (%)
               </dt>
-              <dd className="text-right font-semibold tabular-nums">
+              <dd className="text-right font-semibold tabular-nums text-stone-900">
                 {relativeUncertaintyPercent == null ? '—' : `${relativeUncertaintyPercent.toFixed(4)} %`}
               </dd>
             </div>
@@ -328,22 +413,38 @@ function TypeBUncertaintySection({
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-border p-3">
-      <Label className="text-sm font-semibold">Type B Uncertainty</Label>
+    <div className={cn(limsPanelClass, 'space-y-3 p-3')}>
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+        Type B Uncertainty
+      </p>
 
-      <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[640px] text-xs">
+      <div className="overflow-x-auto rounded-none border-2 border-stone-500">
+        <table className="w-full table-auto border-collapse text-xs">
           <thead className="bg-stone-800">
             <tr>
-              <th className="p-2 text-left font-medium w-28">Type of Source</th>
-              <th className="p-2 text-center font-medium">Source Name</th>
-              <th className="p-2 text-center font-medium w-28">Standard Uncertainty</th>
-              <th className="p-2 text-center font-medium w-28">Measurement</th>
-              <th className="p-2 text-center font-medium w-28">Relative Uncertainty</th>
-              <th className="p-2 w-12 text-center" />
+              <th className="whitespace-nowrap p-2 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                Type of Source
+              </th>
+              <th className="min-w-[10rem] w-full p-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                Source Name
+              </th>
+              <th className="p-2 text-center text-[11px] font-bold uppercase leading-tight tracking-[0.14em] text-amber-200">
+                Standard
+                <br />
+                Uncertainty
+              </th>
+              <th className="whitespace-nowrap p-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                Measurement
+              </th>
+              <th className="p-2 text-center text-[11px] font-bold uppercase leading-tight tracking-[0.14em] text-amber-200">
+                Relative
+                <br />
+                Uncertainty
+              </th>
+              <th className="w-10 whitespace-nowrap p-2 text-center" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[#e7e0d4] bg-[#fffcf7]">
             {contributors.map((c, index) => {
               const isLastRow = index === contributors.length - 1
               const isCalibrationCertificate = c.sourceType === CALIBRATION_CERTIFICATE_SOURCE
@@ -355,13 +456,13 @@ function TypeBUncertaintySection({
               ).map((opt) => ({ id: opt.id, label: opt.label }))
 
               return (
-                <tr key={c.key} className="border-t border-border">
-                  <td className="p-2">
+                <tr key={c.key}>
+                  <td className="w-0 whitespace-nowrap p-2">
                     <Select
                       value={c.sourceType || undefined}
                       onValueChange={(value) => handleSourceTypeChange(c.key, value)}
                     >
-                      <SelectTrigger className="h-9 text-xs">
+                      <SelectTrigger className="h-8 w-max min-w-[10.5rem] text-xs">
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
@@ -373,7 +474,7 @@ function TypeBUncertaintySection({
                       </SelectContent>
                     </Select>
                   </td>
-                  <td className="p-2">
+                  <td className="min-w-[10rem] p-2">
                     {isCalibrationCertificate ? (
                       <FilterCombobox
                         value={equipmentSearch}
@@ -419,8 +520,8 @@ function TypeBUncertaintySection({
                             [c.key]: prev[c.key] ?? '',
                           }))
                         }}
-                        placeholder="Search equipment..."
-                        inputClassName="h-9 text-sm"
+                        placeholder="Search Equipment"
+                        inputClassName="h-8 text-sm"
                         listId={`equipment-picker-${c.key}`}
                         dropdownPlacement="top"
                       />
@@ -432,9 +533,9 @@ function TypeBUncertaintySection({
                       />
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="w-0 whitespace-nowrap p-2">
                     <Input
-                      className="text-center"
+                      className="w-[7.5rem] text-center"
                       inputMode="decimal"
                       value={c.uncertainty}
                       onChange={(e) =>
@@ -450,9 +551,9 @@ function TypeBUncertaintySection({
                       }}
                     />
                   </td>
-                  <td className="p-2">
+                  <td className="w-0 whitespace-nowrap p-2">
                     <Input
-                      className="text-center"
+                      className="w-[7.5rem] text-center"
                       inputMode="decimal"
                       value={c.measurement}
                       placeholder="Value"
@@ -463,10 +564,10 @@ function TypeBUncertaintySection({
                       }
                     />
                   </td>
-                  <td className="p-2">
-                    <div className="relative">
+                  <td className="w-0 whitespace-nowrap p-2">
+                    <div className="relative w-[8.5rem]">
                       <Input
-                        className="text-center pr-7"
+                        className="pr-7 text-center"
                         inputMode="decimal"
                         value={c.relativeUncertainty}
                         placeholder="Auto"
@@ -476,18 +577,18 @@ function TypeBUncertaintySection({
                           })
                         }
                       />
-                      <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+                      <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-stone-500">
                         %
                       </span>
                     </div>
                   </td>
-                  <td className="p-2 text-center">
+                  <td className="w-0 whitespace-nowrap p-2 text-center">
                     {isLastRow ? (
                       <Button
                         type="button"
                         size="icon"
                         variant="outline"
-                        className="h-8 w-8"
+                        className={cn('h-8 w-8', limsOutlineBtnClass)}
                         aria-label="Add source"
                         title="Add source"
                         onClick={() =>
@@ -501,7 +602,7 @@ function TypeBUncertaintySection({
                         type="button"
                         size="icon"
                         variant="ghost"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        className="h-8 w-8 text-destructive hover:bg-rose-50 hover:text-destructive"
                         aria-label="Remove source"
                         onClick={() => onChange(contributors.filter((rowItem) => rowItem.key !== c.key))}
                       >
@@ -516,12 +617,16 @@ function TypeBUncertaintySection({
         </table>
       </div>
 
-      <div className="rounded-md border border-border bg-muted/20 p-3">
-        <p className="text-xs font-semibold">Type B Calculation</p>
+      <div className="rounded-none border-2 border-stone-500 bg-stone-50 p-3">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+          Type B Calculation
+        </p>
         <dl className="mt-2 text-xs">
           <div className="flex items-center justify-between gap-3">
-            <dt className="font-medium">Total Type B Uncertainty u<sub>B</sub></dt>
-            <dd className="font-semibold tabular-nums">
+            <dt className="font-semibold text-stone-700">
+              Total Type B Uncertainty u<sub>B</sub>
+            </dt>
+            <dd className="font-semibold tabular-nums text-stone-900">
               {subtotal > 0 ? `${subtotal.toFixed(4)} %` : '—'}
             </dd>
           </div>
@@ -537,25 +642,37 @@ export function TestParameterUncertaintyDialog({
   saving,
   onOpenChange,
   onSave,
+  onHistoryChange,
+  onAppliedToOthers,
 }: {
   row: TestParameterRow | null
   open: boolean
   saving: boolean
   onOpenChange: (open: boolean) => void
   onSave: (uncertaintyMu: string, calculationData: UncertaintyCalculationData) => Promise<void>
+  onHistoryChange: (next: UncertaintyHistoryRecord[]) => Promise<void>
+  onAppliedToOthers?: () => Promise<void> | void
 }) {
-  const [typeAMeasurements, setTypeAMeasurements] = useState<TypeAMeasurement[]>([newTypeAMeasurement()])
+  const { profileName } = useAuth()
+  const [typeAMeasurements, setTypeAMeasurements] = useState<TypeAMeasurement[]>([
+    newTypeAMeasurement(defaultTypeAReadingLabel(0)),
+  ])
   const [typeBContributors, setTypeBContributors] = useState<UncertaintyContributor[]>([
     newUncertaintyContributor(),
   ])
   const [confidenceLevel, setConfidenceLevel] = useState('95')
+  const [confidenceUnit, setConfidenceUnit] = useState('%')
+  const [worksheetUnit, setWorksheetUnit] = useState('')
   const [coverageFactor, setCoverageFactor] = useState('2')
   const [equipmentOptions, setEquipmentOptions] = useState<EquipmentUncertaintyOption[]>([])
   const [importSources, setImportSources] = useState<UncertaintyImportSource[]>([])
   const [importSearch, setImportSearch] = useState('')
   const [importPickerOpen, setImportPickerOpen] = useState(false)
+  const [selectedImportSourceId, setSelectedImportSourceId] = useState<string | null>(null)
   const [importPanelOpen, setImportPanelOpen] = useState(false)
   const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
+  const [applyMuPanelOpen, setApplyMuPanelOpen] = useState(false)
 
   useEffect(() => {
     if (!open || !row) return
@@ -563,13 +680,20 @@ export function TestParameterUncertaintyDialog({
     const saved = parseUncertaintyCalculationData(row.uncertainty_calculation_data, defaultUnit)
     setImportSearch('')
     setImportPickerOpen(false)
+    setSelectedImportSourceId(null)
     setImportPanelOpen(false)
     setImportMessage(null)
+    setHistoryPanelOpen(false)
+    setApplyMuPanelOpen(false)
+    setWorksheetUnit(defaultUnit)
 
     if (saved) {
       setTypeAMeasurements(
         normalizeTypeAMeasurements(
-          saved.typeAMeasurements.length > 0 ? saved.typeAMeasurements : [newTypeAMeasurement()],
+          saved.typeAMeasurements.length > 0
+            ? saved.typeAMeasurements
+            : [newTypeAMeasurement(defaultTypeAReadingLabel(0), defaultUnit)],
+          defaultUnit,
         ),
       )
       setTypeBContributors(
@@ -579,13 +703,15 @@ export function TestParameterUncertaintyDialog({
       )
       const savedConfidence = normalizeConfidenceLevel(saved.confidenceLevel)
       setConfidenceLevel(savedConfidence)
+      setConfidenceUnit('%')
       setCoverageFactor(saved.coverageFactor || coverageFactorForConfidenceLevel(savedConfidence))
       return
     }
 
-    setTypeAMeasurements([newTypeAMeasurement()])
+    setTypeAMeasurements([newTypeAMeasurement(defaultTypeAReadingLabel(0), defaultUnit)])
     setTypeBContributors([newUncertaintyContributor(defaultUnit)])
     setConfidenceLevel('95')
+    setConfidenceUnit('%')
     setCoverageFactor('2')
   }, [open, row])
 
@@ -705,10 +831,29 @@ export function TestParameterUncertaintyDialog({
     setCoverageFactor(cloned.coverageFactor)
     setImportSearch(source.label)
     setImportPickerOpen(false)
+    setSelectedImportSourceId(null)
     setImportPanelOpen(false)
-    setImportMessage(
-      `Imported from ${source.itemName}${source.isCodeLabel ? ` (${source.isCodeLabel})` : ''}. Review and Save MU.`,
-    )
+    setImportMessage(null)
+  }
+
+  const handleImportAndClose = () => {
+    if (selectedImportSourceId) {
+      applyImportedSource(selectedImportSourceId)
+      return
+    }
+    const q = importSearch.trim().toLowerCase()
+    if (!q) {
+      setImportMessage('Select a test parameter to import.')
+      return
+    }
+    const match =
+      importPickerOptions.find((option) => option.label.toLowerCase() === q) ??
+      importPickerOptions.find((option) => option.label.toLowerCase().includes(q))
+    if (!match) {
+      setImportMessage('No matching test parameter found to import.')
+      return
+    }
+    applyImportedSource(match.id)
   }
 
   const { uTypeA, uc, expanded, typeAStats } = useMemo(
@@ -726,8 +871,24 @@ export function TestParameterUncertaintyDialog({
     [uTypeA, typeAStats, uTypeBRelative],
   )
 
-  const unitLabel = row?.unit_value?.trim() ?? ''
+  const unitLabel = worksheetUnit.trim() || row?.unit_value?.trim() || ''
+  const historyRecords = useMemo(
+    () => parseUncertaintyMuHistory(row?.uncertainty_mu_history),
+    [row?.uncertainty_mu_history],
+  )
   const unitSuffix = unitLabel ? ` ${unitLabel}` : ''
+
+  const handleWorksheetUnitChange = (unit: string) => {
+    const next = unit.trim()
+    setWorksheetUnit(next)
+    setTypeAMeasurements((prev) => prev.map((m) => ({ ...m, unit: next })))
+    setTypeBContributors((prev) =>
+      prev.map((c) => ({
+        ...c,
+        uncertaintyUnit: next || c.uncertaintyUnit,
+      })),
+    )
+  }
 
   const uncertaintyInUnitDisplay = useMemo(() => {
     if (expanded <= 0) return '—'
@@ -735,14 +896,20 @@ export function TestParameterUncertaintyDialog({
   }, [expanded, unitLabel, unitSuffix])
 
   const computedResultMu = useMemo(
-    () => formatUncertaintyOfTestMu(row?.unit_value, expanded, totalRelativeUncertainty),
-    [row?.unit_value, expanded, totalRelativeUncertainty],
+    () => formatUncertaintyOfTestMu(unitLabel || null, expanded, totalRelativeUncertainty),
+    [unitLabel, expanded, totalRelativeUncertainty],
   )
 
-  const handleConfidenceLevelChange = (level: string) => {
-    const nextLevel = normalizeConfidenceLevel(level)
-    setConfidenceLevel(nextLevel)
-    setCoverageFactor(coverageFactorForConfidenceLevel(nextLevel))
+  const handleConfidenceLevelChange = (raw: string) => {
+    const next = raw.replace(/[^0-9.]/g, '')
+    setConfidenceLevel(next)
+    setCoverageFactor(coverageFactorForConfidenceLevel(next || '95'))
+  }
+
+  const handleConfidenceLevelBlur = () => {
+    const next = normalizeConfidenceLevel(confidenceLevel)
+    setConfidenceLevel(next)
+    setCoverageFactor(coverageFactorForConfidenceLevel(next))
   }
 
   const handleSave = async () => {
@@ -762,45 +929,124 @@ export function TestParameterUncertaintyDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Uncertainty Calculation</DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        persistOnFocusLoss
+        aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col',
+          'left-0 top-0',
+          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          '[&>button]:!text-white [&>button]:hover:bg-white/10',
+        )}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
+              <DialogTitle className="min-w-0 shrink text-base font-semibold tracking-tight text-white sm:text-lg">
+                Uncertainty Calculation
+              </DialogTitle>
+              <p
+                className={cn(
+                  'justify-self-center whitespace-nowrap text-center text-sm font-semibold tabular-nums tracking-tight sm:text-base',
+                  computedResultMu ? 'text-amber-200' : 'text-stone-500',
+                )}
+                title={computedResultMu ? `MU = ${computedResultMu}` : undefined}
+              >
+                {computedResultMu ? `MU = ${computedResultMu}` : 'MU = —'}
+              </p>
+              {row?.item_name.trim() ? (
+                <p
+                  className="min-w-0 justify-self-end text-right text-sm font-medium leading-snug text-amber-200/95 break-words sm:text-base"
+                  title={row.item_name}
+                >
+                  {row.item_name}
+                </p>
+              ) : (
+                <span className="justify-self-end" aria-hidden />
+              )}
+            </div>
+          </DialogHeader>
+        </div>
 
         {row ? (
-          <div className="space-y-4 text-sm">
-            <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
-                  <p>
-                    <span className="text-muted-foreground">Test Parameter:</span>{' '}
-                    <span className="font-medium">{row.item_name}</span>
+          <div
+            className={cn(
+              'min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 text-sm sm:px-6 sm:py-5',
+              limsRegistryFormClass,
+            )}
+          >
+            <div className={cn(limsPanelClass, 'space-y-3 p-3')}>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-xs text-stone-600">
+                    <span className="font-semibold uppercase tracking-wide">Test Method:</span>{' '}
+                    {row.test_method?.trim() || '—'}
+                    {row.clause_no ? ` · Clause ${row.clause_no}` : ''}
+                    {unitLabel ? ` · Unit ${unitLabel}` : ''}
                   </p>
                   {row.uncertainty_mu ? (
-                    <p>
-                      <span className="text-muted-foreground">Current MU:</span> {row.uncertainty_mu}
+                    <p className="text-xs text-stone-500">
+                      Current MU:{' '}
+                      <span className="font-medium text-stone-700">{row.uncertainty_mu}</span>
                     </p>
                   ) : null}
                 </div>
-                <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                  <p className="text-sm sm:text-right shrink-0">
-                    <span className="text-muted-foreground">IS Code:</span> {row.is_code_label || '—'}
-                    {row.clause_no ? ` · Clause ${row.clause_no}` : ''}
-                    {row.unit_value ? ` · Unit ${row.unit_value}` : ''}
-                  </p>
+                <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-auto">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 gap-1.5 self-end"
+                    className={cn('h-8 gap-1.5', limsOutlineBtnClass)}
+                    aria-haspopup="dialog"
+                    aria-expanded={historyPanelOpen}
+                    onClick={() => setHistoryPanelOpen(true)}
+                  >
+                    <History size={14} />
+                    Uncertainty History
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className={cn('h-8 gap-1.5', limsOutlineBtnClass)}
+                    disabled={!computedResultMu.trim() || !(row.test_method?.trim())}
+                    aria-haspopup="dialog"
+                    aria-expanded={applyMuPanelOpen}
+                    title={
+                      !(row.test_method?.trim())
+                        ? 'Test method is required'
+                        : !computedResultMu.trim()
+                          ? 'Calculate MU first'
+                          : 'Apply this MU to other parameters with the same test method'
+                    }
+                    onClick={() => setApplyMuPanelOpen(true)}
+                  >
+                    <CopyPlus size={14} />
+                    Apply MU on Other Parameter
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className={cn('h-8 gap-1.5', limsOutlineBtnClass)}
                     disabled={importSources.length === 0}
+                    aria-haspopup="dialog"
                     aria-expanded={importPanelOpen}
                     onClick={() => {
-                      setImportPanelOpen((prev) => !prev)
+                      setImportPanelOpen(true)
                       setImportPickerOpen(false)
+                      setImportSearch('')
+                      setSelectedImportSourceId(null)
                       setImportMessage(null)
-                      if (importPanelOpen) setImportSearch('')
                     }}
                   >
                     <Download size={14} />
@@ -808,77 +1054,44 @@ export function TestParameterUncertaintyDialog({
                   </Button>
                 </div>
               </div>
-
-              {importPanelOpen ? (
-                <div className="rounded-md border border-border bg-background/80 p-3 space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Search another test parameter (same test / method under another IS Code) to import Type A,
-                    Type B, and summary settings.
-                  </p>
-                  <FilterCombobox
-                    value={importSearch}
-                    onValueChange={(value) => {
-                      setImportSearch(value)
-                      setImportMessage(null)
-                    }}
-                    options={importPickerOptions}
-                    onSelectOption={(option) => applyImportedSource(option.id)}
-                    open={importPickerOpen}
-                    onOpenChange={setImportPickerOpen}
-                    placeholder="Search by test name / IS code / method / MU..."
-                    inputClassName="h-9 text-sm"
-                    listId="uncertainty-import-picker"
-                    dropdownPlacement="bottom"
-                  />
-                  {importMessage ? (
-                    <p className="text-xs text-primary">{importMessage}</p>
-                  ) : suggestedImportSources.length > 0 &&
-                    suggestedImportSources.length < importSources.length ? (
-                    <p className="text-xs text-muted-foreground">
-                      Showing matching test name / method first ({suggestedImportSources.length} of{' '}
-                      {importSources.length}).
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      {importSources.length} saved uncertainty source
-                      {importSources.length === 1 ? '' : 's'} available.
-                    </p>
-                  )}
-                </div>
-              ) : importMessage ? (
-                <p className="text-xs text-primary text-right">{importMessage}</p>
-              ) : null}
             </div>
 
             <TypeAUncertaintySection
               measurements={typeAMeasurements}
               subtotal={uTypeA}
               stats={typeAStats}
-              unitLabel={row.unit_value}
+              unitLabel={unitLabel}
               onChange={setTypeAMeasurements}
+              onLinkedUnitChange={handleWorksheetUnitChange}
             />
 
             <TypeBUncertaintySection
               contributors={typeBContributors}
               subtotal={uTypeBRelative}
-              defaultUncertaintyUnit={row.unit_value}
+              defaultUncertaintyUnit={unitLabel}
               equipmentOptions={equipmentOptions}
               onChange={setTypeBContributors}
             />
 
-            <div className="rounded-md border border-border bg-muted/20 p-4 space-y-3">
-              <p className="text-xs font-semibold">Combined Uncertainty Summary</p>
+            <div className={cn(limsPanelClass, 'space-y-3 p-4')}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+                Combined Uncertainty Summary
+              </p>
               <div className="overflow-x-auto">
                 <div className="grid min-w-[920px] grid-cols-5 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="flex justify-center text-center">Total Relative Uncertainty</Label>
-                    <div className="flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm tabular-nums text-center">
-                      {totalRelativeUncertainty > 0 ? `${totalRelativeUncertainty.toFixed(4)} %` : '—'}
+                    <Label className="flex justify-center text-center">
+                      Total Relative Uncertainty
+                    </Label>
+                    <div className="flex h-8 items-center justify-center rounded-none border border-stone-500 bg-stone-50 px-3 text-center text-sm tabular-nums text-stone-800">
+                      {totalRelativeUncertainty > 0
+                        ? `${totalRelativeUncertainty.toFixed(4)} %`
+                        : '—'}
                     </div>
                   </div>
                   <div className="space-y-1.5">
                     <Label className="flex justify-center text-center">Combined Uncertainty</Label>
-                    <div className="flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm tabular-nums text-center">
+                    <div className="flex h-8 items-center justify-center rounded-none border border-stone-500 bg-stone-50 px-3 text-center text-sm tabular-nums text-stone-800">
                       {uc > 0 ? `${uc.toFixed(4)}${unitSuffix}` : '—'}
                     </div>
                   </div>
@@ -886,18 +1099,27 @@ export function TestParameterUncertaintyDialog({
                     <Label htmlFor="tp-unc-confidence" className="flex justify-center text-center">
                       Confidence Level
                     </Label>
-                    <Select value={confidenceLevel} onValueChange={handleConfidenceLevelChange}>
-                      <SelectTrigger id="tp-unc-confidence" className="justify-center text-center [&>span]:text-center">
-                        <SelectValue placeholder="Select confidence level" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CONFIDENCE_LEVEL_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label} (k = {option.coverageFactor})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                      <Input
+                        id="tp-unc-confidence"
+                        inputMode="decimal"
+                        value={confidenceLevel}
+                        placeholder="95"
+                        className="text-center"
+                        aria-label="Confidence level value"
+                        onChange={(e) => handleConfidenceLevelChange(e.target.value)}
+                        onBlur={handleConfidenceLevelBlur}
+                      />
+                      <MeasurementUnitSelect
+                        id="tp-unc-confidence-unit"
+                        value={confidenceUnit}
+                        onChange={setConfidenceUnit}
+                        showLabel={false}
+                        showManageButton
+                        placeholder="%"
+                        className="space-y-0"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="tp-unc-k" className="flex justify-center text-center">
@@ -907,35 +1129,157 @@ export function TestParameterUncertaintyDialog({
                       id="tp-unc-k"
                       readOnly
                       value={coverageFactor}
-                      className="bg-muted/40 text-center"
+                      className="bg-stone-100 text-center text-stone-700"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="flex justify-center text-center">Uncertainty of Test in Unit</Label>
-                    <div className="flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm tabular-nums text-center">
+                    <Label className="flex justify-center text-center">
+                      Uncertainty of Test in Unit
+                    </Label>
+                    <div className="flex h-8 items-center justify-center rounded-none border border-stone-500 bg-stone-50 px-3 text-center text-sm tabular-nums text-stone-800">
                       {uncertaintyInUnitDisplay}
                     </div>
                   </div>
                 </div>
               </div>
-              {computedResultMu ? (
-                <p className="text-xs text-muted-foreground">
-                  Save MU will store: <span className="font-medium text-foreground">{computedResultMu}</span>
-                </p>
-              ) : null}
             </div>
           </div>
         ) : null}
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={() => void handleSave()} disabled={saving || !computedResultMu.trim()}>
-            {saving ? 'Saving…' : 'Save MU'}
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:justify-end sm:px-6">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={() => void handleSave()}
+            disabled={saving || !computedResultMu.trim()}
+          >
+            {saving ? 'Saving…' : 'Save & Close'}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog
+      open={importPanelOpen}
+      onOpenChange={(next) => {
+        setImportPanelOpen(next)
+        if (!next) {
+          setImportPickerOpen(false)
+          setImportSearch('')
+          setSelectedImportSourceId(null)
+        }
+      }}
+    >
+      <DialogContent
+        persistOnFocusLoss
+        layer="stacked"
+        aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(limsDialogClass, 'max-w-lg')}
+      >
+        <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 12% 20%, rgba(217,119,6,0.45), transparent 42%), radial-gradient(circle at 88% 0%, rgba(251,191,36,0.25), transparent 35%)',
+            }}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white">
+              Import Uncertainty Data
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+
+        <div
+          className={cn(
+            limsRegistryFormClass,
+            'space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4',
+          )}
+        >
+          <div className="space-y-2">
+            <Label
+              htmlFor="uncertainty-import-search"
+              className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+            >
+              Search Test Parameter
+            </Label>
+            <FilterCombobox
+              value={importSearch}
+              onValueChange={(value) => {
+                setImportSearch(value)
+                setSelectedImportSourceId(null)
+                setImportMessage(null)
+              }}
+              options={importPickerOptions}
+              onSelectOption={(option) => {
+                setImportSearch(option.label)
+                setSelectedImportSourceId(option.id)
+                setImportPickerOpen(false)
+                setImportMessage(null)
+              }}
+              open={importPickerOpen}
+              onOpenChange={setImportPickerOpen}
+              placeholder="Search by Test Name | IS Code | Method | MU"
+              inputClassName="h-8 text-sm"
+              inputId="uncertainty-import-search"
+              listId="uncertainty-import-picker"
+              dropdownPlacement="bottom"
+            />
+            {importMessage && !importMessage.startsWith('Imported') ? (
+              <p className="text-xs font-medium text-red-700">{importMessage}</p>
+            ) : null}
+          </div>
+        </div>
+
+        <DialogFooter className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={handleImportAndClose}
+            disabled={importSources.length === 0}
+          >
+            Import & Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <UncertaintyHistoryDialog
+      open={historyPanelOpen}
+      onOpenChange={setHistoryPanelOpen}
+      parameterName={row?.item_name?.trim() || 'Test Parameter'}
+      isCodeLabel={row?.is_code_label}
+      history={historyRecords}
+      onHistoryChange={onHistoryChange}
+      layer="stacked"
+    />
+
+    {row ? (
+      <ApplyMuOnOtherParameterDialog
+        open={applyMuPanelOpen}
+        onOpenChange={setApplyMuPanelOpen}
+        sourceParameterId={row.id}
+        sourceParameterName={row.item_name?.trim() || 'Test Parameter'}
+        testMethod={row.test_method?.trim() || ''}
+        currentMu={computedResultMu.trim()}
+        calculationData={buildUncertaintyCalculationData({
+          typeAMeasurements,
+          typeBContributors,
+          confidenceLevel,
+          coverageFactor,
+          referenceValue: '',
+          resultMu: computedResultMu.trim(),
+        })}
+        savedByName={profileName}
+        onApplied={async () => {
+          await onAppliedToOthers?.()
+        }}
+        layer="stacked"
+      />
+    ) : null}
+    </>
   )
 }

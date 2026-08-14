@@ -8,7 +8,7 @@ export function buildNablScopeAssistantContext(rows: NablScopeRow[], search: str
     search.trim() ? `Active search filter: "${search.trim()}"` : 'No search filter applied',
     '',
     'Table: nabl_scope',
-    'Columns: s_no, discipline_group, materials_products, component_parameter, test_method_specification, permanent_testing, type_of_test, range_minimum, range_maximum, uncertainty',
+    'Columns: s_no, discipline_group, materials_products, component_parameter, test_method_specification, permanent_testing, type_of_test, range_minimum, range_maximum, unit, uncertainty',
     'Each row includes database id (UUID). Use that exact id in lims_crud for update/delete.',
     '',
     'Scope entries (up to 30):',
@@ -20,7 +20,7 @@ export function buildNablScopeAssistantContext(rows: NablScopeRow[], search: str
   } else {
     for (const r of slice) {
       lines.push(
-        `- id=${r.id} | S.No ${r.s_no} | ${r.discipline_group} | ${r.materials_products} | ${r.component_parameter} | ${r.test_method_specification} | ${r.permanent_testing} | type=${r.type_of_test ?? '—'} | range=${r.range_minimum ?? '—'}-${r.range_maximum ?? '—'} | uncertainty=${r.uncertainty ?? '—'}`,
+        `- id=${r.id} | S.No ${r.s_no} | ${r.discipline_group} | ${r.materials_products} | ${r.component_parameter} | ${r.test_method_specification} | ${r.permanent_testing} | type=${r.type_of_test ?? '—'} | range=${r.range_minimum ?? '—'}-${r.range_maximum ?? '—'} | unit=${r.unit ?? '—'} | uncertainty=${r.uncertainty ?? '—'}`,
       )
     }
     if (rows.length > 30) {

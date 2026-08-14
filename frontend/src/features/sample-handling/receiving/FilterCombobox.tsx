@@ -13,7 +13,12 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-export type FilterComboboxOption = { id: string; label: string }
+export type FilterComboboxOption = {
+  id: string
+  label: string
+  /** Optional meta shown after the name in the dropdown (e.g. "Department | Designation"). */
+  secondaryLabel?: string
+}
 
 export type FilterComboboxExtraAction = {
   key: string
@@ -237,7 +242,7 @@ export function FilterCombobox({
       className="fixed z-[9999] overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-xl ring-1 ring-amber-700/25"
       style={{
         left: dropdownPosition.left,
-        width: Math.max(dropdownPosition.width, 240),
+        width: Math.max(dropdownPosition.width, 420),
         top: dropdownPosition.top,
         bottom: dropdownPosition.bottom,
       }}
@@ -259,9 +264,14 @@ export function FilterCombobox({
                   role="option"
                   tabIndex={-1}
                   aria-selected={highlightIndex === index}
+                  title={
+                    opt.secondaryLabel?.trim()
+                      ? `${opt.label} | ${opt.secondaryLabel.trim()}`
+                      : opt.label
+                  }
                   className={cn(
-                    'block w-full px-3 py-2 text-left text-[13px] leading-snug text-stone-800 transition-colors',
-                    'whitespace-normal break-words',
+                    'flex w-full items-center gap-1 px-3 py-2 text-left text-[13px] leading-none text-stone-800 transition-colors',
+                    'whitespace-nowrap',
                     highlightIndex === index
                       ? 'bg-amber-100 text-stone-900'
                       : 'hover:bg-stone-100 hover:text-stone-950',
@@ -269,7 +279,12 @@ export function FilterCombobox({
                   onPointerDown={handleOptionPointerDown(index)}
                   onMouseEnter={() => setHighlightIndex(index)}
                 >
-                  {opt.label}
+                  <span className="shrink-0 font-medium">{opt.label}</span>
+                  {opt.secondaryLabel?.trim() ? (
+                    <span className="min-w-0 truncate font-normal text-stone-500">
+                      | {opt.secondaryLabel.trim()}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             ))}

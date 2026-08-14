@@ -1,5 +1,5 @@
 import type { NablScopeRow } from './types'
-import { formatScopeNumber } from './types'
+import { formatScopeNumber, formatUncertaintyDisplay } from './types'
 
 function escapeHtml(value: string): string {
   return String(value ?? '')
@@ -49,7 +49,8 @@ export function buildNablScopePrintHtml(options: NablScopePrintOptions): string 
   <td class="col-type">${cell(r.type_of_test)}</td>
   <td class="col-range">${cell(formatScopeNumber(r.range_minimum))}</td>
   <td class="col-range">${cell(formatScopeNumber(r.range_maximum))}</td>
-  <td class="col-uncertainty">${cell(r.uncertainty)}</td>
+  <td class="col-unit">${cell(r.unit)}</td>
+  <td class="col-uncertainty">${escapeHtml(formatUncertaintyDisplay(r.uncertainty))}</td>
 </tr>`,
     )
     .join('\n')
@@ -177,6 +178,7 @@ export function buildNablScopePrintHtml(options: NablScopePrintOptions): string 
   .col-permanent { width: 9%; }
   .col-type { width: 8%; }
   .col-range { width: 6%; }
+  .col-unit { width: 5%; }
   .col-uncertainty { width: 9%; }
 
   .print-footer {
@@ -224,11 +226,12 @@ export function buildNablScopePrintHtml(options: NablScopePrintOptions): string 
           <th class="col-type">Type of Test</th>
           <th class="col-range">Range Minimum</th>
           <th class="col-range">Range Maximum</th>
+          <th class="col-unit">Unit</th>
           <th class="col-uncertainty">Uncertainty</th>
         </tr>
       </thead>
       <tbody>
-        ${rowsHtml || '<tr><td colspan="10" style="text-align:center;padding:12px;">No entries</td></tr>'}
+        ${rowsHtml || '<tr><td colspan="11" style="text-align:center;padding:12px;">No entries</td></tr>'}
       </tbody>
     </table>
 

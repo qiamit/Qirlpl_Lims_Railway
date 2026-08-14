@@ -35,8 +35,14 @@ function formToMasterFormulaRef(form: EquipmentForCalibrationForm): MasterFormul
     model_number: form.modelNumber,
     serial_number: form.serialNumber,
     current_location: form.currentLocation,
-    range_capacity: form.rangeCapacity,
-    resolution_least_count: form.resolutionLeastCount,
+    range_capacity: [form.rangeCapacity, form.rangeCapacityUnit]
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join(' '),
+    resolution_least_count: [form.resolutionLeastCount, form.resolutionLeastCountUnit]
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join(' '),
     accuracy_acceptance_criteria: form.accuracyAcceptanceCriteria,
     class_of_instrument: form.classOfInstrument,
     calibration_temperature: form.calibrationTemperature,

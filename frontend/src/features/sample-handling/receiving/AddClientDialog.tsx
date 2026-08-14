@@ -236,12 +236,14 @@ export function AddClientDialog({
   onSaved,
   initialCompanyName,
   nested = false,
+  title = 'Add New Client',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (id: string) => void
   initialCompanyName?: string
   nested?: boolean
+  title?: string
 }) {
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -303,7 +305,7 @@ export function AddClientDialog({
       <DialogContent
         className={cn(
           limsDialogClass,
-          'flex w-[min(1100px,94vw)] max-w-none flex-col',
+          'flex w-[min(920px,92vw)] max-w-none flex-col',
           'max-h-[min(92vh,920px)]',
         )}
         aria-describedby={undefined}
@@ -315,7 +317,7 @@ export function AddClientDialog({
           <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-10 text-left">
             <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
-              Add New Client
+              {title}
             </DialogTitle>
           </DialogHeader>
         </div>

@@ -68,8 +68,11 @@ export type EquipmentForm = {
   currentLocation: string
   equipmentStatus: EquipmentStatus
   rangeCapacity: string
+  rangeCapacityUnit: string
   resolutionLeastCount: string
+  resolutionLeastCountUnit: string
   accuracyAcceptanceCriteria: string
+  accuracyAcceptanceCriteriaUnit: string
   calibrationFrequency: Frequency
   lastCalibrationDate: string
   nextCalibrationDue: string
@@ -109,8 +112,11 @@ export const emptyEquipmentForm = (): EquipmentForm => ({
   currentLocation: '',
   equipmentStatus: 'Active',
   rangeCapacity: '',
+  rangeCapacityUnit: '',
   resolutionLeastCount: '',
+  resolutionLeastCountUnit: '',
   accuracyAcceptanceCriteria: '',
+  accuracyAcceptanceCriteriaUnit: '',
   calibrationFrequency: '',
   lastCalibrationDate: '',
   nextCalibrationDue: '',
@@ -185,3 +191,100 @@ export function sanitizeDateStr(dateStr: string | null | undefined): string {
   }
   return date.toISOString().split('T')[0]
 }
+
+/** Local calendar date as YYYY-MM-DD (avoids UTC day-shift). */
+export function todayIsoDate(): string {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const NUMERIC_TOKEN =
+  /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/
+
+/** Split stored "100 kN" / "0.01 mm" / "1 %" / "1%" into value + unit for the form. */
+export function splitValueAndUnit(raw: string | null | undefined): {
+  value: string
+  unit: string
+} {
+  const trimmed = String(raw ?? '').trim()
+  if (!trimmed) return { value: '', unit: '' }
+
+  const lastSpace = trimmed.lastIndexOf(' ')
+  if (lastSpace > 0) {
+    const maybeUnit = trimmed.slice(lastSpace + 1).trim()
+    const maybeValue = trimmed.slice(0, lastSpace).trim()
+    if (maybeUnit && !NUMERIC_TOKEN.test(maybeUnit)) {
+      return { value: maybeValue, unit: maybeUnit }
+    }
+  }
+
+  // "1%" / "±0.02mm" — unit stuck to the end without a space
+  const glued = trimmed.match(
+    /^(.+?)([A-Za-zµμΩλ°%‰]+(?:\/[A-Za-z]+)?|[°℃℉])$/u,
+  )
+  if (glued) {
+    const maybeValue = glued[1].trim()
+    const maybeUnit = glued[2].trim()
+    // Require a digit in the value so labels like "N/A" stay intact
+    if (
+      maybeValue &&
+      maybeUnit &&
+      /\d/.test(maybeValue) &&
+      !NUMERIC_TOKEN.test(maybeUnit)
+    ) {
+      return { value: maybeValue, unit: maybeUnit }
+    }
+  }
+
+  return { value: trimmed, unit: '' }
+}
+
+export function joinValueAndUnit(value: string, unit: string): string {
+  const v = value.trim()
+  const u = unit.trim()
+  if (!v) return u
+  if (!u) return v
+  return `${v} ${u}`
+}
+
+/** True when Edit form Calibration status is Applicable (any cal data saved). */
+export function isCalibrationApplicable(row: EquipmentRow): boolean {
+  return !!(
+    row.calibration_frequency?.trim() ||
+    row.last_calibration_date?.trim() ||
+    row.next_calibration_due?.trim() ||
+    row.calibration_certificate_number?.trim() ||
+    row.calibration_certificate_uncertainty?.trim() ||
+    row.calibration_uncertainty_unit?.trim() ||
+    row.calibration_coverage_factor?.trim() ||
+    row.external_calibration_agency?.trim() ||
+    row.upload_certificate_path?.trim()
+  )
+}
+
+/** True when Edit form Intermediate Check status is Applicable. */
+export function isIntermediateCheckApplicable(row: EquipmentRow): boolean {
+  return !!(
+    row.intermediate_check_frequency?.trim() ||
+    row.last_intermediate_check_date?.trim() ||
+    row.next_intermediate_check_date?.trim() ||
+    row.intermediate_check_result?.trim() ||
+    (Array.isArray(row.intermediate_check_history) && row.intermediate_check_history.length > 0)
+  )
+}
+
+/** True when Edit form Maintenance status is Applicable. */
+export function isMaintenanceApplicable(row: EquipmentRow): boolean {
+  return !!(
+    row.maintenance_schedule_frequency?.trim() ||
+    row.last_maintenance_date?.trim() ||
+    row.next_maintenance_date?.trim() ||
+    row.maintenance_done_by?.trim() ||
+    (Array.isArray(row.maintenance_checklist) && row.maintenance_checklist.length > 0) ||
+    (Array.isArray(row.maintenance_history) && row.maintenance_history.length > 0)
+  )
+}
+

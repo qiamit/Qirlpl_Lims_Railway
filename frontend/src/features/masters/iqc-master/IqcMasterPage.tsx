@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
-import { formatDate } from '@/lib/utils'
+import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -18,8 +18,69 @@ import {
   type EquipmentStatus,
   sanitizeDateStr,
 } from './types'
+import {
+  joinValueAndUnit,
+  splitValueAndUnit,
+} from '../equipment-master/types'
+import { parseMaintenanceChecklistFromDb } from '../equipment-master/maintenanceChecklist'
+import { parseMaintenanceHistoryFromDb } from '../equipment-master/maintenanceHistory'
+import {
+  parseCalibrationPointsTable,
+  serializeCalibrationPointsTable,
+} from '@/features/calibration/equipment-for-calibration/types'
+import { computeCalibrationPointRowValuesFromMaster } from '@/features/calibration/equipment-for-calibration/calibrationPointsFormula'
 
 const BUCKET = 'equipment-files'
+
+function rowToIqcForm(row: IqcRow, nameOverride?: string): IqcForm {
+  const range = splitValueAndUnit(row.range_capacity)
+  const resolution = splitValueAndUnit(row.resolution_least_count)
+  const accuracy = splitValueAndUnit(row.accuracy_acceptance_criteria)
+  const pointsTable = parseCalibrationPointsTable(row.calibration_points)
+  return {
+    assetCode: nameOverride !== undefined ? '' : (row.asset_code ?? ''),
+    equipmentName: nameOverride ?? (row.equipment_name ?? ''),
+    manufacturer: row.manufacturer ?? '',
+    modelNumber: row.model_number ?? '',
+    serialNumber: row.serial_number ?? '',
+    dateOfPurchase: row.date_of_purchase ?? '',
+    purchasedFrom: row.purchased_from ?? '',
+    datePlacedInService: row.date_placed_in_service ?? '',
+    currentLocation: row.current_location ?? '',
+    equipmentStatus: (row.equipment_status ?? 'Active') as IqcForm['equipmentStatus'],
+    rangeCapacity: range.value,
+    rangeCapacityUnit: range.unit,
+    resolutionLeastCount: resolution.value,
+    resolutionLeastCountUnit: resolution.unit,
+    accuracyAcceptanceCriteria: accuracy.value,
+    accuracyAcceptanceCriteriaUnit: accuracy.unit,
+    calibrationFrequency: (row.calibration_frequency ?? '') as Frequency,
+    lastCalibrationDate: row.last_calibration_date ?? '',
+    nextCalibrationDue: row.next_calibration_due ?? '',
+    calibrationCertificateNumber: row.calibration_certificate_number ?? '',
+    calibrationTemperature: row.calibration_temperature ?? '',
+    calibrationHumidity: row.calibration_humidity ?? '',
+    externalCalibrationAgency: row.external_calibration_agency ?? '',
+    intermediateCheckFrequency: (row.intermediate_check_frequency ?? '') as Frequency,
+    lastIntermediateCheckDate: row.last_intermediate_check_date ?? '',
+    nextIntermediateCheckDate: row.next_intermediate_check_date ?? '',
+    intermediateCheckResult: row.intermediate_check_result ?? '',
+    maintenanceScheduleFrequency: (row.maintenance_schedule_frequency ?? '') as Frequency,
+    lastMaintenanceDate: row.last_maintenance_date ?? '',
+    nextMaintenanceDate: row.next_maintenance_date ?? '',
+    maintenanceDoneBy: row.maintenance_done_by ?? '',
+    maintenanceChecklist: parseMaintenanceChecklistFromDb(row.maintenance_checklist),
+    maintenanceHistory: parseMaintenanceHistoryFromDb(row.maintenance_history),
+    historyOfDamage: row.history_of_damage ?? '',
+    uploadCertificatePath: row.upload_certificate_path ?? '',
+    uploadManualSopPath: row.upload_manual_sop_path ?? '',
+    custodianEmployeeId: row.custodian_employee_id ?? '',
+    certificateFile: null,
+    manualSopFile: null,
+    calibrationPointsColumns: pointsTable.columns,
+    calibrationPoints: pointsTable.rows,
+  }
+}
 
 const formatSupabaseError = (err: unknown) => {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -141,8 +202,11 @@ export default function IqcMasterPage() {
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [activeFormSection, setActiveFormSection] = useState<'calibration' | null>(null)
-  
+  const [activeFormSection, setActiveFormSection] = useState<
+    'calibration' | 'intermediate' | 'maintenance' | null
+  >(null)
+  const [hideScheduleSections, setHideScheduleSections] = useState(false)
+
   const [showAddClientModal, setShowAddClientModal] = useState(false)
   const [targetClientField, setTargetClientField] = useState<'purchasedFrom' | 'externalCalibrationAgency' | null>(null)
 
@@ -152,6 +216,7 @@ export default function IqcMasterPage() {
     setShowForm(open)
     if (!open) {
       setActiveFormSection(null)
+      setHideScheduleSections(false)
     }
   })
   const [search, setSearch] = useState('')
@@ -166,7 +231,14 @@ export default function IqcMasterPage() {
   const [jumpTo, setJumpTo] = useState('')
 
   const [clients, setClients] = useState<Array<{ id: string; company_name: string }>>([])
-  const [employees, setEmployees] = useState<Array<{ id: string; full_name: string }>>([])
+  const [employees, setEmployees] = useState<
+    Array<{
+      id: string
+      full_name: string
+      department_name: string | null
+      designation: string | null
+    }>
+  >([])
   const [locations, setLocations] = useState<string[]>(['Mechanical', 'Chemical', 'NDT', 'Calibration', 'Electrical'])
 
   const clientMap = useMemo(() => {
@@ -187,13 +259,19 @@ export default function IqcMasterPage() {
 
   const [form, setForm] = useState<IqcForm>(() => emptyIqcForm())
 
-  const canSave = !saveLoading && form.equipmentName.trim().length > 0
+  const canSave =
+    !saveLoading &&
+    form.equipmentName.trim().length > 0 &&
+    form.assetCode.trim().length > 0
 
   const loadDropdowns = async () => {
     try {
       const [clientsRes, employeesRes] = await Promise.all([
         supabase.from('clients').select('id, company_name').order('company_name'),
-        supabase.from('user_profiles').select('id, full_name').order('full_name')
+        supabase
+          .from('user_profiles')
+          .select('id, full_name, department_name, designation')
+          .order('full_name'),
       ])
 
       if (clientsRes.error) throw clientsRes.error
@@ -201,6 +279,14 @@ export default function IqcMasterPage() {
 
       setClients(clientsRes.data ?? [])
       setEmployees(employeesRes.data ?? [])
+      const fromEmployees = (employeesRes.data ?? [])
+        .map((e) => String(e.department_name ?? '').trim())
+        .filter(Boolean)
+      if (fromEmployees.length > 0) {
+        setLocations((prev) =>
+          Array.from(new Set([...fromEmployees, ...prev])).sort((a, b) => a.localeCompare(b)),
+        )
+      }
     } catch (err) {
       console.error('Failed to load dropdown directories:', err)
     }
@@ -307,12 +393,25 @@ export default function IqcMasterPage() {
       setSaveMessage(null)
       setSaveLoading(true)
       try {
-        let code = form.assetCode
-        const eqId = editingId || crypto.randomUUID()
-
-        if (!editingId) {
-          code = await generateNextAssetCode()
+        const code = form.assetCode.trim().toUpperCase()
+        if (!code) {
+          setSaveMessage('IQC Standard ID / Asset Code is required.')
+          setSaveLoading(false)
+          return
         }
+
+        const duplicate = rows.some(
+          (r) =>
+            r.asset_code.trim().toUpperCase() === code &&
+            (!editingId || r.id !== editingId),
+        )
+        if (duplicate) {
+          setSaveMessage(`Asset Code "${code}" already exists. Please use a unique code.`)
+          setSaveLoading(false)
+          return
+        }
+
+        const eqId = editingId || crypto.randomUUID()
 
         let certPath = form.uploadCertificatePath
         let manualPath = form.uploadManualSopPath
@@ -336,13 +435,20 @@ export default function IqcMasterPage() {
           date_placed_in_service: sanitizeDateStr(form.datePlacedInService) || null,
           current_location: form.currentLocation || null,
           equipment_status: form.equipmentStatus,
-          range_capacity: form.rangeCapacity.trim() || null,
-          resolution_least_count: form.resolutionLeastCount.trim() || null,
-          accuracy_acceptance_criteria: form.accuracyAcceptanceCriteria.trim() || null,
+          range_capacity: joinValueAndUnit(form.rangeCapacity, form.rangeCapacityUnit) || null,
+          resolution_least_count:
+            joinValueAndUnit(form.resolutionLeastCount, form.resolutionLeastCountUnit) || null,
+          accuracy_acceptance_criteria:
+            joinValueAndUnit(
+              form.accuracyAcceptanceCriteria,
+              form.accuracyAcceptanceCriteriaUnit,
+            ) || null,
           calibration_frequency: form.calibrationFrequency || null,
           last_calibration_date: sanitizeDateStr(form.lastCalibrationDate) || null,
           next_calibration_due: sanitizeDateStr(form.nextCalibrationDue) || null,
           calibration_certificate_number: form.calibrationCertificateNumber.trim() || null,
+          calibration_temperature: form.calibrationTemperature.trim() || null,
+          calibration_humidity: form.calibrationHumidity.trim() || null,
           external_calibration_agency: form.externalCalibrationAgency || null,
           intermediate_check_frequency: form.intermediateCheckFrequency || null,
           last_intermediate_check_date: sanitizeDateStr(form.lastIntermediateCheckDate) || null,
@@ -352,11 +458,51 @@ export default function IqcMasterPage() {
           last_maintenance_date: sanitizeDateStr(form.lastMaintenanceDate) || null,
           next_maintenance_date: sanitizeDateStr(form.nextMaintenanceDate) || null,
           maintenance_done_by: form.maintenanceDoneBy || null,
+          maintenance_checklist:
+            form.maintenanceChecklist.length > 0 ? form.maintenanceChecklist : null,
+          maintenance_history:
+            form.maintenanceHistory.length > 0 ? form.maintenanceHistory : null,
           history_of_damage: form.historyOfDamage.trim() || null,
           upload_certificate_path: certPath || null,
           upload_manual_sop_path: manualPath || null,
           custodian_employee_id: form.custodianEmployeeId || null,
-          calibration_points: form.calibrationPoints,
+          calibration_points: (() => {
+            const formulaMaster = {
+              asset_code: form.assetCode,
+              equipment_name: form.equipmentName,
+              manufacturer: form.manufacturer,
+              model_number: form.modelNumber,
+              serial_number: form.serialNumber,
+              current_location: form.currentLocation,
+              range_capacity: joinValueAndUnit(form.rangeCapacity, form.rangeCapacityUnit),
+              resolution_least_count: joinValueAndUnit(
+                form.resolutionLeastCount,
+                form.resolutionLeastCountUnit,
+              ),
+              accuracy_acceptance_criteria: joinValueAndUnit(
+                form.accuracyAcceptanceCriteria,
+                form.accuracyAcceptanceCriteriaUnit,
+              ),
+              calibration_temperature: form.calibrationTemperature,
+              calibration_humidity: form.calibrationHumidity,
+              calibration_certificate_number: form.calibrationCertificateNumber,
+            }
+            const bakedRows = form.calibrationPoints.map((row) => ({
+              ...row,
+              values: {
+                ...row.values,
+                ...computeCalibrationPointRowValuesFromMaster(
+                  form.calibrationPointsColumns,
+                  row.values,
+                  formulaMaster,
+                ),
+              },
+            }))
+            return serializeCalibrationPointsTable(
+              form.calibrationPointsColumns,
+              bakedRows,
+            )
+          })(),
         }
 
         const { error } = await supabase.from('iqc_masters').upsert(payload)
@@ -368,7 +514,12 @@ export default function IqcMasterPage() {
         setShowForm(false)
         await loadIqcMasters()
       } catch (err) {
-        setSaveMessage(formatSupabaseError(err))
+        const msg = formatSupabaseError(err)
+        if (/duplicate|unique|asset_code/i.test(msg)) {
+          setSaveMessage('Asset Code must be unique. This code is already in use.')
+        } else {
+          setSaveMessage(msg)
+        }
       } finally {
         setSaveLoading(false)
       }
@@ -379,89 +530,30 @@ export default function IqcMasterPage() {
     setSaveMessage(null)
     setForm(emptyIqcForm())
     setEditingId(null)
+    setActiveFormSection(null)
+    setHideScheduleSections(false)
     setShowForm(true)
   }
 
-  const handleEdit = (row: IqcRow, section?: 'calibration') => {
+  const handleEdit = (
+    row: IqcRow,
+    section?: 'calibration' | 'intermediate' | 'maintenance' | 'details',
+  ) => {
     setSaveMessage(null)
     setEditingId(row.id)
-    setActiveFormSection(section || null)
-    setForm({
-      assetCode: row.asset_code ?? '',
-      equipmentName: row.equipment_name ?? '',
-      manufacturer: row.manufacturer ?? '',
-      modelNumber: row.model_number ?? '',
-      serialNumber: row.serial_number ?? '',
-      dateOfPurchase: row.date_of_purchase ?? '',
-      purchasedFrom: row.purchased_from ?? '',
-      datePlacedInService: row.date_placed_in_service ?? '',
-      currentLocation: row.current_location ?? '',
-      equipmentStatus: (row.equipment_status ?? 'Active') as IqcForm['equipmentStatus'],
-      rangeCapacity: row.range_capacity ?? '',
-      resolutionLeastCount: row.resolution_least_count ?? '',
-      accuracyAcceptanceCriteria: row.accuracy_acceptance_criteria ?? '',
-      calibrationFrequency: (row.calibration_frequency ?? '') as Frequency,
-      lastCalibrationDate: row.last_calibration_date ?? '',
-      nextCalibrationDue: row.next_calibration_due ?? '',
-      calibrationCertificateNumber: row.calibration_certificate_number ?? '',
-      externalCalibrationAgency: row.external_calibration_agency ?? '',
-      intermediateCheckFrequency: (row.intermediate_check_frequency ?? '') as Frequency,
-      lastIntermediateCheckDate: row.last_intermediate_check_date ?? '',
-      nextIntermediateCheckDate: row.next_intermediate_check_date ?? '',
-      intermediateCheckResult: row.intermediate_check_result ?? '',
-      maintenanceScheduleFrequency: (row.maintenance_schedule_frequency ?? '') as Frequency,
-      lastMaintenanceDate: row.last_maintenance_date ?? '',
-      nextMaintenanceDate: row.next_maintenance_date ?? '',
-      maintenanceDoneBy: row.maintenance_done_by ?? '',
-      historyOfDamage: row.history_of_damage ?? '',
-      uploadCertificatePath: row.upload_certificate_path ?? '',
-      uploadManualSopPath: row.upload_manual_sop_path ?? '',
-      custodianEmployeeId: row.custodian_employee_id ?? '',
-      certificateFile: null,
-      manualSopFile: null,
-      calibrationPoints: row.calibration_points ?? [],
-    })
+    const isDetailsOnly = section === 'details'
+    setHideScheduleSections(isDetailsOnly)
+    setActiveFormSection(section && section !== 'details' ? section : null)
+    setForm(rowToIqcForm(row))
     setShowForm(true)
   }
 
   const handleCopy = (row: IqcRow) => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({
-      assetCode: '',
-      equipmentName: `${row.equipment_name} - Copy`,
-      manufacturer: row.manufacturer ?? '',
-      modelNumber: row.model_number ?? '',
-      serialNumber: row.serial_number ?? '',
-      dateOfPurchase: row.date_of_purchase ?? '',
-      purchasedFrom: row.purchased_from ?? '',
-      datePlacedInService: row.date_placed_in_service ?? '',
-      currentLocation: row.current_location ?? '',
-      equipmentStatus: (row.equipment_status ?? 'Active') as IqcForm['equipmentStatus'],
-      rangeCapacity: row.range_capacity ?? '',
-      resolutionLeastCount: row.resolution_least_count ?? '',
-      accuracyAcceptanceCriteria: row.accuracy_acceptance_criteria ?? '',
-      calibrationFrequency: (row.calibration_frequency ?? '') as Frequency,
-      lastCalibrationDate: row.last_calibration_date ?? '',
-      nextCalibrationDue: row.next_calibration_due ?? '',
-      calibrationCertificateNumber: row.calibration_certificate_number ?? '',
-      externalCalibrationAgency: row.external_calibration_agency ?? '',
-      intermediateCheckFrequency: (row.intermediate_check_frequency ?? '') as Frequency,
-      lastIntermediateCheckDate: row.last_intermediate_check_date ?? '',
-      nextIntermediateCheckDate: row.next_intermediate_check_date ?? '',
-      intermediateCheckResult: row.intermediate_check_result ?? '',
-      maintenanceScheduleFrequency: (row.maintenance_schedule_frequency ?? '') as Frequency,
-      lastMaintenanceDate: row.last_maintenance_date ?? '',
-      nextMaintenanceDate: row.next_maintenance_date ?? '',
-      maintenanceDoneBy: row.maintenance_done_by ?? '',
-      historyOfDamage: row.history_of_damage ?? '',
-      uploadCertificatePath: row.upload_certificate_path ?? '',
-      uploadManualSopPath: row.upload_manual_sop_path ?? '',
-      custodianEmployeeId: row.custodian_employee_id ?? '',
-      certificateFile: null,
-      manualSopFile: null,
-      calibrationPoints: row.calibration_points ? JSON.parse(JSON.stringify(row.calibration_points)) : [],
-    })
+    setActiveFormSection(null)
+    setHideScheduleSections(false)
+    setForm(rowToIqcForm(row, `${row.equipment_name} - Copy`))
     setShowForm(true)
   }
 
@@ -766,14 +858,15 @@ export default function IqcMasterPage() {
           const nextMaint = get('next_maintenance_date') || calculateNextDueDate(lastMaint, maintFreq)
 
           const calPointsStr = get('calibration_points')
-          let calPointsParsed = []
+          let calPointsParsed: unknown = null
           if (calPointsStr) {
             try {
               calPointsParsed = JSON.parse(calPointsStr)
             } catch {
-              // ignore
+              calPointsParsed = null
             }
           }
+          const pointsTable = parseCalibrationPointsTable(calPointsParsed)
 
           payloads.push({
             asset_code: assetCode,
@@ -804,7 +897,10 @@ export default function IqcMasterPage() {
             maintenance_done_by: maintEmpName ? findEmployeeUuid(maintEmpName) : null,
             custodian_employee_id: custodianEmpName ? findEmployeeUuid(custodianEmpName) : null,
             history_of_damage: get('history_of_damage') || null,
-            calibration_points: calPointsParsed,
+            calibration_points: serializeCalibrationPointsTable(
+              pointsTable.columns,
+              pointsTable.rows,
+            ),
           })
         }
 
@@ -853,70 +949,75 @@ export default function IqcMasterPage() {
       />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
-        <DialogContent className={`${activeFormSection ? 'max-w-3xl' : 'max-w-5xl'} max-h-[90vh] overflow-y-auto transition-all duration-300`}>
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold border-b pb-2">
-              {activeFormSection 
-                ? `Edit ${activeFormSection.charAt(0).toUpperCase() + activeFormSection.slice(1)} Details` 
-                : (editingId ? 'Edit IQC Master Details' : 'Add New IQC Master')}
-            </DialogTitle>
-          </DialogHeader>
-          {saveMessage && (
-            <div className="text-sm text-destructive px-6 py-2 bg-destructive/10 rounded-md border border-destructive/20">
-              {saveMessage}
-            </div>
+        <DialogContent
+          persistOnFocusLoss
+          aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="!items-stretch !justify-start md:pl-0"
+          className={cn(
+            'gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:rounded-none',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+            '!flex h-[100dvh] max-h-[100dvh] w-full !max-w-none !translate-x-0 !translate-y-0 flex-col',
+            'left-0 top-0',
+            'md:!left-[268px] md:!right-0 md:!w-[calc(100vw-268px)] md:!max-w-[calc(100vw-268px)]',
           )}
-          <IqcMasterForm
-            form={form}
-            onChange={setForm}
-            canSave={canSave}
-            saveLoading={saveLoading}
-            onSave={handleSave}
-            clients={clients}
-            employees={employees}
-            locations={locations}
-            onViewFile={handleViewFile}
-            activeSection={activeFormSection}
-            onAddNewClientClick={(field) => {
-              setTargetClientField(field)
-              setShowAddClientModal(true)
-            }}
-            iqcMasters={rows.map(r => ({
-              assetCode: r.asset_code,
-              equipmentName: r.equipment_name,
-              manufacturer: r.manufacturer ?? '',
-              modelNumber: r.model_number ?? '',
-              serialNumber: r.serial_number ?? '',
-              dateOfPurchase: r.date_of_purchase ?? '',
-              purchasedFrom: r.purchased_from ?? '',
-              datePlacedInService: r.date_placed_in_service ?? '',
-              currentLocation: r.current_location ?? '',
-              equipmentStatus: (r.equipment_status ?? 'Active') as IqcForm['equipmentStatus'],
-              rangeCapacity: r.range_capacity ?? '',
-              resolutionLeastCount: r.resolution_least_count ?? '',
-              accuracyAcceptanceCriteria: r.accuracy_acceptance_criteria ?? '',
-              calibrationFrequency: (r.calibration_frequency ?? '') as Frequency,
-              lastCalibrationDate: r.last_calibration_date ?? '',
-              nextCalibrationDue: r.next_calibration_due ?? '',
-              calibrationCertificateNumber: r.calibration_certificate_number ?? '',
-              externalCalibrationAgency: r.external_calibration_agency ?? '',
-              intermediateCheckFrequency: (r.intermediate_check_frequency ?? '') as Frequency,
-              lastIntermediateCheckDate: r.last_intermediate_check_date ?? '',
-              nextIntermediateCheckDate: r.next_intermediate_check_date ?? '',
-              intermediateCheckResult: r.intermediate_check_result ?? '',
-              maintenanceScheduleFrequency: (r.maintenance_schedule_frequency ?? '') as Frequency,
-              lastMaintenanceDate: r.last_maintenance_date ?? '',
-              nextMaintenanceDate: r.next_maintenance_date ?? '',
-              maintenanceDoneBy: r.maintenance_done_by ?? '',
-              historyOfDamage: r.history_of_damage ?? '',
-              uploadCertificatePath: r.upload_certificate_path ?? '',
-              uploadManualSopPath: r.upload_manual_sop_path ?? '',
-              custodianEmployeeId: r.custodian_employee_id ?? '',
-              certificateFile: null,
-              manualSopFile: null,
-              calibrationPoints: r.calibration_points ?? [],
-            }))}
-          />
+        >
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <DialogTitle className="min-w-0 shrink text-base font-semibold tracking-tight text-white sm:text-lg">
+                  {activeFormSection
+                    ? `Edit ${activeFormSection.charAt(0).toUpperCase() + activeFormSection.slice(1)} Details`
+                    : hideScheduleSections
+                      ? 'IQC Master Details'
+                      : editingId
+                        ? 'Edit IQC Master Details'
+                        : 'Add New IQC Master'}
+                </DialogTitle>
+                {form.equipmentName.trim() ? (
+                  <p
+                    className="max-w-[50%] truncate text-right text-sm font-medium text-amber-200/95 sm:text-base"
+                    title={form.equipmentName}
+                  >
+                    {form.equipmentName}
+                  </p>
+                ) : null}
+              </div>
+            </DialogHeader>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
+            {saveMessage ? (
+              <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {saveMessage}
+              </p>
+            ) : null}
+            <IqcMasterForm
+              form={form}
+              onChange={setForm}
+              canSave={canSave}
+              saveLoading={saveLoading}
+              onSave={handleSave}
+              clients={clients}
+              employees={employees}
+              locations={locations}
+              onViewFile={handleViewFile}
+              activeSection={activeFormSection}
+              hideScheduleSections={hideScheduleSections}
+              readOnly={hideScheduleSections}
+              onClose={() => handleFormOpenChange(false)}
+              onAddNewClientClick={(field) => {
+                setTargetClientField(field)
+                setShowAddClientModal(true)
+              }}
+              iqcMasters={rows.map((r) => rowToIqcForm(r))}
+            />
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -6,6 +6,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
+import {
+  limsDarkBarGlowStyle,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { AddClientDialog } from '@/features/sample-handling/receiving/AddClientDialog'
 import { AddIsCodeDialog } from '@/features/sample-handling/receiving/AddIsCodeDialog'
 import { FilterCombobox } from '@/features/sample-handling/receiving/FilterCombobox'
@@ -24,6 +31,14 @@ import {
 import { ConsentLetterTestParameterPickerDialog } from './ConsentLetterTestParameterPickerDialog'
 import { generateNextConsentLetterNumber, insertConsentLetter, updateConsentLetter } from './consentLetterDb'
 import type { ConsentLetterListRow } from './types'
+
+const dialogOverlayClass = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const dialogShellClass = cn(
+  'max-h-[92vh] w-[calc(100vw-1rem)] max-w-3xl gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+)
 
 async function parametersFromSavedRow(
   row: ConsentLetterListRow,
@@ -340,175 +355,204 @@ export function ConsentLetterGenerateDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-w-3xl max-h-[90vh] overflow-y-auto"
+          persistOnFocusLoss
+          aria-describedby={undefined}
           showCloseButton={!nestedDialogOpen}
+          overlayClassName={dialogOverlayClass}
+          className={dialogShellClass}
         >
-          <DialogHeader className="pr-10">
-            <DialogTitle>{isEdit ? 'Edit Consent Letter' : 'Generate Consent Letter'}</DialogTitle>
-          </DialogHeader>
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                {isEdit ? 'Edit Consent Letter' : 'Generate Consent Letter'}
+              </DialogTitle>
+            </DialogHeader>
+          </div>
 
-          {loading ? (
-            <p className="text-sm text-muted-foreground py-4">Loading…</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="consent-letter-no">Consent Letter No</Label>
-                  <Input
-                    id="consent-letter-no"
-                    value={numberLoading ? 'Generating…' : consentLetterNo}
-                    readOnly
-                    className="bg-muted/40"
-                    placeholder="QI/yymmdd-01"
-                  />
+          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
+            {loading ? (
+              <p className="py-4 text-sm text-stone-500">Loading…</p>
+            ) : (
+              <div className={cn(limsRegistryFormClass, 'space-y-4')}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="consent-letter-no">Consent Letter No</Label>
+                    <Input
+                      id="consent-letter-no"
+                      value={numberLoading ? 'Generating…' : consentLetterNo}
+                      readOnly
+                      className="bg-stone-100"
+                      placeholder="QI/yymmdd-01"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="consent-letter-date">Date</Label>
+                    <Input
+                      id="consent-letter-date"
+                      value={letterDate}
+                      onChange={(e) => setLetterDate(e.target.value)}
+                      placeholder="DD-MM-YYYY"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="consent-letter-date">Date</Label>
-                  <Input
-                    id="consent-letter-date"
-                    value={letterDate}
-                    onChange={(e) => setLetterDate(e.target.value)}
-                    placeholder="DD-MM-YYYY"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="consent-client">Client</Label>
-                  <FilterCombobox
-                    value={clientInput}
-                    onValueChange={(val) => {
-                      setClientInput(val)
-                      if (!val.trim()) {
-                        setClientId('')
-                        return
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="consent-client">Client</Label>
+                    <FilterCombobox
+                      value={clientInput}
+                      onValueChange={(val) => {
+                        setClientInput(val)
+                        if (!val.trim()) {
+                          setClientId('')
+                          return
+                        }
+                        const match = clientOptions.find((opt) => opt.label === val)
+                        if (match) setClientId(match.id)
+                      }}
+                      options={filteredClients}
+                      onSelectOption={(opt) => {
+                        setClientInput(opt.label)
+                        setClientId(opt.id)
+                      }}
+                      open={clientDropdownOpen}
+                      onOpenChange={setClientDropdownOpen}
+                      placeholder="Type to search client"
+                      listId="consent-letter-client-combobox"
+                      disabled={!formData?.clients.length && !clientInput.trim()}
+                      extraActions={
+                        clientInput.trim() && !clientExactMatch
+                          ? [
+                              {
+                                key: 'add-client',
+                                label: 'Add New Client',
+                                onSelect: () => setAddClientOpen(true),
+                              },
+                            ]
+                          : []
                       }
-                      const match = clientOptions.find((opt) => opt.label === val)
-                      if (match) setClientId(match.id)
-                    }}
-                    options={filteredClients}
-                    onSelectOption={(opt) => {
-                      setClientInput(opt.label)
-                      setClientId(opt.id)
-                    }}
-                    open={clientDropdownOpen}
-                    onOpenChange={setClientDropdownOpen}
-                    placeholder="Type to search client"
-                    listId="consent-letter-client-combobox"
-                    disabled={!formData?.clients.length && !clientInput.trim()}
-                    extraActions={
-                      clientInput.trim() && !clientExactMatch
-                        ? [
-                            {
-                              key: 'add-client',
-                              label: 'Add New Client',
-                              onSelect: () => setAddClientOpen(true),
-                            },
-                          ]
-                        : []
-                    }
-                  />
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="consent-is-code">IS Code</Label>
+                    <FilterCombobox
+                      value={isCodeInput}
+                      onValueChange={(val) => {
+                        setIsCodeInput(val)
+                        if (!val.trim()) {
+                          setIsCodeId('')
+                          if (!isEdit) setAddedParameters([])
+                          return
+                        }
+                        const match = isCodeOptions.find((opt) => opt.label === val)
+                        if (match) handleIsCodeSelect(match.id)
+                      }}
+                      options={filteredIsCodes}
+                      onSelectOption={(opt) => {
+                        setIsCodeInput(opt.label)
+                        handleIsCodeSelect(opt.id)
+                      }}
+                      open={isCodeDropdownOpen}
+                      onOpenChange={setIsCodeDropdownOpen}
+                      placeholder="Type to search IS code"
+                      listId="consent-letter-is-code-combobox"
+                      disabled={!formData?.isCodes.length && !isCodeInput.trim()}
+                      extraActions={
+                        isCodeInput.trim() && !isCodeExactMatch
+                          ? [
+                              {
+                                key: 'add-is-code',
+                                label: 'Add New IS Code',
+                                onSelect: () => setAddIsCodeOpen(true),
+                              },
+                            ]
+                          : []
+                      }
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="consent-is-code">IS Code</Label>
-                  <FilterCombobox
-                    value={isCodeInput}
-                    onValueChange={(val) => {
-                      setIsCodeInput(val)
-                      if (!val.trim()) {
-                        setIsCodeId('')
-                        if (!isEdit) setAddedParameters([])
-                        return
-                      }
-                      const match = isCodeOptions.find((opt) => opt.label === val)
-                      if (match) handleIsCodeSelect(match.id)
-                    }}
-                    options={filteredIsCodes}
-                    onSelectOption={(opt) => {
-                      setIsCodeInput(opt.label)
-                      handleIsCodeSelect(opt.id)
-                    }}
-                    open={isCodeDropdownOpen}
-                    onOpenChange={setIsCodeDropdownOpen}
-                    placeholder="Type to search IS code"
-                    listId="consent-letter-is-code-combobox"
-                    disabled={!formData?.isCodes.length && !isCodeInput.trim()}
-                    extraActions={
-                      isCodeInput.trim() && !isCodeExactMatch
-                        ? [
-                            {
-                              key: 'add-is-code',
-                              label: 'Add New IS Code',
-                              onSelect: () => setAddIsCodeOpen(true),
-                            },
-                          ]
-                        : []
-                    }
-                  />
-                </div>
-              </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Test Parameters</Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className={cn(limsOutlineBtnClass, 'gap-1.5')}
+                      disabled={!isCodeId}
+                      onClick={() => setPickerOpen(true)}
+                    >
+                      <Plus size={14} />
+                      Add Test Parameter
+                    </Button>
+                  </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label>Test Parameters</Label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="gap-1.5"
-                    disabled={!isCodeId}
-                    onClick={() => setPickerOpen(true)}
-                  >
-                    <Plus size={14} />
-                    Add Test Parameter
-                  </Button>
-                </div>
-
-                {addedParameters.length === 0 ? (
-                  <p className="text-sm text-muted-foreground rounded-md border border-dashed border-border/80 px-3 py-4 text-center">
-                    No test parameters added. Select IS code and click Add Test Parameter.
-                  </p>
-                ) : (
-                  <ul className="rounded-md border border-border/80 divide-y max-h-48 overflow-y-auto">
-                    {addedParameters.map((p) => (
-                      <li
-                        key={p.key}
-                        className="flex items-start justify-between gap-2 px-3 py-2 text-sm"
-                      >
-                        <span>
-                          <span className="font-medium">{p.testName}</span>
-                          {p.clauseNo ? (
-                            <span className="block text-xs text-muted-foreground">Clause: {p.clauseNo}</span>
-                          ) : null}
-                        </span>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 shrink-0"
-                          aria-label={`Remove ${p.testName}`}
-                          onClick={() => removeParameter(p.key)}
+                  {addedParameters.length === 0 ? (
+                    <p className="rounded-none border border-dashed border-stone-400 bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
+                      No test parameters added. Select IS code and click Add Test Parameter.
+                    </p>
+                  ) : (
+                    <ul className="max-h-48 divide-y divide-stone-200 overflow-y-auto rounded-none border border-stone-500 bg-white">
+                      {addedParameters.map((p) => (
+                        <li
+                          key={p.key}
+                          className="flex items-start justify-between gap-2 px-3 py-2 text-sm"
                         >
-                          <X size={14} />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                          <span>
+                            <span className="font-medium text-stone-800">{p.testName}</span>
+                            {p.clauseNo ? (
+                              <span className="block text-xs text-stone-500">Clause: {p.clauseNo}</span>
+                            ) : null}
+                          </span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 shrink-0 rounded-none text-red-700 hover:bg-red-50 hover:text-red-800"
+                            aria-label={`Remove ${p.testName}`}
+                            onClick={() => removeParameter(p.key)}
+                          >
+                            <X size={14} />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {error ? (
+              <p className="mt-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:justify-end sm:px-6">
+            <Button
+              type="button"
+              variant="outline"
+              className={limsOutlineBtnClass}
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSave()} disabled={loading || saving || !canSave}>
-              {saving ? 'Saving…' : 'Save'}
+            <Button
+              type="button"
+              className={limsPrimaryBtnClass}
+              onClick={() => void handleSave()}
+              disabled={loading || saving || !canSave}
+            >
+              {saving ? 'Saving…' : 'Save & Close'}
             </Button>
           </DialogFooter>
         </DialogContent>

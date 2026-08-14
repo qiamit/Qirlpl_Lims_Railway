@@ -1,9 +1,91 @@
 import { Copy, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { EquipmentForCalibrationRow, EquipmentScheduleSection } from './types'
-import { formatDate } from '@/lib/utils'
+import {
+  limsOutlineBtnClass,
+  limsPanelClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
+import type {
+  EquipmentForCalibrationRow,
+  EquipmentMasterVariant,
+  EquipmentScheduleSection,
+} from './types'
+
+function scheduleTone(nextDue: string | null | undefined): 'ok' | 'soon' | 'overdue' | 'na' {
+  if (!nextDue) return 'na'
+  const due = new Date(nextDue)
+  if (Number.isNaN(due.getTime())) return 'na'
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  due.setHours(0, 0, 0, 0)
+  const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays < 0) return 'overdue'
+  if (diffDays <= 30) return 'soon'
+  return 'ok'
+}
+
+const scheduleStatusUi = {
+  overdue: {
+    text: 'Overdue',
+    className: 'border-red-700 bg-red-700 text-white hover:bg-red-800',
+  },
+  soon: {
+    text: 'Due Soon',
+    className: 'border-amber-600 bg-amber-500 text-stone-950 hover:bg-amber-400',
+  },
+  ok: {
+    text: 'Active',
+    className: 'border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700',
+  },
+  na: {
+    text: 'Not Set',
+    className: 'border-stone-400 bg-stone-100 text-stone-600 hover:bg-stone-200',
+  },
+} as const
+
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/80 hover:bg-[#fde68a]/80'
+
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 accent-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
+
+function ScheduleOpenButton({
+  label,
+  section,
+  nextDue,
+  row,
+  onEdit,
+}: {
+  label: string
+  section: EquipmentScheduleSection
+  nextDue: string | null | undefined
+  row: EquipmentForCalibrationRow
+  onEdit: (row: EquipmentForCalibrationRow, section?: EquipmentScheduleSection) => void
+}) {
+  const tone = scheduleTone(nextDue)
+  const ui = scheduleStatusUi[tone]
+  const dueLabel = nextDue ? formatDate(nextDue) : '—'
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      className={cn(
+        'h-7 w-full max-w-[8.5rem] rounded-none border px-2 text-[11px] font-bold uppercase tracking-wide shadow-none',
+        ui.className,
+      )}
+      onClick={() => onEdit(row, section)}
+      aria-label={`Open ${label} details for ${row.equipment_name || row.asset_code || 'equipment'}. Status: ${ui.text}`}
+      title={`${label}: ${ui.text}${nextDue ? ` · Due ${dueLabel}` : ''}`}
+    >
+      {ui.text}
+    </Button>
+  )
+}
 
 export function EquipmentForCalibrationTable({
   rows,
@@ -14,7 +96,9 @@ export function EquipmentForCalibrationTable({
   onToggle,
   onToggleAll,
   onEdit,
+  onViewDetails,
   onCopy,
+  variant = 'master',
 }: {
   rows: EquipmentForCalibrationRow[]
   loading: boolean
@@ -24,270 +108,181 @@ export function EquipmentForCalibrationTable({
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
   onEdit: (row: EquipmentForCalibrationRow, section?: EquipmentScheduleSection) => void
+  onViewDetails: (row: EquipmentForCalibrationRow) => void
   onCopy: (row: EquipmentForCalibrationRow) => void
+  variant?: EquipmentMasterVariant
 }) {
+  const isIqc = variant === 'iqc'
+  const showIntermediate = !isIqc
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
+  const colSpan = showIntermediate ? 7 : 6
 
-  const isDueSoon = (dateStr: string | null | undefined) => {
-    if (!dateStr) return false
-    const due = new Date(dateStr)
-    if (Number.isNaN(due.getTime())) return false
-    const now = new Date()
-    const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    return diffDays <= 30 && diffDays >= 0
-  }
-
-  const isOverdue = (dateStr: string | null | undefined) => {
-    if (!dateStr) return false
-    const due = new Date(dateStr)
-    if (Number.isNaN(due.getTime())) return false
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    due.setHours(0, 0, 0, 0)
-    return due.getTime() < now.getTime()
-  }
-
-  const formatDateToDDMMYYYY = (dateStr: string | null | undefined) => formatDate(dateStr)
-
-  const renderScheduleRow = (
-    label: string,
-    frequency: string | null | undefined,
-    lastDate: string | null | undefined,
-    nextDue: string | null | undefined,
-    sectionKey: EquipmentScheduleSection,
-    row: EquipmentForCalibrationRow,
-  ) => {
-    const freqText = frequency || 'N/A'
-    const lastText = formatDateToDDMMYYYY(lastDate)
-    const dueText = formatDateToDDMMYYYY(nextDue)
-
-    let badge
-    if (nextDue) {
-      const overdue = isOverdue(nextDue)
-      const dueSoon = isDueSoon(nextDue)
-      let statusText = 'Active'
-      let statusClass =
-        'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
-      if (overdue) {
-        statusText = 'Overdue'
-        statusClass =
-          'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30'
-      } else if (dueSoon) {
-        statusText = 'Due Soon'
-        statusClass =
-          'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
-      }
-      badge = (
-        <button
-          type="button"
-          onClick={() => onEdit(row, sectionKey)}
-          className={`text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded border transition-colors cursor-pointer ${statusClass}`}
-        >
-          {statusText}
-        </button>
-      )
-    } else {
-      badge = (
-        <button
-          type="button"
-          onClick={() => onEdit(row, sectionKey)}
-          className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer"
-        >
-          N/A
-        </button>
-      )
-    }
-
-    return (
-      <tr className="border-b border-border/30 last:border-b-0 hover:bg-muted/30 text-[11px]">
-        <td className="py-2 font-semibold text-foreground text-left align-middle">{label}</td>
-        <td className="py-2 text-muted-foreground text-center align-middle">{freqText}</td>
-        <td className="py-2 font-mono text-muted-foreground/90 text-center align-middle">{lastText}</td>
-        <td className="py-2 font-mono text-foreground font-semibold text-center align-middle">{dueText}</td>
-        <td className="py-2 text-right align-middle">{badge}</td>
-      </tr>
-    )
-  }
+  const emptyPrimary = searchActive
+    ? isIqc
+      ? 'No IQC masters match your search.'
+      : 'No equipment matches your search.'
+    : 'No records added yet.'
+  const emptySecondary = isIqc
+    ? 'Use “Add New” to register standards used to calibrate other equipment.'
+    : 'Use “Add New” to register master equipment for calibration.'
 
   return (
-    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
-      {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
+    <div className={cn(limsPanelClass, 'bg-[#f7f3eb]')}>
+      {error ? <p className="px-4 pt-4 text-sm text-destructive">{error}</p> : null}
       {loading ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</p>
-      ) : rows.length === 0 ? (
-        <div className="m-3 rounded-lg border border-dashed border-border p-4 text-center sm:m-4 sm:p-6">
-          <p className="text-sm text-muted-foreground">
-            {searchActive
-              ? 'No equipment matches your search.'
-              : 'No records added yet.'}
-          </p>
-          {!searchActive ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Standards used to calibrate other equipment go here.
-            </p>
-          ) : null}
-        </div>
+        <p className="px-4 py-6 text-center text-sm text-stone-600">Loading…</p>
       ) : (
         <div className="[&>div]:overflow-x-auto">
-          <Table className="w-full table-fixed min-w-[1380px]">
+          <Table className={cn(limsTableClass, 'table-fixed min-w-[960px]')}>
             <colgroup>
               <col className="w-[44px]" />
+              <col className="w-[24%]" />
+              <col className="w-[14%]" />
               <col className="w-[15%]" />
-              <col className="w-[13%]" />
-              <col className="w-[16%]" />
-              <col className="w-[18%]" />
-              <col className="w-[30%]" />
-              <col className="w-[80px]" />
+              {showIntermediate ? <col className="w-[17%]" /> : null}
+              <col className="w-[15%]" />
+              <col className="w-[90px]" />
             </colgroup>
             <TableHeader>
-              <TableRow className="bg-stone-800 hover:bg-stone-800">
-                <TableHead className="px-2 text-center text-xs">
+              <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+                <TableHead className={cn(limsTableHeadClass, 'px-2')}>
                   <input
                     type="checkbox"
+                    className={checkboxClass}
                     aria-label="Select all"
                     checked={allChecked}
+                    disabled={rows.length === 0}
                     ref={(el) => {
                       if (el) el.indeterminate = !allChecked && someChecked
                     }}
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Equipment Identity</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Make &amp; Serial</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Technical Details</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Location &amp; Status</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Calibration &amp; Maintenance Status</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Action</TableHead>
+                <TableHead className={cn(limsTableHeadClass, 'text-left')}>
+                  Equipment Identity
+                </TableHead>
+                <TableHead className={limsTableHeadClass}>Range</TableHead>
+                <TableHead className={limsTableHeadClass}>Calibration</TableHead>
+                {showIntermediate ? (
+                  <TableHead className={limsTableHeadClass}>Intermediate Check</TableHead>
+                ) : null}
+                <TableHead className={limsTableHeadClass}>Maintenance</TableHead>
+                <TableHead className={limsTableHeadClass}>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => {
-                const status = r.equipment_status ?? 'Active'
-                let statusBadgeVariant: 'default' | 'secondary' | 'destructive' = 'default'
-                if (status === 'In Repair') statusBadgeVariant = 'destructive'
-                else if (status === 'Idle') statusBadgeVariant = 'secondary'
-
-                return (
-                  <TableRow key={r.id} data-state={selectedIds.has(r.id) ? 'selected' : undefined}>
-                    <TableCell className="align-middle px-2 text-center">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${r.equipment_name}`}
-                        checked={selectedIds.has(r.id)}
-                        onChange={() => onToggle(r.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="align-middle text-left">
-                      <div className="line-clamp-2 break-words font-medium leading-snug">
-                        {r.equipment_name || '-'}
-                      </div>
-                      <div className="text-xs text-muted-foreground font-mono">{r.asset_code || '-'}</div>
-                      {r.calibration_certificate_number ? (
-                        <div
-                          className="mt-0.5 truncate text-[11px] text-muted-foreground/80"
-                          title={r.calibration_certificate_number}
+              {rows.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell
+                    colSpan={colSpan}
+                    className="border border-[#e7e0d4] bg-[#fffcf7] px-4 py-10 text-center"
+                  >
+                    <p className="text-sm text-stone-600">{emptyPrimary}</p>
+                    {!searchActive ? (
+                      <p className="mt-1 text-xs text-stone-500">{emptySecondary}</p>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r, index) => {
+                  const selected = selectedIds.has(r.id)
+                  const rowTone = selected
+                    ? rowSelectedClass
+                    : index % 2 === 0
+                      ? rowEvenClass
+                      : rowOddClass
+                  return (
+                    <TableRow
+                      key={r.id}
+                      data-state={selected ? 'selected' : undefined}
+                      className={cn('border-[#e7e0d4]', rowTone)}
+                    >
+                      <TableCell className="align-middle px-2 text-center">
+                        <input
+                          type="checkbox"
+                          className={checkboxClass}
+                          aria-label={`Select ${r.equipment_name}`}
+                          checked={selected}
+                          onChange={() => onToggle(r.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="align-middle text-left">
+                        <button
+                          type="button"
+                          className="line-clamp-2 break-words text-left font-medium leading-snug text-amber-800 underline-offset-2 hover:text-amber-950 hover:underline"
+                          onClick={() => onViewDetails(r)}
+                          aria-label={`View details for ${r.equipment_name || r.asset_code || 'equipment'}`}
                         >
-                          Cert: {r.calibration_certificate_number}
+                          {r.equipment_name || '-'}
+                        </button>
+                      </TableCell>
+                      <TableCell className="align-middle text-center text-sm font-medium text-stone-800">
+                        {r.range_capacity?.trim() || '—'}
+                      </TableCell>
+                      <TableCell className="align-middle text-center">
+                        <div className="flex justify-center">
+                          <ScheduleOpenButton
+                            label="Calibration"
+                            section="calibration"
+                            nextDue={r.next_calibration_due}
+                            row={r}
+                            onEdit={onEdit}
+                          />
                         </div>
+                      </TableCell>
+                      {showIntermediate ? (
+                        <TableCell className="align-middle text-center">
+                          <div className="flex justify-center">
+                            <ScheduleOpenButton
+                              label="Intermediate Check"
+                              section="intermediate"
+                              nextDue={r.next_intermediate_check_date}
+                              row={r}
+                              onEdit={onEdit}
+                            />
+                          </div>
+                        </TableCell>
                       ) : null}
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="text-xs font-medium leading-snug">{r.manufacturer || '-'}</div>
-                      <div className="text-xs text-muted-foreground">S/N: {r.serial_number || '-'}</div>
-                      <div className="text-[11px] text-muted-foreground/80">Model: {r.model_number || '-'}</div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="text-xs leading-snug">
-                        <span className="text-muted-foreground">Range: </span>
-                        <span className="font-medium">{r.range_capacity || '-'}</span>
-                      </div>
-                      <div className="text-xs leading-snug mt-0.5">
-                        <span className="text-muted-foreground">Least Count: </span>
-                        <span className="font-medium">{r.resolution_least_count || '-'}</span>
-                      </div>
-                      <div className="text-[11px] leading-snug mt-0.5 text-muted-foreground/90 line-clamp-2">
-                        <span className="text-muted-foreground">Acceptance: </span>
-                        <span>{r.accuracy_acceptance_criteria || '-'}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center space-y-1">
-                      <div className="text-xs font-medium">{r.current_location || '-'}</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        Done By: {r.maintenance_done_by || '-'}
-                      </div>
-                      <div className="flex justify-center pt-0.5">
-                        <Badge variant={statusBadgeVariant} className="text-[10px] py-0 px-2 h-5">
-                          {status}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-middle px-3 py-2 text-center">
-                      <div className="min-w-[340px] text-xs">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="border-b border-border/60 text-[10px] uppercase font-bold text-muted-foreground">
-                              <th className="py-1 text-left font-semibold">Type</th>
-                              <th className="py-1 text-center font-semibold">Frequency</th>
-                              <th className="py-1 text-center font-semibold">Last</th>
-                              <th className="py-1 text-center font-semibold">Due</th>
-                              <th className="py-1 text-right font-semibold">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {renderScheduleRow(
-                              'Calibration',
-                              r.calibration_frequency,
-                              r.last_calibration_date,
-                              r.next_calibration_due,
-                              'calibration',
-                              r,
-                            )}
-                            {renderScheduleRow(
-                              'Intermediate',
-                              r.intermediate_check_frequency,
-                              r.last_intermediate_check_date,
-                              r.next_intermediate_check_date,
-                              'intermediate',
-                              r,
-                            )}
-                            {renderScheduleRow(
-                              'Maintenance',
-                              r.maintenance_schedule_frequency,
-                              r.last_maintenance_date,
-                              r.next_maintenance_date,
-                              'maintenance',
-                              r,
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`Edit ${r.asset_code}`}
-                          onClick={() => onEdit(r)}
-                        >
-                          <Pencil size={16} />
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`Copy ${r.asset_code}`}
-                          onClick={() => onCopy(r)}
-                        >
-                          <Copy size={16} />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
+                      <TableCell className="align-middle text-center">
+                        <div className="flex justify-center">
+                          <ScheduleOpenButton
+                            label="Maintenance"
+                            section="maintenance"
+                            nextDue={r.next_maintenance_date}
+                            row={r}
+                            onEdit={onEdit}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-middle text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className={cn('h-8 w-8', limsOutlineBtnClass)}
+                            aria-label={`Edit ${r.asset_code}`}
+                            onClick={() => onEdit(r)}
+                          >
+                            <Pencil size={16} />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className={cn('h-8 w-8', limsOutlineBtnClass)}
+                            aria-label={`Copy ${r.asset_code}`}
+                            onClick={() => onCopy(r)}
+                          >
+                            <Copy size={16} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
             </TableBody>
           </Table>
         </div>

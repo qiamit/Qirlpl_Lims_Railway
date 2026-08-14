@@ -1,6 +1,9 @@
 export type TypeAMeasurement = {
   key: string
+  /** Editable reading label (e.g. Reading 01). */
+  label: string
   value: string
+  unit: string
 }
 
 export type UncertaintyContributor = {
@@ -39,11 +42,17 @@ export function extractNumberPart(value: string): string {
   return value.replace(/[^0-9.]/g, '')
 }
 
-export function newTypeAMeasurement(): TypeAMeasurement {
+export function newTypeAMeasurement(label = '', unit = ''): TypeAMeasurement {
   return {
     key: `mv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    label,
     value: '',
+    unit,
   }
+}
+
+export function defaultTypeAReadingLabel(index: number): string {
+  return `Reading ${String(index + 1).padStart(2, '0')}`
 }
 
 export function newUncertaintyContributor(defaultUnit = ''): UncertaintyContributor {
@@ -194,15 +203,16 @@ export function coverageFactorForConfidenceLevel(level: string): string {
   return coverageFactorFromConfidencePercent(percent)
 }
 
-/** Map any stored percentage / legacy value onto the discrete lab options. */
+/** Keep known lab presets or any valid 0–100 percentage; default 95. */
 export function normalizeConfidenceLevel(level: string | null | undefined): string {
   const raw = level?.trim() || '95'
   if (CONFIDENCE_LEVEL_OPTIONS.some((option) => option.value === raw)) return raw
-  const percent = Number.parseFloat(raw)
-  if (!Number.isFinite(percent)) return '95'
-  if (percent <= 80) return '68'
-  if (percent <= 97) return '95'
-  return '99.7'
+  const cleaned = raw.replace(/[^0-9.]/g, '')
+  const percent = Number.parseFloat(cleaned)
+  if (!Number.isFinite(percent) || percent <= 0 || percent > 100) return '95'
+  // Prefer original cleaned string when it matches the parsed number (keeps "99.7")
+  if (cleaned && Number.parseFloat(cleaned) === percent) return cleaned
+  return String(percent)
 }
 
 export function confidenceLevelForCoverageFactor(factor: string): string {
@@ -267,11 +277,19 @@ function normalizeContributor(raw: unknown, defaultUnit = ''): UncertaintyContri
 
 function normalizeMeasurement(raw: unknown): TypeAMeasurement | null {
   if (!raw || typeof raw !== 'object') return null
-  const row = raw as Partial<TypeAMeasurement>
+  const row = raw as Partial<TypeAMeasurement> & { reading?: string }
   if (!row.key || typeof row.key !== 'string') return null
+  const labelRaw =
+    typeof row.label === 'string'
+      ? row.label
+      : typeof row.reading === 'string'
+        ? row.reading
+        : ''
   return {
     key: row.key,
+    label: labelRaw.trim(),
     value: typeof row.value === 'string' ? row.value : '',
+    unit: typeof row.unit === 'string' ? row.unit.trim() : '',
   }
 }
 

@@ -20,8 +20,8 @@ import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
 
 export function EquipmentForCalibrationHeaderBar({
   title = 'Master Equipments',
-  searchPlaceholder = 'Search master equipments…',
-  searchAriaLabel = 'Search master equipments',
+  searchPlaceholder = 'Search Master Equipments',
+  searchAriaLabel = 'Search Master Equipments',
   assistantPage = 'equipment-for-calibration',
   search,
   onSearchChange,

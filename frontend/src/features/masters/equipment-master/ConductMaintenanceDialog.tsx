@@ -237,9 +237,6 @@ export function ConductMaintenanceDialog({
           <div className="flex flex-wrap items-start justify-between gap-3 rounded-none border-2 border-stone-400 bg-stone-50 px-3 py-2">
             <div>
               <p className="text-sm font-semibold text-stone-800">{equipmentName || 'Equipment'}</p>
-              {assetCode ? (
-                <p className="font-mono text-xs text-stone-500">Asset Code: {assetCode}</p>
-              ) : null}
             </div>
             <ConductMaintenanceAssistant
               equipment={{

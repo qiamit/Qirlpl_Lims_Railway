@@ -11,14 +11,17 @@ import { type ReportScopeKind } from './reportScope'
 import { PART_B_ROW_LABELS, partBValuesList } from './testReportPartB'
 import {
   DEFAULT_TEST_REPORT_PRINT_SETTINGS,
+  formatSignatureDesignationLine,
   signaturesApplyAfterPart,
-  visibleTestReportSignatures,
+  signaturesForPart,
   type TestReportPrintSettings,
   type TestReportSignatureAfterPart,
 } from '@/features/settings/lab-settings/printSettingsTypes'
 import { buildPrintStylesCss, buildWatermarkStyleCss } from './buildPrintStylesCss'
 import {
   DEFAULT_PART_C_REPORT_COLUMNS,
+  partCColumnWidthPercents,
+  partCColumnsForScope,
   type PartCReportColumnKey,
   type PartCReportColumnVisibility,
   visiblePartCReportColumns,
@@ -42,28 +45,34 @@ function testNameCell(row: ReportResultRow): string {
   return `<span class="name">${escapeHtml(row.testName)}</span>${methodLine}`
 }
 
-function remarkClass(remark: string): string {
-  if (remark === 'Confirm') return 'remark-confirm'
-  if (remark === 'Not Confirm') return 'remark-fail'
-  if (remark === 'Not Applicable' || remark === '—' || remark === '-') return 'remark-na'
-  return ''
+function partAKv(label: string, value: string | null | undefined): string {
+  return `<td class="part-a-k">${escapeHtml(label)}</td><td class="part-a-c">-</td><td class="part-a-v">${escapeHtml(displayPart(value))}</td>`
 }
 
-function partAFullLine(label: string, value: string | null | undefined): string {
-  return `<div class="part-a-row-full"><span class="muted">${escapeHtml(label)}</span> - <strong>${escapeHtml(displayPart(value))}</strong></div>`
+function partAFullRow(label: string, value: string | null | undefined): string {
+  return `<tr class="part-a-full"><td class="part-a-k">${escapeHtml(label)}</td><td class="part-a-c">-</td><td class="part-a-v" colspan="4">${escapeHtml(displayPart(value)).replace(/\n/g, '<br/>')}</td></tr>`
 }
 
-function partARowCells(
-  cols: Array<{ label: string; value: string | null | undefined }>,
-  colClass: 'part-a-row-cols-2' | 'part-a-row-cols-3',
+function partAPairRow(
+  left: { label: string; value: string | null | undefined },
+  right: { label: string; value: string | null | undefined },
 ): string {
-  const cells = cols
-    .map(
-      (c) =>
-        `<div class="part-a-cell"><span class="muted">${escapeHtml(c.label)}</span> - <strong>${escapeHtml(displayPart(c.value))}</strong></div>`,
-    )
-    .join('')
-  return `<div class="part-a-row ${colClass}">${cells}</div>`
+  return `<tr>${partAKv(left.label, left.value)}${partAKv(right.label, right.value)}</tr>`
+}
+
+function wrapPartATable(rowsHtml: string): string {
+  return `<table class="part-a-table">
+  <colgroup>
+    <col class="part-a-col-k" /><col class="part-a-col-c" /><col class="part-a-col-v" />
+    <col class="part-a-col-k" /><col class="part-a-col-c" /><col class="part-a-col-v" />
+  </colgroup>
+  <thead>
+    <tr><th colspan="6">Part A. Particulars of Sample Submitted</th></tr>
+  </thead>
+  <tbody>
+    ${rowsHtml}
+  </tbody>
+</table>`
 }
 
 function buildPartAPrintHtml(
@@ -78,104 +87,105 @@ function buildPartAPrintHtml(
     ulrNumber?: string
   },
 ): string {
-  const heading = `<h2 class="part-heading">Part A — Particulars of Sample Submitted</h2>`
-
   if (!cover) {
-    const body = `<div class="part-frame"><div class="part-a-grid">
-      ${partAFullLine('SRF', fallback.srf)}
-      ${partAFullLine('Client', fallback.client)}
-      ${partAFullLine('Report as per IS', fallback.isStandard)}
-      ${partAFullLine('Date of receiving', fallback.dateReceiving)}
-      ${partAFullLine('Report Number', fallback.reportNumber)}
+    return `<section class="report-part part-a">${wrapPartATable(`
+      ${partAPairRow(
+        { label: 'Report Type', value: null },
+        { label: 'Date of Reporting', value: null },
+      )}
       ${
-        fallback.scope === 'nabl' && fallback.ulrNumber?.trim()
-          ? partAFullLine('ULR Number', fallback.ulrNumber)
-          : ''
+        fallback.scope === 'nabl'
+          ? partAPairRow(
+              { label: 'Report Number', value: fallback.reportNumber },
+              { label: 'ULR Number', value: fallback.ulrNumber },
+            )
+          : partAFullRow('Report Number', fallback.reportNumber)
       }
-    </div></div>`
-    return `<section class="report-part part-a">${heading}${body}</section>`
+      ${partAFullRow('Customer Name', fallback.client)}
+      ${partAFullRow('Customer Address', null)}
+      ${partAFullRow('Product IS Code Title', fallback.isStandard)}
+      ${partAFullRow('Sample Description', null)}
+      ${partAFullRow('Declared Values', null)}
+      ${partAFullRow('Batch Number', null)}
+      ${partAFullRow('Date of Manufacturing', null)}
+      ${partAFullRow('Sample Code', fallback.srf)}
+      ${partAFullRow('QR Code / Bar Code', null)}
+      ${partAPairRow(
+        { label: 'BIS Seal', value: null },
+        { label: "IO's Signature", value: null },
+      )}
+      ${partAFullRow('Date of Sample Receipt', fallback.dateReceiving)}
+      ${partAFullRow('Sample Quantity', null)}
+      ${partAFullRow('Nature of Sample', null)}
+      ${partAFullRow('Section Code', null)}
+      ${partAFullRow('Section Report No', null)}
+      ${partAFullRow('Date of Test Started', null)}
+      ${partAFullRow('Date of Test Completed', null)}
+      ${partAFullRow('Party Reference No', null)}
+      ${partAFullRow('Reference Report No', null)}
+      ${partAFullRow('Any Other Information', null)}
+    `)}</section>`
   }
 
-  const idCols =
-    fallback.scope === 'nabl'
-      ? [
-          { label: 'Date of Reporting', value: cover.dateOfReporting },
-          { label: 'Report Number', value: fallback.reportNumber || null },
-          { label: 'ULR Number', value: fallback.ulrNumber?.trim() ? fallback.ulrNumber : null },
-        ]
-      : [
-          { label: 'Date of Reporting', value: cover.dateOfReporting },
-          { label: 'Report Number', value: fallback.reportNumber || null },
-        ]
+  const ulrValue =
+    fallback.scope === 'nabl' && fallback.ulrNumber?.trim() ? fallback.ulrNumber : null
 
-  const body = `<div class="part-frame"><div class="part-a-grid">
-    ${partAFullLine('Customer Details', cover.customerDetails)}
-    ${partAFullLine('IS Details', cover.isDetails)}
-    ${partARowCells(idCols, idCols.length === 3 ? 'part-a-row-cols-3' : 'part-a-row-cols-2')}
-    ${partARowCells(
-      [
-        { label: 'Sample Code', value: cover.sampleCode },
-        { label: 'QR Code / Bar Code', value: cover.sampleQrCode },
-        { label: 'Nature of Sample', value: cover.natureOfSample },
-      ],
-      'part-a-row-cols-3',
+  return `<section class="report-part part-a">${wrapPartATable(`
+    ${partAPairRow(
+      { label: 'Report Type', value: cover.reportType },
+      { label: 'Date of Reporting', value: cover.dateOfReporting },
     )}
-    ${partARowCells(
-      [
-        { label: 'Batch Number', value: cover.batchNumber },
-        { label: 'Date of Manufacturing', value: cover.dateOfManufacturing },
-        { label: 'Party Reference No', value: cover.partyReferenceNo },
-      ],
-      'part-a-row-cols-3',
+    ${
+      fallback.scope === 'nabl'
+        ? partAPairRow(
+            { label: 'Report Number', value: fallback.reportNumber || null },
+            { label: 'ULR Number', value: ulrValue },
+          )
+        : partAFullRow('Report Number', fallback.reportNumber || null)
+    }
+    ${partAFullRow('Customer Name', cover.customerName ?? fallback.client)}
+    ${partAFullRow('Customer Address', cover.customerAddress)}
+    ${partAFullRow('Product IS Code Title', cover.productTitle ?? cover.isDetails)}
+    ${partAFullRow('Sample Description', cover.sampleDescription)}
+    ${partAFullRow('Declared Values', cover.declaredValue)}
+    ${partAFullRow('Batch Number', cover.batchNumber)}
+    ${partAFullRow('Date of Manufacturing', cover.dateOfManufacturing)}
+    ${partAFullRow('Sample Code', cover.sampleCode)}
+    ${partAFullRow('QR Code / Bar Code', cover.sampleQrCode)}
+    ${partAPairRow(
+      { label: 'BIS Seal', value: cover.bisSeal },
+      { label: "IO's Signature", value: cover.ioSignature },
     )}
-    ${partARowCells(
-      [
-        { label: 'Sample Quantity', value: cover.sampleQuantity },
-        { label: 'BIS Seal', value: cover.bisSeal },
-        { label: "IO's Signature", value: cover.ioSignature },
-      ],
-      'part-a-row-cols-3',
-    )}
-    ${partARowCells(
-      [
-        { label: 'Section Code', value: cover.sectionCodes },
-        { label: 'Section Report No', value: cover.sectionReportNo },
-        { label: 'Report Type', value: cover.reportType },
-      ],
-      'part-a-row-cols-3',
-    )}
-    ${partARowCells(
-      [
-        { label: 'Date of Sample Receipt', value: cover.dateOfSampleReceipt },
-        { label: 'Date of Testing Started', value: cover.dateOfTestingStarted },
-        { label: 'Date of Testing Completed', value: cover.dateOfTestingCompleted },
-      ],
-      'part-a-row-cols-3',
-    )}
-    ${partARowCells(
-      [
-        { label: 'Reference Report No', value: cover.referenceReportNo },
-        { label: 'Any Other Information', value: cover.anyOtherInformation },
-      ],
-      'part-a-row-cols-2',
-    )}
-    ${partAFullLine('Sample Description', cover.sampleDescription)}
-    ${partAFullLine('Declared Value', cover.declaredValue)}
-  </div></div>`
-
-  return `<section class="report-part part-a">${heading}${body}</section>`
+    ${partAFullRow('Date of Sample Receipt', cover.dateOfSampleReceipt)}
+    ${partAFullRow('Sample Quantity', cover.sampleQuantity)}
+    ${partAFullRow('Nature of Sample', cover.natureOfSample)}
+    ${partAFullRow('Section Code', cover.sectionCodes)}
+    ${partAFullRow('Section Report No', cover.sectionReportNo)}
+    ${partAFullRow('Date of Test Started', cover.dateOfTestingStarted)}
+    ${partAFullRow('Date of Test Completed', cover.dateOfTestingCompleted)}
+    ${partAFullRow('Party Reference No', cover.partyReferenceNo)}
+    ${partAFullRow('Reference Report No', cover.referenceReportNo)}
+    ${partAFullRow('Any Other Information', cover.anyOtherInformation)}
+  `)}</section>`
 }
 
 function buildPartBPrintHtml(cover: TestReportCoverDetails): string {
   const values = partBValuesList(cover.partB)
   const rows = PART_B_ROW_LABELS.map(
     (label, i) =>
-      `<div class="part-b-row"><div class="part-b-num">${i + 1}.</div><div class="part-b-desc">${escapeHtml(label)}</div><div class="part-b-value">${escapeHtml(values[i] ?? '—')}</div></div>`,
+      `<tr><td class="part-b-k">${i + 1}. ${escapeHtml(label)}</td><td class="part-b-c">:</td><td class="part-b-v">${escapeHtml(values[i] ?? '—')}</td></tr>`,
   ).join('')
-  return `<section class="report-part part-b">
-  <h2 class="part-heading">Part B — Supplementary Information</h2>
-  <div class="part-frame"><div class="part-b-grid">${rows}</div></div>
-</section>`
+  return `<section class="report-part part-b"><table class="part-b-table">
+  <colgroup>
+    <col class="part-b-col-k" /><col class="part-b-col-c" /><col class="part-b-col-v" />
+  </colgroup>
+  <thead>
+    <tr><th colspan="3">Part B. Supplementary Information</th></tr>
+  </thead>
+  <tbody>
+    ${rows}
+  </tbody>
+</table></section>`
 }
 
 function partCDataCell(key: PartCReportColumnKey, row: ReportResultRow): string {
@@ -193,10 +203,28 @@ function partCDataCell(key: PartCReportColumnKey, row: ReportResultRow): string 
     case 'uncertainty':
       return `<td class="c">${escapeHtml(row.uncertainty)}</td>`
     case 'remark':
-      return `<td class="c ${remarkClass(row.remark)}">${escapeHtml(row.remark)}</td>`
+      return `<td class="c">${escapeHtml(row.remark)}</td>`
     default:
       return ''
   }
+}
+
+function partCColgroupHtml(
+  visibleCols: Array<{ key: PartCReportColumnKey }>,
+  columns: PartCReportColumnVisibility,
+): string {
+  const widths = partCColumnWidthPercents(columns)
+  const cols = visibleCols
+    .map((col) => `<col style="width:${widths[col.key]}" />`)
+    .join('')
+  return `<colgroup>${cols}</colgroup>`
+}
+
+function partCHeaderCellHtml(col: { key: PartCReportColumnKey; label: string }): string {
+  if (col.key === 'srNo') return `<th class="part-c-h-sr">Sr<br/>No</th>`
+  if (col.key === 'observedValue') return `<th>Observed<br/>Value</th>`
+  if (col.key === 'specifiedRequirement') return `<th>Specified<br/>Requirements</th>`
+  return `<th>${escapeHtml(col.label)}</th>`
 }
 
 function buildPartCResultsHtml(
@@ -208,13 +236,18 @@ function buildPartCResultsHtml(
   const showSectionRows = options?.showSectionRows !== false
   const visibleCols = visiblePartCReportColumns(columns)
   const colCount = Math.max(visibleCols.length, 1)
-  const headerCells = visibleCols.map((col) => `<th>${escapeHtml(col.label)}</th>`).join('')
+  const colgroup = partCColgroupHtml(visibleCols, columns)
+  const headerCells = visibleCols.map((col) => partCHeaderCellHtml(col)).join('')
 
   const sections = groupReportRowsBySectionCode(rows)
   if (sections.length === 0) {
     return {
       tableHtml: `<table class="part-c-table">
-      <thead><tr>${headerCells}</tr></thead>
+      ${colgroup}
+      <thead>
+        <tr class="part-c-title"><th colspan="${colCount}">Part C. Test Results</th></tr>
+        <tr class="part-c-col-heads">${headerCells}</tr>
+      </thead>
       <tbody><tr><td colspan="${colCount}" class="c">No results for this scope</td></tr></tbody>
     </table>`,
       endNotesBlock: '',
@@ -235,7 +268,11 @@ function buildPartCResultsHtml(
     .join('')
 
   const tableHtml = `<table class="part-c-table">
-    <thead><tr>${headerCells}</tr></thead>
+    ${colgroup}
+    <thead>
+      <tr class="part-c-title"><th colspan="${colCount}">Part C. Test Results</th></tr>
+      <tr class="part-c-col-heads">${headerCells}</tr>
+    </thead>
     <tbody>${rowsHtml}</tbody>
   </table>`
 
@@ -260,51 +297,78 @@ function buildPartCPrintHtml(
     showSectionRows: printSettings?.showPartCSectionRows !== false,
   })
   return `<section class="report-part part-c">
-  <div class="part-frame part-c-frame">
-    <h2 class="part-heading part-c-heading">Part C — Test Results</h2>
-    <div class="part-c-table-area">${tableHtml}</div>
-    ${endNotesBlock}
-  </div>
+  ${tableHtml}
+  ${endNotesBlock}
 </section>`
 }
 
 function buildPartDPrintHtml(notes: string, isLabel: string): string {
   const { line1, line2 } = splitPartDRemarks(notes, isLabel)
   const line1Text = line1 || formatPartDRemarksLine1(isLabel)
-  const line2Html = line2 ? escapeHtml(line2).replace(/\n/g, '<br/>') : ''
-  return `<section class="report-part part-d">
-  <h2 class="part-heading">Part D — Remarks</h2>
-  <div class="part-frame part-d-shell">
-    <div class="part-d-heading-bar">${escapeHtml(PART_D_HEADING)}</div>
-    <p class="part-d-line1">${escapeHtml(line1Text)}</p>
-    ${line2Html ? `<div class="part-d-line2">${line2Html}</div>` : '<div class="part-d-line2">&nbsp;</div>'}
-  </div>
-</section>`
+  const line2Text = line2.trim()
+  const line2Html = line2Text
+    ? escapeHtml(line2Text).replace(/\n/g, '<br/>')
+    : '&nbsp;'
+  return `<section class="report-part part-d"><table class="part-d-table">
+  <thead>
+    <tr><th>${escapeHtml(PART_D_HEADING)}</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="part-d-line">${escapeHtml(line1Text)}</td></tr>
+    <tr><td class="part-d-line">${line2Html}</td></tr>
+  </tbody>
+</table></section>`
 }
 
-function buildSignaturesPrintHtml(printSettings: TestReportPrintSettings): string {
-  const signatures = visibleTestReportSignatures(printSettings)
+function buildSignatureCellHtml(sig: {
+  roleLabel: string
+  name: string
+  designation: string
+  department: string
+}): string {
+  const roleLabel = sig.roleLabel.trim()
+  const name = sig.name.trim() || '—'
+  const designation = formatSignatureDesignationLine(sig)
+  const roleHtml = roleLabel
+    ? `<div class="report-signature-role">${escapeHtml(roleLabel)}</div>`
+    : ''
+  return `<div class="report-signature-cell">
+    ${roleHtml}
+    <div class="report-signature-line" aria-hidden="true"></div>
+    <div class="report-signature-name">${escapeHtml(name)}</div>
+    <div class="report-signature-designation">${escapeHtml(designation)}</div>
+  </div>`
+}
+
+function buildSignaturesPrintHtml(
+  printSettings: TestReportPrintSettings,
+  part: TestReportSignatureAfterPart,
+): string {
+  const signatures = signaturesForPart(printSettings, part)
   if (signatures.length === 0) return ''
 
-  const cells = signatures
-    .map((sig) => {
-      const roleLabel = sig.roleLabel.trim()
-      const name = sig.name.trim() || '—'
-      const designation = sig.designation.trim() || '—'
-      const roleHtml = roleLabel
-        ? `<div class="report-signature-role">${escapeHtml(roleLabel)}</div>`
-        : ''
-      return `<div class="report-signature-cell">
-        ${roleHtml}
-        <div class="report-signature-line" aria-hidden="true"></div>
-        <div class="report-signature-name">${escapeHtml(name)}</div>
-        <div class="report-signature-designation">${escapeHtml(designation)}</div>
-      </div>`
-    })
-    .join('')
+  const count = signatures.length
+  const countClass =
+    count === 1
+      ? 'report-signatures-count-1'
+      : count === 2
+        ? 'report-signatures-count-2'
+        : count === 3
+          ? 'report-signatures-count-3'
+          : count === 4
+            ? 'report-signatures-count-4'
+            : 'report-signatures-count-many'
 
-  return `<section class="report-signatures report-signatures-flow" aria-label="Report signatures">
-    <div class="report-signatures-grid">${cells}</div>
+  let cellsHtml: string
+  if (count === 4) {
+    const [left, c1, c2, right] = signatures
+    cellsHtml = `${buildSignatureCellHtml(left)}<div class="report-signatures-center-pair">${buildSignatureCellHtml(c1)}${buildSignatureCellHtml(c2)}</div>${buildSignatureCellHtml(right)}`
+  } else {
+    cellsHtml = signatures.map((sig) => buildSignatureCellHtml(sig)).join('')
+  }
+
+  return `<section class="report-signatures report-signatures-flow" aria-label="Report signatures after ${part}">
+    <div class="report-signatures-grid ${countClass}">${cellsHtml}</div>
   </section>`
 }
 
@@ -312,10 +376,11 @@ function withSignaturesAfterPart(
   partHtml: string,
   part: TestReportSignatureAfterPart,
   printSettings: TestReportPrintSettings,
-  signatureBlock: string,
 ): string {
-  if (!partHtml.trim() || !signatureBlock) return partHtml
+  if (!partHtml.trim()) return partHtml
   if (!signaturesApplyAfterPart(printSettings, part)) return partHtml
+  const signatureBlock = buildSignaturesPrintHtml(printSettings, part)
+  if (!signatureBlock) return partHtml
   return `${partHtml}\n${signatureBlock}`
 }
 
@@ -359,13 +424,18 @@ export function buildScopedTestReportPrintHtml(opts: {
       ? `<footer class="print-footer">${footerInner}</footer>`
       : ''
 
+  const pageBorderHtml =
+    printSettings.pageBorderType !== 'none'
+      ? `<div class="print-page-border" aria-hidden="true"></div>`
+      : ''
+
   const termsBlock =
     printSettings.showTermsAndConditions && opts.template.termsText.trim()
       ? `<div class="terms"><h3>Terms &amp; Conditions</h3><div class="terms-body">${escapeHtml(opts.template.termsText).replace(/\n/g, '<br/>')}</div></div>`
       : ''
 
   const titleBlock = printSettings.showReportTitle
-    ? `<div class="report-title-block"><h1>Test Report</h1></div>`
+    ? `<div class="report-title-block"><h1>** Test Report **</h1></div>`
     : ''
 
   const isLabel = opts.coverDetails?.isDetails ?? opts.isStandard
@@ -379,39 +449,23 @@ export function buildScopedTestReportPrintHtml(opts: {
     ulrNumber: opts.scope === 'nabl' ? opts.ulrNumber : undefined,
   })
   const partBHtml = opts.coverDetails?.partB ? buildPartBPrintHtml(opts.coverDetails) : ''
-  const partCHtml = buildPartCPrintHtml(opts.rows, printSettings.partCColumns, printSettings)
+  const partCHtml = buildPartCPrintHtml(
+    opts.rows,
+    partCColumnsForScope(printSettings.partCColumns, opts.scope),
+    printSettings,
+  )
   const partDHtml = buildPartDPrintHtml(opts.notes, isLabel)
-  const signatureBlock = buildSignaturesPrintHtml(printSettings)
-  const partAWithSignatures = withSignaturesAfterPart(
-    partAHtml,
-    'part_a',
-    printSettings,
-    signatureBlock,
-  )
-  const partBWithSignatures = withSignaturesAfterPart(
-    partBHtml,
-    'part_b',
-    printSettings,
-    signatureBlock,
-  )
-  const partCWithSignatures = withSignaturesAfterPart(
-    partCHtml,
-    'part_c',
-    printSettings,
-    signatureBlock,
-  )
-  const partDWithSignatures = withSignaturesAfterPart(
-    partDHtml,
-    'part_d',
-    printSettings,
-    signatureBlock,
-  )
+  const partAWithSignatures = withSignaturesAfterPart(partAHtml, 'part_a', printSettings)
+  const partBWithSignatures = withSignaturesAfterPart(partBHtml, 'part_b', printSettings)
+  const partCWithSignatures = withSignaturesAfterPart(partCHtml, 'part_c', printSettings)
+  const partDWithSignatures = withSignaturesAfterPart(partDHtml, 'part_d', printSettings)
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><title></title>
 <style>${printStyles}${watermarkStyle}</style></head><body>
 ${headerHtml}
 ${footerHtml}
+${pageBorderHtml}
 <main class="print-body">
   ${titleBlock}
   ${partAWithSignatures}

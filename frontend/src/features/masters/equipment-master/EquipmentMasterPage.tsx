@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -16,10 +17,13 @@ import {
   calculateNextDueDate,
   type EquipmentStatus,
   sanitizeDateStr,
+  splitValueAndUnit,
+  joinValueAndUnit,
 } from './types'
 import { parseMaintenanceChecklistFromDb } from './maintenanceChecklist'
 import { parseMaintenanceHistoryFromDb } from './maintenanceHistory'
 import { parseIntermediateCheckHistoryFromDb } from './intermediateCheckHistory'
+import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 
 const BUCKET = 'equipment-files'
 
@@ -35,6 +39,7 @@ export default function EquipmentMasterPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [activeFormSection, setActiveFormSection] = useState<'calibration' | 'intermediate' | 'maintenance' | null>(null)
+  const [hideScheduleSections, setHideScheduleSections] = useState(false)
   
   const [showAddClientModal, setShowAddClientModal] = useState(false)
   const [targetClientField, setTargetClientField] = useState<'purchasedFrom' | 'externalCalibrationAgency' | null>(null)
@@ -45,6 +50,7 @@ export default function EquipmentMasterPage() {
     setShowForm(open)
     if (!open) {
       setActiveFormSection(null)
+      setHideScheduleSections(false)
     }
   })
   const [search, setSearch] = useState('')
@@ -60,8 +66,15 @@ export default function EquipmentMasterPage() {
 
   // Dynamic lists
   const [clients, setClients] = useState<Array<{ id: string; company_name: string }>>([])
-  const [employees, setEmployees] = useState<Array<{ id: string; full_name: string }>>([])
-  const [locations, setLocations] = useState<string[]>(['Mechanical', 'Chemical', 'NDT', 'Calibration', 'Electrical'])
+  const [employees, setEmployees] = useState<
+    Array<{
+      id: string
+      full_name: string
+      department_name: string | null
+      designation: string | null
+    }>
+  >([])
+  const [locations, setLocations] = useState<string[]>([])
   const [iqcMasters, setIqcMasters] = useState<any[]>([])
 
   // Master lists for mapping IDs to names in table
@@ -83,14 +96,25 @@ export default function EquipmentMasterPage() {
 
   const [form, setForm] = useState<EquipmentForm>(() => emptyEquipmentForm())
 
-  const canSave = !saveLoading && form.equipmentName.trim().length > 0
+  const canSave =
+    !saveLoading &&
+    form.equipmentName.trim().length > 0 &&
+    form.assetCode.trim().length > 0
 
   // Load dropdown lists
   const loadDropdowns = async () => {
     try {
-      const [clientsRes, employeesRes] = await Promise.all([
+      const [clientsRes, employeesRes, deptLabels] = await Promise.all([
         supabase.from('clients').select('id, company_name').order('company_name'),
-        supabase.from('user_profiles').select('id, full_name').order('full_name')
+        supabase
+          .from('user_profiles')
+          .select('id, full_name, department_name, designation')
+          .order('full_name'),
+        fetchDesignationAndDepartmentLabels().catch(() => ({
+          designations: [] as string[],
+          departments: [] as string[],
+          divisions: [] as string[],
+        })),
       ])
 
       if (clientsRes.error) throw clientsRes.error
@@ -98,6 +122,10 @@ export default function EquipmentMasterPage() {
 
       setClients(clientsRes.data ?? [])
       setEmployees(employeesRes.data ?? [])
+      setLocations((prev) => {
+        const fromMaster = deptLabels.departments.map((d) => d.trim()).filter(Boolean)
+        return Array.from(new Set([...fromMaster, ...prev])).sort((a, b) => a.localeCompare(b))
+      })
     } catch (err) {
       console.error('Failed to load dropdown directories:', err)
     }
@@ -226,13 +254,25 @@ export default function EquipmentMasterPage() {
       setSaveMessage(null)
       setSaveLoading(true)
       try {
-        let code = form.assetCode
-        const eqId = editingId || crypto.randomUUID()
-
-        // If new, generate auto-number code
-        if (!editingId) {
-          code = await generateNextAssetCode()
+        const code = form.assetCode.trim().toUpperCase()
+        if (!code) {
+          setSaveMessage('Equipment ID / Asset Code is required.')
+          setSaveLoading(false)
+          return
         }
+
+        const duplicate = rows.some(
+          (r) =>
+            r.asset_code.trim().toUpperCase() === code &&
+            (!editingId || r.id !== editingId),
+        )
+        if (duplicate) {
+          setSaveMessage(`Asset Code "${code}" already exists. Please use a unique code.`)
+          setSaveLoading(false)
+          return
+        }
+
+        const eqId = editingId || crypto.randomUUID()
 
         // Upload files if selected
         let certPath = form.uploadCertificatePath
@@ -257,9 +297,14 @@ export default function EquipmentMasterPage() {
           date_placed_in_service: sanitizeDateStr(form.datePlacedInService) || null,
           current_location: form.currentLocation || null,
           equipment_status: form.equipmentStatus,
-          range_capacity: form.rangeCapacity.trim() || null,
-          resolution_least_count: form.resolutionLeastCount.trim() || null,
-          accuracy_acceptance_criteria: form.accuracyAcceptanceCriteria.trim() || null,
+          range_capacity: joinValueAndUnit(form.rangeCapacity, form.rangeCapacityUnit) || null,
+          resolution_least_count:
+            joinValueAndUnit(form.resolutionLeastCount, form.resolutionLeastCountUnit) || null,
+          accuracy_acceptance_criteria:
+            joinValueAndUnit(
+              form.accuracyAcceptanceCriteria,
+              form.accuracyAcceptanceCriteriaUnit,
+            ) || null,
           calibration_frequency: form.calibrationFrequency || null,
           last_calibration_date: sanitizeDateStr(form.lastCalibrationDate) || null,
           next_calibration_due: sanitizeDateStr(form.nextCalibrationDue) || null,
@@ -297,7 +342,12 @@ export default function EquipmentMasterPage() {
         setShowForm(false)
         await loadEquipment()
       } catch (err) {
-        setSaveMessage(formatSupabaseError(err))
+        const msg = formatSupabaseError(err)
+        if (/duplicate|unique|asset_code/i.test(msg)) {
+          setSaveMessage('Asset Code must be unique. This code is already in use.')
+        } else {
+          setSaveMessage(msg)
+        }
       } finally {
         setSaveLoading(false)
       }
@@ -308,13 +358,25 @@ export default function EquipmentMasterPage() {
     setSaveMessage(null)
     setForm(emptyEquipmentForm())
     setEditingId(null)
+    setActiveFormSection(null)
+    setHideScheduleSections(false)
     setShowForm(true)
   }
 
-  const handleEdit = (row: EquipmentRow, section?: 'calibration' | 'intermediate' | 'maintenance') => {
+  const handleEdit = (
+    row: EquipmentRow,
+    section?: 'calibration' | 'intermediate' | 'maintenance' | 'details',
+  ) => {
     setSaveMessage(null)
     setEditingId(row.id)
-    setActiveFormSection(section || null)
+    const isDetailsOnly = section === 'details'
+    setHideScheduleSections(isDetailsOnly)
+    setActiveFormSection(
+      section && section !== 'details' ? section : null,
+    )
+    const range = splitValueAndUnit(row.range_capacity)
+    const resolution = splitValueAndUnit(row.resolution_least_count)
+    const accuracy = splitValueAndUnit(row.accuracy_acceptance_criteria)
     setForm({
       assetCode: row.asset_code ?? '',
       equipmentName: row.equipment_name ?? '',
@@ -326,16 +388,22 @@ export default function EquipmentMasterPage() {
       datePlacedInService: row.date_placed_in_service ?? '',
       currentLocation: row.current_location ?? '',
       equipmentStatus: (row.equipment_status ?? 'Active') as EquipmentForm['equipmentStatus'],
-      rangeCapacity: row.range_capacity ?? '',
-      resolutionLeastCount: row.resolution_least_count ?? '',
-      accuracyAcceptanceCriteria: row.accuracy_acceptance_criteria ?? '',
-      calibrationFrequency: (row.calibration_frequency ?? '') as Frequency,
+      rangeCapacity: range.value,
+      rangeCapacityUnit: range.unit,
+      resolutionLeastCount: resolution.value,
+      resolutionLeastCountUnit: resolution.unit,
+      accuracyAcceptanceCriteria: accuracy.value,
+      accuracyAcceptanceCriteriaUnit: accuracy.unit,
+      calibrationFrequency: ((row.calibration_frequency ||
+        (section === 'calibration' ? 'Yearly' : '')) ?? '') as Frequency,
       lastCalibrationDate: row.last_calibration_date ?? '',
       nextCalibrationDue: row.next_calibration_due ?? '',
       calibrationCertificateNumber: row.calibration_certificate_number ?? '',
       calibrationCertificateUncertainty: row.calibration_certificate_uncertainty ?? '',
       calibrationUncertaintyUnit: row.calibration_uncertainty_unit ?? '',
-      calibrationCoverageFactor: row.calibration_coverage_factor ?? '',
+      calibrationCoverageFactor:
+        row.calibration_coverage_factor ||
+        (section === 'calibration' ? '2' : ''),
       externalCalibrationAgency: row.external_calibration_agency ?? '',
       intermediateCheckFrequency: (row.intermediate_check_frequency ?? '') as Frequency,
       lastIntermediateCheckDate: row.last_intermediate_check_date ?? '',
@@ -361,8 +429,13 @@ export default function EquipmentMasterPage() {
   const handleCopy = (row: EquipmentRow) => {
     setSaveMessage(null)
     setEditingId(null) // copy resets id
+    setActiveFormSection(null)
+    setHideScheduleSections(false)
+    const range = splitValueAndUnit(row.range_capacity)
+    const resolution = splitValueAndUnit(row.resolution_least_count)
+    const accuracy = splitValueAndUnit(row.accuracy_acceptance_criteria)
     setForm({
-      assetCode: '', // resets to let auto numbering generate it
+      assetCode: '', // required unique code — user must enter
       equipmentName: `${row.equipment_name} - Copy`,
       manufacturer: row.manufacturer ?? '',
       modelNumber: row.model_number ?? '',
@@ -372,9 +445,12 @@ export default function EquipmentMasterPage() {
       datePlacedInService: row.date_placed_in_service ?? '',
       currentLocation: row.current_location ?? '',
       equipmentStatus: (row.equipment_status ?? 'Active') as EquipmentForm['equipmentStatus'],
-      rangeCapacity: row.range_capacity ?? '',
-      resolutionLeastCount: row.resolution_least_count ?? '',
-      accuracyAcceptanceCriteria: row.accuracy_acceptance_criteria ?? '',
+      rangeCapacity: range.value,
+      rangeCapacityUnit: range.unit,
+      resolutionLeastCount: resolution.value,
+      resolutionLeastCountUnit: resolution.unit,
+      accuracyAcceptanceCriteria: accuracy.value,
+      accuracyAcceptanceCriteriaUnit: accuracy.unit,
       calibrationFrequency: (row.calibration_frequency ?? '') as Frequency,
       lastCalibrationDate: row.last_calibration_date ?? '',
       nextCalibrationDue: row.next_calibration_due ?? '',
@@ -782,37 +858,76 @@ export default function EquipmentMasterPage() {
       />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
-        <DialogContent persistOnFocusLoss className={`${activeFormSection ? 'max-w-3xl' : 'max-w-5xl'} max-h-[90vh] overflow-y-auto transition-all duration-300`}>
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold border-b pb-2">
-              {activeFormSection 
-                ? `Edit ${activeFormSection.charAt(0).toUpperCase() + activeFormSection.slice(1)} Details` 
-                : (editingId ? 'Edit Equipment Details' : 'Add New Equipment')}
-            </DialogTitle>
-          </DialogHeader>
-          {saveMessage && (
-            <div className="text-sm text-destructive px-6 py-2 bg-destructive/10 rounded-md border border-destructive/20">
-              {saveMessage}
-            </div>
+        <DialogContent
+          persistOnFocusLoss
+          aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="!items-stretch !justify-start md:pl-0"
+          className={cn(
+            'gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:rounded-none',
+            '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+            '!flex h-[100dvh] max-h-[100dvh] w-full !max-w-none !translate-x-0 !translate-y-0 flex-col',
+            'left-0 top-0',
+            'md:!left-[268px] md:!right-0 md:!w-[calc(100vw-268px)] md:!max-w-[calc(100vw-268px)]',
           )}
-           <EquipmentMasterForm
-            form={form}
-            onChange={setForm}
-            canSave={canSave}
-            saveLoading={saveLoading}
-            onSave={handleSave}
-            clients={clients}
-            employees={employees}
-            locations={locations}
-            onViewFile={handleViewFile}
-            activeSection={activeFormSection}
-            onAddNewClientClick={(field) => {
-              setTargetClientField(field)
-              setShowAddClientModal(true)
-            }}
-            equipments={rows}
-            iqcMasters={iqcMasters}
-          />
+        >
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <DialogTitle className="min-w-0 shrink text-base font-semibold tracking-tight text-white sm:text-lg">
+                  {activeFormSection
+                    ? `Edit ${activeFormSection.charAt(0).toUpperCase() + activeFormSection.slice(1)} Details`
+                    : hideScheduleSections
+                      ? 'Equipment Details'
+                      : editingId
+                        ? 'Edit Equipment Details'
+                        : 'Add New Equipment'}
+                </DialogTitle>
+                {form.equipmentName.trim() ? (
+                  <p
+                    className="max-w-[50%] truncate text-right text-sm font-medium text-amber-200/95 sm:text-base"
+                    title={form.equipmentName}
+                  >
+                    {form.equipmentName}
+                  </p>
+                ) : null}
+              </div>
+            </DialogHeader>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
+            {saveMessage ? (
+              <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {saveMessage}
+              </p>
+            ) : null}
+            <EquipmentMasterForm
+              form={form}
+              onChange={setForm}
+              canSave={canSave}
+              saveLoading={saveLoading}
+              onSave={handleSave}
+              clients={clients}
+              employees={employees}
+              locations={locations}
+              onViewFile={handleViewFile}
+              activeSection={activeFormSection}
+              hideScheduleSections={hideScheduleSections}
+              readOnly={hideScheduleSections}
+              onClose={() => handleFormOpenChange(false)}
+              onAddNewClientClick={(field) => {
+                setTargetClientField(field)
+                setShowAddClientModal(true)
+              }}
+              equipments={rows}
+              iqcMasters={iqcMasters}
+            />
+          </div>
         </DialogContent>
       </Dialog>
 

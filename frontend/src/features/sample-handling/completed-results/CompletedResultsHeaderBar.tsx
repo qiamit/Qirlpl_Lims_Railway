@@ -1,3 +1,6 @@
+import { X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
@@ -23,6 +26,8 @@ export function CompletedResultsHeaderBar({
   onPageSizeChange: (size: number) => void
   assistantRows: IssuedTestReportListRow[]
 }) {
+  const navigate = useNavigate()
+
   return (
     <div className={cn(limsPanelClass)}>
       <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-2.5 text-white sm:px-5 sm:py-3">
@@ -67,6 +72,17 @@ export function CompletedResultsHeaderBar({
 
           <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
             <IssuedTestReportAssistant rows={assistantRows} search={search} />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-none border border-red-600 bg-red-600 text-white shadow-sm hover:border-red-700 hover:bg-red-700 hover:text-white focus-visible:ring-red-500"
+              aria-label="Close Issued Test Report"
+              title="Close"
+              onClick={() => navigate('/samples/report-preparation')}
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2.75} aria-hidden />
+            </Button>
           </div>
         </div>
       </div>

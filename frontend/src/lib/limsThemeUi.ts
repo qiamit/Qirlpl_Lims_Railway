@@ -20,13 +20,13 @@ export const limsDarkBarGlowStyle = {
 } as const
 
 export const limsFieldClass =
-  'h-9 rounded-none border border-stone-500 bg-stone-50 shadow-none focus-visible:border-amber-600 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-amber-500/20'
+  'h-8 rounded-none border border-stone-500 bg-stone-50 shadow-none focus-visible:border-amber-600 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-amber-500/20'
 
 export const limsPrimaryBtnClass =
-  'rounded-none bg-amber-700 text-white shadow-sm hover:bg-amber-800'
+  'h-8 rounded-none bg-amber-700 px-4 text-white shadow-sm hover:bg-amber-800'
 
 export const limsOutlineBtnClass =
-  'rounded-none border-stone-500 bg-stone-50 text-stone-800 hover:bg-stone-100 hover:text-stone-900'
+  'h-8 rounded-none border-stone-500 bg-stone-50 text-stone-800 hover:bg-stone-100 hover:text-stone-900'
 
 /** Outline / action buttons on dark stone header & footer bars (Import, Export, Print, Jump, AI, etc.) */
 export const limsDarkBarBtnClass =
@@ -38,7 +38,7 @@ export const limsDarkBarFieldClass =
 
 /** Search field sitting on dark header (cream/white fill) */
 export const limsDarkBarSearchClass =
-  'h-9 rounded-none border border-stone-400 bg-white/95 text-stone-900 shadow-none placeholder:text-stone-400 focus-visible:border-amber-600 focus-visible:ring-2 focus-visible:ring-amber-500/20'
+  'h-8 rounded-none border border-stone-400 bg-white/95 text-stone-900 shadow-none placeholder:text-stone-400 focus-visible:border-amber-600 focus-visible:ring-2 focus-visible:ring-amber-500/20'
 
 /** QI Assistant icon trigger on dark bars */
 export const limsAiTriggerClass =
@@ -71,7 +71,7 @@ export const limsFieldAddBtnClass =
 
 /** Outer shell that wraps a control + limsFieldAddBtnClass button */
 export const limsFieldWithAddShellClass =
-  'flex h-10 min-w-0 items-stretch overflow-hidden rounded-none border border-stone-500 bg-stone-50 focus-within:border-amber-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-amber-500/20'
+  'flex h-8 min-w-0 items-stretch overflow-hidden rounded-none border border-stone-500 bg-stone-50 focus-within:border-amber-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-amber-500/20'
 
 /** Strip borders from nested input/select when inside limsFieldWithAddShellClass */
 export const limsFieldWithAddControlClass = cn(
@@ -84,11 +84,16 @@ export const limsFieldWithAddControlClass = cn(
   '[&_button[role=combobox]]:focus:ring-0 [&_button[role=combobox]]:focus:ring-offset-0',
 )
 
-/** Soft filled form fields — registry / manage dialogs */
+/** Soft filled form fields — registry / manage dialogs
+ * Control height matches Equipment Code field (h-8 / 32px).
+ * Label→field gap ≈ 0.5mm (space-y-0.5).
+ */
 export const limsRegistryFormClass = cn(
   'lims-registry-form',
   '[&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-wide [&_label]:text-stone-600',
-  '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:h-10',
+  /* Label / field stack spacing (~0.5mm) */
+  '[&_.space-y-2]:!space-y-0.5 [&_.space-y-1]:!space-y-0.5',
+  '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:!h-8',
   '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:rounded-none',
   '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:border',
   '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:border-stone-500',
@@ -101,7 +106,7 @@ export const limsRegistryFormClass = cn(
   '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:focus-visible:bg-white',
   '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:focus-visible:ring-2',
   '[&_input:not([type=checkbox]):not([type=file]):not([type=radio])]:focus-visible:ring-amber-500/20',
-  '[&_button[role=combobox]]:h-10',
+  '[&_button[role=combobox]]:!h-8',
   '[&_button[role=combobox]]:rounded-none',
   '[&_button[role=combobox]]:border',
   '[&_button[role=combobox]]:border-stone-500',
@@ -114,13 +119,17 @@ export const limsRegistryFormClass = cn(
   '[&_button[role=combobox]]:focus:ring-2',
   '[&_button[role=combobox]]:focus:ring-amber-500/20',
   '[&_button[role=combobox]]:focus:ring-offset-0',
-  '[&_textarea]:min-h-10',
+  /* Action buttons inside forms match field height */
+  '[&_button:not([role=option]):not([role=menuitem]):not([role=menuitemcheckbox])]:!h-8',
+  '[&_button.w-10]:!w-8',
+  '[&_div.flex.h-10]:!h-8',
+  '[&_textarea]:!min-h-8',
   '[&_textarea]:rounded-none',
   '[&_textarea]:border',
   '[&_textarea]:border-stone-500',
   '[&_textarea]:bg-stone-50',
   '[&_textarea]:px-3',
-  '[&_textarea]:py-2',
+  '[&_textarea]:py-1.5',
   '[&_textarea]:shadow-none',
   '[&_textarea]:transition-colors',
   '[&_textarea]:placeholder:text-stone-400',

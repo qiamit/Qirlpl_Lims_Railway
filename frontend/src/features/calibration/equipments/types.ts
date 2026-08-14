@@ -70,6 +70,9 @@ export type MeasurementRangeStored = {
   resolution_least_count: string
   unit?: string
   accuracy?: string
+  /** Accreditation body id — same source as Test Parameter “Under Accreditation”. */
+  accreditation_scope_id?: string | null
+  accreditationScopeId?: string | null
   /** One or more reference standards (equipment_for_calibration ids) for this range. */
   master_equipment_ids?: string[]
   /** Legacy single master — migrated into master_equipment_ids on read. */
@@ -130,6 +133,8 @@ export type EquipmentRangeEntry = {
   resolutionLeastCount: string
   unit: string
   accuracy: string
+  /** accreditation_bodies.id — linked to Test Parameter Under Accreditation. */
+  accreditationScopeId: string
   /** Master / reference equipment ids for this range (derived from masterPointsTabs). */
   masterEquipmentIds: string[]
   /** Derived nominal check-point list (first / nominal column of the primary table). */
@@ -1798,6 +1803,7 @@ export function emptyEquipmentRangeEntry(): EquipmentRangeEntry {
     resolutionLeastCount: '',
     unit: '',
     accuracy: '',
+    accreditationScopeId: '',
     masterEquipmentIds: [],
     calibrationPoints: [],
     calibrationPointsTable: emptyCalibrationPointsTable(),
@@ -2257,6 +2263,9 @@ export function parseMeasurementRanges(
         ).trim()
         const unit = String(row.unit ?? '').trim()
         const accuracy = String(row.accuracy ?? '').trim()
+        const accreditationScopeId = String(
+          row.accreditation_scope_id ?? row.accreditationScopeId ?? '',
+        ).trim()
         const legacyPoints = parseRangeCalibrationPoints(
           row.calibration_points ?? row.calibrationPoints,
         )
@@ -2315,6 +2324,7 @@ export function parseMeasurementRanges(
           !resolutionLeastCount &&
           !unit &&
           !accuracy &&
+          !accreditationScopeId &&
           calibrationPoints.length === 0 &&
           calibrationPointsTable.columns.length === 0 &&
           resolvedMasterIds.length === 0 &&
@@ -2368,6 +2378,7 @@ export function parseMeasurementRanges(
           resolutionLeastCount,
           unit,
           accuracy,
+          accreditationScopeId,
           masterEquipmentIds: resolvedMasterIds,
           calibrationPoints: rangePointsFromTable(primaryTable),
           calibrationPointsTable: primaryTable,
@@ -2422,6 +2433,7 @@ export function parseMeasurementRanges(
         resolutionLeastCount: resolutions[i] ?? '',
         unit: '',
         accuracy: '',
+        accreditationScopeId: '',
         masterEquipmentIds: legacyMaster ? [legacyMaster] : [],
         calibrationPoints: [],
         calibrationPointsTable: emptyCalibrationPointsTable(),
@@ -2470,6 +2482,7 @@ export function serializeMeasurementRanges(
         resolution_least_count: normalizeText(r.resolutionLeastCount),
         unit: normalizeText(r.unit),
         accuracy: normalizeText(r.accuracy),
+        accreditation_scope_id: normalizeText(r.accreditationScopeId) || null,
         master_equipment_ids: masterIds,
         calibration_points: serializeRangeCalibrationPoints(derivedPoints),
         calibration_points_table: serializedTable,
@@ -2521,6 +2534,7 @@ export function serializeMeasurementRanges(
         r.resolution_least_count.length > 0 ||
         (r.unit?.length ?? 0) > 0 ||
         (r.accuracy?.length ?? 0) > 0 ||
+        (r.accreditation_scope_id?.length ?? 0) > 0 ||
         (r.master_equipment_ids?.length ?? 0) > 0 ||
         (r.calibration_points?.length ?? 0) > 0 ||
         ((r.calibration_points_table?.rows?.length ?? 0) > 0) ||

@@ -99,6 +99,7 @@ export default function EquipmentForCalibrationMasterPage({
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [saveLoading, setSaveLoading] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [formReadOnly, setFormReadOnly] = useState(false)
   const [initialSection, setInitialSection] = useState<EquipmentScheduleSection | null>(null)
   const [sectionOpenKey, setSectionOpenKey] = useState(0)
   const [showForm, setShowForm] = useState(false)
@@ -106,6 +107,7 @@ export default function EquipmentForCalibrationMasterPage({
     setShowForm(open)
     if (!open) {
       setInitialSection(null)
+      setFormReadOnly(false)
     }
   })
   const [search, setSearch] = useState('')
@@ -320,6 +322,7 @@ export default function EquipmentForCalibrationMasterPage({
 
   const openNew = () => {
     setEditingId(null)
+    setFormReadOnly(false)
     setInitialSection(null)
     updateForm({ ...emptyEquipmentForCalibrationForm(), assetCode: makeNextCode() })
     setSaveMessage(null)
@@ -328,6 +331,7 @@ export default function EquipmentForCalibrationMasterPage({
 
   const openEdit = (row: EquipmentForCalibrationRow, section?: EquipmentScheduleSection) => {
     setEditingId(row.id)
+    setFormReadOnly(false)
     setInitialSection(section ?? null)
     if (section) setSectionOpenKey((k) => k + 1)
     updateForm(rowToForm(row))
@@ -335,8 +339,18 @@ export default function EquipmentForCalibrationMasterPage({
     setShowForm(true)
   }
 
+  const openViewDetails = (row: EquipmentForCalibrationRow) => {
+    setEditingId(row.id)
+    setFormReadOnly(true)
+    setInitialSection(null)
+    updateForm(rowToForm(row))
+    setSaveMessage(null)
+    setShowForm(true)
+  }
+
   const openCopy = (row: EquipmentForCalibrationRow) => {
     setEditingId(null)
+    setFormReadOnly(false)
     setInitialSection(null)
     updateForm(rowToForm(row, true, makeNextCode()))
     setSaveMessage(null)
@@ -344,6 +358,7 @@ export default function EquipmentForCalibrationMasterPage({
   }
 
   const handleSave = async (latest?: FormState) => {
+    if (formReadOnly) return
     const snapshot = { ...(latest ?? formRef.current) }
     formRef.current = snapshot
     const canSaveNow =
@@ -457,13 +472,17 @@ export default function EquipmentForCalibrationMasterPage({
             <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative pr-10 text-left">
               <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
-                {editingId
+                {formReadOnly
                   ? isIqc
-                    ? 'Edit IQC Master'
-                    : 'Edit Equipment'
-                  : isIqc
-                    ? 'Add New IQC Master'
-                    : 'Add New Equipment'}
+                    ? 'IQC Master Details'
+                    : 'Equipment Details'
+                  : editingId
+                    ? isIqc
+                      ? 'Edit IQC Master'
+                      : 'Edit Equipment'
+                    : isIqc
+                      ? 'Add New IQC Master'
+                      : 'Add New Equipment'}
               </DialogTitle>
             </DialogHeader>
           </div>
@@ -474,7 +493,7 @@ export default function EquipmentForCalibrationMasterPage({
               </p>
             ) : null}
             <EquipmentForCalibrationForm
-              key={`${editingId ?? 'new'}-${initialSection ?? 'full'}-${sectionOpenKey}`}
+              key={`${editingId ?? 'new'}-${initialSection ?? 'full'}-${sectionOpenKey}-${formReadOnly ? 'view' : 'edit'}`}
               form={form}
               onChange={updateForm}
               clientOptions={clientOptions}
@@ -483,9 +502,12 @@ export default function EquipmentForCalibrationMasterPage({
               canSave={canSave}
               saveLoading={saveLoading}
               onSave={(latest) => void handleSave(latest)}
-              assetCodeLocked={!editingId}
+              onClose={() => handleFormOpenChange(false)}
+              assetCodeLocked={formReadOnly}
               initialSection={initialSection}
               moduleVariant={variant}
+              readOnly={formReadOnly}
+              onClientsReload={() => void loadClients()}
             />
           </div>
         </DialogContent>
@@ -500,7 +522,9 @@ export default function EquipmentForCalibrationMasterPage({
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
         onEdit={openEdit}
+        onViewDetails={openViewDetails}
         onCopy={openCopy}
+        variant={variant}
       />
 
       <EquipmentForCalibrationFooterBar

@@ -1,20 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { FileUp, Eye, X, Trash2, Plus, CheckCircle, AlertTriangle } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { FileUp, Eye, Trash2, Plus, CheckCircle, AlertTriangle, ClipboardCheck, ListChecks, Wrench, History } from 'lucide-react'
 import {
   calculateNextDueDate,
   type IqcForm,
   type EquipmentStatus,
   type Frequency,
-  type CalibrationPoint,
 } from './types'
 import { ClientSearchSelect } from '../equipment-master/ClientSearchSelect'
+import { ConductMaintenanceDialog } from '../equipment-master/ConductMaintenanceDialog'
+import { MaintenanceHistoryDialog } from '../equipment-master/MaintenanceHistoryDialog'
+import { joinValueAndUnit } from '../equipment-master/types'
 import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
+import { MasterCalibrationPointsEditor } from '@/features/calibration/equipment-for-calibration/MasterCalibrationPointsEditor'
+import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettingsUi'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldWithAddShellClass,
+  limsOutlineBtnClass,
+  limsPanelClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
+import {
+  FilterCombobox,
+  type FilterComboboxOption,
+} from '@/features/sample-handling/receiving/FilterCombobox'
+import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
+
+const sectionTitleClass =
+  'mb-3 border-b border-amber-700/25 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800'
 
 function parseAcceptanceLimit(criteria: string | null | undefined): number | null {
   if (!criteria) return null
@@ -51,6 +78,9 @@ export function IqcMasterForm({
   locations,
   onViewFile,
   activeSection,
+  hideScheduleSections = false,
+  readOnly = false,
+  onClose,
   onAddNewClientClick,
   iqcMasters = [],
 }: {
@@ -60,10 +90,18 @@ export function IqcMasterForm({
   saveLoading: boolean
   onSave: () => void
   clients: Array<{ id: string; company_name: string }>
-  employees: Array<{ id: string; full_name: string }>
+  employees: Array<{
+    id: string
+    full_name: string
+    department_name?: string | null
+    designation?: string | null
+  }>
   locations: string[]
   onViewFile: (storagePath: string, fileName: string) => void
   activeSection?: 'calibration' | 'intermediate' | 'maintenance' | null
+  hideScheduleSections?: boolean
+  readOnly?: boolean
+  onClose?: () => void
   onAddNewClientClick: (field: 'purchasedFrom' | 'externalCalibrationAgency') => void
   iqcMasters?: IqcForm[]
 }) {
@@ -71,6 +109,23 @@ export function IqcMasterForm({
   const [showCalculator, setShowCalculator] = useState(false)
   const [calcInput, setCalcInput] = useState('')
   const [calcResult, setCalcResult] = useState('')
+  const [calApplicable, setCalApplicable] = useState<'applicable' | 'not-applicable'>('applicable')
+  const [intermediateApplicable, setIntermediateApplicable] = useState<'applicable' | 'not-applicable'>(
+    'not-applicable',
+  )
+  const [maintApplicable, setMaintApplicable] = useState<'applicable' | 'not-applicable'>('applicable')
+
+  const [calDetailsOpen, setCalDetailsOpen] = useState(false)
+  const [intermediateDetailsOpen, setIntermediateDetailsOpen] = useState(false)
+  const [maintenanceDetailsOpen, setMaintenanceDetailsOpen] = useState(false)
+  const [conductMaintenanceOpen, setConductMaintenanceOpen] = useState(false)
+  const [maintenanceHistoryViewOpen, setMaintenanceHistoryViewOpen] = useState(false)
+  const [custodianOpen, setCustodianOpen] = useState(false)
+  const [custodianQuery, setCustodianQuery] = useState('')
+  const [maintDoneByOpen, setMaintDoneByOpen] = useState(false)
+  const [maintDoneByQuery, setMaintDoneByQuery] = useState('')
+  const [locationOpen, setLocationOpen] = useState(false)
+  const [locationQuery, setLocationQuery] = useState('')
 
   const {
     parsedReadings,
@@ -123,6 +178,83 @@ export function IqcMasterForm({
       isLegacy: !!form.intermediateCheckResult?.trim() && !form.intermediateCheckResult.includes('[DATA:'),
     }
   })()
+
+
+  const employeeOptions = useMemo<FilterComboboxOption[]>(
+    () =>
+      employees
+        .map((emp) => {
+          const label = String(emp.full_name ?? '').trim()
+          const secondaryLabel = [emp.department_name, emp.designation]
+            .map((part) => String(part ?? '').trim())
+            .filter(Boolean)
+            .join(' | ')
+          return {
+            id: emp.id,
+            label,
+            ...(secondaryLabel ? { secondaryLabel } : {}),
+          }
+        })
+        .filter((opt) => opt.label.length > 0)
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [employees],
+  )
+
+  const selectedCustodianLabel =
+    employees.find((emp) => emp.id === form.custodianEmployeeId)?.full_name ?? ''
+
+  const effectiveMaintenanceDoneBy = form.maintenanceDoneBy || form.custodianEmployeeId || ''
+  const selectedMaintDoneByLabel =
+    employees.find((emp) => emp.id === effectiveMaintenanceDoneBy)?.full_name ?? ''
+  const maintenanceDoneByName = selectedMaintDoneByLabel
+
+  const filteredCustodianOptions = useMemo(() => {
+    const q = custodianQuery.trim().toLowerCase()
+    if (!q || !custodianOpen) return employeeOptions
+    return employeeOptions.filter(
+      (opt) =>
+        opt.label.toLowerCase().includes(q) ||
+        (opt.secondaryLabel ?? '').toLowerCase().includes(q),
+    )
+  }, [custodianQuery, custodianOpen, employeeOptions])
+
+  const filteredMaintDoneByOptions = useMemo(() => {
+    const q = maintDoneByQuery.trim().toLowerCase()
+    if (!q || !maintDoneByOpen) return employeeOptions
+    return employeeOptions.filter(
+      (opt) =>
+        opt.label.toLowerCase().includes(q) ||
+        (opt.secondaryLabel ?? '').toLowerCase().includes(q),
+    )
+  }, [maintDoneByQuery, maintDoneByOpen, employeeOptions])
+
+  const hasMaintenanceChecklistHistory = useMemo(
+    () =>
+      form.maintenanceHistory.length > 0 ||
+      (form.maintenanceChecklist.length > 0 && !!form.lastMaintenanceDate?.trim()),
+    [form.maintenanceHistory.length, form.maintenanceChecklist.length, form.lastMaintenanceDate],
+  )
+
+  const applyCustodianSelection = (employeeId: string) => {
+    onChange({ ...form, custodianEmployeeId: employeeId })
+  }
+
+  const locationOptions = useMemo<FilterComboboxOption[]>(
+    () =>
+      locations
+        .map((loc) => String(loc ?? '').trim())
+        .filter(Boolean)
+        .map((loc) => ({ id: loc, label: loc }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [locations],
+  )
+
+  const filteredLocationOptions = useMemo(() => {
+    const q = locationQuery.trim().toLowerCase()
+    if (!q || !locationOpen) return locationOptions
+    return locationOptions.filter((opt) => opt.label.toLowerCase().includes(q))
+  }, [locationQuery, locationOpen, locationOptions])
+
 
   const defaultLimit = parseAcceptanceLimit(form.accuracyAcceptanceCriteria)
 
@@ -604,24 +736,6 @@ export function IqcMasterForm({
     )
   }
 
-  const [activeFieldForSymbols, setActiveFieldForSymbols] = useState<
-    'rangeCapacity' | 'resolutionLeastCount' | 'accuracyAcceptanceCriteria' | null
-  >(null)
-
-  const symbols = [
-    '±', 'μ', '°C', '°F', '%', '≤', '≥', 'Ω', 'λ', 'g', 'kg',
-    'm', 'cm', 'mm', 'ml', 'L', 'psi', 'bar', 'Pa', 'kPa', 'MPa', 'V', 'A', 'W'
-  ]
-
-  const handleSymbolClick = (symbol: string) => {
-    if (!activeFieldForSymbols) return
-    const currentVal = form[activeFieldForSymbols]
-    onChange({
-      ...form,
-      [activeFieldForSymbols]: currentVal + symbol
-    })
-  }
-
   useEffect(() => {
     const nextDue = calculateNextDueDate(form.lastCalibrationDate, form.calibrationFrequency)
     if (nextDue !== form.nextCalibrationDue) {
@@ -629,58 +743,113 @@ export function IqcMasterForm({
     }
   }, [form.lastCalibrationDate, form.calibrationFrequency])
 
-
-  const handleFileChange = (field: 'certificateFile' | 'manualSopFile', file: File | null) => {
-    onChange({ ...form, [field]: file })
-  }
-
-  // Calibration points inline editing functions
-  const calibrationPoints = form.calibrationPoints || []
-
-  const handleAddCalPoint = () => {
-    const nextPoints = [
-      ...calibrationPoints,
-      {
-        id: crypto.randomUUID(),
-        nominalValue: '',
-        actualValue: '',
-        correction: '0.0000',
-        uncertainty: '',
-      },
-    ]
-    onChange({ ...form, calibrationPoints: nextPoints })
-  }
-
-  const handleUpdateCalPoint = (idx: number, field: keyof CalibrationPoint, value: string) => {
-    const nextPoints = [...calibrationPoints]
-    const updatedPoint = { ...nextPoints[idx], [field]: value }
-    
-    // Auto-calculate correction: Actual - Nominal
-    if (field === 'nominalValue' || field === 'actualValue') {
-      const nominal = parseFloat(field === 'nominalValue' ? value : updatedPoint.nominalValue)
-      const actual = parseFloat(field === 'actualValue' ? value : updatedPoint.actualValue)
-      if (!isNaN(nominal) && !isNaN(actual)) {
-        updatedPoint.correction = (actual - nominal).toFixed(4)
-      } else {
-        updatedPoint.correction = '0.0000'
-      }
+  useEffect(() => {
+    const nextDue = calculateNextDueDate(
+      form.lastIntermediateCheckDate,
+      form.intermediateCheckFrequency,
+    )
+    if (nextDue !== form.nextIntermediateCheckDate) {
+      onChange({ ...form, nextIntermediateCheckDate: nextDue })
     }
-    
-    nextPoints[idx] = updatedPoint
-    onChange({ ...form, calibrationPoints: nextPoints })
-  }
+  }, [form.lastIntermediateCheckDate, form.intermediateCheckFrequency])
 
-  const handleRemoveCalPoint = (idx: number) => {
-    const nextPoints = calibrationPoints.filter((_, i) => i !== idx)
-    onChange({ ...form, calibrationPoints: nextPoints })
-  }
+  useEffect(() => {
+    const nextDue = calculateNextDueDate(form.lastMaintenanceDate, form.maintenanceScheduleFrequency)
+    if (nextDue !== form.nextMaintenanceDate) {
+      onChange({ ...form, nextMaintenanceDate: nextDue })
+    }
+  }, [form.lastMaintenanceDate, form.maintenanceScheduleFrequency])
 
-  if (activeSection) {
-    let sectionTitle = 'Calibration Details'
-    let sectionContent = (
-      <div className="border rounded-lg p-4 space-y-4 bg-slate-50/50">
+  useEffect(() => {
+    const hasInter = !!(
+      form.intermediateCheckFrequency?.trim() ||
+      form.lastIntermediateCheckDate?.trim() ||
+      form.nextIntermediateCheckDate?.trim() ||
+      form.intermediateCheckResult?.trim()
+    )
+    // Defaults: Calibration & Maintenance = Applicable; Intermediate Check = Not Applicable.
+    // Saved intermediate data still forces Applicable for that section.
+    setCalApplicable('applicable')
+    setIntermediateApplicable(hasInter ? 'applicable' : 'not-applicable')
+    setMaintApplicable('applicable')
+  }, [form.assetCode])
+
+  useEffect(() => {
+    if (calApplicable === 'applicable' && !form.calibrationFrequency) {
+      onChange({ ...form, calibrationFrequency: 'Yearly' as Frequency })
+    }
+  }, [calApplicable])
+
+  useEffect(() => {
+    if (intermediateApplicable === 'applicable' && !form.intermediateCheckFrequency) {
+      onChange({ ...form, intermediateCheckFrequency: 'Quarterly' as Frequency })
+    }
+  }, [intermediateApplicable])
+
+  useEffect(() => {
+    if (maintApplicable === 'applicable' && !form.maintenanceScheduleFrequency) {
+      onChange({ ...form, maintenanceScheduleFrequency: 'Quarterly' as Frequency })
+    }
+  }, [maintApplicable])
+
+  const frequencySelectItems = (
+    <>
+      <SelectItem value="Daily">Daily</SelectItem>
+      <SelectItem value="Weekly">Weekly</SelectItem>
+      <SelectItem value="Monthly">Monthly</SelectItem>
+      <SelectItem value="Quarterly">Quarterly</SelectItem>
+      <SelectItem value="Half Yearly">Half Yearly</SelectItem>
+      <SelectItem value="Yearly">Yearly</SelectItem>
+    </>
+  )
+
+  const renderMasterCalibrationPoints = () => (
+    <MasterCalibrationPointsEditor
+      className={cn(limsPanelClass, 'p-4')}
+      title="Master Calibration Points"
+      columns={form.calibrationPointsColumns}
+      rows={form.calibrationPoints}
+      readOnly={readOnly}
+      dialogLayer="stacked"
+      inputIdPrefix="iqc-cal"
+      formulaMaster={{
+        asset_code: form.assetCode,
+        equipment_name: form.equipmentName,
+        manufacturer: form.manufacturer,
+        model_number: form.modelNumber,
+        serial_number: form.serialNumber,
+        current_location: form.currentLocation,
+        range_capacity: joinValueAndUnit(form.rangeCapacity, form.rangeCapacityUnit),
+        resolution_least_count: joinValueAndUnit(
+          form.resolutionLeastCount,
+          form.resolutionLeastCountUnit,
+        ),
+        accuracy_acceptance_criteria: joinValueAndUnit(
+          form.accuracyAcceptanceCriteria,
+          form.accuracyAcceptanceCriteriaUnit,
+        ),
+        calibration_temperature: form.calibrationTemperature,
+        calibration_humidity: form.calibrationHumidity,
+        calibration_certificate_number: form.calibrationCertificateNumber,
+      }}
+      onChange={({ columns, rows }) =>
+        onChange({
+          ...form,
+          calibrationPointsColumns: columns,
+          calibrationPoints: rows,
+        })
+      }
+    />
+  )
+
+  const renderCalibrationSectionFields = () => (
+    <div className="space-y-4">
+    <div className={cn(limsPanelClass, 'space-y-4 p-4')}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
-          <Label htmlFor="eq-cal-freq" className="text-xs font-semibold">Frequency</Label>
+          <Label htmlFor="eq-cal-freq" className="text-xs font-semibold">
+            Frequency
+          </Label>
           <Select
             value={form.calibrationFrequency}
             onValueChange={(v) => onChange({ ...form, calibrationFrequency: v as Frequency })}
@@ -688,19 +857,13 @@ export function IqcMasterForm({
             <SelectTrigger id="eq-cal-freq">
               <SelectValue placeholder="Select Frequency" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Daily">Daily</SelectItem>
-              <SelectItem value="Weekly">Weekly</SelectItem>
-              <SelectItem value="Monthly">Monthly</SelectItem>
-              <SelectItem value="Quarterly">Quarterly</SelectItem>
-              <SelectItem value="Half Yearly">Half Yearly</SelectItem>
-              <SelectItem value="Yearly">Yearly</SelectItem>
-            </SelectContent>
+            <SelectContent>{frequencySelectItems}</SelectContent>
           </Select>
         </div>
-
         <div className="space-y-1.5">
-          <Label htmlFor="eq-last-cal" className="text-xs font-semibold">Last Date</Label>
+          <Label htmlFor="eq-last-cal" className="text-xs font-semibold">
+            Last Date
+          </Label>
           <Input
             id="eq-last-cal"
             type="date"
@@ -708,20 +871,24 @@ export function IqcMasterForm({
             onChange={(e) => onChange({ ...form, lastCalibrationDate: e.target.value })}
           />
         </div>
-
         <div className="space-y-1.5">
-          <Label htmlFor="eq-next-cal" className="text-xs font-semibold">Next Due (Auto)</Label>
+          <Label htmlFor="eq-next-cal" className="text-xs font-semibold">
+            Next Due (Auto)
+          </Label>
           <Input
             id="eq-next-cal"
             type="date"
             value={form.nextCalibrationDue}
             readOnly
-            className="bg-muted text-muted-foreground font-mono"
+            className="bg-muted font-mono text-muted-foreground"
           />
         </div>
-
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="eq-cal-cert" className="text-xs font-semibold">Certificate Number</Label>
+          <Label htmlFor="eq-cal-cert" className="text-xs font-semibold">
+            Certificate Number
+          </Label>
           <Input
             id="eq-cal-cert"
             placeholder="Cert No"
@@ -729,7 +896,6 @@ export function IqcMasterForm({
             onChange={(e) => onChange({ ...form, calibrationCertificateNumber: e.target.value })}
           />
         </div>
-
         <div className="space-y-1.5">
           <Label className="text-xs font-semibold">External Calibration Agency</Label>
           <ClientSearchSelect
@@ -740,625 +906,1110 @@ export function IqcMasterForm({
             onAddNewClientClick={() => onAddNewClientClick('externalCalibrationAgency')}
           />
         </div>
-
-        <div className="space-y-1.5">
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
+        <div className="min-w-0 space-y-1.5 sm:col-span-6">
           <Label className="text-xs font-semibold">Calibration Certificate (PDF)</Label>
-          <div className="flex gap-2">
-            <div className="flex-1 relative border rounded-md px-3 py-1 bg-white flex items-center justify-between text-sm min-h-9">
-              <span className="text-muted-foreground truncate max-w-[180px] text-xs">
-                {form.certificateFile
-                  ? form.certificateFile.name
-                  : form.uploadCertificatePath
+          <div className="relative flex h-8 min-h-8 flex-1 items-center justify-between rounded-none border border-stone-500 bg-stone-50 px-3 text-sm">
+            <span className="max-w-[140px] truncate text-xs text-muted-foreground sm:max-w-[200px]">
+              {form.certificateFile
+                ? form.certificateFile.name
+                : form.uploadCertificatePath
                   ? form.uploadCertificatePath.split('/').pop()?.replace(/^\d+_/, '')
                   : 'No file selected'}
-              </span>
-              <div className="flex items-center gap-1">
-                {form.uploadCertificatePath && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-primary hover:bg-slate-100"
-                      title="View PDF"
-                      onClick={() => onViewFile(form.uploadCertificatePath, 'Certificate')}
-                    >
-                      <Eye size={12} />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive hover:bg-red-50"
-                      title="Delete PDF"
-                      onClick={() => {
-                        const ok = window.confirm('Are you sure you want to delete the uploaded certificate?')
-                        if (ok) {
-                          onChange({
-                            ...form,
-                            uploadCertificatePath: '',
-                            certificateFile: null,
-                          })
-                        }
-                      }}
-                    >
-                      <Trash2 size={12} />
-                    </Button>
-                  </>
-                )}
-                <label className="cursor-pointer p-0.5 rounded-md text-slate-500 hover:bg-slate-100">
-                  <FileUp size={14} />
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null
-                      handleFileChange('certificateFile', file)
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              {form.uploadCertificatePath ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-primary hover:bg-slate-100"
+                    title="View PDF"
+                    onClick={() => onViewFile(form.uploadCertificatePath, 'Certificate')}
+                  >
+                    <Eye size={12} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-destructive hover:bg-red-50"
+                    title="Delete PDF"
+                    onClick={() => {
+                      const ok = window.confirm(
+                        'Are you sure you want to delete the uploaded certificate?',
+                      )
+                      if (ok) {
+                        onChange({
+                          ...form,
+                          uploadCertificatePath: '',
+                          certificateFile: null,
+                        })
+                      }
                     }}
-                  />
-                </label>
-              </div>
+                  >
+                    <Trash2 size={12} />
+                  </Button>
+                </>
+              ) : null}
+              <label className="cursor-pointer rounded-md p-0.5 text-slate-500 hover:bg-slate-100">
+                <FileUp size={14} />
+                <input
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null
+                    handleFileChange('certificateFile', file)
+                  }}
+                />
+              </label>
             </div>
           </div>
         </div>
+        <div className="min-w-0 space-y-1.5 sm:col-span-3">
+          <Label htmlFor="iqc-cal-temp" className="text-xs font-semibold">
+            Temperature
+          </Label>
+          <Input
+            id="iqc-cal-temp"
+            value={form.calibrationTemperature}
+            onChange={(e) => onChange({ ...form, calibrationTemperature: e.target.value })}
+            placeholder="e.g. 23 °C"
+          />
+        </div>
+        <div className="min-w-0 space-y-1.5 sm:col-span-3">
+          <Label htmlFor="iqc-cal-humidity" className="text-xs font-semibold">
+            Humidity
+          </Label>
+          <Input
+            id="iqc-cal-humidity"
+            value={form.calibrationHumidity}
+            onChange={(e) => onChange({ ...form, calibrationHumidity: e.target.value })}
+            placeholder="e.g. 55 %RH"
+          />
+        </div>
       </div>
-    )
+    </div>
+    {renderMasterCalibrationPoints()}
+    </div>
+  )
+
+  const renderIntermediateSectionFields = () => (
+    <div className="space-y-4">
+      <div className={cn(limsPanelClass, 'space-y-4 p-4')}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="iqc-inter-freq" className="text-xs font-semibold">
+              Frequency
+            </Label>
+            <Select
+              value={form.intermediateCheckFrequency || 'Quarterly'}
+              onValueChange={(v) =>
+                onChange({ ...form, intermediateCheckFrequency: v as Frequency })
+              }
+            >
+              <SelectTrigger id="iqc-inter-freq">
+                <SelectValue placeholder="Select Frequency" />
+              </SelectTrigger>
+              <SelectContent>{frequencySelectItems}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="iqc-inter-last" className="text-xs font-semibold">
+              Last Date
+            </Label>
+            <Input
+              id="iqc-inter-last"
+              type="date"
+              value={form.lastIntermediateCheckDate}
+              onChange={(e) => onChange({ ...form, lastIntermediateCheckDate: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="iqc-inter-next" className="text-xs font-semibold">
+              Next Due (Auto)
+            </Label>
+            <Input
+              id="iqc-inter-next"
+              type="date"
+              value={form.nextIntermediateCheckDate}
+              readOnly
+              className="bg-muted font-mono text-muted-foreground"
+            />
+          </div>
+        </div>
+      </div>
+      {renderIntermediateCheckCalculator()}
+    </div>
+  )
+
+  const renderMaintenanceSectionFields = () => (
+    <div className={cn(limsPanelClass, 'space-y-4 p-4')}>
+      <div className="grid grid-cols-12 gap-3">
+        <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+          <Label htmlFor="iqc-maint-freq" className="text-xs font-semibold">
+            Schedule Frequency
+          </Label>
+          <Select
+            value={form.maintenanceScheduleFrequency || 'Quarterly'}
+            onValueChange={(v) =>
+              onChange({ ...form, maintenanceScheduleFrequency: v as Frequency })
+            }
+          >
+            <SelectTrigger id="iqc-maint-freq">
+              <SelectValue placeholder="Select Frequency" />
+            </SelectTrigger>
+            <SelectContent>{frequencySelectItems}</SelectContent>
+          </Select>
+        </div>
+        <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+          <Label htmlFor="iqc-maint-last" className="text-xs font-semibold">
+            Last Date
+          </Label>
+          <Input
+            id="iqc-maint-last"
+            type="date"
+            value={form.lastMaintenanceDate}
+            onChange={(e) => onChange({ ...form, lastMaintenanceDate: e.target.value })}
+          />
+        </div>
+        <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+          <Label htmlFor="iqc-maint-next" className="text-xs font-semibold">
+            Next Due (Auto)
+          </Label>
+          <Input
+            id="iqc-maint-next"
+            type="date"
+            value={form.nextMaintenanceDate}
+            readOnly
+            className="bg-slate-50 font-mono text-slate-600"
+          />
+        </div>
+        <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+          <Label htmlFor="iqc-maint-by" className="text-xs font-semibold">
+            Maintenance Done By
+          </Label>
+          <FilterCombobox
+            inputId="iqc-maint-by"
+            listId="iqc-maint-by-list"
+            value={maintDoneByOpen ? maintDoneByQuery : selectedMaintDoneByLabel}
+            onValueChange={(v) => {
+              setMaintDoneByQuery(v)
+              if (!maintDoneByOpen) setMaintDoneByOpen(true)
+              if (!v.trim()) onChange({ ...form, maintenanceDoneBy: '' })
+            }}
+            options={filteredMaintDoneByOptions}
+            onSelectOption={(opt) => {
+              onChange({ ...form, maintenanceDoneBy: opt.id })
+              setMaintDoneByQuery(opt.label)
+              setMaintDoneByOpen(false)
+            }}
+            open={maintDoneByOpen}
+            onOpenChange={(open) => {
+              setMaintDoneByOpen(open)
+              if (open) setMaintDoneByQuery(selectedMaintDoneByLabel)
+            }}
+            placeholder="Type to search employee…"
+          />
+        </div>
+        <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+          <Label className="text-xs font-semibold">Conduct Maintenance</Label>
+          <Button
+            type="button"
+            variant="outline"
+            className={cn('h-10 w-full gap-1.5 text-xs', limsOutlineBtnClass)}
+            onClick={() => setConductMaintenanceOpen(true)}
+          >
+            <Wrench size={14} />
+            Conduct
+          </Button>
+        </div>
+        <div className="col-span-12 min-w-0 space-y-2 md:col-span-3">
+          <Label className="text-xs font-semibold">View Old Checklist</Label>
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-10 w-full gap-1.5 text-xs"
+            disabled={!hasMaintenanceChecklistHistory}
+            onClick={() => setMaintenanceHistoryViewOpen(true)}
+          >
+            <History size={14} />
+            View
+            {form.maintenanceHistory.length > 0 ? ` (${form.maintenanceHistory.length})` : ''}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+
+  const handleFileChange = (field: 'certificateFile' | 'manualSopFile', file: File | null) => {
+    onChange({ ...form, [field]: file })
+  }
+
+  if (activeSection) {
+    const sectionTitle =
+      activeSection === 'intermediate'
+        ? 'Intermediate Check Details'
+        : activeSection === 'maintenance'
+          ? 'Maintenance Details'
+          : 'Calibration Details'
+    const sectionContent =
+      activeSection === 'intermediate'
+        ? renderIntermediateSectionFields()
+        : activeSection === 'maintenance'
+          ? renderMaintenanceSectionFields()
+          : renderCalibrationSectionFields()
 
     return (
-      <Card className="border-0 shadow-none">
-        <CardContent className="space-y-4 pt-2">
-          <div className="bg-slate-50 border rounded-lg p-3.5 space-y-1">
-            <div className="text-xs text-muted-foreground uppercase font-bold tracking-wider">IQC Standard Info</div>
-            <div className="text-sm font-semibold text-slate-800">{form.equipmentName}</div>
-            <div className="text-xs text-slate-500 font-mono">Asset Code: {form.assetCode || 'Auto Numbering…'}</div>
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-primary mb-2">{sectionTitle}</h3>
-            {sectionContent}
-          </div>
-        </CardContent>
-        <CardFooter className="flex items-center justify-end gap-2 border-t pt-4 px-6 bg-slate-50/50 rounded-b-lg">
+      <>
+        <Card className="border-0 bg-transparent shadow-none">
+          <CardContent className={cn('space-y-4 p-0', labRegistryFormClass)}>
+            <div>
+              <h3 className={cn(sectionTitleClass, 'mb-3')}>{sectionTitle}</h3>
+              {sectionContent}
+            </div>
+          </CardContent>
+          <CardFooter className="-mx-0 mt-4 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3">
+            <Button
+              type="button"
+              onClick={onSave}
+              disabled={!canSave || saveLoading}
+              className={cn(limsPrimaryBtnClass, 'min-w-[8.5rem]')}
+            >
+              {saveLoading ? 'Saving…' : 'Save & Close'}
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <ConductMaintenanceDialog
+          open={conductMaintenanceOpen}
+          onOpenChange={setConductMaintenanceOpen}
+          equipmentName={form.equipmentName}
+          assetCode={form.assetCode}
+          manufacturer={form.manufacturer}
+          modelNumber={form.modelNumber}
+          rangeCapacity={joinValueAndUnit(form.rangeCapacity, form.rangeCapacityUnit)}
+          initialChecklist={form.maintenanceChecklist}
+          maintenanceHistory={form.maintenanceHistory}
+          lastMaintenanceDate={form.lastMaintenanceDate}
+          nextMaintenanceDate={form.nextMaintenanceDate}
+          maintenanceDoneBy={effectiveMaintenanceDoneBy}
+          maintenanceDoneByName={maintenanceDoneByName}
+          maintenanceScheduleFrequency={form.maintenanceScheduleFrequency}
+          onSaveChecklist={(items) => onChange({ ...form, maintenanceChecklist: items })}
+          onCompleteMaintenance={(payload) =>
+            onChange({
+              ...form,
+              maintenanceChecklist: payload.checklist,
+              maintenanceHistory: payload.maintenanceHistory,
+              lastMaintenanceDate: payload.lastMaintenanceDate,
+              nextMaintenanceDate: payload.nextMaintenanceDate,
+            })
+          }
+        />
+
+        <MaintenanceHistoryDialog
+          open={maintenanceHistoryViewOpen}
+          onOpenChange={setMaintenanceHistoryViewOpen}
+          equipmentName={form.equipmentName}
+          assetCode={form.assetCode}
+          history={form.maintenanceHistory}
+          currentLastDate={form.lastMaintenanceDate}
+          currentDoneByName={maintenanceDoneByName}
+          currentChecklist={form.maintenanceChecklist}
+          onDirectorChange={(next) =>
+            onChange({
+              ...form,
+              maintenanceHistory: next.history,
+              lastMaintenanceDate: next.currentLastDate,
+              maintenanceDoneBy: next.currentDoneByName,
+              maintenanceChecklist: next.currentChecklist,
+            })
+          }
+        />
+      </>
+    )
+  }
+
+  const renderScheduleDialog = (
+    open: boolean,
+    onOpenChange: (open: boolean) => void,
+    title: string,
+    content: JSX.Element,
+  ) => (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        persistOnFocusLoss
+        layer="nested"
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={cn(
+          limsDialogClass,
+          '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+          'left-0 top-0',
+          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+        )}
+        aria-describedby={undefined}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              {title}
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
+            labRegistryFormClass,
+          )}
+        >
+          {content}
+        </div>
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            disabled={saveLoading}
+            onClick={() => {
+              onSave()
+              onOpenChange(false)
+            }}
+          >
+            {saveLoading ? 'Saving…' : 'Save & Close'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  return (
+    <Card className="border-0 bg-transparent shadow-none">
+      <CardContent
+        className={cn(
+          'space-y-5 p-0',
+          labRegistryFormClass,
+          readOnly &&
+            'pointer-events-none select-text [&_[data-readonly-action]]:pointer-events-auto',
+        )}
+      >
+        <div className="space-y-4">
+          <section className={cn(limsPanelClass, 'p-4')}>
+            <h3 className={sectionTitleClass}>IQC Identity</h3>
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="iqc-id">IQC Standard ID / Asset Code *</Label>
+                <Input
+                  id="iqc-id"
+                  value={form.assetCode}
+                  onChange={(e) =>
+                    onChange({ ...form, assetCode: e.target.value.toUpperCase() })
+                  }
+                  placeholder="Enter unique asset code"
+                  className="font-mono font-medium uppercase"
+                  autoComplete="off"
+                  required
+                  aria-required="true"
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-6">
+                <Label htmlFor="iqc-name">Master Standard Name *</Label>
+                <Input
+                  id="iqc-name"
+                  placeholder="Enter standard name"
+                  value={form.equipmentName}
+                  onChange={(e) => onChange({ ...form, equipmentName: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="iqc-status">Status</Label>
+                <Select
+                  value={form.equipmentStatus}
+                  onValueChange={(v) => onChange({ ...form, equipmentStatus: v as EquipmentStatus })}
+                >
+                  <SelectTrigger id="iqc-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="In Repair">In Repair</SelectItem>
+                    <SelectItem value="Idle">Idle</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </section>
+
+          <section className={cn(limsPanelClass, 'p-4')}>
+            <h3 className={sectionTitleClass}>Identification & Custodian</h3>
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="iqc-make">Manufacturer / Make</Label>
+                <Input
+                  id="iqc-make"
+                  placeholder="Make"
+                  value={form.manufacturer}
+                  onChange={(e) => onChange({ ...form, manufacturer: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="iqc-model">Model Number</Label>
+                <Input
+                  id="iqc-model"
+                  placeholder="Model"
+                  value={form.modelNumber}
+                  onChange={(e) => onChange({ ...form, modelNumber: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="iqc-serial">Serial Number</Label>
+                <Input
+                  id="iqc-serial"
+                  placeholder="Serial No"
+                  value={form.serialNumber}
+                  onChange={(e) => onChange({ ...form, serialNumber: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="iqc-custodian">Custodian / In-charge</Label>
+                <FilterCombobox
+                  inputId="iqc-custodian"
+                  listId="iqc-custodian-list"
+                  value={custodianOpen ? custodianQuery : selectedCustodianLabel}
+                  onValueChange={(v) => {
+                    setCustodianQuery(v)
+                    if (!custodianOpen) setCustodianOpen(true)
+                    if (!v.trim()) applyCustodianSelection('')
+                  }}
+                  options={filteredCustodianOptions}
+                  onSelectOption={(opt) => {
+                    applyCustodianSelection(opt.id)
+                    setCustodianQuery(opt.label)
+                    setCustodianOpen(false)
+                  }}
+                  open={custodianOpen}
+                  onOpenChange={(open) => {
+                    setCustodianOpen(open)
+                    if (open) setCustodianQuery(selectedCustodianLabel)
+                  }}
+                  placeholder="Type to search employee…"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className={cn(limsPanelClass, 'p-4')}>
+            <h3 className={sectionTitleClass}>Purchase & Location</h3>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="iqc-purchase-date">Date of Purchased</Label>
+                <Input
+                  id="iqc-purchase-date"
+                  type="date"
+                  value={form.dateOfPurchase}
+                  onChange={(e) => onChange({ ...form, dateOfPurchase: e.target.value })}
+                />
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="iqc-service-date">Date Placed in Service</Label>
+                <Input
+                  id="iqc-service-date"
+                  type="date"
+                  value={form.datePlacedInService}
+                  onChange={(e) => onChange({ ...form, datePlacedInService: e.target.value })}
+                />
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <Label>Purchase From</Label>
+                <LimsFieldWithAdd
+                  addButton={
+                    <LimsFieldAddButton
+                      aria-label="Add new supplier client"
+                      title="Add New Client"
+                      onClick={() => onAddNewClientClick('purchasedFrom')}
+                    />
+                  }
+                >
+                  <ClientSearchSelect
+                    value={form.purchasedFrom}
+                    onValueChange={(v) => onChange({ ...form, purchasedFrom: v })}
+                    options={clients}
+                    placeholder="Type to search supplier…"
+                  />
+                </LimsFieldWithAdd>
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="iqc-location">Current Location</Label>
+                <FilterCombobox
+                  inputId="iqc-location"
+                  listId="iqc-location-list"
+                  value={locationOpen ? locationQuery : form.currentLocation}
+                  onValueChange={(v) => {
+                    setLocationQuery(v)
+                    if (!locationOpen) setLocationOpen(true)
+                    if (!v.trim()) onChange({ ...form, currentLocation: '' })
+                  }}
+                  options={filteredLocationOptions}
+                  onSelectOption={(opt) => {
+                    onChange({ ...form, currentLocation: opt.label })
+                    setLocationQuery(opt.label)
+                    setLocationOpen(false)
+                  }}
+                  open={locationOpen}
+                  onOpenChange={(open) => {
+                    setLocationOpen(open)
+                    if (open) setLocationQuery(form.currentLocation)
+                  }}
+                  placeholder="Type to search department…"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className={cn(limsPanelClass, 'p-4')} data-iqc-tech-specs="value-unit">
+            <h3 className={sectionTitleClass}>Technical Specifications</h3>
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 space-y-0.5 md:col-span-4">
+                <Label htmlFor="eq-range">Range / Capacity</Label>
+                <div className={limsFieldWithAddShellClass}>
+                  <Input
+                    id="eq-range"
+                    placeholder="Value"
+                    aria-label="Range / capacity value"
+                    value={form.rangeCapacity}
+                    onChange={(e) => onChange({ ...form, rangeCapacity: e.target.value })}
+                    className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
+                  />
+                  <div className="min-w-0 flex-1 border-l border-stone-500">
+                    <MeasurementUnitSelect
+                      id="eq-range-unit"
+                      value={form.rangeCapacityUnit ?? ''}
+                      onChange={(rangeCapacityUnit) => onChange({ ...form, rangeCapacityUnit })}
+                      showLabel={false}
+                      showManageButton
+                      placeholder="Unit"
+                      className="min-w-0"
+                      shellClassName="h-full border-0 focus-within:border-transparent focus-within:ring-0"
+                      inputClassName="px-2"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-12 space-y-0.5 md:col-span-4">
+                <Label htmlFor="eq-resolution">Resolution / Least Count</Label>
+                <div className={limsFieldWithAddShellClass}>
+                  <Input
+                    id="eq-resolution"
+                    placeholder="Value"
+                    aria-label="Resolution / least count value"
+                    value={form.resolutionLeastCount}
+                    onChange={(e) => onChange({ ...form, resolutionLeastCount: e.target.value })}
+                    className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
+                  />
+                  <div className="min-w-0 flex-1 border-l border-stone-500">
+                    <MeasurementUnitSelect
+                      id="eq-resolution-unit"
+                      value={form.resolutionLeastCountUnit ?? ''}
+                      onChange={(resolutionLeastCountUnit) =>
+                        onChange({ ...form, resolutionLeastCountUnit })
+                      }
+                      showLabel={false}
+                      showManageButton
+                      placeholder="Unit"
+                      className="min-w-0"
+                      shellClassName="h-full border-0 focus-within:border-transparent focus-within:ring-0"
+                      inputClassName="px-2"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-12 space-y-0.5 md:col-span-4">
+                <Label htmlFor="eq-accuracy">Acceptance Criteria</Label>
+                <div className={limsFieldWithAddShellClass}>
+                  <Input
+                    id="eq-accuracy"
+                    placeholder="Value"
+                    aria-label="Acceptance criteria value"
+                    value={form.accuracyAcceptanceCriteria}
+                    onChange={(e) =>
+                      onChange({ ...form, accuracyAcceptanceCriteria: e.target.value })
+                    }
+                    className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
+                  />
+                  <div className="min-w-0 flex-1 border-l border-stone-500">
+                    <MeasurementUnitSelect
+                      id="eq-accuracy-unit"
+                      value={form.accuracyAcceptanceCriteriaUnit ?? ''}
+                      onChange={(accuracyAcceptanceCriteriaUnit) =>
+                        onChange({ ...form, accuracyAcceptanceCriteriaUnit })
+                      }
+                      showLabel={false}
+                      showManageButton
+                      placeholder="Unit"
+                      className="min-w-0"
+                      shellClassName="h-full border-0 focus-within:border-transparent focus-within:ring-0"
+                      inputClassName="px-2"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {!hideScheduleSections ? (
+            <section className={cn(limsPanelClass, 'p-4')} data-iqc-schedule="open-form">
+              <h3 className={sectionTitleClass}>Schedule Applicability</h3>
+              <div className="grid grid-cols-12 gap-3">
+                <div id="section-calibration" className="col-span-12 space-y-3 md:col-span-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Calibration
+                  </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Select
+                        value={calApplicable}
+                        onValueChange={(v) => {
+                          const next = v as 'applicable' | 'not-applicable'
+                          setCalApplicable(next)
+                          if (next === 'not-applicable') {
+                            setCalDetailsOpen(false)
+                            onChange({
+                              ...form,
+                              calibrationFrequency: '',
+                              lastCalibrationDate: '',
+                              nextCalibrationDue: '',
+                              calibrationCertificateNumber: '',
+                              calibrationTemperature: '',
+                              calibrationHumidity: '',
+                              externalCalibrationAgency: '',
+                              certificateFile: null,
+                              uploadCertificatePath: '',
+                              calibrationPointsColumns: [],
+                              calibrationPoints: [],
+                            })
+                          } else {
+                            onChange({
+                              ...form,
+                              calibrationFrequency: form.calibrationFrequency || 'Yearly',
+                            })
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="min-w-0 flex-1 border-slate-200 bg-white">
+                          <SelectValue placeholder="Select Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="applicable">Applicable</SelectItem>
+                          <SelectItem value="not-applicable">Not Applicable</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn('h-8 shrink-0 gap-1.5 px-3', limsOutlineBtnClass)}
+                        disabled={calApplicable !== 'applicable'}
+                        aria-disabled={calApplicable !== 'applicable'}
+                        title={
+                          calApplicable === 'applicable'
+                            ? 'Open Calibration form'
+                            : 'Set status to Applicable to open the form'
+                        }
+                        aria-label={
+                          calApplicable === 'applicable'
+                            ? 'Open Calibration form'
+                            : 'Open Calibration form (disabled when Not Applicable)'
+                        }
+                        onClick={() => {
+                          if (calApplicable !== 'applicable') return
+                          if (!form.calibrationFrequency) {
+                            onChange({ ...form, calibrationFrequency: 'Yearly' })
+                          }
+                          setCalDetailsOpen(true)
+                        }}
+                      >
+                        <ClipboardCheck size={14} />
+                        Open Form
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="section-intermediate" className="col-span-12 space-y-3 md:col-span-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Intermediate Check
+                  </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Select
+                        value={intermediateApplicable}
+                        onValueChange={(v) => {
+                          const next = v as 'applicable' | 'not-applicable'
+                          setIntermediateApplicable(next)
+                          if (next === 'not-applicable') {
+                            setIntermediateDetailsOpen(false)
+                            onChange({
+                              ...form,
+                              intermediateCheckFrequency: '',
+                              lastIntermediateCheckDate: '',
+                              nextIntermediateCheckDate: '',
+                              intermediateCheckResult: '',
+                            })
+                          } else {
+                            onChange({
+                              ...form,
+                              intermediateCheckFrequency:
+                                form.intermediateCheckFrequency || 'Quarterly',
+                            })
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="min-w-0 flex-1 border-slate-200 bg-white">
+                          <SelectValue placeholder="Select Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="applicable">Applicable</SelectItem>
+                          <SelectItem value="not-applicable">Not Applicable</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn('h-8 shrink-0 gap-1.5 px-3', limsOutlineBtnClass)}
+                        disabled={intermediateApplicable !== 'applicable'}
+                        aria-disabled={intermediateApplicable !== 'applicable'}
+                        title={
+                          intermediateApplicable === 'applicable'
+                            ? 'Open Intermediate Check form'
+                            : 'Set status to Applicable to open the form'
+                        }
+                        aria-label={
+                          intermediateApplicable === 'applicable'
+                            ? 'Open Intermediate Check form'
+                            : 'Open Intermediate Check form (disabled when Not Applicable)'
+                        }
+                        onClick={() => {
+                          if (intermediateApplicable !== 'applicable') return
+                          setIntermediateDetailsOpen(true)
+                        }}
+                      >
+                        <ListChecks size={14} />
+                        Open Form
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="section-maintenance" className="col-span-12 space-y-3 md:col-span-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Maintenance
+                  </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Select
+                        value={maintApplicable}
+                        onValueChange={(v) => {
+                          const next = v as 'applicable' | 'not-applicable'
+                          setMaintApplicable(next)
+                          if (next === 'not-applicable') {
+                            setMaintenanceDetailsOpen(false)
+                            onChange({
+                              ...form,
+                              maintenanceScheduleFrequency: '',
+                              lastMaintenanceDate: '',
+                              nextMaintenanceDate: '',
+                              maintenanceDoneBy: '',
+                              maintenanceChecklist: [],
+                              maintenanceHistory: [],
+                            })
+                          } else {
+                            onChange({
+                              ...form,
+                              maintenanceScheduleFrequency:
+                                form.maintenanceScheduleFrequency || 'Quarterly',
+                              maintenanceDoneBy:
+                                form.maintenanceDoneBy || form.custodianEmployeeId || '',
+                            })
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="min-w-0 flex-1 border-slate-200 bg-white">
+                          <SelectValue placeholder="Select Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="applicable">Applicable</SelectItem>
+                          <SelectItem value="not-applicable">Not Applicable</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn('h-8 shrink-0 gap-1.5 px-3', limsOutlineBtnClass)}
+                        disabled={maintApplicable !== 'applicable'}
+                        aria-disabled={maintApplicable !== 'applicable'}
+                        title={
+                          maintApplicable === 'applicable'
+                            ? 'Open Maintenance form'
+                            : 'Set status to Applicable to open the form'
+                        }
+                        aria-label={
+                          maintApplicable === 'applicable'
+                            ? 'Open Maintenance form'
+                            : 'Open Maintenance form (disabled when Not Applicable)'
+                        }
+                        onClick={() => {
+                          if (maintApplicable !== 'applicable') return
+                          setMaintenanceDetailsOpen(true)
+                        }}
+                      >
+                        <Wrench size={14} />
+                        Open Form
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className={cn(limsPanelClass, 'p-4')}>
+            <h3 className={sectionTitleClass}>Documents & History</h3>
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 space-y-1.5 md:col-span-3">
+                <Label>Upload Manual / SOP</Label>
+                <div className="flex h-8 items-center gap-0.5 rounded-none border border-stone-500 bg-stone-50 px-1">
+                  <span
+                    className="min-w-0 flex-1 truncate px-1.5 text-xs text-stone-600"
+                    title={
+                      form.manualSopFile?.name ||
+                      (form.uploadManualSopPath
+                        ? form.uploadManualSopPath.split('/').pop()?.replace(/^\d+_/, '')
+                        : undefined)
+                    }
+                  >
+                    {form.manualSopFile
+                      ? form.manualSopFile.name
+                      : form.uploadManualSopPath
+                        ? form.uploadManualSopPath.split('/').pop()?.replace(/^\d+_/, '')
+                        : 'No file'}
+                  </span>
+                  <label
+                    className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-none text-base leading-none hover:bg-stone-200/80"
+                    title="Upload"
+                    aria-label="Upload Manual / SOP"
+                  >
+                    <span aria-hidden>📤</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null
+                        handleFileChange('manualSopFile', file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    data-readonly-action=""
+                    className="h-7 w-7 shrink-0 rounded-none text-base hover:bg-stone-200/80"
+                    title="View"
+                    aria-label="View Manual / SOP"
+                    disabled={!form.uploadManualSopPath && !form.manualSopFile}
+                    onClick={() => {
+                      if (form.uploadManualSopPath) {
+                        onViewFile(form.uploadManualSopPath, 'Manual_SOP')
+                        return
+                      }
+                      if (form.manualSopFile) {
+                        const url = URL.createObjectURL(form.manualSopFile)
+                        window.open(url, '_blank', 'noopener,noreferrer')
+                        window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+                      }
+                    }}
+                  >
+                    <span aria-hidden>👁</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 rounded-none text-base hover:bg-red-50"
+                    title="Delete"
+                    aria-label="Delete Manual / SOP"
+                    disabled={!form.uploadManualSopPath && !form.manualSopFile}
+                    onClick={() => {
+                      const ok = window.confirm(
+                        'Are you sure you want to delete the uploaded Manual/SOP?',
+                      )
+                      if (!ok) return
+                      onChange({
+                        ...form,
+                        uploadManualSopPath: '',
+                        manualSopFile: null,
+                      })
+                    }}
+                  >
+                    <span aria-hidden>🗑</span>
+                  </Button>
+                </div>
+              </div>
+              <div className="col-span-12 space-y-1.5 md:col-span-9">
+                <Label htmlFor="iqc-damage">History of Damage/Malfunction</Label>
+                <Input
+                  id="iqc-damage"
+                  placeholder="Describe any history of damages or malfunctions…"
+                  value={form.historyOfDamage}
+                  onChange={(e) => onChange({ ...form, historyOfDamage: e.target.value })}
+                  className="h-8"
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+      </CardContent>
+
+      <CardFooter className="-mx-4 mt-5 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+        {readOnly ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onClose?.()}
+            className={cn(limsOutlineBtnClass, 'min-w-[8.5rem]')}
+            data-readonly-action
+          >
+            Close
+          </Button>
+        ) : (
           <Button
             type="button"
             onClick={onSave}
             disabled={!canSave || saveLoading}
-            className="min-w-32 bg-primary hover:bg-primary/90 text-white"
+            className={cn(limsPrimaryBtnClass, 'min-w-[8.5rem]')}
           >
             {saveLoading ? 'Saving…' : 'Save & Close'}
           </Button>
-        </CardFooter>
-      </Card>
-    )
-  }
+        )}
+      </CardFooter>
 
-  return (
-    <Card className="border-0 shadow-none">
-      <CardContent className="space-y-6 pt-2">
-        {/* Section 1: Basic Information */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-primary border-b pb-1">Basic Info</h3>
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-id" className="text-xs">IQC Standard ID / Asset Code</Label>
-              <Input
-                id="eq-id"
-                value={form.assetCode || 'Auto Numbering…'}
-                readOnly
-                className="bg-muted text-muted-foreground font-mono"
-              />
-            </div>
+      {renderScheduleDialog(
+        calDetailsOpen,
+        setCalDetailsOpen,
+        'Calibration Form',
+        renderCalibrationSectionFields(),
+      )}
+      {renderScheduleDialog(
+        intermediateDetailsOpen,
+        setIntermediateDetailsOpen,
+        'Intermediate Check Form',
+        renderIntermediateSectionFields(),
+      )}
 
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-name" className="text-xs">Master Standard Name *</Label>
-              <Input
-                id="eq-name"
-                placeholder="Enter standard name"
-                value={form.equipmentName}
-                onChange={(e) => onChange({ ...form, equipmentName: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-status" className="text-xs">Status</Label>
-              <Select
-                value={form.equipmentStatus}
-                onValueChange={(v) => onChange({ ...form, equipmentStatus: v as EquipmentStatus })}
-              >
-                <SelectTrigger id="eq-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="In Repair">In Repair</SelectItem>
-                  <SelectItem value="Idle">Idle</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label htmlFor="eq-make" className="text-xs">Manufacturer / Make</Label>
-              <Input
-                id="eq-make"
-                placeholder="Make"
-                value={form.manufacturer}
-                onChange={(e) => onChange({ ...form, manufacturer: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label htmlFor="eq-model" className="text-xs">Model Number</Label>
-              <Input
-                id="eq-model"
-                placeholder="Model"
-                value={form.modelNumber}
-                onChange={(e) => onChange({ ...form, modelNumber: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label htmlFor="eq-serial" className="text-xs">Serial Number</Label>
-              <Input
-                id="eq-serial"
-                placeholder="Serial No"
-                value={form.serialNumber}
-                onChange={(e) => onChange({ ...form, serialNumber: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label htmlFor="eq-custodian" className="text-xs">Custodian / In-charge</Label>
-              <Select
-                value={form.custodianEmployeeId}
-                onValueChange={(v) => onChange({ ...form, custodianEmployeeId: v })}
-              >
-                <SelectTrigger id="eq-custodian">
-                  <SelectValue placeholder="Select Custodian" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {emp.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <Dialog open={maintenanceDetailsOpen} onOpenChange={setMaintenanceDetailsOpen}>
+        <DialogContent
+          persistOnFocusLoss
+          layer="nested"
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
+            'left-0 top-0',
+            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          )}
+          aria-describedby={undefined}
+        >
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
+              style={limsDarkBarGlowStyle}
+            />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+                Maintenance Schedule Form
+              </DialogTitle>
+            </DialogHeader>
           </div>
-        </div>
-
-        {/* Section 2: Procurement & Location */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-primary border-b pb-1">Procurement & Location</h3>
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label htmlFor="eq-purchase-date" className="text-xs">Date of Purchased</Label>
-              <Input
-                id="eq-purchase-date"
-                type="date"
-                value={form.dateOfPurchase}
-                onChange={(e) => onChange({ ...form, dateOfPurchase: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label htmlFor="eq-service-date" className="text-xs">Date Placed in Service</Label>
-              <Input
-                id="eq-service-date"
-                type="date"
-                value={form.datePlacedInService}
-                onChange={(e) => onChange({ ...form, datePlacedInService: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label className="text-xs">Purchase From</Label>
-              <ClientSearchSelect
-                value={form.purchasedFrom}
-                onValueChange={(v) => onChange({ ...form, purchasedFrom: v })}
-                options={clients}
-                placeholder="Search or select Supplier..."
-                onAddNewClientClick={() => onAddNewClientClick('purchasedFrom')}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-3 space-y-1.5">
-              <Label htmlFor="eq-location" className="text-xs">Current Location</Label>
-              <Select
-                value={form.currentLocation}
-                onValueChange={(v) => onChange({ ...form, currentLocation: v })}
-              >
-                <SelectTrigger id="eq-location">
-                  <SelectValue placeholder="Select Location" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((loc) => (
-                    <SelectItem key={loc} value={loc}>
-                      {loc}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 3: Technical Specifications & Symbols */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-primary border-b pb-1">Technical Specifications</h3>
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-range" className="text-xs">Range / Capacity</Label>
-              <Input
-                id="eq-range"
-                placeholder="e.g. 0 to 500 mm"
-                value={form.rangeCapacity}
-                onFocus={() => setActiveFieldForSymbols('rangeCapacity')}
-                onChange={(e) => onChange({ ...form, rangeCapacity: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-resolution" className="text-xs">Resolution / Least Count</Label>
-              <Input
-                id="eq-resolution"
-                placeholder="e.g. 0.01 mm"
-                value={form.resolutionLeastCount}
-                onFocus={() => setActiveFieldForSymbols('resolutionLeastCount')}
-                onChange={(e) => onChange({ ...form, resolutionLeastCount: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-accuracy" className="text-xs">Accuracy / Acceptance Criteria</Label>
-              <Input
-                id="eq-accuracy"
-                placeholder="e.g. ±0.02 mm"
-                value={form.accuracyAcceptanceCriteria}
-                onFocus={() => setActiveFieldForSymbols('accuracyAcceptanceCriteria')}
-                onChange={(e) => onChange({ ...form, accuracyAcceptanceCriteria: e.target.value })}
-              />
-            </div>
-
-            {activeFieldForSymbols && (
-              <div className="col-span-12 bg-stone-800 border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Insert Symbol into{' '}
-                    <span className="text-primary">
-                      {activeFieldForSymbols === 'rangeCapacity'
-                        ? 'Range / Capacity'
-                        : activeFieldForSymbols === 'resolutionLeastCount'
-                        ? 'Resolution / Least Count'
-                        : 'Accuracy / Acceptance Criteria'}
-                    </span>
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => setActiveFieldForSymbols(null)}
-                  >
-                    <X size={14} />
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {symbols.map((sym) => (
-                    <Button
-                      key={sym}
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-2.5 text-sm font-medium hover:bg-primary hover:text-primary-foreground"
-                      onClick={() => handleSymbolClick(sym)}
-                    >
-                      {sym}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+          <div
+            className={cn(
+              'min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
+              labRegistryFormClass,
             )}
+          >
+            {renderMaintenanceSectionFields()}
           </div>
-        </div>
-
-        {/* NEW Section 3.5: Master Calibration Points */}
-        <div className="space-y-4 border border-slate-200 rounded-lg p-4 bg-slate-50/20">
-          <div className="flex items-center justify-between border-b pb-2">
-            <h3 className="text-sm font-semibold text-primary">Master Calibration Certificate Points</h3>
+          <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs text-primary border-primary/20 hover:bg-primary/5"
-              onClick={handleAddCalPoint}
+              className={limsPrimaryBtnClass}
+              disabled={saveLoading}
+              onClick={() => {
+                onSave()
+                setMaintenanceDetailsOpen(false)
+              }}
             >
-              <Plus size={14} className="mr-1" /> Add Calibration Point
+              {saveLoading ? 'Saving…' : 'Save & Close'}
             </Button>
-          </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          {calibrationPoints.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2 text-center">No calibration points added yet. Click &quot;Add Calibration Point&quot; above to record certificate reference values.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-muted-foreground font-semibold text-[10px] uppercase bg-slate-100/50">
-                    <th className="py-2 px-2 w-[8%]">#</th>
-                    <th className="py-2 px-2 w-[28%]">Nominal / Std Value</th>
-                    <th className="py-2 px-2 w-[28%]">Actual / Certified Value</th>
-                    <th className="py-2 px-2 w-[16%] text-center">Correction Factor</th>
-                    <th className="py-2 px-2 w-[15%]">Uncertainty (±)</th>
-                    <th className="py-2 px-2 w-[5%]"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {calibrationPoints.map((pt, idx) => (
-                    <tr key={pt.id} className="hover:bg-slate-50/50">
-                      <td className="py-2 px-2 text-slate-500 font-mono align-middle">{idx + 1}</td>
-                      <td className="py-1 px-1 align-middle">
-                        <Input
-                          type="text"
-                          placeholder="e.g. 10.0"
-                          value={pt.nominalValue}
-                          onChange={(e) => handleUpdateCalPoint(idx, 'nominalValue', e.target.value)}
-                          className="h-8 text-xs py-1 px-2"
-                        />
-                      </td>
-                      <td className="py-1 px-1 align-middle">
-                        <Input
-                          type="text"
-                          placeholder="e.g. 10.02"
-                          value={pt.actualValue}
-                          onChange={(e) => handleUpdateCalPoint(idx, 'actualValue', e.target.value)}
-                          className="h-8 text-xs py-1 px-2"
-                        />
-                      </td>
-                      <td className="py-2 text-center font-mono font-medium text-slate-700 align-middle bg-slate-50/40">
-                        {pt.correction}
-                      </td>
-                      <td className="py-1 px-1 align-middle">
-                        <Input
-                          type="text"
-                          placeholder="e.g. 0.01"
-                          value={pt.uncertainty}
-                          onChange={(e) => handleUpdateCalPoint(idx, 'uncertainty', e.target.value)}
-                          className="h-8 text-xs py-1 px-2"
-                        />
-                      </td>
-                      <td className="py-1 px-1 align-middle text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:bg-rose-50"
-                          onClick={() => handleRemoveCalPoint(idx)}
-                        >
-                          <Trash2 size={12} />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+      <ConductMaintenanceDialog
+        open={conductMaintenanceOpen}
+        onOpenChange={setConductMaintenanceOpen}
+        equipmentName={form.equipmentName}
+        assetCode={form.assetCode}
+        manufacturer={form.manufacturer}
+        modelNumber={form.modelNumber}
+        rangeCapacity={joinValueAndUnit(form.rangeCapacity, form.rangeCapacityUnit)}
+        initialChecklist={form.maintenanceChecklist}
+        maintenanceHistory={form.maintenanceHistory}
+        lastMaintenanceDate={form.lastMaintenanceDate}
+        nextMaintenanceDate={form.nextMaintenanceDate}
+        maintenanceDoneBy={effectiveMaintenanceDoneBy}
+        maintenanceDoneByName={maintenanceDoneByName}
+        maintenanceScheduleFrequency={form.maintenanceScheduleFrequency}
+        onSaveChecklist={(items) => onChange({ ...form, maintenanceChecklist: items })}
+        onCompleteMaintenance={(payload) =>
+          onChange({
+            ...form,
+            maintenanceChecklist: payload.checklist,
+            maintenanceHistory: payload.maintenanceHistory,
+            lastMaintenanceDate: payload.lastMaintenanceDate,
+            nextMaintenanceDate: payload.nextMaintenanceDate,
+          })
+        }
+      />
 
-        {/* Section 4: Calibration Details */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-primary border-b pb-1">Calibration Details</h3>
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-cal-freq" className="text-xs">Frequency</Label>
-              <Select
-                value={form.calibrationFrequency}
-                onValueChange={(v) => onChange({ ...form, calibrationFrequency: v as Frequency })}
-              >
-                <SelectTrigger id="eq-cal-freq">
-                  <SelectValue placeholder="Select Frequency" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Daily">Daily</SelectItem>
-                  <SelectItem value="Weekly">Weekly</SelectItem>
-                  <SelectItem value="Monthly">Monthly</SelectItem>
-                  <SelectItem value="Quarterly">Quarterly</SelectItem>
-                  <SelectItem value="Half Yearly">Half Yearly</SelectItem>
-                  <SelectItem value="Yearly">Yearly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-last-cal" className="text-xs">Last Date</Label>
-              <Input
-                id="eq-last-cal"
-                type="date"
-                value={form.lastCalibrationDate}
-                onChange={(e) => onChange({ ...form, lastCalibrationDate: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-next-cal" className="text-xs">Next Due (Auto)</Label>
-              <Input
-                id="eq-next-cal"
-                type="date"
-                value={form.nextCalibrationDue}
-                readOnly
-                className="bg-muted text-muted-foreground font-mono"
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label htmlFor="eq-cal-cert" className="text-xs">Certificate Number</Label>
-              <Input
-                id="eq-cal-cert"
-                placeholder="Cert No"
-                value={form.calibrationCertificateNumber}
-                onChange={(e) => onChange({ ...form, calibrationCertificateNumber: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label className="text-xs">Agency</Label>
-              <ClientSearchSelect
-                value={form.externalCalibrationAgency}
-                onValueChange={(v) => onChange({ ...form, externalCalibrationAgency: v })}
-                options={clients}
-                placeholder="Search Agency..."
-                onAddNewClientClick={() => onAddNewClientClick('externalCalibrationAgency')}
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4 space-y-1.5">
-              <Label className="text-xs">Upload Certificate (PDF)</Label>
-              <div className="flex gap-2">
-                <div className="flex-1 relative border rounded-md px-3 py-1 bg-white flex items-center justify-between text-xs min-h-9">
-                  <span className="text-muted-foreground truncate max-w-[130px]">
-                    {form.certificateFile
-                      ? form.certificateFile.name
-                      : form.uploadCertificatePath
-                      ? form.uploadCertificatePath.split('/').pop()?.replace(/^\d+_/, '')
-                      : 'No file'}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {form.uploadCertificatePath && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-primary hover:bg-slate-100"
-                          onClick={() => onViewFile(form.uploadCertificatePath, 'Certificate')}
-                        >
-                          <Eye size={12} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-destructive hover:bg-red-50"
-                          onClick={() => {
-                            const ok = window.confirm('Delete uploaded certificate?')
-                            if (ok) {
-                              onChange({
-                                ...form,
-                                uploadCertificatePath: '',
-                                certificateFile: null,
-                              })
-                            }
-                          }}
-                        >
-                          <Trash2 size={12} />
-                        </Button>
-                      </>
-                    )}
-                    <label className="cursor-pointer p-0.5 rounded text-slate-500 hover:bg-slate-100">
-                      <FileUp size={14} />
-                      <input
-                        type="file"
-                        accept=".pdf"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0] || null
-                          handleFileChange('certificateFile', file)
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 5: Manuals, SOP & History */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-primary border-b pb-1">Documentation & History of Damage</h3>
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12 md:col-span-6 space-y-1.5">
-              <Label className="text-xs">Upload Manual / SOP (PDF)</Label>
-              <div className="flex gap-2">
-                <div className="flex-1 relative border rounded-md px-3 py-1 bg-white flex items-center justify-between text-xs min-h-9">
-                  <span className="text-muted-foreground truncate max-w-[200px]">
-                    {form.manualSopFile
-                      ? form.manualSopFile.name
-                      : form.uploadManualSopPath
-                      ? form.uploadManualSopPath.split('/').pop()?.replace(/^\d+_/, '')
-                      : 'No file selected'}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {form.uploadManualSopPath && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-primary hover:bg-slate-100"
-                          onClick={() => onViewFile(form.uploadManualSopPath, 'Manual/SOP')}
-                        >
-                          <Eye size={12} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-destructive hover:bg-red-50"
-                          onClick={() => {
-                            const ok = window.confirm('Delete manual/SOP file?')
-                            if (ok) {
-                              onChange({
-                                ...form,
-                                uploadManualSopPath: '',
-                                manualSopFile: null,
-                              })
-                            }
-                          }}
-                        >
-                          <Trash2 size={12} />
-                        </Button>
-                      </>
-                    )}
-                    <label className="cursor-pointer p-0.5 rounded text-slate-500 hover:bg-slate-100">
-                      <FileUp size={14} />
-                      <input
-                        type="file"
-                        accept=".pdf"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0] || null
-                          handleFileChange('manualSopFile', file)
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="col-span-12 md:col-span-6 space-y-1.5">
-              <Label htmlFor="eq-damage" className="text-xs">History of Damage / Discrepancy</Label>
-              <Textarea
-                id="eq-damage"
-                placeholder="Record any damage, malfunction or repairs performed here..."
-                value={form.historyOfDamage}
-                onChange={(e) => onChange({ ...form, historyOfDamage: e.target.value })}
-                className="min-h-9 text-xs py-1 px-3"
-              />
-            </div>
-          </div>
-        </div>
-      </CardContent>
-
-      <CardFooter className="flex items-center justify-end gap-2 border-t pt-4 px-6 bg-slate-50/50 rounded-b-lg">
-        <Button
-          type="button"
-          onClick={onSave}
-          disabled={!canSave || saveLoading}
-          className="min-w-32 bg-primary hover:bg-primary/90 text-white"
-        >
-          {saveLoading ? 'Saving…' : 'Save & Close'}
-        </Button>
-      </CardFooter>
+      <MaintenanceHistoryDialog
+        open={maintenanceHistoryViewOpen}
+        onOpenChange={setMaintenanceHistoryViewOpen}
+        equipmentName={form.equipmentName}
+        assetCode={form.assetCode}
+        history={form.maintenanceHistory}
+        currentLastDate={form.lastMaintenanceDate}
+        currentDoneByName={maintenanceDoneByName}
+        currentChecklist={form.maintenanceChecklist}
+        onDirectorChange={(next) =>
+          onChange({
+            ...form,
+            maintenanceHistory: next.history,
+            lastMaintenanceDate: next.currentLastDate,
+            maintenanceDoneBy: next.currentDoneByName,
+            maintenanceChecklist: next.currentChecklist,
+          })
+        }
+      />
     </Card>
   )
 }

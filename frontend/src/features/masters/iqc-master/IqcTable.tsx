@@ -1,9 +1,122 @@
 import { Copy, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
-import type { IqcRow } from './types'
-import { Badge } from '@/components/ui/badge'
-import { formatDate } from '@/lib/utils'
+import {
+  limsOutlineBtnClass,
+  limsPanelClass,
+  limsTableClass,
+  limsTableHeadClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
+import {
+  isCalibrationApplicable,
+  isIntermediateCheckApplicable,
+  isMaintenanceApplicable,
+  type IqcRow,
+} from './types'
+
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/80 hover:bg-[#fde68a]/80'
+
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 accent-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
+
+const scheduleStatusUi = {
+  overdue: {
+    text: 'Overdue',
+    className: 'border-red-700 bg-red-700 text-white hover:bg-red-800',
+  },
+  soon: {
+    text: 'Due Soon',
+    className: 'border-amber-600 bg-amber-500 text-stone-950 hover:bg-amber-400',
+  },
+  ok: {
+    text: 'Active',
+    className: 'border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700',
+  },
+  notSet: {
+    text: 'Not Set',
+    className: 'border-stone-400 bg-stone-100 text-stone-600 hover:bg-stone-200',
+  },
+  notApplicable: {
+    text: 'N/A',
+    className:
+      'cursor-not-allowed border-stone-300 bg-stone-200/80 text-stone-500 opacity-80 hover:bg-stone-200/80',
+  },
+} as const
+
+function scheduleTone(nextDue: string | null | undefined): 'overdue' | 'soon' | 'ok' | 'notSet' {
+  if (!nextDue) return 'notSet'
+  const due = new Date(nextDue)
+  if (Number.isNaN(due.getTime())) return 'notSet'
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  due.setHours(0, 0, 0, 0)
+  const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays < 0) return 'overdue'
+  if (diffDays <= 30) return 'soon'
+  return 'ok'
+}
+
+function isSectionApplicable(
+  row: IqcRow,
+  section: 'calibration' | 'intermediate' | 'maintenance',
+): boolean {
+  if (section === 'calibration') return isCalibrationApplicable(row)
+  if (section === 'intermediate') return isIntermediateCheckApplicable(row)
+  return isMaintenanceApplicable(row)
+}
+
+function ScheduleStatusButton({
+  label,
+  section,
+  nextDue,
+  row,
+  onEdit,
+}: {
+  label: string
+  section: 'calibration' | 'intermediate' | 'maintenance'
+  nextDue: string | null | undefined
+  row: IqcRow
+  onEdit: (
+    row: IqcRow,
+    section?: 'calibration' | 'intermediate' | 'maintenance' | 'details',
+  ) => void
+}) {
+  const applicable = isSectionApplicable(row, section)
+  const tone = applicable ? scheduleTone(nextDue) : 'notApplicable'
+  const ui = scheduleStatusUi[tone]
+  const dueLabel = nextDue ? formatDate(nextDue) : '—'
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      disabled={!applicable}
+      className={cn(
+        'h-7 w-full max-w-[8.5rem] rounded-none border px-2 text-[11px] font-bold uppercase tracking-wide shadow-none',
+        ui.className,
+      )}
+      onClick={() => {
+        if (!applicable) return
+        onEdit(row, section)
+      }}
+      aria-label={
+        applicable
+          ? `Open ${label} for ${row.equipment_name || row.asset_code || 'standard'}. Status: ${ui.text}`
+          : `${label} not applicable for ${row.equipment_name || row.asset_code || 'standard'}. Set Applicable in Edit form.`
+      }
+      title={
+        applicable
+          ? `${label}: ${ui.text}${nextDue ? ` · Due ${dueLabel}` : ''}`
+          : `${label}: N/A — set Applicable in Edit IQC form`
+      }
+    >
+      {ui.text}
+    </Button>
+  )
+}
 
 export function IqcTable({
   rows,
@@ -14,7 +127,7 @@ export function IqcTable({
   onToggleAll,
   onEdit,
   onCopy,
-  employeeMap,
+  employeeMap: _employeeMap,
 }: {
   rows: IqcRow[]
   loading: boolean
@@ -22,181 +135,175 @@ export function IqcTable({
   selectedIds: Set<string>
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
-  onEdit: (row: IqcRow, section?: 'calibration') => void
+  onEdit: (
+    row: IqcRow,
+    section?: 'calibration' | 'intermediate' | 'maintenance' | 'details',
+  ) => void
   onCopy: (row: IqcRow) => void
   employeeMap: Record<string, string>
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
-  const isCalibrationDueSoon = (dateStr: string | null) => {
-    if (!dateStr) return false
-    const due = new Date(dateStr)
-    if (Number.isNaN(due.getTime())) return false
-    const now = new Date()
-    const diffTime = due.getTime() - now.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays <= 30
-  }
-
-  const isCalibrationOverdue = (dateStr: string | null) => {
-    if (!dateStr) return false
-    const due = new Date(dateStr)
-    if (Number.isNaN(due.getTime())) return false
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    due.setHours(0, 0, 0, 0)
-    return due.getTime() < now.getTime()
-  }
-
-  const formatDateToDDMMYYYY = (dateStr: string | null) => formatDate(dateStr)
-
-  const renderStatusBadge = (nextDue: string | null, row: IqcRow) => {
-    if (!nextDue) {
-      return (
-        <button
-          type="button"
-          onClick={() => onEdit(row, 'calibration')}
-          className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer"
-        >
-          N/A
-        </button>
-      )
-    }
-
-    const overdue = isCalibrationOverdue(nextDue)
-    const dueSoon = isCalibrationDueSoon(nextDue)
-    
-    let statusText = 'Active'
-    let statusClass = 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
-    if (overdue) {
-      statusText = 'Overdue'
-      statusClass = 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30'
-    } else if (dueSoon) {
-      statusText = 'Due Soon'
-      statusClass = 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
-    }
-
-    return (
-      <button
-        type="button"
-        onClick={() => onEdit(row, 'calibration')}
-        className={`text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded border transition-colors cursor-pointer ${statusClass}`}
-      >
-        {statusText}
-      </button>
-    )
-  }
-
-
   return (
-    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
-      {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
+    <div className={cn(limsPanelClass, 'bg-[#f7f3eb]')}>
+      {error ? <p className="px-4 pt-4 text-sm text-destructive">{error}</p> : null}
       {loading ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">No IQC standards added yet.</p>
+        <p className="px-4 py-6 text-center text-sm text-stone-600">Loading…</p>
       ) : (
         <div className="[&>div]:overflow-x-auto">
-          <Table className="w-full table-fixed min-w-[1200px]">
+          <Table className={cn(limsTableClass, 'table-fixed min-w-[960px]')}>
             <colgroup>
               <col className="w-[44px]" />
-              <col className="w-[22%]" />
-              <col className="w-[15%]" />
-              <col className="w-[18%]" />
+              <col className="w-[28%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
               <col className="w-[10%]" />
               <col className="w-[10%]" />
               <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[80px]" />
+              <col className="w-[90px]" />
             </colgroup>
             <TableHeader>
-              <TableRow className="bg-stone-800 hover:bg-stone-800">
-                <TableHead className="px-2 text-center text-xs">
+              <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+                <TableHead className={cn(limsTableHeadClass, 'px-2')}>
                   <input
                     type="checkbox"
+                    className={checkboxClass}
                     aria-label="Select all"
                     checked={allChecked}
+                    disabled={rows.length === 0}
                     ref={(el) => {
                       if (el) el.indeterminate = !allChecked && someChecked
                     }}
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">IQC Master Standard</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Make &amp; Serial</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Location &amp; Custodian</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Cal Frequency</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Last Cal Date</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Next Due</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Status</TableHead>
-                <TableHead className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 text-center">Action</TableHead>
+                <TableHead className={cn(limsTableHeadClass, 'text-left')}>
+                  IQC Master Standard
+                </TableHead>
+                <TableHead className={limsTableHeadClass}>Least Count</TableHead>
+                <TableHead className={limsTableHeadClass}>Range</TableHead>
+                <TableHead className={limsTableHeadClass}>Calibration</TableHead>
+                <TableHead className={limsTableHeadClass}>Intermediate Check</TableHead>
+                <TableHead className={limsTableHeadClass}>Maintenance</TableHead>
+                <TableHead className={limsTableHeadClass}>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => {
-                const status = r.equipment_status ?? 'Active'
-                
-                let statusBadgeVariant: 'default' | 'secondary' | 'destructive' = 'default'
-                if (status === 'In Repair') {
-                  statusBadgeVariant = 'destructive'
-                } else if (status === 'Idle') {
-                  statusBadgeVariant = 'secondary'
-                }
+              {rows.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell
+                    colSpan={8}
+                    className="border border-[#e7e0d4] bg-[#fffcf7] px-4 py-10 text-center"
+                  >
+                    <p className="text-sm text-stone-600">No IQC standards added yet.</p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      Use “Add New” to register an IQC master standard.
+                    </p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r, index) => {
+                  const selected = selectedIds.has(r.id)
+                  const rowTone = selected
+                    ? rowSelectedClass
+                    : index % 2 === 0
+                      ? rowEvenClass
+                      : rowOddClass
 
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell className="align-middle px-2 text-center">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${r.equipment_name}`}
-                        checked={selectedIds.has(r.id)}
-                        onChange={() => onToggle(r.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="align-middle text-left">
-                      <div className="line-clamp-2 break-words font-medium leading-snug">{r.equipment_name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{r.asset_code}</div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="text-xs font-medium leading-snug">{r.manufacturer || '-'}</div>
-                      <div className="text-xs text-muted-foreground">S/N: {r.serial_number || '-'}</div>
-                      <div className="text-[11px] text-muted-foreground/80">Model: {r.model_number || '-'}</div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center space-y-1">
-                      <div className="text-xs font-medium">{r.current_location || '-'}</div>
-                      <div className="text-[11px] text-muted-foreground">{employeeMap[r.custodian_employee_id || ''] || '-'}</div>
-                      <div className="flex justify-center pt-0.5">
-                        <Badge variant={statusBadgeVariant} className="text-[10px] py-0 px-2 h-5">
-                          {status}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-middle text-center text-xs text-muted-foreground">
-                      {r.calibration_frequency || 'N/A'}
-                    </TableCell>
-                    <TableCell className="align-middle text-center font-mono text-xs text-muted-foreground/90">
-                      {formatDateToDDMMYYYY(r.last_calibration_date)}
-                    </TableCell>
-                    <TableCell className="align-middle text-center font-mono text-xs font-semibold text-foreground">
-                      {formatDateToDDMMYYYY(r.next_calibration_due)}
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      {renderStatusBadge(r.next_calibration_due, r)}
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button type="button" size="icon" variant="ghost" aria-label="Edit" onClick={() => onEdit(r)}>
-                          <Pencil size={16} />
-                        </Button>
-                        <Button type="button" size="icon" variant="ghost" aria-label="Copy" onClick={() => onCopy(r)}>
-                          <Copy size={16} />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
+                  return (
+                    <TableRow
+                      key={r.id}
+                      data-state={selected ? 'selected' : undefined}
+                      className={cn('border-[#e7e0d4]', rowTone)}
+                    >
+                      <TableCell className="align-middle px-2 text-center">
+                        <input
+                          type="checkbox"
+                          className={checkboxClass}
+                          aria-label={`Select ${r.equipment_name}`}
+                          checked={selected}
+                          onChange={() => onToggle(r.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="align-middle text-left">
+                        <button
+                          type="button"
+                          className="line-clamp-2 max-w-full break-words text-left text-[13px] font-bold leading-snug text-amber-800 underline-offset-2 hover:text-amber-950 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40"
+                          onClick={() => onEdit(r, 'details')}
+                          aria-label={`View details for ${r.equipment_name || r.asset_code || 'standard'}`}
+                          title="View IQC master details"
+                        >
+                          {r.equipment_name || '—'}
+                        </button>
+                      </TableCell>
+                      <TableCell className="align-middle text-center text-sm font-medium text-stone-800">
+                        {r.resolution_least_count?.trim() || '—'}
+                      </TableCell>
+                      <TableCell className="align-middle text-center text-sm font-medium text-stone-800">
+                        {r.range_capacity?.trim() || '—'}
+                      </TableCell>
+                      <TableCell className="align-middle text-center">
+                        <div className="flex justify-center">
+                          <ScheduleStatusButton
+                            label="Calibration"
+                            section="calibration"
+                            nextDue={r.next_calibration_due}
+                            row={r}
+                            onEdit={onEdit}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-middle text-center">
+                        <div className="flex justify-center">
+                          <ScheduleStatusButton
+                            label="Intermediate Check"
+                            section="intermediate"
+                            nextDue={r.next_intermediate_check_date}
+                            row={r}
+                            onEdit={onEdit}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-middle text-center">
+                        <div className="flex justify-center">
+                          <ScheduleStatusButton
+                            label="Maintenance"
+                            section="maintenance"
+                            nextDue={r.next_maintenance_date}
+                            row={r}
+                            onEdit={onEdit}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-middle text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className={cn('h-8 w-8', limsOutlineBtnClass)}
+                            aria-label={`Edit ${r.asset_code || r.equipment_name}`}
+                            onClick={() => onEdit(r)}
+                          >
+                            <Pencil size={16} />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className={cn('h-8 w-8', limsOutlineBtnClass)}
+                            aria-label={`Copy ${r.asset_code || r.equipment_name}`}
+                            onClick={() => onCopy(r)}
+                          >
+                            <Copy size={16} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
             </TableBody>
           </Table>
         </div>

@@ -215,3 +215,38 @@ export function encodeIntermediateCheckResult(
 export function hasValidIntermediateReading(readings: IntermediateCheckReading[]): boolean {
   return readings.some((r) => calcIntermediateCheckError(r.std, r.obs) !== null)
 }
+
+/** Map Check Point Table cells → Std/Obs readings (for validate / RSS). */
+export function readingsFromCheckTable(
+  columns: CalibrationPointsColumn[],
+  rows: CalibrationPointRow[],
+): IntermediateCheckReading[] {
+  if (columns.length === 0) return [emptyIntermediateCheckReading()]
+
+  const findColId = (patterns: RegExp[]): string | undefined => {
+    for (const col of columns) {
+      if (col.type === 'formula') continue
+      const header = col.header.trim().toLowerCase()
+      if (patterns.some((re) => re.test(header))) return col.id
+    }
+    return undefined
+  }
+
+  const dataCols = columns.filter((col) => col.type !== 'formula')
+  const cpId =
+    findColId([/check\s*point/, /^point$/]) ?? dataCols[0]?.id
+  const stdId =
+    findColId([/\bstd\b/, /standard/]) ??
+    dataCols.find((c) => c.id !== cpId)?.id
+  const obsId =
+    findColId([/\bobs\b/, /observed/]) ??
+    dataCols.find((c) => c.id !== cpId && c.id !== stdId)?.id
+
+  const mapped = rows.map((row) => ({
+    checkPointValue: cpId ? (row.values[cpId] ?? '') : '',
+    std: stdId ? (row.values[stdId] ?? '') : '',
+    obs: obsId ? (row.values[obsId] ?? '') : '',
+  }))
+
+  return mapped.length > 0 ? mapped : [emptyIntermediateCheckReading()]
+}

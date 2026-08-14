@@ -327,7 +327,6 @@ const NAV_SECTIONS: NavSection[] = [
             icon: FlaskConical,
             clause: '7.4',
           },
-          { label: 'Issued Test Report', to: '/samples/completed', icon: FlaskConical, clause: '7.8' },
           {
             label: 'Retain & Disposed Sample',
             to: '/samples/retain-disposed',

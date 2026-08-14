@@ -391,7 +391,7 @@ export function ClientsForm({
                 const next = toProperTitleCase(form.address)
                 if (next !== form.address) onChange({ ...form, address: next })
               }}
-              className="!h-10 !min-h-10 resize-none rounded-none border border-stone-500 bg-stone-50 px-3 py-2 shadow-none focus-visible:border-amber-600 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-amber-500/20 focus-visible:ring-offset-0"
+              className="!h-8 !min-h-8 resize-none rounded-none border border-stone-500 bg-stone-50 px-3 py-1 shadow-none focus-visible:border-amber-600 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-amber-500/20 focus-visible:ring-offset-0"
             />
           </div>
 

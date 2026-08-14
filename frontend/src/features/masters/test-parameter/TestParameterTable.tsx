@@ -249,19 +249,20 @@ export function TestParameterTable({
                       >
                         {r.uncertainty_mu}
                       </button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-8 gap-1.5 px-2.5"
-                      aria-label={`Calculate uncertainty for ${r.item_name}`}
-                      title="Open uncertainty calculation"
-                      onClick={() => onOpenUncertainty(r)}
-                    >
-                      <Calculator size={14} />
-                      Calculate
-                    </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 px-2.5"
+                        aria-label={`Calculate uncertainty for ${r.item_name}`}
+                        title="Open uncertainty calculation"
+                        onClick={() => onOpenUncertainty(r)}
+                      >
+                        <Calculator size={14} />
+                        Calculate
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className={`${tdClass} text-xs`}>

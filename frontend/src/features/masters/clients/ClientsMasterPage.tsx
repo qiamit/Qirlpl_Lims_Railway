@@ -50,7 +50,7 @@ export default function ClientsMasterPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(5)
+  const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
 
   const [states, setStates] = useState<Array<{ id: string; label: string }>>(() => [{ id: 'default-state', label: DEFAULT_STATE }])

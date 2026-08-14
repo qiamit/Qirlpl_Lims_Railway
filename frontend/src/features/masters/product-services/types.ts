@@ -12,6 +12,7 @@ export type NablScopeRow = {
   type_of_test: string | null
   range_minimum: number | null
   range_maximum: number | null
+  unit: string | null
   uncertainty: string | null
   created_at?: string
 }
@@ -26,6 +27,7 @@ export type NablScopeForm = {
   typeOfTest: string
   rangeMinimum: string
   rangeMaximum: string
+  unit: string
   uncertainty: string
 }
 
@@ -39,6 +41,7 @@ export const emptyNablScopeForm = (): NablScopeForm => ({
   typeOfTest: '',
   rangeMinimum: '',
   rangeMaximum: '',
+  unit: '',
   uncertainty: '',
 })
 
@@ -68,4 +71,75 @@ export function parseOptionalNumber(value: string): number | null {
 export function formatScopeNumber(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—'
   return String(value)
+}
+
+/** Structured Uncertainty UI parts: ± MU @ Test */
+export type UncertaintyParts = {
+  muValue: string
+  muUnit: string
+  testValue: string
+  testUnit: string
+}
+
+export function emptyUncertaintyParts(): UncertaintyParts {
+  return { muValue: '', muUnit: '', testValue: '', testUnit: '' }
+}
+
+/** Encode as: ± {muValue} {muUnit} @ {testValue} {testUnit} */
+export function joinUncertaintyParts(parts: UncertaintyParts): string {
+  const muValue = parts.muValue.replace(/[^0-9.]/g, '').trim()
+  const muUnit = parts.muUnit.trim()
+  const testValue = parts.testValue.replace(/[^0-9.]/g, '').trim()
+  const testUnit = parts.testUnit.trim()
+  if (!muValue && !muUnit && !testValue && !testUnit) return ''
+
+  const muSide = [muValue, muUnit].filter(Boolean).join(' ')
+  const testSide = [testValue, testUnit].filter(Boolean).join(' ')
+  if (muSide && testSide) return `± ${muSide} @ ${testSide}`
+  if (muSide) return `± ${muSide}`
+  if (testSide) return `@ ${testSide}`
+  return ''
+}
+
+/** Parse stored uncertainty text back into structured parts (best-effort). */
+export function splitUncertaintyParts(raw: string): UncertaintyParts {
+  const text = raw.trim()
+  if (!text) return emptyUncertaintyParts()
+
+  const cleaned = text.replace(/^±\s*/, '').trim()
+  let muSide = cleaned
+  let testSide = ''
+  const match = cleaned.match(/^(.*?)\s*@\s*(.*)$/)
+  if (match) {
+    muSide = match[1].trim()
+    testSide = match[2].trim()
+  }
+
+  const splitValueUnit = (side: string): { value: string; unit: string } => {
+    const s = side.trim()
+    if (!s) return { value: '', unit: '' }
+    const m = s.match(/^([0-9]*\.?[0-9]+)\s*(.*)$/)
+    if (m) return { value: m[1], unit: m[2].trim() }
+    return { value: '', unit: s }
+  }
+
+  const mu = splitValueUnit(muSide)
+  const test = splitValueUnit(testSide)
+  return {
+    muValue: mu.value,
+    muUnit: mu.unit,
+    testValue: test.value,
+    testUnit: test.unit,
+  }
+}
+
+/** Table / print display: ± 0.0130 % @ 0.3560 % */
+export function formatUncertaintyDisplay(raw: string | null | undefined): string {
+  const text = String(raw ?? '').trim()
+  if (!text) return '—'
+  const parts = splitUncertaintyParts(text)
+  const hasStructured =
+    parts.muValue || parts.muUnit || parts.testValue || parts.testUnit
+  if (!hasStructured) return text
+  return joinUncertaintyParts(parts) || text
 }

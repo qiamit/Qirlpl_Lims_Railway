@@ -16,6 +16,14 @@ import {
 import { TestParameterTableFooterBar } from './TestParameterFooterBar'
 import { TestParameterUncertaintyDialog } from './TestParameterUncertaintyDialog'
 import type { UncertaintyCalculationData } from './testParameterUncertainty'
+import { parseUncertaintyCalculationData } from './testParameterUncertainty'
+import {
+  newUncertaintyHistoryId,
+  parseUncertaintyMuHistory,
+  todayIsoDate,
+  type UncertaintyHistoryRecord,
+} from './uncertaintyHistory'
+import { useAuth } from '@/hooks/useAuth'
 import { IsCodesForm } from '@/features/masters/is-codes/IsCodesForm'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { emptyIsCodeForm, normalizeText as normalizeIsText, type IsCodeForm, type IsAspect } from '@/features/masters/is-codes/types'
@@ -23,6 +31,7 @@ import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIs
 import {
   emptyTestParameterForm,
   normalizeText,
+  toProperTitleCase,
   type AccreditationBodyRow,
   type TestParameterForm as TestParameterFormType,
   type TestParameterRow,
@@ -135,6 +144,7 @@ function parseCsv(text: string) {
 }
 
 export default function TestParameterMasterPage() {
+  const { profileName } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -249,6 +259,7 @@ export default function TestParameterMasterPage() {
             : [],
           uncertainty_mu: (r.uncertainty_mu ? String(r.uncertainty_mu) : null) as string | null,
           uncertainty_calculation_data: r.uncertainty_calculation_data ?? null,
+          uncertainty_mu_history: r.uncertainty_mu_history ?? null,
           department: (r.department ? String(r.department) : null) as string | null,
           designation: (r.designation ? String(r.designation) : null) as string | null,
           acceptance_criteria: (r.acceptance_criteria ? String(r.acceptance_criteria) : null) as string | null,
@@ -579,8 +590,8 @@ export default function TestParameterMasterPage() {
           clause_no: normalizeText(form.clauseNo) || null,
           unit_value: normalizeText(form.unitValue) || null,
           test_method: normalizeText(form.testMethod) || (isRow?.defaultTestMethod ?? null),
-          item_name: normalizeText(form.itemName),
-          specific_requirement: normalizeText(form.specificRequirement) || null,
+          item_name: toProperTitleCase(normalizeText(form.itemName)),
+          specific_requirement: toProperTitleCase(normalizeText(form.specificRequirement)) || null,
           under_accreditation_ids: form.underAccreditationIds ?? [],
           uncertainty_mu: normalizeText(form.uncertaintyMu) || null,
           department: normalizeText(form.department) || null,
@@ -1004,6 +1015,32 @@ export default function TestParameterMasterPage() {
   }
 
   const handleOpenUncertainty = (row: TestParameterRow) => {
+    const existingHistory = parseUncertaintyMuHistory(row.uncertainty_mu_history)
+    const currentMu = row.uncertainty_mu?.trim() ?? ''
+    if (existingHistory.length === 0 && currentMu) {
+      const seeded: UncertaintyHistoryRecord[] = [
+        {
+          id: newUncertaintyHistoryId(),
+          recordedAt: todayIsoDate(),
+          uncertaintyMu: currentMu,
+          calculationData:
+            parseUncertaintyCalculationData(row.uncertainty_calculation_data, row.unit_value?.trim() ?? '') ??
+            null,
+          savedByName: '',
+        },
+      ]
+      const seededRow = { ...row, uncertainty_mu_history: seeded }
+      setUncertaintyRow(seededRow)
+      setUncertaintyOpen(true)
+      void (async () => {
+        const { error } = await supabase
+          .from('test_parameters')
+          .update({ uncertainty_mu_history: seeded })
+          .eq('id', row.id)
+        if (!error) await loadRows()
+      })()
+      return
+    }
     setUncertaintyRow(row)
     setUncertaintyOpen(true)
   }
@@ -1016,11 +1053,25 @@ export default function TestParameterMasterPage() {
     setUncertaintySaving(true)
     setSaveMessage(null)
     try {
+      const muText = normalizeText(uncertaintyMu) || null
+      const previousHistory = parseUncertaintyMuHistory(uncertaintyRow.uncertainty_mu_history)
+      const historyEntry: UncertaintyHistoryRecord = {
+        id: newUncertaintyHistoryId(),
+        recordedAt: todayIsoDate(),
+        uncertaintyMu: muText ?? '',
+        calculationData,
+        savedByName: profileName.trim(),
+      }
+      const nextHistory = muText
+        ? [historyEntry, ...previousHistory]
+        : previousHistory
+
       const { error } = await supabase
         .from('test_parameters')
         .update({
-          uncertainty_mu: normalizeText(uncertaintyMu) || null,
+          uncertainty_mu: muText,
           uncertainty_calculation_data: calculationData,
+          uncertainty_mu_history: nextHistory,
         })
         .eq('id', uncertaintyRow.id)
       if (error) throw error
@@ -1033,6 +1084,17 @@ export default function TestParameterMasterPage() {
     } finally {
       setUncertaintySaving(false)
     }
+  }
+
+  const handleUncertaintyHistoryChange = async (next: UncertaintyHistoryRecord[]) => {
+    if (!uncertaintyRow) return
+    const { error } = await supabase
+      .from('test_parameters')
+      .update({ uncertainty_mu_history: next })
+      .eq('id', uncertaintyRow.id)
+    if (error) throw error
+    setUncertaintyRow({ ...uncertaintyRow, uncertainty_mu_history: next })
+    await loadRows()
   }
 
   return (
@@ -1165,6 +1227,10 @@ export default function TestParameterMasterPage() {
           if (!open) setUncertaintyRow(null)
         }}
         onSave={handleSaveUncertainty}
+        onHistoryChange={handleUncertaintyHistoryChange}
+        onAppliedToOthers={async () => {
+          await loadRows()
+        }}
       />
 
       <TestParameterTableFooterBar

@@ -227,7 +227,7 @@ export function MeasurementUnitSelect({
           <div
             ref={fieldRef}
             className={cn(
-              'flex h-10 overflow-hidden rounded-none border border-stone-500 bg-stone-50',
+              'flex h-8 overflow-hidden rounded-none border border-stone-500 bg-stone-50',
               'focus-within:border-amber-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-amber-500/20',
               disabled && 'opacity-50',
               shellClassName,

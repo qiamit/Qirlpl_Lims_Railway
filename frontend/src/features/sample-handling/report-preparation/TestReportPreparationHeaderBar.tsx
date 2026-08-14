@@ -1,7 +1,10 @@
-import { Search } from 'lucide-react'
+import { FileCheck2, Search } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
+  limsDarkBarBtnClass,
   limsDarkBarFieldClass,
   limsDarkBarGlowStyle,
   limsDarkBarSearchClass,
@@ -70,7 +73,20 @@ export function TestReportPreparationHeaderBar({
             </Select>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn('gap-1.5', limsDarkBarBtnClass)}
+              asChild
+            >
+              <Link to="/samples/completed" aria-label="Issued Test Report" title="Open Issued Test Report">
+                <FileCheck2 size={14} />
+                <span className="hidden sm:inline">Issued Test Report</span>
+                <span className="sm:hidden">Issued</span>
+              </Link>
+            </Button>
             <TestReportPreparationAssistant rows={assistantRows} search={search} />
           </div>
         </div>

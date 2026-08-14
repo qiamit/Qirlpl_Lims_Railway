@@ -11,57 +11,7 @@ import {
   type PartBFieldKey,
   type TestReportPartBDetails,
 } from './testReportPartB'
-import {
-  REPORT_PART_HEADING_CLASS,
-  REPORT_PART_INNER_CLASS,
-  REPORT_PART_INNER_DIVIDE,
-  REPORT_PART_OUTER_CLASS,
-  REPORT_PART_ROW_BORDER,
-} from './reportPartUiClasses'
-
-function PartBRow({
-  number,
-  description,
-  output,
-  options,
-  onOutputChange,
-  disabled,
-}: {
-  number: number
-  description: string
-  output: string
-  options: readonly string[]
-  onOutputChange: (value: string) => void
-  disabled?: boolean
-}) {
-  return (
-    <div className={`grid grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:grid-cols-[3.25rem_minmax(0,1fr)_minmax(9.5rem,max-content)] divide-x ${REPORT_PART_INNER_DIVIDE} border-b ${REPORT_PART_ROW_BORDER} last:border-b-0`}>
-      <div className="flex items-center justify-center px-2 py-1.5 text-muted-foreground font-medium tabular-nums text-xs">
-        {number}.
-      </div>
-      <div className="min-w-0 px-3 py-1.5 text-muted-foreground text-xs leading-tight whitespace-pre-wrap break-words">
-        {description}
-      </div>
-      <div className="flex items-center px-2 py-1">
-        <Select value={output} onValueChange={onOutputChange} disabled={disabled}>
-          <SelectTrigger
-            className="h-7 w-full min-w-[9rem] max-w-[11rem] text-xs font-medium"
-            aria-label={`Part B row ${number} output`}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((opt) => (
-              <SelectItem key={opt} value={opt}>
-                {opt}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  )
-}
+import { reportPartTableBaseCss } from './reportPartTypography'
 
 export function TestReportSupplementaryGrid({
   details,
@@ -77,23 +27,71 @@ export function TestReportSupplementaryGrid({
   }
 
   return (
-    <div className={REPORT_PART_OUTER_CLASS}>
-      <h3 className={REPORT_PART_HEADING_CLASS}>
-        Part B — Supplementary Information
-      </h3>
-      <div className={`${REPORT_PART_INNER_CLASS} text-sm`}>
-        {PART_B_ROWS.map((row, index) => (
-          <PartBRow
-            key={row.key}
-            number={index + 1}
-            description={row.label}
-            output={normalizePartBFieldValue(row.key, details[row.key])}
-            options={row.options}
-            onOutputChange={(value) => setField(row.key, value)}
-            disabled={disabled}
-          />
-        ))}
-      </div>
+    <div className="overflow-x-auto border-2 border-stone-500 bg-white p-2 shadow-sm ring-1 ring-amber-700/15 sm:p-3">
+      <style>{`
+        ${reportPartTableBaseCss('part-b-screen-table')}
+        .part-b-screen-table .part-b-col-k { width: 72%; }
+        .part-b-screen-table .part-b-col-c { width: 3%; }
+        .part-b-screen-table .part-b-col-v { width: 25%; }
+        .part-b-screen-table td {
+          vertical-align: middle;
+          padding: 4px 8px;
+        }
+        .part-b-screen-table .part-b-c {
+          text-align: center;
+          padding-left: 0;
+          padding-right: 0;
+        }
+        .part-b-screen-table th {
+          text-transform: none;
+        }
+      `}</style>
+      <table className="part-b-screen-table">
+        <colgroup>
+          <col className="part-b-col-k" />
+          <col className="part-b-col-c" />
+          <col className="part-b-col-v" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th colSpan={3}>Part B. Supplementary Information</th>
+          </tr>
+        </thead>
+        <tbody>
+          {PART_B_ROWS.map((row, index) => {
+            const value = normalizePartBFieldValue(row.key, details[row.key])
+            return (
+              <tr key={row.key}>
+                <td className="part-b-k">
+                  {index + 1}. {row.label}
+                </td>
+                <td className="part-b-c">:</td>
+                <td className="part-b-v">
+                  <Select
+                    value={value}
+                    onValueChange={(next) => setField(row.key, next)}
+                    disabled={disabled}
+                  >
+                    <SelectTrigger
+                      className="h-7 w-full min-w-0 border-0 bg-transparent px-0 shadow-none focus:ring-1 focus:ring-amber-500/40 focus:ring-offset-0"
+                      aria-label={`Part B row ${index + 1} output`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {row.options.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {opt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

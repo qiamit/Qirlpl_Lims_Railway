@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabaseClient'
 import { letterheadFromRow } from '@/features/settings/lab-settings/labSettingsDb'
 import type { ReportScopeKind } from './reportScope'
-import { fetchReportScopeTemplatesConfig } from './reportScopeConfig'
+import { fetchReportScopeTemplatesConfig, saveReportScopeTemplatesConfig } from './reportScopeConfig'
 import {
   DEFAULT_LETTERHEAD_TEMPLATE_NAMES,
   type ReportScopeTemplateBinding,
@@ -95,8 +95,11 @@ function pickTemplateName(
   available: string[],
 ): string {
   const fromConfig = configured.trim()
-  if (fromConfig) return fromConfig
+  if (isLetterheadNotApplicable(fromConfig)) return LETTERHEAD_NOT_APPLICABLE
+  if (fromConfig && (available.length === 0 || available.includes(fromConfig))) return fromConfig
   if (preferred && available.includes(preferred)) return preferred
+  // Prefer known default footer/header names even if list order puts another first.
+  if (preferred) return preferred
   return available[0] ?? ''
 }
 
@@ -117,21 +120,19 @@ export function resolveScopeLetterheadFromLabSettings(
       configBinding.footerName,
       options.footers,
     ),
-    watermarkName: configBinding.watermarkName.trim(),
+    watermarkName: isLetterheadNotApplicable(configBinding.watermarkName)
+      ? LETTERHEAD_NOT_APPLICABLE
+      : configBinding.watermarkName.trim(),
   }
 }
 
 /** Initial selection when opening report prep or when no per-SRF template is stored. */
 export function resolveScopeLetterheadDefaults(
-  _scope: ReportScopeKind,
-  _configBinding: ReportScopeTemplateBinding,
-  _options: LetterheadTemplateOptions,
+  scope: ReportScopeKind,
+  configBinding: ReportScopeTemplateBinding,
+  options: LetterheadTemplateOptions,
 ): ScopeLetterheadSelection {
-  return {
-    headerName: LETTERHEAD_NOT_APPLICABLE,
-    footerName: LETTERHEAD_NOT_APPLICABLE,
-    watermarkName: LETTERHEAD_NOT_APPLICABLE,
-  }
+  return resolveScopeLetterheadFromLabSettings(scope, configBinding, options)
 }
 
 export function letterheadsFromScopeDefaults(
@@ -147,6 +148,48 @@ export function letterheadsFromScopeDefaults(
       ? resolveScopeLetterheadDefaults('non_nabl', config.non_nabl, options)
       : { headerName: '', footerName: '', watermarkName: '' },
   }
+}
+
+/** Persist current prepare-dialog letterhead picks as Lab Settings scope defaults. */
+export async function saveLetterheadsAsLabScopeDefaults(
+  letterheads: ReportPrepLetterheadsByScope,
+  scopes: ReportScopeKind[],
+): Promise<void> {
+  const config = await fetchReportScopeTemplatesConfig()
+  const next = {
+    nabl: { ...config.nabl },
+    non_nabl: { ...config.non_nabl },
+  }
+  for (const scope of scopes) {
+    const sel = letterheads[scope]
+    next[scope] = {
+      ...next[scope],
+      headerName: isLetterheadNotApplicable(sel.headerName)
+        ? LETTERHEAD_NOT_APPLICABLE
+        : sel.headerName.trim(),
+      footerName: isLetterheadNotApplicable(sel.footerName)
+        ? LETTERHEAD_NOT_APPLICABLE
+        : sel.footerName.trim(),
+      watermarkName: isLetterheadNotApplicable(sel.watermarkName)
+        ? LETTERHEAD_NOT_APPLICABLE
+        : sel.watermarkName.trim(),
+    }
+  }
+  await saveReportScopeTemplatesConfig(next)
+}
+
+/** True when user has picked a concrete template (not empty / N/A placeholder). */
+export function hasConcreteLetterheadSelection(
+  letterheads: ReportPrepLetterheadsByScope,
+): boolean {
+  const scopes: ReportScopeKind[] = ['nabl', 'non_nabl']
+  return scopes.some((scope) => {
+    const sel = letterheads[scope]
+    return [sel.headerName, sel.footerName, sel.watermarkName].some((raw) => {
+      const v = raw.trim()
+      return Boolean(v) && !isLetterheadNotApplicable(v)
+    })
+  })
 }
 
 export async function fetchReportPrepLetterheads(

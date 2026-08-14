@@ -27,45 +27,32 @@ import { TestReportPreparationHeaderBar } from './TestReportPreparationHeaderBar
 import { TestReportPreparationTable } from './TestReportPreparationTable'
 import { TestReportPrepareDialog } from './TestReportPrepareDialog'
 import {
-  buildScopedTestReportPrintHtml,
-} from './buildScopedTestReportPrintHtml'
-import { outputTestReportDocument } from './outputTestReportDocument'
-import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
-import {
   fetchTestReportCoverDetails,
   formatSectionReportLine,
   type TestReportCoverDetails,
 } from './fetchTestReportCoverDetails'
 import { partBDetailsToSampleUpdate, type TestReportPartBDetails } from './testReportPartB'
 import {
+  fetchLetterheadTemplateOptions,
   fetchReportPrepLetterheads,
+  hasConcreteLetterheadSelection,
   LETTERHEAD_NOT_APPLICABLE,
+  letterheadsFromScopeDefaults,
   letterheadsToSampleUpdate,
+  saveLetterheadsAsLabScopeDefaults,
   type LetterheadTemplateOptions,
   type ReportPrepLetterheadsByScope,
 } from './reportPrepLetterhead'
-
-const DEFAULT_SCOPE_LETTERHEADS = {
-  headerName: LETTERHEAD_NOT_APPLICABLE,
-  footerName: LETTERHEAD_NOT_APPLICABLE,
-  watermarkName: LETTERHEAD_NOT_APPLICABLE,
-}
+import { fetchReportScopeTemplatesConfig } from './reportScopeConfig'
+import { DEFAULT_LETTERHEAD_TEMPLATE_NAMES } from '@/features/settings/lab-settings/reportScopeTemplateTypes'
 import {
   fetchReportResultRowsForSample,
-  filterReportRowsByScope,
   getApplicableReportScopes,
   patchReportResultRowsSectionCode,
   saveReportResultRemarks,
   type ReportResultRow,
 } from './reportResultRows'
 import { evaluateResultConformity } from './evaluateResultConformity'
-import {
-  appendReportScopeSuffix,
-  REPORT_SCOPE_TITLE,
-  stripReportScopeSuffix,
-  type ReportScopeKind,
-} from './reportScope'
-import { resolveReportScopeTemplate } from './reportScopeConfig'
 import {
   fetchNextNablUlrNumber,
   fetchUlrPrefix,
@@ -80,6 +67,19 @@ import {
   sortTestReportPreparationRows,
   type TestReportPreparationSortKey,
 } from './sortTestReportPreparationRows'
+
+const DEFAULT_SCOPE_LETTERHEADS_NABL = {
+  headerName: DEFAULT_LETTERHEAD_TEMPLATE_NAMES.nablHeader,
+  footerName: DEFAULT_LETTERHEAD_TEMPLATE_NAMES.footer,
+  watermarkName: LETTERHEAD_NOT_APPLICABLE,
+}
+
+const DEFAULT_SCOPE_LETTERHEADS_NON_NABL = {
+  headerName: DEFAULT_LETTERHEAD_TEMPLATE_NAMES.nonNablHeader,
+  footerName: DEFAULT_LETTERHEAD_TEMPLATE_NAMES.footer,
+  watermarkName: LETTERHEAD_NOT_APPLICABLE,
+}
+
 type ListRow = ReportPreparationListRow
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
@@ -126,8 +126,8 @@ export default function TestReportPreparationMasterPage() {
     watermarks: [],
   })
   const [letterheadsByScope, setLetterheadsByScope] = useState<ReportPrepLetterheadsByScope>({
-    nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
-    non_nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
+    nabl: { ...DEFAULT_SCOPE_LETTERHEADS_NABL },
+    non_nabl: { ...DEFAULT_SCOPE_LETTERHEADS_NON_NABL },
   })
   const [coverLoading, setCoverLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
@@ -144,11 +144,6 @@ export default function TestReportPreparationMasterPage() {
 
   const [srfViewOpen, setSrfViewOpen] = useState(false)
   const [srfViewRow, setSrfViewRow] = useState<ListRow | null>(null)
-
-  const labName = useMemo(() => {
-    if (typeof window === 'undefined') return 'Laboratory'
-    return window.localStorage.getItem('labSettings.labName') || 'Quality International Research & Laboratories Pvt. Ltd.'
-  }, [])
 
   const fullReportNumber = useMemo(() => toCanonicalReportNumber(reportNumber), [reportNumber])
 
@@ -278,14 +273,9 @@ export default function TestReportPreparationMasterPage() {
     void fetchReportPrepLetterheads(active.id, scopes)
       .then((letterheadData) => {
         setLetterheadOptions(letterheadData.options)
-        setLetterheadsByScope((prev) => {
-          const hasUserSelection =
-            prev.nabl.headerName.trim() ||
-            prev.nabl.footerName.trim() ||
-            prev.non_nabl.headerName.trim() ||
-            prev.non_nabl.footerName.trim()
-          return hasUserSelection ? prev : letterheadData.letterheads
-        })
+        setLetterheadsByScope((prev) =>
+          hasConcreteLetterheadSelection(prev) ? prev : letterheadData.letterheads,
+        )
       })
       .catch(() => {})
   }, [dialogOpen, active?.id, applicableScopesKey])
@@ -353,8 +343,8 @@ export default function TestReportPreparationMasterPage() {
     setPartBDetails(null)
     setLetterheadOptions({ headers: [], footers: [], watermarks: [] })
     setLetterheadsByScope({
-      nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
-      non_nabl: { ...DEFAULT_SCOPE_LETTERHEADS },
+      nabl: { ...DEFAULT_SCOPE_LETTERHEADS_NABL },
+      non_nabl: { ...DEFAULT_SCOPE_LETTERHEADS_NON_NABL },
     })
     setPrepareResultsLoading(true)
     setCoverLoading(true)
@@ -392,52 +382,6 @@ export default function TestReportPreparationMasterPage() {
         setReportNumberLoading(false)
       }
     })()
-  }
-
-  const handlePrintScope = async (scope: ReportScopeKind) => {
-    if (!active) return
-    const base = fullReportNumber.trim()
-    const scopedRows = filterReportRowsByScope(prepareResultRows, scope)
-    if (scopedRows.length === 0) return
-    try {
-      const lh = letterheadsByScope[scope]
-      const template = await resolveReportScopeTemplate(scope, undefined, {
-        headerName: lh.headerName,
-        footerName: lh.footerName,
-        watermarkName: lh.watermarkName,
-      })
-      const printCover = coverDetails
-        ? {
-            ...coverDetails,
-            partB: partBDetails ?? coverDetails.partB,
-            sectionReportLine: formatSectionReportLine(
-              coverDetails.sectionCodes,
-              coverDetails.sectionReportNo,
-              coverDetails.reportType,
-            ),
-          }
-        : null
-      const printSettings = await fetchTestReportPrintSettings()
-      const html = buildScopedTestReportPrintHtml({
-        scope,
-        labName,
-        srf: active.srfNumber ?? active.id,
-        client: active.clientName ?? '—',
-        isStandard: active.isCodeLabel ?? '—',
-        dateReceiving: formatDate(active.dateReceiving ?? ''),
-        reportNumber: appendReportScopeSuffix(base, scope),
-        ulrNumber: scope === 'nabl' ? nablUlrNumber : undefined,
-        notes: draftNotes,
-        rows: scopedRows,
-        template,
-        coverDetails: printCover,
-        printSettings,
-      })
-      const srf = active.srfNumber ?? active.id
-      await outputTestReportDocument(html, `${REPORT_SCOPE_TITLE[scope]}-${srf}`)
-    } catch (e) {
-      setSaveMessage(e instanceof Error ? e.message : 'Print failed')
-    }
   }
 
   const filtered = useMemo(() => {
@@ -884,6 +828,21 @@ export default function TestReportPreparationMasterPage() {
             [scope]: { ...prev[scope], [field]: value },
           }))
         }}
+        onPersistLetterheadDefaults={async () => {
+          const scopes = getApplicableReportScopes(prepareResultRows)
+          if (scopes.length === 0) return
+          await saveLetterheadsAsLabScopeDefaults(letterheadsByScope, scopes)
+        }}
+        onReloadLetterheadDefaults={async () => {
+          const scopes = getApplicableReportScopes(prepareResultRows)
+          if (scopes.length === 0) return
+          const [options, config] = await Promise.all([
+            fetchLetterheadTemplateOptions(),
+            fetchReportScopeTemplatesConfig(),
+          ])
+          setLetterheadOptions(options)
+          setLetterheadsByScope(letterheadsFromScopeDefaults(scopes, config, options))
+        }}
         coverDetails={coverDetails}
         partBDetails={partBDetails}
         onPartBDetailsChange={setPartBDetails}
@@ -895,7 +854,6 @@ export default function TestReportPreparationMasterPage() {
         issueLoading={issueLoading}
         onSaveDraft={() => void handleSaveDraft()}
         onIssueReports={() => void handleIssueReport()}
-        onPrintScope={(scope) => void handlePrintScope(scope)}
         onRemarkChange={(rowKey, remark) => {
           setPrepareResultRows((rows) =>
             rows.map((r) => (r.rowKey === rowKey ? { ...r, remark } : r)),

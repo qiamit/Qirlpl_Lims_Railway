@@ -121,7 +121,11 @@ export function formatBatchManufacturingPartyLine(
 
 export type TestReportCoverDetails = {
   customerDetails: string | null
+  customerName: string | null
+  customerAddress: string | null
   isDetails: string | null
+  isCode: string | null
+  productTitle: string | null
   sampleCode: string | null
   sampleQrCode: string | null
   natureOfSample: string | null
@@ -356,12 +360,27 @@ export async function fetchTestReportCoverDetails(
         : formatDateDmyMmm(new Date().toISOString().slice(0, 10))
 
   const productTitle = productTitleFromIs ?? fmt(row.test_required as string)
+  const customerName =
+    fmt(clients?.company_name) ?? fmt(opts?.fallbacks?.clientName) ?? null
+  const customerAddressParts = [
+    clients?.address,
+    clients?.district,
+    clients?.pin_code,
+    clients?.state,
+    clients?.country,
+  ]
+    .map((part) => fmt(part))
+    .filter((part): part is string => Boolean(part))
 
   return {
     customerDetails: formatClientCustomerDetails(clients, {
       fallbackFirmName: opts?.fallbacks?.clientName,
     }),
+    customerName,
+    customerAddress: customerAddressParts.length > 0 ? customerAddressParts.join(', ') : null,
     isDetails: formatIsDetails(isNumber, productTitle),
+    isCode: fmt(isNumber),
+    productTitle,
     sampleCode: fmt(row.sample_code as string),
     sampleQrCode: fmt(row.sample_qr_code as string),
     natureOfSample: fmt(row.nature_of_sample as string),

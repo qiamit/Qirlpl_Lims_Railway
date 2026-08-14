@@ -8,8 +8,8 @@ export const REPORT_SCOPE_SUFFIX: Record<ReportScopeKind, string> = {
 }
 
 export const REPORT_SCOPE_TITLE: Record<ReportScopeKind, string> = {
-  nabl: 'NABL Report',
-  non_nabl: 'Non-NABL Report',
+  nabl: 'Accredited Parameter Report',
+  non_nabl: 'Non Accredited Parameter Report',
 }
 
 export function isNablScopeLabel(scope: string): boolean {

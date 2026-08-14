@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Thermometer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -11,6 +12,7 @@ import { labRegistryFormClass } from '@/features/settings/lab-settings/labSettin
 import {
   limsDarkBarGlowStyle,
   limsDialogClass,
+  limsOutlineBtnClass,
   limsPrimaryBtnClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
@@ -28,11 +30,12 @@ export function ConductIntermediateCheckDialog({
   open,
   onOpenChange,
   equipmentName,
-  assetCode,
+  assetCode: _assetCode,
   acceptanceCriteria,
   children,
   onComplete,
   completeDisabled,
+  onEnvironmentCondition,
   layer = 'default',
 }: {
   open: boolean
@@ -43,6 +46,7 @@ export function ConductIntermediateCheckDialog({
   children: ReactNode
   onComplete?: () => boolean
   completeDisabled?: boolean
+  onEnvironmentCondition?: () => void
   layer?: 'default' | 'nested' | 'stacked'
 }) {
   return (
@@ -74,19 +78,31 @@ export function ConductIntermediateCheckDialog({
           )}
         >
           <div className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3 rounded-none border-2 border-stone-400 bg-stone-50 px-3 py-2">
-              <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border-2 border-stone-400 bg-stone-50 px-3 py-2">
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-stone-800">
                   {equipmentName || 'Equipment'}
                 </p>
-                {assetCode ? (
-                  <p className="font-mono text-xs text-stone-500">Asset Code: {assetCode}</p>
-                ) : null}
+                <p className="text-[11px] text-stone-500">
+                  Criteria:{' '}
+                  <strong className="text-stone-800">
+                    {acceptanceCriteria?.trim() || 'None'}
+                  </strong>
+                </p>
               </div>
-              <p className="text-[11px] text-stone-500">
-                Criteria:{' '}
-                <strong className="text-stone-800">{acceptanceCriteria?.trim() || 'None'}</strong>
-              </p>
+              {onEnvironmentCondition ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn('h-8 shrink-0 gap-1.5', limsOutlineBtnClass)}
+                  onClick={onEnvironmentCondition}
+                  aria-label="Add environmental condition table"
+                >
+                  <Thermometer size={14} aria-hidden />
+                  Environmental Condition
+                </Button>
+              ) : null}
             </div>
             {children}
           </div>

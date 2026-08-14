@@ -9,6 +9,7 @@ import {
   extractAcceptanceCriteriaUnit,
   formatIntermediateCheckError,
   parseAcceptanceLimit,
+  readingsFromCheckTable,
   summarizeIntermediateCheck,
   type IntermediateCheckDraft,
   type IntermediateCheckReading,
@@ -83,7 +84,7 @@ export function IntermediateCheckCalculator({
       <div className="space-y-4 rounded-none border-2 border-stone-400 bg-white p-3 shadow-sm">
         {draft.envColumns.length > 0 ? (
           <FlexiblePointsTable
-            title="Environ Condition"
+            title="Environmental Condition"
             columns={draft.envColumns}
             rows={draft.envRows}
             onRowsChange={(envRows) => patch({ envRows })}
@@ -95,7 +96,12 @@ export function IntermediateCheckCalculator({
             title="Check Point Table"
             columns={draft.checkColumns}
             rows={draft.checkRows}
-            onRowsChange={(checkRows) => patch({ checkRows })}
+            onRowsChange={(checkRows) =>
+              patch({
+                checkRows,
+                readings: readingsFromCheckTable(draft.checkColumns, checkRows),
+              })
+            }
           />
         ) : null}
 
@@ -184,6 +190,8 @@ export function IntermediateCheckCalculator({
           </div>
         ) : null}
 
+        {/* Default Std/Obs/Error grid only when no IC Check Point Table was generated */}
+        {draft.checkColumns.length === 0 ? (
         <div className="overflow-x-auto overflow-y-auto rounded-none border-2 border-stone-400">
           <table className="w-full border-collapse text-left text-xs">
             <thead>
@@ -314,6 +322,7 @@ export function IntermediateCheckCalculator({
             ) : null}
           </table>
         </div>
+        ) : null}
       </div>
     </div>
   )

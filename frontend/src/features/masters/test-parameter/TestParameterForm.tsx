@@ -24,7 +24,7 @@ import {
   limsRegistryFormClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
-import type { AccreditationBodyRow, TestParameterForm } from './types'
+import { toProperTitleCase, type AccreditationBodyRow, type TestParameterForm } from './types'
 import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
 import { normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
 
@@ -42,16 +42,25 @@ const OTHER_SYMBOLS = [
   '→', '←', '↑', '↓', '⇒', '⇔', '↔', '↦', '∈', '∉', '⊂', '⊃', '⊆', '⊇',
 ]
 
-function formatPlusMinusPercent(value: string) {
-  const raw = value.trim()
-  if (!raw) return ''
-  const numberPart = raw.replace(/[^0-9.]/g, '')
-  if (!numberPart) return ''
-  return `± ${numberPart} %`
+function splitUncertaintyMu(raw: string): { value: string; unit: string } {
+  const trimmed = raw.trim().replace(/^±\s*/, '')
+  if (!trimmed) return { value: '', unit: '' }
+  const lastSpace = trimmed.lastIndexOf(' ')
+  if (lastSpace > 0) {
+    const maybeUnit = trimmed.slice(lastSpace + 1).trim()
+    const maybeValue = trimmed.slice(0, lastSpace).replace(/[^0-9.]/g, '')
+    if (maybeUnit && !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)?$/.test(maybeUnit)) {
+      return { value: maybeValue, unit: maybeUnit }
+    }
+  }
+  return { value: trimmed.replace(/[^0-9.]/g, ''), unit: '' }
 }
 
-function extractNumberPart(value: string) {
-  return value.replace(/[^0-9.]/g, '')
+function joinUncertaintyMu(value: string, unit: string): string {
+  const n = value.replace(/[^0-9.]/g, '').trim()
+  if (!n) return ''
+  const u = unit.trim()
+  return u ? `± ${n} ${u}` : `± ${n}`
 }
 
 export function TestParameterForm({
@@ -135,7 +144,7 @@ export function TestParameterForm({
     }
   })
 
-  const uncertaintyNumber = extractNumberPart(form.uncertaintyMu)
+  const { value: uncertaintyNumber, unit: uncertaintyUnit } = splitUncertaintyMu(form.uncertaintyMu)
 
   const filteredIsCodesByCode = useMemo(() => {
     const query = form.isCodeLabel.trim().toLowerCase()
@@ -452,78 +461,101 @@ export function TestParameterForm({
             </div>
           </div>
 
-          <div className="col-span-12 md:col-span-6 space-y-2">
-            <div className="flex min-h-6 items-center">
-              <Label htmlFor="item-name">Name of Test Parameter</Label>
+          <div className="col-span-12 grid grid-cols-1 items-end gap-4 md:grid-cols-2 md:gap-6">
+            <div className="min-w-0 space-y-2">
+              <div className="flex min-h-6 items-center">
+                <Label htmlFor="item-name">Name of Test Parameter</Label>
+              </div>
+              <Input
+                id="item-name"
+                value={form.itemName}
+                onChange={(e) => onChange({ ...form, itemName: e.target.value })}
+                onBlur={() => {
+                  const next = toProperTitleCase(form.itemName)
+                  if (next !== form.itemName) onChange({ ...form, itemName: next })
+                }}
+              />
             </div>
-            <Input
-              id="item-name"
-              value={form.itemName}
-              onChange={(e) => onChange({ ...form, itemName: e.target.value })}
-            />
-          </div>
 
-          <div className="col-span-12 md:col-span-6 space-y-2">
-            <div className="flex min-h-6 items-center justify-between">
-              <Label htmlFor="specific-requirement">Specific Requirement</Label>
-              <Dialog open={symbolDialogOpen} onOpenChange={setSymbolDialogOpen}>
-                <DialogTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(limsAddLinkClass, 'flex items-center gap-1')}
+            <div className="min-w-0 space-y-2">
+              <div className="flex min-h-6 items-center justify-between gap-2">
+                <Label htmlFor="specific-requirement">Specific Requirement</Label>
+                <Dialog open={symbolDialogOpen} onOpenChange={setSymbolDialogOpen}>
+                  <DialogTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(limsAddLinkClass, 'flex shrink-0 items-center gap-1')}
+                    >
+                      <Sparkles size={12} />
+                      Insert Symbol
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent
+                    persistOnFocusLoss
+                    layer="stacked"
+                    aria-describedby={undefined}
+                    className={cn(
+                      limsDialogClass,
+                      'flex max-h-[min(72vh,560px)] w-[calc(100%-1.5rem)] max-w-xl flex-col p-0 sm:w-full',
+                    )}
                   >
-                    <Sparkles size={12} />
-                    Insert Symbol
-                  </button>
-                </DialogTrigger>
-                <DialogContent
-                  persistOnFocusLoss
-                  layer="stacked"
-                  aria-describedby={undefined}
-                  className={cn(
-                    limsDialogClass,
-                    'flex max-h-[min(72vh,560px)] w-[calc(100%-1.5rem)] max-w-xl flex-col p-0 sm:w-full',
-                  )}
-                >
-                  <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
-                    <div
-                      className="pointer-events-none absolute inset-0 opacity-[0.18]"
-                      style={limsDarkBarGlowStyle}
-                    />
-                    <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-                    <DialogHeader className="relative pr-10 text-left">
-                      <DialogTitle className="text-base font-semibold tracking-tight text-white">
-                        Insert Symbol
-                      </DialogTitle>
-                    </DialogHeader>
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-stone-100/90 to-stone-50">
-                    <div className="shrink-0 space-y-2 border-b border-stone-200 px-4 py-3">
-                      <Label
-                        htmlFor="symbol-search"
-                        className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
-                      >
-                        Search
-                      </Label>
-                      <Input
-                        id="symbol-search"
-                        placeholder="Search symbols..."
-                        value={symbolSearch}
-                        onChange={(e) => setSymbolSearch(e.target.value)}
-                        autoFocus
-                        className={limsFieldClass}
+                    <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+                      <div
+                        className="pointer-events-none absolute inset-0 opacity-[0.18]"
+                        style={limsDarkBarGlowStyle}
                       />
+                      <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+                      <DialogHeader className="relative pr-10 text-left">
+                        <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                          Insert Symbol
+                        </DialogTitle>
+                      </DialogHeader>
                     </div>
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
-                      {symbolRecents.length > 0 && (
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-stone-100/90 to-stone-50">
+                      <div className="shrink-0 space-y-2 border-b border-stone-200 px-4 py-3">
+                        <Label
+                          htmlFor="symbol-search"
+                          className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                        >
+                          Search
+                        </Label>
+                        <Input
+                          id="symbol-search"
+                          placeholder="Search symbols..."
+                          value={symbolSearch}
+                          onChange={(e) => setSymbolSearch(e.target.value)}
+                          autoFocus
+                          className={limsFieldClass}
+                        />
+                      </div>
+                      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
+                        {symbolRecents.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+                              Recent
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {symbolRecents.map((sym, index) => (
+                                <button
+                                  key={`recent-${index}`}
+                                  type="button"
+                                  className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
+                                  onClick={() => handleInsertSymbol(sym)}
+                                >
+                                  {sym}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-2">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
-                            Recent
+                            Scientific
                           </p>
                           <div className="flex flex-wrap gap-1.5">
-                            {symbolRecents.map((sym, index) => (
+                            {filteredScientificSymbols.map((sym, index) => (
                               <button
-                                key={`recent-${index}`}
+                                key={`scientific-${index}`}
                                 type="button"
                                 className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
                                 onClick={() => handleInsertSymbol(sym)}
@@ -533,54 +565,43 @@ export function TestParameterForm({
                             ))}
                           </div>
                         </div>
-                      )}
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
-                          Scientific
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {filteredScientificSymbols.map((sym, index) => (
-                            <button
-                              key={`scientific-${index}`}
-                              type="button"
-                              className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
-                              onClick={() => handleInsertSymbol(sym)}
-                            >
-                              {sym}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
-                          Other
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {filteredOtherSymbols.map((sym, index) => (
-                            <button
-                              key={`other-${index}`}
-                              type="button"
-                              className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
-                              onClick={() => handleInsertSymbol(sym)}
-                            >
-                              {sym}
-                            </button>
-                          ))}
+                        <div className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+                            Other
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {filteredOtherSymbols.map((sym, index) => (
+                              <button
+                                key={`other-${index}`}
+                                type="button"
+                                className="min-w-9 rounded-none border border-stone-500 bg-white px-2.5 py-1.5 text-base font-medium text-stone-900 shadow-sm hover:border-amber-600 hover:bg-amber-50"
+                                onClick={() => handleInsertSymbol(sym)}
+                              >
+                                {sym}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <Textarea
+                id="specific-requirement"
+                ref={specificRequirementRef}
+                rows={1}
+                value={form.specificRequirement}
+                onChange={(e) => onChange({ ...form, specificRequirement: e.target.value })}
+                onBlur={() => {
+                  const next = toProperTitleCase(form.specificRequirement)
+                  if (next !== form.specificRequirement) {
+                    onChange({ ...form, specificRequirement: next })
+                  }
+                }}
+                className="!h-8 !min-h-8 resize-none rounded-none border border-stone-500 bg-stone-50 px-3 py-1 shadow-none focus-visible:border-amber-600 focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-amber-500/20 focus-visible:ring-offset-0"
+              />
             </div>
-            <Textarea
-              id="specific-requirement"
-              ref={specificRequirementRef}
-              rows={1}
-              value={form.specificRequirement}
-              onChange={(e) => onChange({ ...form, specificRequirement: e.target.value })}
-              className="min-h-10 h-10 resize-none"
-            />
           </div>
 
           <div className="col-span-12 md:col-span-3 space-y-2">
@@ -640,23 +661,47 @@ export function TestParameterForm({
             <div className="flex min-h-6 items-center">
               <Label htmlFor="uncertainty">Uncertainty (MU)</Label>
             </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">±</span>
-              <Input
-                id="uncertainty"
-                inputMode="decimal"
-                placeholder="5.60"
-                value={uncertaintyNumber}
-                onChange={(e) => {
-                  const n = e.target.value.replace(/[^0-9.]/g, '')
-                  onChange({ ...form, uncertaintyMu: formatPlusMinusPercent(n) })
-                }}
-                onBlur={() => {
-                  onChange({ ...form, uncertaintyMu: formatPlusMinusPercent(form.uncertaintyMu) })
-                }}
-                className="pl-8 pr-10"
+            <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-2">
+              <div className="relative min-w-0">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-sm leading-none text-muted-foreground">
+                  ±
+                </span>
+                <Input
+                  id="uncertainty"
+                  inputMode="decimal"
+                  placeholder="5.60"
+                  value={uncertaintyNumber}
+                  onChange={(e) => {
+                    const n = e.target.value.replace(/[^0-9.]/g, '')
+                    onChange({
+                      ...form,
+                      uncertaintyMu: joinUncertaintyMu(n, uncertaintyUnit),
+                    })
+                  }}
+                  onBlur={() => {
+                    onChange({
+                      ...form,
+                      uncertaintyMu: joinUncertaintyMu(uncertaintyNumber, uncertaintyUnit),
+                    })
+                  }}
+                  className="!pl-8"
+                  aria-label="Uncertainty value"
+                />
+              </div>
+              <MeasurementUnitSelect
+                id="uncertainty-unit"
+                value={uncertaintyUnit}
+                onChange={(unit) =>
+                  onChange({
+                    ...form,
+                    uncertaintyMu: joinUncertaintyMu(uncertaintyNumber, unit),
+                  })
+                }
+                showLabel={false}
+                showManageButton
+                placeholder="Unit"
+                className="min-w-0"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
             </div>
           </div>
 

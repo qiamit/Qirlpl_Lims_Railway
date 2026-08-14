@@ -44,9 +44,34 @@ export function triggerPdfDownload(blob: Blob, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 2_000)
 }
 
+function friendlyPdfServiceError(detail: string, status?: number): string {
+  const raw = detail.trim()
+  const lower = raw.toLowerCase()
+  if (
+    lower.includes('executable doesn') ||
+    lower.includes('playwright install') ||
+    lower.includes('browserType.launch'.toLowerCase())
+  ) {
+    return 'PDF browser is missing. In the project root run: npm run pdf:install'
+  }
+  if (
+    status === 502 ||
+    status === 504 ||
+    lower.includes('econnrefused') ||
+    lower.includes('not running') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror')
+  ) {
+    return 'PDF service is not running. Start it with: npm run pdf:dev'
+  }
+  if (raw && !raw.startsWith('<!') && raw.length < 400) return raw
+  if (status) return `PDF service error (${status}). Start it with: npm run pdf:dev`
+  return 'PDF download failed. Start PDF service with: npm run pdf:dev'
+}
+
 /**
  * Render HTML → PDF via Playwright service and download the file.
- * Throws a clear error if the service is not running.
+ * Throws a clear error if the service is not running or Chromium is missing.
  */
 export async function downloadPdfViaPlaywright(
   request: PlaywrightPdfRequest,
@@ -71,9 +96,7 @@ export async function downloadPdfViaPlaywright(
       }),
     })
   } catch {
-    throw new Error(
-      'PDF service is not running. Start it with: npm run pdf:dev (Playwright on port 3847).',
-    )
+    throw new Error(friendlyPdfServiceError('failed to fetch'))
   }
 
   if (!res.ok) {
@@ -84,10 +107,14 @@ export async function downloadPdfViaPlaywright(
     } catch {
       detail = await res.text().catch(() => '')
     }
-    throw new Error(detail || `PDF service error (${res.status})`)
+    throw new Error(friendlyPdfServiceError(detail, res.status))
   }
 
   const blob = await res.blob()
   if (!blob.size) throw new Error('PDF service returned an empty file')
+  // Some proxies return HTML error pages with 200 — guard against that.
+  if (blob.type.includes('text/html')) {
+    throw new Error(friendlyPdfServiceError('PDF service is not running'))
+  }
   triggerPdfDownload(blob, request.filename)
 }

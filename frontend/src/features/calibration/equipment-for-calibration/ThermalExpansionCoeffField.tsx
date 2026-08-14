@@ -79,12 +79,14 @@ export function ThermalExpansionCoeffField({
           × 10
         </span>
         <div className="relative w-14 shrink-0">
-          <span
-            className="pointer-events-none absolute -top-0.5 left-1 font-mono text-[12px] font-semibold leading-none text-teal-800"
-            aria-hidden
-          >
-            {Number.isFinite(expNum) ? toSuperscriptExponent(expNum) : 'ⁿ'}
-          </span>
+          {Number.isFinite(expNum) ? (
+            <span
+              className="pointer-events-none absolute -top-0.5 left-1 font-mono text-[12px] font-semibold leading-none text-teal-800"
+              aria-hidden
+            >
+              {toSuperscriptExponent(expNum)}
+            </span>
+          ) : null}
           <Input
             id={`${id}-exponent`}
             type="text"
@@ -97,7 +99,7 @@ export function ThermalExpansionCoeffField({
               emit(mantissa, next)
             }}
             placeholder="-6"
-            className="h-9 border-0 bg-transparent px-1 pt-3 text-center text-[12px] text-slate-500 shadow-none focus-visible:ring-0"
+            className="h-8 border-0 bg-transparent px-1 py-0 text-center text-[12px] leading-8 text-slate-500 shadow-none focus-visible:ring-0"
             aria-label={`${label} exponent (power of 10)`}
           />
         </div>

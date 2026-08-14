@@ -26,19 +26,23 @@ import {
   type ReportSpecifiedRequirementEditTarget,
 } from './ReportSpecifiedRequirementEditDialog'
 
-/** Full grid: vertical + horizontal lines; header/section rows emphasized */
+/** Classic report grid: Times New Roman + black borders (Part A/B style) */
 const GRID_TABLE =
-  'w-max min-w-full table-auto border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4]'
+  'part-c-screen-table w-max min-w-full border-collapse font-[Times_New_Roman,Times,serif] text-[11pt] font-bold text-black [&_th]:border [&_td]:border [&_th]:border-black [&_td]:border-black [&_th]:font-bold [&_td]:font-bold [&_input]:font-[inherit] [&_button]:font-[inherit]'
+
+const GRID_TITLE =
+  'bg-white text-left text-[11pt] font-bold tracking-[0.02em] text-black border-black px-2 py-1.5 normal-case'
 
 const GRID_HEAD =
-  'bg-stone-800 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 border-stone-700 whitespace-nowrap px-2 py-1.5'
-const GRID_HEAD_ROW = 'border-b-2 border-amber-500/40 bg-stone-800 hover:bg-stone-800'
-const GRID_CELL = 'bg-[#f7f3eb] text-xs text-stone-900 border-[#e7e0d4] px-2 py-1.5 align-middle'
+  'bg-white text-[10pt] font-bold tracking-[0.02em] text-black border-black whitespace-nowrap px-2 py-1.5 normal-case'
+const GRID_HEAD_ROW = 'bg-white hover:bg-white'
+const GRID_CELL =
+  'bg-white text-[11pt] font-bold text-black border-black px-2 py-1.5 align-middle text-center'
 /** Shrink-wrap numeric / short columns to content */
 const GRID_COL_FIT = 'w-0 whitespace-nowrap'
-const GRID_SECTION_ROW = 'bg-stone-200/80 hover:bg-stone-200/80 border-y-2 border-y-amber-600/35'
+const GRID_SECTION_ROW = 'bg-white hover:bg-white'
 const GRID_SECTION_CELL =
-  'text-xs text-stone-900 font-semibold whitespace-pre-wrap px-3 py-2 align-middle border-[#e7e0d4]'
+  'text-[11pt] text-black font-bold whitespace-pre-wrap px-2 py-1.5 align-middle border-black'
 
 function columnCount(showScope: boolean): number {
   return showScope ? 8 : 7
@@ -64,20 +68,22 @@ function ResultDataRow({
   const remark = normalizeResultRemark(row.remark)
 
   return (
-    <TableRow className="hover:bg-amber-50/40">
-      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center font-medium')}>
+    <TableRow className="hover:bg-stone-50">
+      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center')}>
         {row.srNo}
       </TableCell>
-      <TableCell className={cn(GRID_CELL, 'w-[311px] max-w-[311px] text-left')}>
-        <div className="font-medium leading-snug">{row.testName}</div>
+      <TableCell className={cn(GRID_CELL, 'w-[311px] max-w-[311px] !text-left')}>
+        <div className="font-bold leading-snug text-left">{row.testName}</div>
         {row.testMethodClause && (
-          <div className="mt-0.5 text-muted-foreground leading-snug">{row.testMethodClause}</div>
+          <div className="mt-0.5 text-left text-[9pt] font-normal leading-snug text-black">
+            {row.testMethodClause}
+          </div>
         )}
       </TableCell>
       <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center')}>{row.unit}</TableCell>
       <TableCell className={cn(GRID_CELL, 'w-[234px] min-w-[234px] max-w-[234px] text-center')}>
         <div className="inline-flex w-full items-center justify-center gap-1">
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-center">
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-center font-bold">
             {row.specifiedRequirement}
           </span>
           {specifiedRequirementEditable &&
@@ -100,7 +106,7 @@ function ResultDataRow({
             )}
         </div>
       </TableCell>
-      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center font-medium')}>
+      <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center')}>
         {row.observedValue}
       </TableCell>
       <TableCell className={cn(GRID_CELL, GRID_COL_FIT, 'text-center')}>
@@ -110,7 +116,7 @@ function ResultDataRow({
         className={cn(
           GRID_CELL,
           GRID_COL_FIT,
-          'text-center font-medium',
+          'text-center',
           !editable && resultRemarkCellClass(remark),
         )}
       >
@@ -122,7 +128,7 @@ function ResultDataRow({
           >
             <SelectTrigger
               className={cn(
-                'h-8 min-w-[7rem] text-xs font-medium border-input/80',
+                'h-8 min-w-[7rem] border-input/80 font-[Times_New_Roman,Times,serif] text-[11pt] font-bold',
                 resultRemarkCellClass(remark),
               )}
             >
@@ -130,7 +136,11 @@ function ResultDataRow({
             </SelectTrigger>
             <SelectContent>
               {RESULT_REMARK_OPTIONS.map((option) => (
-                <SelectItem key={option} value={option} className="text-xs">
+                <SelectItem
+                  key={option}
+                  value={option}
+                  className="font-[Times_New_Roman,Times,serif] text-[11pt] font-bold"
+                >
                   {option}
                 </SelectItem>
               ))}
@@ -147,14 +157,38 @@ function ResultDataRow({
   )
 }
 
-function ResultsTableHeader({ showScope }: { showScope: boolean }) {
+function ResultsTableHeader({
+  showScope,
+  partTitle,
+  colSpan,
+}: {
+  showScope: boolean
+  partTitle?: string
+  colSpan: number
+}) {
   return (
     <TableHeader>
+      {partTitle ? (
+        <TableRow className="hover:bg-white">
+          <TableHead colSpan={colSpan} className={GRID_TITLE}>
+            {partTitle}
+          </TableHead>
+        </TableRow>
+      ) : null}
       <TableRow className={GRID_HEAD_ROW}>
-        <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Sr No</TableHead>
+        <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center align-middle leading-tight')}>
+          Sr
+          <br />
+          No
+        </TableHead>
         <TableHead className={cn(GRID_HEAD, 'w-[311px] max-w-[311px] text-left')}>Test Name</TableHead>
         <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Unit</TableHead>
-        <TableHead className={cn(GRID_HEAD, 'w-[234px] min-w-[234px] max-w-[234px] whitespace-nowrap text-center')}>
+        <TableHead
+          className={cn(
+            GRID_HEAD,
+            'w-[234px] min-w-[234px] max-w-[234px] whitespace-nowrap text-center',
+          )}
+        >
           Specified Requirements
         </TableHead>
         <TableHead className={cn(GRID_HEAD, GRID_COL_FIT, 'text-center')}>Observed Value</TableHead>
@@ -240,7 +274,7 @@ function ResultsGroupedBody({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 shrink-0 gap-1.5 rounded-none border-stone-500 bg-stone-50 text-xs font-normal text-stone-800 hover:bg-stone-100"
+                      className="h-7 shrink-0 gap-1.5 rounded-none border-black bg-white text-xs font-bold text-black hover:bg-stone-50"
                       onClick={() =>
                         onEditSectionCode({
                           sectionCode: section.sectionCode,
@@ -288,6 +322,7 @@ export function ReportResultsTable({
   onSectionCodeUpdated,
   specifiedRequirementEditable = false,
   onSpecifiedRequirementUpdated,
+  partTitle,
 }: {
   rows: ReportResultRow[]
   showScope?: boolean
@@ -301,6 +336,8 @@ export function ReportResultsTable({
   onSectionCodeUpdated?: (oldCode: string, newCode: string) => void
   specifiedRequirementEditable?: boolean
   onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
+  /** When set, first thead row shows this title (e.g. PART C. TEST RESULTS). */
+  partTitle?: string
 }) {
   const colSpan = columnCount(showScope)
   const sections = groupBySectionCode ? groupReportRowsBySectionCode(rows) : null
@@ -359,7 +396,7 @@ export function ReportResultsTable({
   if (sections) {
     return tableShell(
       <>
-        <ResultsTableHeader showScope={showScope} />
+        <ResultsTableHeader showScope={showScope} partTitle={partTitle} colSpan={colSpan} />
         <ResultsGroupedBody
           sections={sections}
           colSpan={colSpan}
@@ -378,7 +415,7 @@ export function ReportResultsTable({
 
   return tableShell(
     <>
-      <ResultsTableHeader showScope={showScope} />
+      <ResultsTableHeader showScope={showScope} partTitle={partTitle} colSpan={colSpan} />
       <TableBody>
         {flatRows!.length === 0 ? (
           <TableRow>

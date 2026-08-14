@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { emptyIsCodeForm, type IsCodeForm } from '@/features/masters/is-codes/types'
 import { IsCodesForm } from '@/features/masters/is-codes/IsCodesForm'
+import {
+  limsDarkBarGlowStyle,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
 function parseIsCodeLabelInput(label: string): Partial<IsCodeForm> {
   const raw = label.trim()
@@ -19,6 +23,15 @@ function parseIsCodeLabelInput(label: string): Partial<IsCodeForm> {
   }
   return { isNumber: raw }
 }
+
+/** Client Master–style shell: dark header, stone body, centered in main area (excl. sidebar). */
+const addIsCodeOverlayClass = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const addIsCodeDialogClass = cn(
+  'max-h-[92vh] w-[calc(100vw-1rem)] max-w-3xl gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+)
 
 export function AddIsCodeDialog({
   open,
@@ -36,9 +49,19 @@ export function AddIsCodeDialog({
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [form, setForm] = useState<IsCodeForm>(emptyIsCodeForm)
-  const [aspects, setAspects] = useState<Array<{ id: string; label: string }>>([{ id: 'default-spec', label: 'Specification' }])
+  const [aspects, setAspects] = useState<Array<{ id: string; label: string }>>([
+    { id: 'default-spec', label: 'Specification' },
+  ])
   const [aspectDialogOpen, setAspectDialogOpen] = useState(false)
   const [newAspect, setNewAspect] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setForm({ ...emptyIsCodeForm(), ...parseIsCodeLabelInput(initialLabel ?? '') })
+    setSaveMessage(null)
+    setAspectDialogOpen(false)
+    setNewAspect('')
+  }, [open, initialLabel])
 
   useEffect(() => {
     if (!open) return
@@ -57,14 +80,8 @@ export function AddIsCodeDialog({
         setAspects([{ id: 'default-spec', label: 'Specification' }])
       }
     }
-    load()
+    void load()
   }, [open])
-
-  useEffect(() => {
-    if (!open || !initialLabel?.trim()) return
-    const parsed = parseIsCodeLabelInput(initialLabel)
-    setForm((prev) => ({ ...prev, ...parsed }))
-  }, [open, initialLabel])
 
   const onAddAspect = async () => {
     const name = newAspect.trim()
@@ -78,9 +95,6 @@ export function AddIsCodeDialog({
     setNewAspect('')
     setAspectDialogOpen(false)
   }
-  const onDeleteAspect = () => {}
-  const onPickFiles = () => {}
-  const onOpenFiles = () => {}
 
   const handleSave = async () => {
     setSaveMessage(null)
@@ -118,36 +132,70 @@ export function AddIsCodeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-2xl w-[66vw] max-h-[90vh] overflow-y-auto"
+        persistOnFocusLoss
         aria-describedby={undefined}
         layer={nested ? 'nested' : 'default'}
+        overlayClassName={addIsCodeOverlayClass}
+        className={addIsCodeDialogClass}
       >
-        <DialogHeader>
-          <DialogTitle>Add new IS Code (same as IS Code Directory form)</DialogTitle>
-        </DialogHeader>
-        {saveMessage && <p className="text-sm text-destructive">{saveMessage}</p>}
-        <div className="max-h-[70vh] overflow-y-auto pr-2">
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Add New IS Code
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+
+        <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
+          {saveMessage ? (
+            <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {saveMessage}
+            </p>
+          ) : null}
           <IsCodesForm
             form={form}
             onChange={setForm}
             canSave={canSave}
             saveLoading={saveLoading}
             onSave={handleSave}
-            onClear={() => setForm(emptyIsCodeForm())}
-            onPickFiles={onPickFiles}
-            onOpenFiles={onOpenFiles}
+            onPickFiles={() => {}}
+            onOpenFiles={() => {}}
+            onDeleteFiles={() => {}}
             aspectOptions={aspects}
             aspectDialogOpen={aspectDialogOpen}
             setAspectDialogOpen={setAspectDialogOpen}
             newAspect={newAspect}
             setNewAspect={setNewAspect}
             onAddAspect={onAddAspect}
-            onDeleteAspect={onDeleteAspect}
+            onUpdateAspect={() => {}}
+            onDeleteAspect={() => {}}
+            hideFooter
           />
         </div>
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="button" onClick={handleSave} disabled={!canSave || saveLoading}>{saveLoading ? 'Saving…' : 'Save IS Code'}</Button>
+
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:justify-end sm:px-6">
+          <Button
+            type="button"
+            variant="outline"
+            className={limsOutlineBtnClass}
+            onClick={() => onOpenChange(false)}
+            disabled={saveLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={() => void handleSave()}
+            disabled={!canSave}
+          >
+            {saveLoading ? 'Saving…' : 'Save IS Code'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -86,5 +86,8 @@ export async function printIssuedTestReportPdf(
   })
 
   const srf = row.srfNumber ?? row.id
-  await outputTestReportDocument(html, `${REPORT_SCOPE_TITLE[scope]}-${srf}`)
+  await outputTestReportDocument(html, `${REPORT_SCOPE_TITLE[scope]}-${srf}`, {
+    printSettings,
+    paginateSheets: true,
+  })
 }

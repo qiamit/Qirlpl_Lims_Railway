@@ -7,24 +7,28 @@ import {
 
 /**
  * Download HTML as PDF via Playwright (Chromium) — same visual engine as Chrome Print.
- * Replaces html2pdf.js / html2canvas.
+ *
+ * Default: Playwright outer margins are 0. Letterhead / report HTML already defines
+ * `@page { margin: … }` (or sheet padding). Passing applyOuterMargins: true re-adds
+ * a second margin layer and shifts layout vs browser print / preview.
  */
 export async function downloadHtmlAsPdf(
   html: string,
   filename: string,
-  pageSize: PrintPageSize | 'A5' | 'Legal',
+  pageSize: PrintPageSize,
   marginsMm?: PrintPageMarginsMm,
   _pagebreakMode?: Array<'css' | 'legacy' | 'avoid-all'>,
   options?: {
     orientation?: 'portrait' | 'landscape'
     qualityScale?: number
+    /** When true, apply Playwright margins (rare). Default false — use CSS @page. */
     applyOuterMargins?: boolean
     pageWidthMm?: number
     pageHeightMm?: number
     captureSelector?: string
   },
 ): Promise<void> {
-  const applyOuter = options?.applyOuterMargins !== false
+  const applyOuter = options?.applyOuterMargins === true
   const m = applyOuter
     ? (marginsMm ?? { top: 12, right: 12, bottom: 12, left: 12 })
     : { top: 0, right: 0, bottom: 0, left: 0 }

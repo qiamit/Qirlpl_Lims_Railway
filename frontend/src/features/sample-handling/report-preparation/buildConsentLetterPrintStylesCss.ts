@@ -1,4 +1,8 @@
-import type { TestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsTypes'
+import {
+  cssPageSizeValue,
+  resolvePrintPageSizeMm,
+  type TestReportPrintSettings,
+} from '@/features/settings/lab-settings/printSettingsTypes'
 
 /** Consent letter page margins (cm → mm). */
 export const CONSENT_LETTER_PAGE_MARGINS_MM = {
@@ -10,18 +14,19 @@ export const CONSENT_LETTER_PAGE_MARGINS_MM = {
 
 /** Compact single-page consent letter — flow layout (no fixed header gap). */
 export function buildConsentLetterPrintStylesCss(settings: TestReportPrintSettings): string {
-  const { pageSize, headerMaxHeightMm, footerMaxHeightMm } = settings
+  const { headerMaxHeightMm, footerMaxHeightMm } = settings
   const { top, right, bottom, left } = CONSENT_LETTER_PAGE_MARGINS_MM
 
-  const headerMaxMm = Math.min(headerMaxHeightMm, 22)
-  const footerMaxMm = Math.min(footerMaxHeightMm, 32)
-  const pageHeightMm = pageSize === 'Letter' ? 279.4 : 297
+  const headerMaxMm = Math.min(Math.max(headerMaxHeightMm, 28), 42)
+  const footerMaxMm = Math.min(Math.max(footerMaxHeightMm, 18), 36)
+  const pageHeightMm = resolvePrintPageSizeMm(settings).height
   const contentMinHeightMm = pageHeightMm - top - bottom
   const footerReserveMm = footerMaxMm + 4
+  const pageSizeCss = cssPageSizeValue(settings)
 
   return `
   @page {
-    size: ${pageSize};
+    size: ${pageSizeCss};
     margin: ${top}mm ${right}mm ${bottom}mm ${left}mm;
   }
   * { box-sizing: border-box; }
@@ -56,27 +61,32 @@ export function buildConsentLetterPrintStylesCss(settings: TestReportPrintSettin
   }
 
   .consent-header {
-    margin: 0 0 2pt;
+    flex-shrink: 0;
+    margin: 0 0 6pt;
+    margin-left: -${left}mm;
+    margin-right: -${right}mm;
+    width: calc(100% + ${left}mm + ${right}mm);
     padding: 0;
     line-height: 0;
-    text-align: left;
+    text-align: center;
   }
   .consent-header img {
     display: block;
-    width: auto;
-    max-width: 55%;
+    width: 100%;
+    max-width: 100%;
     max-height: ${headerMaxMm}mm;
     height: auto;
     margin: 0;
     padding: 0;
     object-fit: contain;
-    object-position: top left;
+    object-position: top center;
   }
   .consent-header.fallback {
     font-size: 12px;
     font-weight: 600;
     line-height: 1.3;
-    padding: 0;
+    padding: 2mm ${left}mm 0;
+    text-align: left;
   }
 
   .consent-footer {

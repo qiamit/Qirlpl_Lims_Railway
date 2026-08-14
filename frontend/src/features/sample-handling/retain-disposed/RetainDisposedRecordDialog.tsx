@@ -16,7 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { formatDate } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
+import { cn, formatDate } from '@/lib/utils'
 import {
   computeDefaultDisposedDate,
   computeRetentionDueDate,
@@ -25,6 +30,14 @@ import {
   type SampleDisposalOutcome,
 } from './sampleRetention'
 import type { RetainDisposedListRow } from './types'
+
+const dialogOverlayClass = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+
+const dialogShellClass = cn(
+  'max-h-[92vh] w-[calc(100vw-1rem)] max-w-lg gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none',
+  '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(32rem,calc(100vw-268px-2rem))] md:max-w-[min(32rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+)
 
 export function RetainDisposedRecordDialog({
   open,
@@ -108,89 +121,120 @@ export function RetainDisposedRecordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Record Sample Retention / Disposal</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 text-sm">
-          <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs space-y-1">
-            <p>
-              <span className="text-muted-foreground">SRF:</span>{' '}
-              <span className="font-semibold">{row.srfNumber ?? '—'}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Test report issued:</span>{' '}
-              {formatDate(row.issuedAt ?? '')}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Retention due ({SAMPLE_RETENTION_DAYS} days):</span>{' '}
-              <span className={previewStatus === 'due' ? 'font-semibold text-rose-600' : 'font-medium'}>
-                {formatDate(retentionDue)}
-              </span>
-            </p>
-            <p className="text-muted-foreground pt-1">
-              After {SAMPLE_RETENTION_DAYS} days from issue, sample must be disposed or returned to the
-              customer. Default disposal date is the 91st day after report issue.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="ret-qty-retained">Quantity Retained</Label>
-              <Input
-                id="ret-qty-retained"
-                value={quantityRetained}
-                onChange={(e) => setQuantityRetained(e.target.value)}
-                placeholder="e.g. 2 kg"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ret-qty-disposed">Quantity Disposed</Label>
-              <Input
-                id="ret-qty-disposed"
-                value={quantityDisposed}
-                onChange={(e) => setQuantityDisposed(e.target.value)}
-                placeholder="e.g. 1 kg"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="ret-disposed-at">Date of Disposed</Label>
-              <Input
-                id="ret-disposed-at"
-                type="date"
-                value={disposedAt}
-                onChange={(e) => setDisposedAt(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Disposal Outcome</Label>
-              <Select
-                value={disposalOutcome || 'unset'}
-                onValueChange={(v) =>
-                  setDisposalOutcome(v === 'unset' ? '' : (v as SampleDisposalOutcome))
-                }
-              >
-                <SelectTrigger aria-label="Disposal outcome">
-                  <SelectValue placeholder="Select outcome" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unset">Not closed yet</SelectItem>
-                  <SelectItem value="disposed">Disposed</SelectItem>
-                  <SelectItem value="returned_to_customer">Returned to Customer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <DialogContent
+        persistOnFocusLoss
+        aria-describedby={undefined}
+        overlayClassName={dialogOverlayClass}
+        className={dialogShellClass}
+      >
+        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              Record Sample Retention / Disposal
+            </DialogTitle>
+          </DialogHeader>
         </div>
 
-        <DialogFooter>
-          <Button type="button" onClick={() => void handleSubmit()} disabled={saving}>
+        <div className="max-h-[min(72vh,640px)] overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
+          <div className={cn(limsRegistryFormClass, 'space-y-4 text-sm')}>
+            <div className="space-y-1 rounded-none border border-stone-500 bg-stone-50 px-3 py-2.5 text-xs">
+              <p>
+                <span className="text-stone-500">SRF:</span>{' '}
+                <span className="font-semibold text-stone-800">{row.srfNumber ?? '—'}</span>
+              </p>
+              <p>
+                <span className="text-stone-500">Test report issued:</span>{' '}
+                <span className="text-stone-800">{formatDate(row.issuedAt ?? '')}</span>
+              </p>
+              <p>
+                <span className="text-stone-500">Retention due ({SAMPLE_RETENTION_DAYS} days):</span>{' '}
+                <span
+                  className={
+                    previewStatus === 'due'
+                      ? 'font-semibold text-rose-600'
+                      : 'font-medium text-stone-800'
+                  }
+                >
+                  {formatDate(retentionDue)}
+                </span>
+              </p>
+              <p className="pt-1 text-stone-500">
+                After {SAMPLE_RETENTION_DAYS} days from issue, sample must be disposed or returned to the
+                customer. Default disposal date is the 91st day after report issue.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ret-qty-retained">Quantity Retained</Label>
+                <Input
+                  id="ret-qty-retained"
+                  value={quantityRetained}
+                  onChange={(e) => setQuantityRetained(e.target.value)}
+                  placeholder="e.g. 2 kg"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ret-qty-disposed">Quantity Disposed</Label>
+                <Input
+                  id="ret-qty-disposed"
+                  value={quantityDisposed}
+                  onChange={(e) => setQuantityDisposed(e.target.value)}
+                  placeholder="e.g. 1 kg"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ret-disposed-at">Date of Disposed</Label>
+                <Input
+                  id="ret-disposed-at"
+                  type="date"
+                  value={disposedAt}
+                  onChange={(e) => setDisposedAt(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Disposal Outcome</Label>
+                <Select
+                  value={disposalOutcome || 'unset'}
+                  onValueChange={(v) =>
+                    setDisposalOutcome(v === 'unset' ? '' : (v as SampleDisposalOutcome))
+                  }
+                >
+                  <SelectTrigger aria-label="Disposal outcome">
+                    <SelectValue placeholder="Select outcome" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unset">Not closed yet</SelectItem>
+                    <SelectItem value="disposed">Disposed</SelectItem>
+                    <SelectItem value="returned_to_customer">Returned to Customer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {error ? (
+              <p className="border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <DialogFooter className="shrink-0 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:justify-end sm:px-6">
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={() => void handleSubmit()}
+            disabled={saving}
+          >
             {saving ? 'Saving…' : 'Save & Close'}
           </Button>
         </DialogFooter>

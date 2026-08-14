@@ -10,7 +10,11 @@ export async function outputSrfDocument(html: string, filenameBase: string): Pro
       '@/features/sample-handling/report-preparation/downloadHtmlAsPdf'
     )
     const safeName = filenameBase.replace(/[^\w.-]+/g, '_').slice(0, 120) || 'srf-list'
-    await downloadHtmlAsPdf(html, `${safeName}.pdf`, settings.pageSize)
+    // SRF HTML already defines @page margins — keep Playwright outer margins at 0.
+    await downloadHtmlAsPdf(html, `${safeName}.pdf`, settings.pageSize, undefined, undefined, {
+      orientation: settings.pageOrientation,
+      applyOuterMargins: false,
+    })
     return
   }
 

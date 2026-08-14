@@ -211,12 +211,12 @@ export function buildConsentLetterHtml(input: BuildConsentLetterHtmlInput): stri
   const body = buildConsentLetterBody(input)
 
   const headerHtml =
-    printSettings.showPrintHeader && headerInner && !template.omitHeader
+    headerInner && !template.omitHeader
       ? `<header class="consent-header${template.headerUrl ? '' : ' fallback'}">${headerInner}</header>`
       : ''
 
   const footerHtml =
-    printSettings.showPrintFooter && footerInner && !template.omitFooter
+    footerInner && !template.omitFooter
       ? `<footer class="consent-footer">${footerInner}</footer>`
       : ''
 

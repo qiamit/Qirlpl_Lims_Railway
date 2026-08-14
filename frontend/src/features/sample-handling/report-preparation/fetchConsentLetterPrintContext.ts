@@ -51,6 +51,10 @@ async function resolveConsentLetterSignatory(
       userId: qualityManager.id,
       name: qualityManager.name,
       designation: CONSENT_LETTER_SIGNATORY_DESIGNATION,
+      department: qualityManager.departmentName ?? '',
+      enabled: true,
+      required: true,
+      showAfterParts: ['part_d'],
     }
   }
 
@@ -61,6 +65,12 @@ async function resolveConsentLetterSignatory(
       userId: linked.userId,
       name: linked.name.trim(),
       designation: CONSENT_LETTER_SIGNATORY_DESIGNATION,
+      department: linked.department ?? '',
+      enabled: true,
+      required: true,
+      showAfterParts: linked.showAfterParts?.length
+        ? [...linked.showAfterParts]
+        : ['part_d'],
     }
   }
 
@@ -69,6 +79,10 @@ async function resolveConsentLetterSignatory(
     userId: '',
     name: '',
     designation: CONSENT_LETTER_SIGNATORY_DESIGNATION,
+    department: '',
+    enabled: true,
+    required: true,
+    showAfterParts: ['part_d'],
   }
 }
 
@@ -96,35 +110,61 @@ async function resolveConsentLetterTemplate(): Promise<ResolvedScopeTemplate> {
   ])
 
   const binding = config.non_nabl
+  const fallbackHeader =
+    DEFAULT_LETTERHEAD_TEMPLATE_NAMES.nonNablHeader
+  const fallbackFooter = DEFAULT_LETTERHEAD_TEMPLATE_NAMES.footer
+
   let template = await resolveReportScopeTemplate(
     'non_nabl',
     config,
     binding.headerName || binding.footerName
       ? undefined
       : {
-          headerName: DEFAULT_LETTERHEAD_TEMPLATE_NAMES.nonNablHeader,
-          footerName: DEFAULT_LETTERHEAD_TEMPLATE_NAMES.footer,
+          headerName: fallbackHeader,
+          footerName: fallbackFooter,
         },
   )
 
   const needsHeader = !template.omitHeader && !template.headerUrl
   const needsFooter = !template.omitFooter && !template.footerUrl
   if (needsHeader || needsFooter) {
-    const headerName =
-      (needsHeader ? binding.headerName.trim() : '') ||
-      srfPrint.headerTemplateName.trim() ||
-      DEFAULT_LETTERHEAD_TEMPLATE_NAMES.nonNablHeader
-    const footerName =
-      (needsFooter ? binding.footerName.trim() : '') ||
-      srfPrint.footerTemplateName.trim() ||
-      DEFAULT_LETTERHEAD_TEMPLATE_NAMES.footer
-    const named = await resolveNamedLetterheadTemplates(headerName, footerName)
+    const headerCandidates = [
+      needsHeader ? binding.headerName.trim() : '',
+      srfPrint.headerTemplateName.trim(),
+      fallbackHeader,
+      'General Letter Header',
+    ].filter(Boolean)
+    const footerCandidates = [
+      needsFooter ? binding.footerName.trim() : '',
+      srfPrint.footerTemplateName.trim(),
+      fallbackFooter,
+      'General Letter Footer',
+    ].filter(Boolean)
+
+    let headerUrl = template.headerUrl
+    let footerUrl = template.footerUrl
+    for (const name of headerCandidates) {
+      if (headerUrl) break
+      const named = await resolveNamedLetterheadTemplates(name, footerCandidates[0] ?? fallbackFooter)
+      headerUrl = named.headerUrl
+      footerUrl = footerUrl ?? named.footerUrl
+    }
+    if (!footerUrl) {
+      for (const name of footerCandidates) {
+        const named = await resolveNamedLetterheadTemplates(headerCandidates[0] ?? fallbackHeader, name)
+        if (named.footerUrl) {
+          footerUrl = named.footerUrl
+          break
+        }
+      }
+    }
+
     template = {
       ...template,
-      headerUrl: template.headerUrl ?? named.headerUrl,
-      footerUrl: template.footerUrl ?? named.footerUrl,
-      omitHeader: template.omitHeader && !named.headerUrl,
-      omitFooter: template.omitFooter && !named.footerUrl,
+      headerUrl: template.headerUrl ?? headerUrl,
+      footerUrl: template.footerUrl ?? footerUrl,
+      omitHeader: Boolean(template.omitHeader && !(template.headerUrl ?? headerUrl)),
+      omitFooter: Boolean(template.omitFooter && !(template.footerUrl ?? footerUrl)),
     }
   }
 

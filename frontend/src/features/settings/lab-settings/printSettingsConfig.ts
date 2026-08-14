@@ -13,7 +13,7 @@ import {
   type TestReportPrintSettings,
 } from './printSettingsTypes'
 
-const TEST_REPORT_PRINT_CACHE_KEY = 'qirlpl-lims.testReportPrintSettings.v1'
+const TEST_REPORT_PRINT_CACHE_KEY = 'qirlpl-lims.testReportPrintSettings.v2'
 
 function readTestReportPrintCache(): TestReportPrintSettings | null {
   try {
@@ -91,6 +91,18 @@ export async function fetchLabPrintSettings(): Promise<LabPrintSettingsDocument>
       return doc
     }
   } catch (err) {
+    // Prefer a fresh session retry once — auth can be briefly null on first paint.
+    try {
+      await new Promise((r) => setTimeout(r, 250))
+      const raw = await fetchPrintSettingsRaw()
+      if (raw != null) {
+        const doc = parseLabPrintSettings(raw)
+        writeTestReportPrintCache(doc.testReport)
+        return doc
+      }
+    } catch {
+      // fall through to cache
+    }
     const cached = readTestReportPrintCache()
     if (cached) {
       return {
@@ -109,7 +121,10 @@ export async function fetchLabPrintSettings(): Promise<LabPrintSettingsDocument>
     }
   }
 
-  return { ...DEFAULT_LAB_PRINT_SETTINGS }
+  return {
+    testReport: parseTestReportPrintSettings(DEFAULT_TEST_REPORT_PRINT_SETTINGS),
+    srf: parseSrfPrintSettings(DEFAULT_SRF_PRINT_SETTINGS),
+  }
 }
 
 export async function fetchTestReportPrintSettings(): Promise<TestReportPrintSettings> {
@@ -179,12 +194,18 @@ export async function saveLabPrintSettings(settings: LabPrintSettingsDocument): 
   writeTestReportPrintCache(saved.testReport)
 }
 
-/** @deprecated Prefer saveLabPrintSettings */
 export async function saveTestReportPrintSettings(
   settings: TestReportPrintSettings,
 ): Promise<void> {
   const normalized = parseTestReportPrintSettings(settings)
-  let existingDoc: LabPrintSettingsDocument = { ...DEFAULT_LAB_PRINT_SETTINGS }
+  // Always write local cache first so a refresh still sees the latest values
+  // even if a subsequent DB read races with auth.
+  writeTestReportPrintCache(normalized)
+
+  let existingDoc: LabPrintSettingsDocument = {
+    testReport: normalized,
+    srf: parseSrfPrintSettings(DEFAULT_SRF_PRINT_SETTINGS),
+  }
 
   try {
     const raw = await fetchPrintSettingsRaw()

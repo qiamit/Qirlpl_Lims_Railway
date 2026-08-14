@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { LayoutTemplate, PenLine, Printer, Save, Settings2, CheckCircle } from 'lucide-react'
+import { CheckCircle, Eye, LayoutTemplate, Save, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -23,9 +23,9 @@ import { TestReportPrepareDialogAssistant } from './TestReportPrepareDialogAssis
 import {
   TestReportPageSettingDialog,
   TestReportPrintSettingDialog,
-  TestReportSignatureSettingDialog,
   useTestReportPrintSettingsForPrepare,
 } from './TestReportPreparePrintDialogs'
+import { TestReportPrintPreviewDialog } from './TestReportPrintPreviewDialog'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 
@@ -46,6 +46,8 @@ export function TestReportPrepareDialog({
   letterheadOptions,
   letterheadsByScope,
   onLetterheadChange,
+  onPersistLetterheadDefaults,
+  onReloadLetterheadDefaults,
   coverDetails,
   partBDetails,
   onPartBDetailsChange,
@@ -57,7 +59,6 @@ export function TestReportPrepareDialog({
   issueLoading,
   onSaveDraft,
   onIssueReports,
-  onPrintScope,
   onRemarkChange,
   sampleId = null,
   sectionCodeEditable = false,
@@ -85,6 +86,8 @@ export function TestReportPrepareDialog({
     field: 'headerName' | 'footerName' | 'watermarkName',
     value: string,
   ) => void
+  onPersistLetterheadDefaults?: () => Promise<void>
+  onReloadLetterheadDefaults?: () => Promise<void>
   coverDetails: TestReportCoverDetails | null
   partBDetails: TestReportPartBDetails | null
   onPartBDetailsChange: (next: TestReportPartBDetails) => void
@@ -96,7 +99,6 @@ export function TestReportPrepareDialog({
   issueLoading: boolean
   onSaveDraft: () => void
   onIssueReports: () => void
-  onPrintScope: (scope: ReportScopeKind) => void
   onRemarkChange?: (rowKey: string, remark: string) => void
   sampleId?: string | null
   sectionCodeEditable?: boolean
@@ -108,11 +110,15 @@ export function TestReportPrepareDialog({
   const [activeReportScope, setActiveReportScope] = useState<ReportScopeKind>('nabl')
   const [printSettingOpen, setPrintSettingOpen] = useState(false)
   const [pageSettingOpen, setPageSettingOpen] = useState(false)
-  const [signatureSettingOpen, setSignatureSettingOpen] = useState(false)
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false)
   const printSettingsControls = useTestReportPrintSettingsForPrepare(open)
 
   useEffect(() => {
-    if (!open || applicableScopes.length === 0) return
+    if (!open) {
+      setPrintPreviewOpen(false)
+      return
+    }
+    if (applicableScopes.length === 0) return
     setActiveReportScope((prev) =>
       applicableScopes.includes(prev) ? prev : applicableScopes[0],
     )
@@ -133,7 +139,7 @@ export function TestReportPrepareDialog({
   }, [coverDetails, partBDetails])
 
   const activeScopeRowCount = filterReportRowsByScope(resultRows, activeReportScope).length
-  const printDraftDisabled =
+  const previewDisabled =
     !active ||
     coverLoading ||
     saveLoading ||
@@ -204,17 +210,6 @@ export function TestReportPrepareDialog({
                 activeScope={activeReportScope}
                 onActiveScopeChange={setActiveReportScope}
                 resultRows={resultRows}
-                reportNumber={reportNumber}
-                onReportNumberChange={onReportNumberChange}
-                testReportPrefix={testReportPrefix}
-                reportNumberLoading={reportNumberLoading}
-                nablUlrNumber={nablUlrNumber}
-                onNablUlrNumberChange={onNablUlrNumberChange}
-                ulrPrefix={ulrPrefix}
-                ulrPrefixLoading={ulrPrefixLoading}
-                letterheadOptions={letterheadOptions}
-                letterheadsByScope={letterheadsByScope}
-                onLetterheadChange={onLetterheadChange}
                 onRemarkChange={onRemarkChange}
                 disabled={saveLoading || issueLoading}
                 sampleId={sampleId}
@@ -273,23 +268,13 @@ export function TestReportPrepareDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setSignatureSettingOpen(true)}
-                disabled={coverLoading || saveLoading || issueLoading}
+                id={`preview-${activeReportScope}`}
+                onClick={() => setPrintPreviewOpen(true)}
+                disabled={previewDisabled}
                 className={cn('gap-2', limsDarkBarBtnClass)}
               >
-                <PenLine size={16} />
-                Signatures
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                id={`print-${activeReportScope}`}
-                onClick={() => onPrintScope(activeReportScope)}
-                disabled={printDraftDisabled}
-                className={cn('gap-2', limsDarkBarBtnClass)}
-              >
-                <Printer size={16} />
-                Print {REPORT_SCOPE_SUFFIX[activeReportScope]} Draft
+                <Eye size={16} />
+                Preview {REPORT_SCOPE_SUFFIX[activeReportScope]}
               </Button>
               <Button
                 type="button"
@@ -318,16 +303,34 @@ export function TestReportPrepareDialog({
           open={printSettingOpen}
           onOpenChange={setPrintSettingOpen}
           controls={printSettingsControls}
+          applicableScopes={applicableScopes}
+          letterheadOptions={letterheadOptions}
+          letterheadsByScope={letterheadsByScope}
+          onLetterheadChange={onLetterheadChange}
+          onPersistLetterheadDefaults={onPersistLetterheadDefaults}
+          onReloadLetterheadDefaults={onReloadLetterheadDefaults}
         />
         <TestReportPageSettingDialog
           open={pageSettingOpen}
           onOpenChange={setPageSettingOpen}
           controls={printSettingsControls}
         />
-        <TestReportSignatureSettingDialog
-          open={signatureSettingOpen}
-          onOpenChange={setSignatureSettingOpen}
-          controls={printSettingsControls}
+        <TestReportPrintPreviewDialog
+          open={printPreviewOpen}
+          onOpenChange={setPrintPreviewOpen}
+          applicableScopes={applicableScopes}
+          previewScope={activeReportScope}
+          onPreviewScopeChange={setActiveReportScope}
+          letterheadsByScope={letterheadsByScope}
+          printSettingsControls={printSettingsControls}
+          active={active}
+          reportNumber={reportNumber}
+          nablUlrNumber={nablUlrNumber}
+          draftNotes={draftNotes}
+          coverDetails={liveCoverDetails}
+          partBDetails={partBDetails}
+          resultRows={resultRows}
+          printDisabled={previewDisabled}
         />
       </DialogContent>
     </Dialog>

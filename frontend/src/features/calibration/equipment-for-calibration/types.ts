@@ -183,7 +183,9 @@ export type EquipmentForCalibrationForm = {
   currentLocation: string
   equipmentStatus: EquipmentStatus
   rangeCapacity: string
+  rangeCapacityUnit: string
   resolutionLeastCount: string
+  resolutionLeastCountUnit: string
   accuracyAcceptanceCriteria: string
   calibrationFrequency: Frequency
   lastCalibrationDate: string
@@ -344,7 +346,7 @@ export function parseCalibrationPointsTable(raw: unknown): CalibrationPointsStor
       id: newCalibrationColumnId(),
       header,
       type: 'number' as const,
-      required: false,
+      required: true,
     }))
     const [nominal, actual, correction, uncertainty] = columns
     const rows = raw.map((item) => {
@@ -421,6 +423,7 @@ export function serializeCalibrationPointsTable(
 }
 
 export function emptyEquipmentForCalibrationForm(): EquipmentForCalibrationForm {
+  const today = todayIsoDate()
   return {
     assetCode: '',
     equipmentName: '',
@@ -430,7 +433,9 @@ export function emptyEquipmentForCalibrationForm(): EquipmentForCalibrationForm 
     currentLocation: '',
     equipmentStatus: 'Active',
     rangeCapacity: '',
+    rangeCapacityUnit: '',
     resolutionLeastCount: '',
+    resolutionLeastCountUnit: '',
     accuracyAcceptanceCriteria: '',
     calibrationFrequency: '',
     lastCalibrationDate: '',
@@ -451,9 +456,9 @@ export function emptyEquipmentForCalibrationForm(): EquipmentForCalibrationForm 
     intermediateCheckResult: '',
     intermediateCheckPerformedBy: '',
     intermediateCheckHistory: [],
-    maintenanceScheduleFrequency: '',
-    lastMaintenanceDate: '',
-    nextMaintenanceDate: '',
+    maintenanceScheduleFrequency: 'Quarterly',
+    lastMaintenanceDate: today,
+    nextMaintenanceDate: calculateNextDueDate(today, 'Quarterly'),
     maintenanceDoneBy: '',
     maintenanceChecklist: [],
     maintenanceHistory: [],
@@ -467,6 +472,36 @@ export function normalizeText(value: string): string {
   return value.trim()
 }
 
+/** Split stored "100 kN" / "0-100 mm" / "1 Count" into value + unit for the form. */
+export function splitValueAndUnit(raw: string | null | undefined): {
+  value: string
+  unit: string
+} {
+  const trimmed = String(raw ?? '').trim()
+  if (!trimmed) return { value: '', unit: '' }
+  const lastSpace = trimmed.lastIndexOf(' ')
+  if (lastSpace > 0) {
+    const maybeUnit = trimmed.slice(lastSpace + 1).trim()
+    const maybeValue = trimmed.slice(0, lastSpace).trim()
+    if (maybeUnit && !/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(maybeUnit)) {
+      return { value: maybeValue, unit: maybeUnit }
+    }
+  }
+  const match = trimmed.match(/^([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)\s*(.*)$/)
+  if (match) return { value: match[1] ?? '', unit: (match[2] ?? '').trim() }
+  return { value: trimmed, unit: '' }
+}
+
+/** @deprecated Prefer splitValueAndUnit */
+export const splitLeastCount = splitValueAndUnit
+
+export function joinValueAndUnit(value: string, unit: string): string {
+  return [normalizeText(value), normalizeText(unit)].filter(Boolean).join(' ')
+}
+
+/** @deprecated Prefer joinValueAndUnit */
+export const joinLeastCount = joinValueAndUnit
+
 export function calculateNextDueDate(lastDateStr: string, frequency: Frequency): string {
   if (!lastDateStr.trim() || !frequency) return ''
   const days = parseManualIntervalDays(frequency)
@@ -478,6 +513,15 @@ export function calculateNextDueDate(lastDateStr: string, frequency: Frequency):
   }
   if (!isPresetFrequency(frequency)) return ''
   return calcNext(lastDateStr, frequency as EqFrequency)
+}
+
+/** Local calendar date as YYYY-MM-DD (avoids UTC day-shift). */
+export function todayIsoDate(): string {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
 }
 
 export type EquipmentMasterVariant = 'master' | 'iqc'
@@ -507,6 +551,8 @@ export function rowToForm(
   nextCode = '',
 ): EquipmentForCalibrationForm {
   const pointsTable = parseCalibrationPointsTable(row.calibration_points)
+  const leastCount = splitValueAndUnit(row.resolution_least_count)
+  const rangeCapacity = splitValueAndUnit(row.range_capacity)
   return {
     assetCode: asCopy ? nextCode : (row.asset_code ?? ''),
     equipmentName: asCopy
@@ -517,8 +563,10 @@ export function rowToForm(
     serialNumber: row.serial_number ?? '',
     currentLocation: row.current_location ?? '',
     equipmentStatus: (row.equipment_status as EquipmentStatus) || 'Active',
-    rangeCapacity: row.range_capacity ?? '',
-    resolutionLeastCount: row.resolution_least_count ?? '',
+    rangeCapacity: rangeCapacity.value,
+    rangeCapacityUnit: rangeCapacity.unit,
+    resolutionLeastCount: leastCount.value,
+    resolutionLeastCountUnit: leastCount.unit,
     accuracyAcceptanceCriteria: row.accuracy_acceptance_criteria ?? '',
     calibrationFrequency: parseStoredFrequency(row.calibration_frequency),
     lastCalibrationDate: row.last_calibration_date?.slice(0, 10) ?? '',
@@ -540,9 +588,15 @@ export function rowToForm(
     intermediateCheckResult: row.intermediate_check_result ?? '',
     intermediateCheckPerformedBy: row.intermediate_check_performed_by ?? '',
     intermediateCheckHistory: parseIntermediateCheckHistoryFromDb(row.intermediate_check_history),
-    maintenanceScheduleFrequency: parseStoredFrequency(row.maintenance_schedule_frequency),
-    lastMaintenanceDate: row.last_maintenance_date?.slice(0, 10) ?? '',
-    nextMaintenanceDate: row.next_maintenance_date?.slice(0, 10) ?? '',
+    maintenanceScheduleFrequency:
+      parseStoredFrequency(row.maintenance_schedule_frequency) || 'Quarterly',
+    lastMaintenanceDate: row.last_maintenance_date?.slice(0, 10) || todayIsoDate(),
+    nextMaintenanceDate:
+      row.next_maintenance_date?.slice(0, 10) ||
+      calculateNextDueDate(
+        row.last_maintenance_date?.slice(0, 10) || todayIsoDate(),
+        parseStoredFrequency(row.maintenance_schedule_frequency) || 'Quarterly',
+      ),
     maintenanceDoneBy: row.maintenance_done_by ?? '',
     maintenanceChecklist: parseMaintenanceChecklistFromDb(row.maintenance_checklist),
     maintenanceHistory: parseMaintenanceHistoryFromDb(row.maintenance_history),
@@ -564,8 +618,9 @@ export function formToPayload(form: EquipmentForCalibrationForm) {
     serial_number: normalizeText(form.serialNumber) || null,
     current_location: normalizeText(form.currentLocation) || null,
     equipment_status: form.equipmentStatus,
-    range_capacity: normalizeText(form.rangeCapacity) || null,
-    resolution_least_count: normalizeText(form.resolutionLeastCount) || null,
+    range_capacity: joinValueAndUnit(form.rangeCapacity, form.rangeCapacityUnit) || null,
+    resolution_least_count:
+      joinValueAndUnit(form.resolutionLeastCount, form.resolutionLeastCountUnit) || null,
     accuracy_acceptance_criteria: normalizeText(form.accuracyAcceptanceCriteria) || null,
     calibration_frequency: form.calibrationFrequency || null,
     last_calibration_date: form.lastCalibrationDate.slice(0, 10) || null,

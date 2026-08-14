@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabaseClient'
 import { LAB_SETTINGS_SINGLETON_ID, letterheadFromRow } from '@/features/settings/lab-settings/labSettingsDb'
 import {
+  DEFAULT_LETTERHEAD_TEMPLATE_NAMES,
   EMPTY_REPORT_SCOPE_TEMPLATES,
+  LETTERHEAD_TEMPLATE_NAME_ALIASES,
   parseReportScopeTemplates,
   type ReportScopeKind,
   type ReportScopeTemplateBinding,
@@ -23,6 +25,37 @@ export type ResolvedScopeTemplate = {
 }
 
 const LETTERHEAD_BUCKET = 'laboratory-files'
+
+function lookupLetterheadPath(map: Map<string, string>, name: string): string | null {
+  const key = name.trim()
+  if (!key) return null
+  const direct = map.get(key)
+  if (direct) return direct
+
+  const lower = key.toLowerCase()
+  for (const [title, path] of map) {
+    if (title.toLowerCase() === lower) return path
+  }
+
+  const aliases = LETTERHEAD_TEMPLATE_NAME_ALIASES[key] ?? []
+  for (const alias of aliases) {
+    const hit =
+      map.get(alias) ??
+      [...map.entries()].find(([t]) => t.toLowerCase() === alias.toLowerCase())?.[1]
+    if (hit) return hit
+  }
+
+  // Soft match: stored "NABL Letter Head" → "NABL Letter Header - Testing"
+  for (const [title, path] of map) {
+    if (title.toLowerCase().includes(lower) || lower.includes(title.toLowerCase())) return path
+  }
+
+  return null
+}
+
+function lookupLetterheadText(map: Map<string, string>, name: string): string {
+  return lookupLetterheadPath(map, name) ?? ''
+}
 
 async function signedUrl(path: string | null | undefined): Promise<string | null> {
   const p = (path ?? '').trim()
@@ -94,19 +127,19 @@ async function resolveBinding(
 
   const headerPath =
     !omitHeader && binding.headerName
-      ? index.headers.get(binding.headerName) ?? null
+      ? lookupLetterheadPath(index.headers, binding.headerName)
       : null
   const footerPath =
     !omitFooter && binding.footerName
-      ? index.footers.get(binding.footerName) ?? null
+      ? lookupLetterheadPath(index.footers, binding.footerName)
       : null
   const wmImagePath =
     !omitWatermark && binding.watermarkName
-      ? index.watermarkImages.get(binding.watermarkName) ?? null
+      ? lookupLetterheadPath(index.watermarkImages, binding.watermarkName)
       : null
   const wmText =
     !omitWatermark && binding.watermarkName
-      ? index.watermarkTexts.get(binding.watermarkName) ?? ''
+      ? lookupLetterheadText(index.watermarkTexts, binding.watermarkName)
       : ''
 
   const [headerUrl, footerUrl, watermarkUrl] = await Promise.all([

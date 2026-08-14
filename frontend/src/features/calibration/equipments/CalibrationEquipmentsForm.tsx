@@ -190,6 +190,9 @@ export function CalibrationEquipmentsForm({
   const [envConditionOpen, setEnvConditionOpen] = useState(false)
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
+  const [accreditationBodies, setAccreditationBodies] = useState<Array<{ id: string; name: string }>>(
+    [],
+  )
 
   useEffect(() => {
     setMethodQuery(form.calibrationMethodLabel)
@@ -200,6 +203,29 @@ export function CalibrationEquipmentsForm({
     void fetchGenerateReportFeatureEnabled(supabase).then((enabled) => {
       if (!canceled) setCompanyGenerateReportEnabled(enabled)
     })
+    return () => {
+      canceled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let canceled = false
+    void (async () => {
+      const { data, error } = await supabase
+        .from('accreditation_bodies')
+        .select('id, name')
+        .order('name', { ascending: true })
+      if (canceled || error) return
+      const list = Array.isArray(data) ? data : []
+      setAccreditationBodies(
+        list
+          .map((row) => ({
+            id: String((row as { id?: unknown }).id ?? ''),
+            name: String((row as { name?: unknown }).name ?? '').trim(),
+          }))
+          .filter((row) => row.id && row.name),
+      )
+    })()
     return () => {
       canceled = true
     }
@@ -707,7 +733,7 @@ export function CalibrationEquipmentsForm({
           </div>
 
           <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
-            <table className="w-full min-w-[860px] border-collapse text-sm">
+            <table className="w-full min-w-[1020px] border-collapse text-sm">
               <thead>
                 <tr>
                   <th className={cn(rangeThClass, 'w-10 text-center')}>
@@ -731,6 +757,11 @@ export function CalibrationEquipmentsForm({
                   </th>
                   <th className={cn(rangeThClass, 'min-w-[90px] text-center')}>Accuracy</th>
                   <th className={cn(rangeThClass, 'min-w-[110px] text-center')}>Unit</th>
+                  <th className={cn(rangeThClass, 'min-w-[140px] text-center')}>
+                    Accreditation
+                    <br />
+                    Scope
+                  </th>
                   <th className={cn(rangeThClass, 'w-28 text-center')}>Point</th>
                   <th className={cn(rangeThClass, 'w-16 text-center')}>Action</th>
                 </tr>
@@ -838,6 +869,32 @@ export function CalibrationEquipmentsForm({
                           inputClassName="!h-8 text-center"
                           shellClassName="!h-8"
                         />
+                      </td>
+                      <td className={rangeTdClass}>
+                        <Select
+                          value={range.accreditationScopeId || COLUMN_NONE}
+                          onValueChange={(v) =>
+                            updateRange(range.id, {
+                              accreditationScopeId: v === COLUMN_NONE ? '' : v,
+                            })
+                          }
+                        >
+                          <SelectTrigger
+                            id={`cal-eq-accr-scope-${range.id}`}
+                            className="mx-auto !h-8 w-full"
+                            aria-label={`Accreditation scope ${index + 1}`}
+                          >
+                            <SelectValue placeholder="Select scope" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={COLUMN_NONE}>—</SelectItem>
+                            {accreditationBodies.map((body) => (
+                              <SelectItem key={body.id} value={body.id}>
+                                {body.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td className={rangeTdClass}>
                         <Button

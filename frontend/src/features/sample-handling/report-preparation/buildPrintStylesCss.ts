@@ -1,5 +1,9 @@
 import {
+  cssPageSizeValue,
   effectiveTableFontSizePt,
+  pageBorderCssDeclaration,
+  pageNumberCssContent,
+  resolvePageBorderInsets,
   type PageNumberPosition,
   type TestReportPrintSettings,
 } from '@/features/settings/lab-settings/printSettingsTypes'
@@ -60,7 +64,6 @@ export function getTestReportPrintMargins(settings: TestReportPrintSettings): Pr
 
 export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   const {
-    pageSize,
     bodyPaddingTopMm,
     bodyPaddingBottomMm,
     bodyPaddingLeftMm,
@@ -83,12 +86,53 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     partANewPage,
     showPageNumbers,
     pageNumberPosition,
+    pageNumberType,
+    pageBorderType,
+    pageBorderAlignment,
+    pageBorderGapMm,
+    headerFitToPageWidth,
+    headerMarginBelowMm,
+    headerAlign,
+    headerImageFit,
+    footerFitToPageWidth,
+    footerMarginAboveMm,
+    footerAlign,
+    footerImageFit,
   } = settings
 
   const tableFontSizePt = effectiveTableFontSizePt(settings)
-  const pageNumberContent = showPageNumbers
-    ? '"Page " counter(page, decimal-leading-zero) " of " counter(pages, decimal-leading-zero)'
-    : '""'
+  const pageSizeCss = cssPageSizeValue(settings)
+  const pageNumbersEnabled = showPageNumbers && pageNumberType !== 'none'
+  const pageNumberContent = pageNumbersEnabled ? pageNumberCssContent(pageNumberType) : '""'
+
+  const pageBorderInsets = resolvePageBorderInsets({
+    pageBorderType,
+    pageBorderAlignment,
+    pageBorderGapMm,
+    headerMaxHeightMm,
+    footerMaxHeightMm,
+    bodyPaddingTopMm: settings.bodyPaddingTopMm,
+    bodyPaddingBottomMm: settings.bodyPaddingBottomMm,
+    bodyPaddingLeftMm: settings.bodyPaddingLeftMm,
+    bodyPaddingRightMm: settings.bodyPaddingRightMm,
+  })
+  const pageBorderCss =
+    pageBorderInsets == null
+      ? ''
+      : `
+  .print-page-border {
+    position: fixed;
+    left: ${pageBorderInsets.leftMm}mm;
+    right: ${pageBorderInsets.rightMm}mm;
+    top: ${pageBorderInsets.topMm}mm;
+    bottom: ${pageBorderInsets.bottomMm}mm;
+    ${pageBorderCssDeclaration(pageBorderType, pageBorderAlignment)}
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }`
 
   const partFrameBorder = showPartFrames ? '2px solid #2563eb' : '1.5px solid #60a5fa'
   const innerBorder = '1px solid #93c5fd'
@@ -98,6 +142,24 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   const cellPad = `${tableCellPaddingPx}px`
   const headerImgMaxMm = Math.min(headerMaxHeightMm, Math.max(12, bodyPaddingTopMm - 6))
   const footerImgMaxMm = Math.min(footerMaxHeightMm, Math.max(10, bodyPaddingBottomMm - 6))
+  const headerSidePadL = headerFitToPageWidth ? 0 : bodyPaddingLeftMm
+  const headerSidePadR = headerFitToPageWidth ? 0 : bodyPaddingRightMm
+  const footerSidePadL = footerFitToPageWidth ? 0 : bodyPaddingLeftMm
+  const footerSidePadR = footerFitToPageWidth ? 0 : bodyPaddingRightMm
+  const headerImgMargin =
+    headerAlign === 'left' ? '0 auto 0 0' : headerAlign === 'right' ? '0 0 0 auto' : '0 auto'
+  const footerImgMargin =
+    footerAlign === 'left' ? '0 auto 0 0' : footerAlign === 'right' ? '0 0 0 auto' : '0 auto'
+  const headerObjectPosition =
+    headerAlign === 'left' ? 'top left' : headerAlign === 'right' ? 'top right' : 'top center'
+  const footerObjectPosition =
+    footerAlign === 'left'
+      ? 'bottom left'
+      : footerAlign === 'right'
+        ? 'bottom right'
+        : 'bottom center'
+  const headerFallbackAlign =
+    headerAlign === 'left' ? 'left' : headerAlign === 'right' ? 'right' : 'center'
 
   const partBreakRules = [
     partANewPage ? '.report-part.part-a' : null,
@@ -111,7 +173,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
 
   const pageMarginBoxes = buildPageMarginBoxesCss(
     pageNumberPosition,
-    showPageNumbers,
+    pageNumbersEnabled,
     pageNumberContent,
     fontFamily,
     baseFontSizePt,
@@ -119,7 +181,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
 
   return `
   @page {
-    size: ${pageSize};
+    size: ${pageSizeCss};
     margin: ${bodyPaddingTopMm}mm ${bodyPaddingRightMm}mm ${bodyPaddingBottomMm}mm ${bodyPaddingLeftMm}mm;
     ${pageMarginBoxes}
   }
@@ -134,6 +196,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  ${pageBorderCss}
 
   /* Fixed letterhead + footer on every printed page (Chrome / Edge). */
   .print-header {
@@ -143,7 +206,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     right: 0;
     z-index: 1000;
     background: #fff;
-    padding: 2mm ${bodyPaddingRightMm}mm 2mm ${bodyPaddingLeftMm}mm;
+    padding: 2mm ${headerSidePadR}mm ${headerMarginBelowMm}mm ${headerSidePadL}mm;
     max-height: ${bodyPaddingTopMm}mm;
     overflow: hidden;
   }
@@ -152,13 +215,13 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     width: 100%;
     max-width: 100%;
     max-height: ${headerImgMaxMm}mm;
-    height: auto;
-    margin: 0 auto;
-    object-fit: contain;
-    object-position: top center;
+    height: ${headerImageFit === 'fill' ? `${headerImgMaxMm}mm` : 'auto'};
+    margin: ${headerImgMargin};
+    object-fit: ${headerImageFit};
+    object-position: ${headerObjectPosition};
   }
   .print-header.fallback {
-    text-align: center;
+    text-align: ${headerFallbackAlign};
     font-size: 12px;
     font-weight: 600;
     padding: 4mm 0;
@@ -171,7 +234,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     right: 0;
     z-index: 1000;
     background: #fff;
-    padding: 2mm ${bodyPaddingRightMm}mm 2mm ${bodyPaddingLeftMm}mm;
+    padding: ${footerMarginAboveMm}mm ${footerSidePadR}mm 2mm ${footerSidePadL}mm;
     max-height: ${bodyPaddingBottomMm}mm;
     overflow: hidden;
   }
@@ -180,10 +243,10 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     width: 100%;
     max-width: 100%;
     max-height: ${footerImgMaxMm}mm;
-    height: auto;
-    margin: 0 auto;
-    object-fit: contain;
-    object-position: bottom center;
+    height: ${footerImageFit === 'fill' ? `${footerImgMaxMm}mm` : 'auto'};
+    margin: ${footerImgMargin};
+    object-fit: ${footerImageFit};
+    object-position: ${footerObjectPosition};
   }
 
   .print-body {
@@ -194,13 +257,17 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
 
   .report-title-block {
     text-align: center;
-    margin-bottom: ${partGapMm}px;
+    margin: 0 0 ${partGapMm}px;
   }
   .report-title-block h1 {
-    font-size: ${titleFontSizePt}pt;
+    display: inline-block;
+    font-size: ${Math.max(22, titleFontSizePt)}pt;
     font-weight: 700;
     margin: 0;
-    letter-spacing: 0.02em;
+    padding: 0 0 4px;
+    letter-spacing: 0.04em;
+    line-height: 1.25;
+    border-bottom: 2px solid #1c1917;
   }
 
   .report-part {
@@ -262,73 +329,26 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     page-break-before: avoid;
   }
 
-  .part-a-grid { font-size: ${baseFontSizePt}pt; }
-  .part-a-row {
-    display: grid;
-    border-bottom: ${innerBorder};
-  }
-  .part-a-row:last-child { border-bottom: none; }
-  .part-a-row-full {
-    display: block;
-    padding: ${cellPad} 12px;
-    line-height: ${lineHeight};
-    word-break: break-word;
-    border-bottom: ${innerBorder};
-  }
-  .part-a-grid > .part-a-row-full:last-child { border-bottom: none; }
-  .part-a-row-cols-2 { grid-template-columns: 1fr 1fr; }
-  .part-a-row-cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-  .part-a-cell {
-    padding: ${cellPad} 12px;
-    border-right: ${innerBorder};
-    line-height: ${lineHeight};
-    word-break: break-word;
-  }
-  .part-a-cell:last-child { border-right: none; }
-  .muted { color: #475569; }
-  .part-a-cell strong, .part-a-row-full strong { font-weight: 600; color: #0f172a; }
-
-  .part-b-grid { font-size: ${baseFontSizePt}pt; }
-  .part-b-row {
-    display: grid;
-    grid-template-columns: 2.75rem minmax(0, 1fr) minmax(9rem, max-content);
-    border-bottom: ${innerBorder};
-  }
-  .part-b-row:last-child { border-bottom: none; }
-  .part-b-num {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: ${cellPad} 6px;
-    border-right: ${innerBorder};
-    color: #64748b;
-    font-weight: 600;
-    font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
-  }
-  .part-b-desc {
-    padding: ${cellPad} 10px;
-    border-right: ${innerBorder};
-    color: #64748b;
-    font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
-    line-height: 1.35;
-    word-break: break-word;
-  }
-  .part-b-value {
-    display: flex;
-    align-items: center;
-    padding: ${cellPad} 10px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-
   .part-c-table {
     width: 100%;
     border-collapse: collapse;
     border-spacing: 0;
+    table-layout: fixed;
+    font-family: "Times New Roman", Times, serif;
     font-size: ${tableFontSizePt}pt;
+    color: #000;
+    line-height: 1.25;
     margin: 0;
-    border: none;
+    border: 1px solid #000;
   }
+  .part-c-col-sr { width: 8mm; max-width: 10mm; }
+  .part-c-col-name { width: 25%; }
+  .part-c-col-unit { width: 7%; }
+  .part-c-col-spec { width: auto; }
+  .part-c-col-observed { width: 15%; }
+  .part-c-col-uncertainty { width: 10%; }
+  .part-c-col-remark { width: 10%; }
+  .part-c-col-other { width: 10%; }
   .part-c-table thead {
     display: table-header-group;
     break-inside: avoid;
@@ -339,42 +359,50 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   }
   .part-c-table th,
   .part-c-table td {
-    border: 1px solid #94a3b8;
-    padding: ${cellPad};
-    vertical-align: top;
+    border: 1px solid #000;
+    padding: 3px 6px;
+    vertical-align: middle;
+    text-align: center;
+    font-weight: 700;
+    word-break: normal;
+    overflow-wrap: break-word;
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .part-c-table th:first-child,
-  .part-c-table td:first-child {
-    border-left: 2px solid rgba(37, 99, 235, 0.35);
+  .part-c-table tr.part-c-title th {
+    text-align: left;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    padding: 5px 8px;
+    background: #fff;
   }
-  .part-c-table th:last-child,
-  .part-c-table td:last-child {
-    border-right: 2px solid rgba(37, 99, 235, 0.35);
-  }
-  .part-c-table th {
-    background: #f1f5f9;
-    font-weight: 600;
+  .part-c-table tr.part-c-col-heads th {
+    background: #fff;
+    font-weight: 700;
     text-align: center;
-    border-bottom: 2px solid rgba(37, 99, 235, 0.4);
+    vertical-align: middle;
+    text-transform: none;
+    line-height: 1.2;
+    white-space: normal;
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
   }
-  .part-c-table tr {
-    break-inside: avoid;
-    page-break-inside: avoid;
+  .part-c-table tr.part-c-col-heads th.part-c-h-sr {
+    text-transform: none;
+    line-height: 1.15;
+    white-space: nowrap;
+    width: 8mm;
+    max-width: 10mm;
+    padding-left: 2px;
+    padding-right: 2px;
   }
-  .part-c-table tr.section-code td {
-    border-top: 2px solid rgba(37, 99, 235, 0.35);
-    border-bottom: 2px solid rgba(37, 99, 235, 0.25);
-    background: #f8fafc;
-    font-weight: 600;
-    text-align: left;
-    padding: ${cellPad} 10px;
-    break-after: avoid;
-    page-break-after: avoid;
+  .part-c-table td.c {
+    text-align: center;
+    vertical-align: middle;
   }
   .part-c-table td.l {
+    text-align: left;
+    vertical-align: middle;
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -384,11 +412,30 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  .part-c-table td.l .name {
+    font-weight: 700;
+  }
+  .part-c-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .part-c-table tr.section-code td {
+    background: #fff;
+    font-weight: 700;
+    text-align: left;
+    vertical-align: middle;
+    padding: 4px 8px;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
   .part-c-end-notes {
-    border-top: 2px solid #94a3b8;
+    border: 1px solid #000;
+    border-top: none;
     padding: 10px 12px;
-    background: #f8fafc;
+    background: #fff;
+    font-family: "Times New Roman", Times, serif;
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
+    color: #000;
     break-inside: avoid;
     page-break-inside: avoid;
     break-before: avoid;
@@ -396,7 +443,7 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   }
   .end-marker {
     text-align: center;
-    font-weight: 600;
+    font-weight: 700;
     margin: 0 0 6px;
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
     letter-spacing: 0.04em;
@@ -404,36 +451,157 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   .end-notes-body { text-align: justify; line-height: 1.45; margin: 0; }
   td.c { text-align: center; }
   td.l { text-align: left; }
-  td.strong { font-weight: 600; }
-  .name { font-weight: 600; line-height: 1.35; }
-  .sub { color: #64748b; font-size: ${Math.max(8, baseFontSizePt - 1)}pt; margin-top: 2px; line-height: 1.3; }
-  .remark-confirm { color: #047857; font-weight: 600; }
-  .remark-fail { color: #b91c1c; font-weight: 600; }
-  .remark-na { color: #64748b; font-weight: 600; }
+  td.strong { font-weight: 700; }
 
-  .part-d-shell { font-size: ${baseFontSizePt}pt; }
-  .part-d-heading-bar {
-    border-bottom: ${innerBorder};
-    background: #f1f5f9;
-    padding: ${cellPad} 12px;
-    font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
+  .part-a-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-family: "Times New Roman", Times, serif;
+    font-size: ${baseFontSizePt}pt;
+    color: #000;
+    line-height: 1.25;
+    border: 1px solid #000;
+  }
+  .part-a-col-k { width: 24%; }
+  .part-a-col-c { width: 2%; }
+  .part-a-col-v { width: 24%; }
+  .part-a-table th,
+  .part-a-table td {
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+    border-left: none;
+    border-right: none;
+    padding: 3px 6px;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  .part-a-table th:first-child,
+  .part-a-table td:first-child {
+    border-left: 1px solid #000;
+  }
+  .part-a-table th:last-child,
+  .part-a-table td:last-child {
+    border-right: 1px solid #000;
+  }
+  .part-a-table td.part-a-v + td.part-a-k {
+    border-left: 1px solid #000;
+  }
+  .part-a-table th {
+    text-align: left;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    padding: 5px 8px;
+  }
+  .part-a-k {
+    font-weight: 700;
+    white-space: nowrap;
+    word-break: keep-all;
+    overflow-wrap: normal;
+  }
+  .part-a-c {
+    text-align: center;
+    padding-left: 0;
+    padding-right: 0;
+    font-weight: 700;
+  }
+  .part-a-v {
+    font-weight: 700;
+  }
+  .part-a-table thead {
+    display: table-header-group;
+  }
+  .part-a-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .part-b-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-family: "Times New Roman", Times, serif;
+    font-size: ${baseFontSizePt}pt;
+    color: #000;
+    line-height: 1.25;
+    border: 1px solid #000;
+  }
+  .part-b-col-k { width: 72%; }
+  .part-b-col-c { width: 3%; }
+  .part-b-col-v { width: 25%; }
+  .part-b-table th,
+  .part-b-table td {
+    border: 1px solid #000;
+    padding: 4px 8px;
+    vertical-align: middle;
+    word-break: break-word;
+  }
+  .part-b-table th {
+    text-align: left;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    padding: 5px 8px;
+  }
+  .part-b-k {
+    font-weight: 700;
+    text-align: left;
+  }
+  .part-b-c {
+    text-align: center;
+    padding-left: 0;
+    padding-right: 0;
+    font-weight: 700;
+  }
+  .part-b-v {
+    font-weight: 700;
+  }
+  .part-b-table thead {
+    display: table-header-group;
+  }
+  .part-b-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .name { font-weight: 700; line-height: 1.35; }
+  .sub { color: #000; font-weight: 400; font-size: ${Math.max(8, baseFontSizePt - 1)}pt; margin-top: 2px; line-height: 1.3; }
+
+  .part-d-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-family: "Times New Roman", Times, serif;
+    font-size: ${baseFontSizePt}pt;
+    color: #000;
+    line-height: 1.35;
+    border: 1px solid #000;
+  }
+  .part-d-table th,
+  .part-d-table td {
+    border: 1px solid #000;
+    padding: 5px 8px;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  .part-d-table th {
+    text-align: left;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.02em;
   }
-  .part-d-line1 {
-    margin: 0;
-    padding: ${cellPad} 12px;
-    border-bottom: ${innerBorder};
-    background: #f8fafc;
-    line-height: ${lineHeight};
-  }
-  .part-d-line2 {
-    margin: 0;
-    padding: ${cellPad} 12px;
-    line-height: ${lineHeight};
+  .part-d-table .part-d-line {
+    font-weight: 700;
     white-space: pre-wrap;
-    min-height: 2.5em;
+    min-height: 1.5em;
+  }
+  .part-d-table thead {
+    display: table-header-group;
+  }
+  .part-d-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .report-signatures {
@@ -448,26 +616,48 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   .report-signatures-grid {
     display: flex;
     flex-wrap: wrap;
-    justify-content: space-between;
+    align-items: flex-start;
     gap: 24px 16px;
   }
+  .report-signatures-count-1 {
+    justify-content: flex-end;
+  }
+  .report-signatures-count-2,
+  .report-signatures-count-3,
+  .report-signatures-count-many {
+    justify-content: space-between;
+  }
+  .report-signatures-count-4 {
+    justify-content: space-between;
+    flex-wrap: nowrap;
+  }
+  .report-signatures-center-pair {
+    display: flex;
+    flex: 1 1 auto;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 24px;
+  }
   .report-signature-cell {
-    flex: 1 1 140px;
+    flex: 0 1 auto;
+    width: 9.5rem;
     max-width: 220px;
-    min-width: 120px;
+    min-width: 7.5rem;
     text-align: center;
   }
   .report-signature-role {
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
     color: #334155;
     margin-bottom: 4px;
   }
   .report-signature-line {
+    display: inline-block;
+    width: 8.5rem;
+    max-width: 100%;
     border-top: 1px solid #334155;
-    margin: 28px 8px 8px;
+    margin: 28px auto 8px;
   }
   .report-signature-name {
     font-weight: 700;
@@ -502,24 +692,9 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     .print-footer {
       position: fixed;
     }
-    .report-part.part-c .part-c-frame {
+    .report-part.part-c {
       break-inside: auto;
       page-break-inside: auto;
-      border: none;
-      background: transparent;
-      -webkit-box-decoration-break: clone;
-      box-decoration-break: clone;
-    }
-    .report-part.part-c .part-c-heading {
-      border: ${partFrameBorder};
-      border-bottom: ${innerBorder};
-      background: #fff;
-      -webkit-box-decoration-break: clone;
-      box-decoration-break: clone;
-    }
-    .report-part.part-c .part-c-table-area {
-      break-before: avoid;
-      page-break-before: avoid;
     }
     .part-c-table thead {
       display: table-header-group;
@@ -538,14 +713,12 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
       page-break-after: avoid;
     }
     .part-c-end-notes {
-      border: ${partFrameBorder};
-      border-top: 2px solid #94a3b8;
+      border: 1px solid #000;
+      border-top: none;
       break-inside: avoid;
       page-break-inside: avoid;
       break-before: avoid;
       page-break-before: avoid;
-      -webkit-box-decoration-break: clone;
-      box-decoration-break: clone;
     }
     .report-part,
     .part-frame:not(.part-c-frame) {

@@ -36,6 +36,7 @@ export function IsCodesForm({
   onDeleteAspect,
   onOpenFiles,
   onDeleteFiles,
+  hideFooter = false,
 }: {
   form: IsCodeForm
   onChange: (next: IsCodeForm) => void
@@ -53,6 +54,8 @@ export function IsCodesForm({
   onDeleteAspect: (id: string) => void
   onOpenFiles: () => void
   onDeleteFiles: () => void
+  /** When true, omit in-form Save (parent dialog provides footer). */
+  hideFooter?: boolean
 }) {
   const [editingAspectId, setEditingAspectId] = useState<string | null>(null)
   const [aspectOpen, setAspectOpen] = useState(false)
@@ -318,16 +321,18 @@ export function IsCodesForm({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
-        <Button
-          type="button"
-          className={cn(limsPrimaryBtnClass, 'h-9 px-4')}
-          onClick={onSave}
-          disabled={!canSave || saveLoading}
-        >
-          {saveLoading ? 'Saving…' : 'Save & Close'}
-        </Button>
-      </div>
+      {!hideFooter ? (
+        <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
+          <Button
+            type="button"
+            className={cn(limsPrimaryBtnClass, 'h-9 px-4')}
+            onClick={onSave}
+            disabled={!canSave || saveLoading}
+          >
+            {saveLoading ? 'Saving…' : 'Save & Close'}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
