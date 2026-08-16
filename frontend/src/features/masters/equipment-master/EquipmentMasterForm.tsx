@@ -38,6 +38,7 @@ import {
 } from './types'
 import { ClientSearchSelect } from './ClientSearchSelect'
 import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
+import { LocationFieldWithAdd } from '@/components/lims/LocationFieldWithAdd'
 import { ConductMaintenanceDialog } from './ConductMaintenanceDialog'
 import { ConductIntermediateCheckDialog } from './ConductIntermediateCheckDialog'
 import { IntermediateCheckCalculator } from '@/features/calibration/equipment-for-calibration/IntermediateCheckCalculator'
@@ -144,7 +145,7 @@ export function EquipmentMasterForm({
   onSave,
   clients,
   employees,
-  locations,
+  locations: _locations,
   onViewFile,
   activeSection,
   hideScheduleSections = false,
@@ -203,8 +204,6 @@ export function EquipmentMasterForm({
   const [maintDoneByQuery, setMaintDoneByQuery] = useState('')
   const [checkDoneByOpen, setCheckDoneByOpen] = useState(false)
   const [checkDoneByQuery, setCheckDoneByQuery] = useState('')
-  const [locationOpen, setLocationOpen] = useState(false)
-  const [locationQuery, setLocationQuery] = useState('')
 
   const employeeOptions = useMemo<FilterComboboxOption[]>(
     () =>
@@ -238,22 +237,6 @@ export function EquipmentMasterForm({
         (o.secondaryLabel ?? '').toLowerCase().includes(q),
     )
   }, [custodianQuery, custodianOpen, employeeOptions])
-
-  const locationOptions = useMemo<FilterComboboxOption[]>(
-    () =>
-      locations
-        .map((loc) => String(loc ?? '').trim())
-        .filter(Boolean)
-        .map((loc) => ({ id: loc, label: loc })),
-    [locations],
-  )
-
-  const filteredLocationOptions = useMemo(() => {
-    const q = locationQuery.trim().toLowerCase()
-    if (!q || !locationOpen) return locationOptions
-    if (locationOptions.some((o) => o.label.trim().toLowerCase() === q)) return locationOptions
-    return locationOptions.filter((o) => o.label.toLowerCase().includes(q))
-  }, [locationQuery, locationOpen, locationOptions])
 
   const effectiveMaintenanceDoneBy = form.maintenanceDoneBy || form.custodianEmployeeId || ''
 
@@ -2351,30 +2334,12 @@ export function EquipmentMasterForm({
             </div>
 
             <div className="col-span-12 space-y-0.5 md:col-span-3">
-              <Label htmlFor="eq-location">Current Location</Label>
-              <FilterCombobox
+              <LocationFieldWithAdd
                 inputId="eq-location"
                 listId="eq-location-list"
-                value={locationOpen ? locationQuery : form.currentLocation}
-                onValueChange={(v) => {
-                  setLocationQuery(v)
-                  if (!locationOpen) setLocationOpen(true)
-                  if (!v.trim()) {
-                    onChange({ ...form, currentLocation: '' })
-                  }
-                }}
-                options={filteredLocationOptions}
-                onSelectOption={(opt) => {
-                  onChange({ ...form, currentLocation: opt.label })
-                  setLocationQuery(opt.label)
-                  setLocationOpen(false)
-                }}
-                open={locationOpen}
-                onOpenChange={(open) => {
-                  setLocationOpen(open)
-                  if (open) setLocationQuery(form.currentLocation)
-                }}
-                placeholder="Type to search department…"
+                label="Current Location"
+                value={form.currentLocation}
+                onChange={(currentLocation) => onChange({ ...form, currentLocation })}
               />
             </div>
             </div>

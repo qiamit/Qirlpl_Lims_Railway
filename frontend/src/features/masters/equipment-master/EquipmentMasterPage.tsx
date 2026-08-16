@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
@@ -35,6 +36,7 @@ const formatSupabaseError = (err: unknown) => {
 }
 
 export default function EquipmentMasterPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -425,6 +427,18 @@ export default function EquipmentMasterPage() {
     })
     setShowForm(true)
   }
+
+  useEffect(() => {
+    const viewId = searchParams.get('view')?.trim()
+    if (!viewId || listLoading || rows.length === 0) return
+    const row = rows.find((r) => r.id === viewId)
+    if (!row) return
+    handleEdit(row, 'details')
+    const next = new URLSearchParams(searchParams)
+    next.delete('view')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
+  }, [searchParams, listLoading, rows])
 
   const handleCopy = (row: EquipmentRow) => {
     setSaveMessage(null)

@@ -136,8 +136,9 @@ export function SampleAllocationForm({
     if (Object.keys(patch).length > 0) {
       onChange({ ...form, ...patch })
     }
+    // form/onChange intentionally omitted — only re-sync when sample or IS-code options change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSample?.id, currentSample?.test_report_is_code_id])
+  }, [currentSample?.id, currentSample?.test_report_is_code_id, isCodeOptions])
 
   const addSection = () => {
     onChange({ ...form, sections: [...form.sections, emptySection()] })

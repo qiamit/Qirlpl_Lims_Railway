@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
@@ -11,7 +11,7 @@ import {
   TestReportReferbackToReviewDialog,
   type TestReportReferbackSubmitPayload,
 } from './TestReportReferbackToReviewDialog'
-import { referbackSectionFromReportPreparation } from './referbackFromReportPreparation'
+import { referbackSectionFromReportPreparation, syncSampleStageAfterReportPrepReferback } from './referbackFromReportPreparation'
 import { getSampleWorkflowStatusLabel } from '@/features/sample-handling/sampleWorkflowStatus'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import type { SampleStage } from '@/features/sample-handling/types'
@@ -19,7 +19,7 @@ import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { cn, formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
-import { isSampleVisibleInReportPreparation } from './sampleReportReadiness'
+import { filterSampleIdsVisibleInReportPreparation } from './sampleReportReadiness'
 import { finalizeResultsStatusBeforeIssue } from './finalizeResultsStatusBeforeIssue'
 import { ReportResultsTable } from './ReportResultsTable'
 import { TestReportPreparationFooterBar } from './TestReportPreparationFooterBar'
@@ -144,6 +144,7 @@ export default function TestReportPreparationMasterPage() {
 
   const [srfViewOpen, setSrfViewOpen] = useState(false)
   const [srfViewRow, setSrfViewRow] = useState<ListRow | null>(null)
+  const loadListGenerationRef = useRef(0)
 
   const fullReportNumber = useMemo(() => toCanonicalReportNumber(reportNumber), [reportNumber])
 
@@ -168,6 +169,7 @@ export default function TestReportPreparationMasterPage() {
     })
 
   const loadList = useCallback(async () => {
+    const generation = ++loadListGenerationRef.current
     setError(null)
     setLoading(true)
     try {
@@ -184,17 +186,17 @@ export default function TestReportPreparationMasterPage() {
       const readySamples: Record<string, unknown>[] = []
       const syncStageIds: string[] = []
 
+      const candidateIds = candidates
+        .map((row) => String((row as { id?: string }).id ?? '').trim())
+        .filter(Boolean)
+      const visibleIds = await filterSampleIdsVisibleInReportPreparation(candidateIds)
       for (const row of candidates) {
         const sampleId = String((row as { id?: string }).id ?? '').trim()
         const stage = String((row as { stage?: string }).stage ?? '').trim()
-        if (!sampleId) continue
-
-        const visible = await isSampleVisibleInReportPreparation(sampleId)
-        if (visible) {
-          readySamples.push(row as Record<string, unknown>)
-          if (stage !== 'report_preparation') {
-            syncStageIds.push(sampleId)
-          }
+        if (!sampleId || !visibleIds.has(sampleId)) continue
+        readySamples.push(row as Record<string, unknown>)
+        if (stage !== 'report_preparation') {
+          syncStageIds.push(sampleId)
         }
       }
 
@@ -228,12 +230,16 @@ export default function TestReportPreparationMasterPage() {
           isMap.set(row.id, label)
         }
       }
+      if (generation !== loadListGenerationRef.current) return
       setRows(mapSamplesToRows(readySamples, isMap))
     } catch (e) {
+      if (generation !== loadListGenerationRef.current) return
       setError(e instanceof Error ? e.message : 'Unable to load samples')
       setRows([])
     } finally {
-      setLoading(false)
+      if (generation === loadListGenerationRef.current) {
+        setLoading(false)
+      }
     }
   }, [])
 
@@ -680,18 +686,18 @@ export default function TestReportPreparationMasterPage() {
     setReferbackBusyId(row.id)
     setReferbackSubmitError(null)
     try {
-      let sampleStage: SampleStage | 'report_preparation' = 'report_preparation'
       for (const section of payload.sections) {
-        const result = await referbackSectionFromReportPreparation({
+        await referbackSectionFromReportPreparation({
           sampleId: row.id,
           sampleAllocationId: section.sampleAllocationId,
           testAllocationId: section.testAllocationId,
           targetStage: payload.targetStage,
           remark: payload.remark,
           assignee: payload.assignee,
+          skipStageSync: true,
         })
-        sampleStage = result.sampleStage
       }
+      const sampleStage = await syncSampleStageAfterReportPrepReferback(row.id)
       setReferbackDialogOpen(false)
       setReferbackRow(null)
       const leftReportPrep = sampleStage !== 'report_preparation'

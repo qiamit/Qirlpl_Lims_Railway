@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
@@ -9,7 +9,6 @@ import { ResultsUnderReviewTable } from './ResultsUnderReviewTable'
 import { ResultsUnderReviewHeaderBar } from './ResultsUnderReviewHeaderBar'
 import { ResultsUnderReviewFooterBar } from './ResultsUnderReviewFooterBar'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
-import { useLocation } from 'react-router-dom'
 import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
@@ -31,11 +30,11 @@ import {
   isSampleReadyForReportPreparation,
   sampleStillHasResultsInReview,
   syncSampleReportPreparationStage,
+  syncSampleReportPreparationStages,
 } from '@/features/sample-handling/report-preparation/sampleReportReadiness'
 
 export default function ResultsUnderReviewMasterPage() {
   const { user, profileName, designation, departmentName, profileReady } = useAuth()
-  const location = useLocation()
   const [rows, setRows] = useState<TestAllocationRow[]>([])
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -76,6 +75,7 @@ export default function ResultsUnderReviewMasterPage() {
   const [referbackRow, setReferbackRow] = useState<TestAllocationRow | null>(null)
   const [referbackSubmitLoading, setReferbackSubmitLoading] = useState(false)
   const [referbackSubmitError, setReferbackSubmitError] = useState<string | null>(null)
+  const stageSyncGenerationRef = useRef(0)
 
   const IS_CODE_FILES_BUCKET = 'is-code-files'
 
@@ -121,9 +121,21 @@ export default function ResultsUnderReviewMasterPage() {
       ...new Set(initialList.map((r) => r.sampleId?.trim()).filter(Boolean)),
     ] as string[]
     if (sampleIds.length === 0) return
+    const generation = ++stageSyncGenerationRef.current
     try {
-      await Promise.all(sampleIds.map((id) => syncSampleReportPreparationStage(id)))
+      const { toPrep, toReview, changedIds } = await syncSampleReportPreparationStages(sampleIds)
+      if (generation !== stageSyncGenerationRef.current) return
+      if (changedIds.length === 0) return
+
+      // Samples moved to report prep can be dropped locally — avoid a second full list fetch.
+      if (toPrep.length > 0 && toReview.length === 0) {
+        const prepSet = new Set(toPrep)
+        setRows((prev) => prev.filter((r) => !prepSet.has(r.sampleId?.trim() ?? '')))
+        return
+      }
+
       const refreshed = await loadResultsUnderReviewRowsForDirector(scope)
+      if (generation !== stageSyncGenerationRef.current) return
       setRows(refreshed)
     } catch {
       /* keep initial list visible */
@@ -133,7 +145,9 @@ export default function ResultsUnderReviewMasterPage() {
   useEffect(() => {
     if (!profileReady) return
     void loadRows()
-  }, [user?.id, departmentName, designation, profileReady, location.pathname])
+    // pathname omitted — remount already reloads; avoids extra sync on unrelated route noise
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, departmentName, designation, profileReady])
 
   /** Non-directors only see sections allotted to them as results reviewer. */
   const rowsForAssignmentFilter = useMemo(() => {

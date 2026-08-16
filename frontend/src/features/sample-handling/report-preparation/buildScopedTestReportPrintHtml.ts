@@ -491,7 +491,7 @@ export async function printHtmlDocument(html: string): Promise<void> {
   const win = iframe.contentWindow
   if (!doc || !win) {
     document.body.removeChild(iframe)
-    return
+    throw new Error('Unable to open print preview. Please try again or allow pop-ups for this site.')
   }
   doc.open()
   doc.write(html)

@@ -237,6 +237,9 @@ export default function RetainDisposedMasterPage() {
 
       await loadList()
       setSaveMessage(`Retention record saved for ${editRow.srfNumber ?? 'SRF'}.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to save retention record')
+      setSaveMessage(null)
     } finally {
       setSaving(false)
     }

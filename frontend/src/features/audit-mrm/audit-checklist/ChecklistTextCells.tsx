@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
+import { useShowAiButtons } from '@/hooks/useShowAiAssistant'
+import { cn } from '@/lib/utils'
 
 /** Debounce before pushing draft text into the parent items array. */
 export const TEXT_COMMIT_DEBOUNCE_MS = 500
@@ -18,6 +20,9 @@ function PolishAiButton({
   title: string
   onClick: () => void
 }) {
+  const showAiButtons = useShowAiButtons()
+  if (!showAiButtons) return null
+
   return (
     <button
       type="button"
@@ -114,7 +119,11 @@ function ChecklistLocalTextarea({
           flush()
         }}
         placeholder={placeholder}
-        className="min-h-[72px] w-full resize-y pe-9 text-sm text-left"
+        className={cn(
+          'min-h-[72px] w-full resize-y text-sm text-left',
+          // Reserve space for polish sparkle only when AI buttons are enabled (button self-hides).
+          'pe-9',
+        )}
         aria-label={ariaLabel}
         aria-required={ariaRequired}
         disabled={disabled}

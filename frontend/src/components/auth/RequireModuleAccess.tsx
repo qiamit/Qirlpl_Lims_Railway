@@ -11,8 +11,14 @@ export function RequireModuleAccess({ children }: { children: React.ReactNode })
   const moduleAccess = useModuleAccessOptional()
   const location = useLocation()
   const profileLoadedRef = useRef(false)
+  const lastUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
+    const uid = user?.id ?? null
+    if (uid !== lastUserIdRef.current) {
+      lastUserIdRef.current = uid
+      profileLoadedRef.current = false
+    }
     if (!user) profileLoadedRef.current = false
   }, [user])
 
@@ -25,14 +31,12 @@ export function RequireModuleAccess({ children }: { children: React.ReactNode })
     return null
   }
 
-  if (waitingForProfile && keepOutletMounted) {
-    return <>{children}</>
-  }
-
   const ctx = { designation, departmentName }
-  const allowed = moduleAccess
-    ? moduleAccess.canAccessPath(location.pathname)
-    : canAccessPath(location.pathname, ctx)
+  // While module-access matrix is loading, fall back to static path rules — never skip the check.
+  const allowed =
+    moduleAccess && !moduleAccess.loading
+      ? moduleAccess.canAccessPath(location.pathname)
+      : canAccessPath(location.pathname, ctx)
 
   if (!allowed) {
     return (

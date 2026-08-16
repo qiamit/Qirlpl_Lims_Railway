@@ -1,6 +1,10 @@
 import { supabase } from '@/lib/supabaseClient'
 
-export type NablLookupKind = 'discipline_group' | 'materials_products'
+export type NablLookupKind =
+  | 'discipline_group'
+  | 'materials_products'
+  | 'discipline_name'
+  | 'group_name'
 
 export type NablLookupRow = {
   id: string
@@ -15,9 +19,16 @@ const listeners = new Map<NablLookupKind, Set<Listener>>()
 const cache = new Map<NablLookupKind, NablLookupRow[]>()
 const inflight = new Map<NablLookupKind, Promise<NablLookupRow[]>>()
 
-const SCOPE_COLUMN: Record<NablLookupKind, 'discipline_group' | 'materials_products'> = {
-  discipline_group: 'discipline_group',
-  materials_products: 'materials_products',
+type ScopeRenameTarget = {
+  table: 'nabl_scope' | 'calibration_nabl_scope'
+  column: string
+}
+
+const SCOPE_RENAME: Record<NablLookupKind, ScopeRenameTarget> = {
+  discipline_group: { table: 'nabl_scope', column: 'discipline_group' },
+  materials_products: { table: 'nabl_scope', column: 'materials_products' },
+  discipline_name: { table: 'calibration_nabl_scope', column: 'discipline_name' },
+  group_name: { table: 'calibration_nabl_scope', column: 'group_name' },
 }
 
 function notify(kind: NablLookupKind) {
@@ -102,8 +113,8 @@ export async function updateNablLookup(
   const row = data as NablLookupRow
 
   if (prev && prev.name !== trimmed) {
-    const column = SCOPE_COLUMN[kind]
-    await supabase.from('nabl_scope').update({ [column]: trimmed }).eq(column, prev.name)
+    const target = SCOPE_RENAME[kind]
+    await supabase.from(target.table).update({ [target.column]: trimmed }).eq(target.column, prev.name)
   }
 
   const next = (cache.get(kind) ?? [])
@@ -120,11 +131,11 @@ export async function deleteNablLookup(
 ): Promise<string | undefined> {
   const removed = cache.get(kind)?.find((r) => r.id === id)
   if (removed) {
-    const column = SCOPE_COLUMN[kind]
+    const target = SCOPE_RENAME[kind]
     const { count, error: countError } = await supabase
-      .from('nabl_scope')
+      .from(target.table)
       .select('id', { count: 'exact', head: true })
-      .eq(column, removed.name)
+      .eq(target.column, removed.name)
     if (countError) throw countError
     if ((count ?? 0) > 0) {
       throw new Error(`Cannot delete "${removed.name}" — it is used by ${count} scope entr${count === 1 ? 'y' : 'ies'}`)

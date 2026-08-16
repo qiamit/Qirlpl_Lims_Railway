@@ -1,10 +1,5 @@
-import { AuditMrmModulePlaceholder } from '../AuditMrmModulePlaceholder'
+import NonConformitiesMasterPage from './NonConformitiesMasterPage'
 
 export default function NonConformitiesPage() {
-  return (
-    <AuditMrmModulePlaceholder
-      title="Non Conformities"
-      description="Track non-conformities, corrective actions, and closure status."
-    />
-  )
+  return <NonConformitiesMasterPage />
 }

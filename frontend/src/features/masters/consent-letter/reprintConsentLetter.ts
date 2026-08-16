@@ -2,6 +2,7 @@ import { buildConsentLetterHtml } from '@/features/sample-handling/report-prepar
 import { fetchConsentLetterPrintContext } from '@/features/sample-handling/report-preparation/fetchConsentLetterPrintContext'
 import { openHtmlPreviewWindow } from '@/features/sample-handling/report-preparation/printHtmlPreview'
 import { outputConsentLetterDocument } from '@/features/sample-handling/report-preparation/outputConsentLetterDocument'
+import { printHtmlDocument } from '@/features/sample-handling/report-preparation/buildScopedTestReportPrintHtml'
 import type { ConsentLetterListRow } from './types'
 
 export async function buildConsentLetterHtmlForRow(row: ConsentLetterListRow): Promise<string> {
@@ -27,6 +28,12 @@ export async function previewConsentLetter(row: ConsentLetterListRow): Promise<v
   openHtmlPreviewWindow(html)
 }
 
+export async function printConsentLetter(row: ConsentLetterListRow): Promise<void> {
+  const html = await buildConsentLetterHtmlForRow(row)
+  await printHtmlDocument(html)
+}
+
+/** @deprecated Prefer printConsentLetter — kept for callers that respect Lab PDF download mode. */
 export async function reprintConsentLetter(row: ConsentLetterListRow): Promise<void> {
   const html = await buildConsentLetterHtmlForRow(row)
   const filenameBase = `Consent-Letter-${row.consentLetterNo.replace(/[/\\]+/g, '-')}`

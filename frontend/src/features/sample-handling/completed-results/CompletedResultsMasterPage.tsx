@@ -12,7 +12,7 @@ import type { ReportScopeKind } from '@/features/sample-handling/report-preparat
 import { CompletedResultsFooterBar } from './CompletedResultsFooterBar'
 import { CompletedResultsHeaderBar } from './CompletedResultsHeaderBar'
 import { CompletedResultsTable } from './CompletedResultsTable'
-import { printIssuedTestReportPdf } from './printIssuedTestReport'
+import { printIssuedTestReport } from './printIssuedTestReport'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   referbackIssuedTestReportToPreparation,
@@ -162,18 +162,18 @@ export default function CompletedResultsMasterPage() {
     setSrfViewOpen(true)
   }
 
-  const handleDownloadPdf = async (row: IssuedTestReportListRow, scope: ReportScopeKind) => {
+  const handlePrintReport = async (row: IssuedTestReportListRow, scope: ReportScopeKind) => {
     setActionBusyId(row.id)
     setSaveMessage(null)
     try {
-      await printIssuedTestReportPdf(row, scope, labName)
+      await printIssuedTestReport(row, scope, labName)
       setSaveMessage(
         scope === 'nabl'
-          ? `NABL report opened for print / save as PDF (${row.srfNumber ?? 'SRF'}).`
-          : `Non-NABL report opened for print / save as PDF (${row.srfNumber ?? 'SRF'}).`,
+          ? `Accredited report sent to print (${row.srfNumber ?? 'SRF'}).`
+          : `Non Accredited report sent to print (${row.srfNumber ?? 'SRF'}).`,
       )
     } catch (e) {
-      setSaveMessage(e instanceof Error ? e.message : 'Download failed')
+      setSaveMessage(e instanceof Error ? e.message : 'Print failed')
     } finally {
       setActionBusyId(null)
     }
@@ -283,8 +283,8 @@ export default function CompletedResultsMasterPage() {
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
         onViewSrf={openViewSrf}
-        onDownloadNabl={(row) => void handleDownloadPdf(row, 'nabl')}
-        onDownloadNonNabl={(row) => void handleDownloadPdf(row, 'non_nabl')}
+        onPrintNabl={(row) => void handlePrintReport(row, 'nabl')}
+        onPrintNonNabl={(row) => void handlePrintReport(row, 'non_nabl')}
         onReferbackToPreparation={(row) => void handleReferbackToPreparation(row)}
         onReferbackToResultsReview={(row) => void handleReferbackToResultsReview(row)}
         canReferbackToResultsReview={Boolean(user?.id)}

@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabaseClient'
-import { buildScopedTestReportPrintHtml } from '@/features/sample-handling/report-preparation/buildScopedTestReportPrintHtml'
-import { outputTestReportDocument } from '@/features/sample-handling/report-preparation/outputTestReportDocument'
+import {
+  buildScopedTestReportPrintHtml,
+  printHtmlDocument,
+} from '@/features/sample-handling/report-preparation/buildScopedTestReportPrintHtml'
+import { paginateContinuousTestReportHtml } from '@/features/sample-handling/report-preparation/buildPaginatedTestReportHtml'
 import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
 import { toCanonicalReportNumber } from '@/features/sample-handling/report-preparation/formattedTestReportNumber'
 import {
@@ -14,15 +17,14 @@ import {
 } from '@/features/sample-handling/report-preparation/reportResultRows'
 import {
   appendReportScopeSuffix,
-  REPORT_SCOPE_TITLE,
   type ReportScopeKind,
 } from '@/features/sample-handling/report-preparation/reportScope'
 import { resolveReportScopeTemplate } from '@/features/sample-handling/report-preparation/reportScopeConfig'
 import { formatDate } from '@/lib/utils'
 import type { IssuedTestReportListRow } from './types'
 
-/** Opens browser print dialog (user can save as PDF) for an issued scoped test report. */
-export async function printIssuedTestReportPdf(
+/** Opens browser print dialog for an issued NABL / Non-NABL test report. */
+export async function printIssuedTestReport(
   row: IssuedTestReportListRow,
   scope: ReportScopeKind,
   labName: string,
@@ -85,9 +87,12 @@ export async function printIssuedTestReportPdf(
     printSettings,
   })
 
-  const srf = row.srfNumber ?? row.id
-  await outputTestReportDocument(html, `${REPORT_SCOPE_TITLE[scope]}-${srf}`, {
-    printSettings,
-    paginateSheets: true,
-  })
+  const outHtml = html.includes('preview-sheets')
+    ? html
+    : await paginateContinuousTestReportHtml(html, printSettings)
+
+  await printHtmlDocument(outHtml)
 }
+
+/** @deprecated Use printIssuedTestReport */
+export const printIssuedTestReportPdf = printIssuedTestReport

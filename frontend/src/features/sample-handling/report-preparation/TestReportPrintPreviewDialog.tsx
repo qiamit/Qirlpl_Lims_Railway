@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Eye, Printer } from 'lucide-react'
+import { Eye, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -19,7 +19,6 @@ import type { TestReportPartBDetails } from './testReportPartB'
 import type { ReportResultRow } from './reportResultRows'
 import { buildPaginatedTestReportHtml } from './buildPaginatedTestReportHtml'
 import { printHtmlDocument } from './buildScopedTestReportPrintHtml'
-import { downloadHtmlAsPdf } from './downloadHtmlAsPdf'
 
 export function TestReportPrintPreviewDialog({
   open,
@@ -54,7 +53,7 @@ export function TestReportPrintPreviewDialog({
   resultRows: ReportResultRow[]
   printDisabled?: boolean
 }) {
-  const [busy, setBusy] = useState<'print' | 'pdf' | null>(null)
+  const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const scopeForPreview =
@@ -82,49 +81,18 @@ export function TestReportPrintPreviewDialog({
 
   const handlePrint = async () => {
     setActionError(null)
-    setBusy('print')
+    setBusy(true)
     try {
       const html = await buildSameAsPreviewHtml()
       await printHtmlDocument(html)
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Print failed')
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
-  const handleDownloadPdf = async () => {
-    setActionError(null)
-    setBusy('pdf')
-    let html = ''
-    try {
-      html = await buildSameAsPreviewHtml()
-      const settings = printSettingsControls.settings
-      const srf = active?.srfNumber ?? active?.id ?? 'report'
-      const safeName =
-        `${REPORT_SCOPE_TITLE[scopeForPreview]}-${srf}`.replace(/[^\w.-]+/g, '_').slice(0, 120) ||
-        'test-report'
-      await downloadHtmlAsPdf(html, `${safeName}.pdf`, settings.pageSize, undefined, undefined, {
-        orientation: settings.pageOrientation,
-        applyOuterMargins: false,
-      })
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'PDF download failed'
-      setActionError(msg)
-      if (html) {
-        try {
-          await printHtmlDocument(html)
-          setActionError(`${msg} — Print dialog opened; choose "Save as PDF" there.`)
-        } catch {
-          /* keep original error */
-        }
-      }
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const actionsDisabled = Boolean(printDisabled) || busy != null || !active
+  const actionsDisabled = Boolean(printDisabled) || busy || !active
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -213,22 +181,12 @@ export function TestReportPrintPreviewDialog({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              className={cn('gap-2', limsDarkBarBtnClass)}
-              disabled={actionsDisabled}
-              onClick={() => void handleDownloadPdf()}
-            >
-              <Download size={16} />
-              {busy === 'pdf' ? 'Downloading…' : 'Download PDF'}
-            </Button>
-            <Button
-              type="button"
               className={cn('gap-2', limsPrimaryBtnClass)}
               disabled={actionsDisabled}
               onClick={() => void handlePrint()}
             >
               <Printer size={16} />
-              {busy === 'print' ? 'Printing…' : 'Print'}
+              {busy ? 'Printing…' : 'Print'}
             </Button>
           </div>
         </div>

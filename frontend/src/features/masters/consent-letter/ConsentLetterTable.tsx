@@ -1,4 +1,4 @@
-import { Download, Eye, List, Pencil, Trash2 } from 'lucide-react'
+import { Eye, List, Pencil, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { limsPanelClass } from '@/lib/limsThemeUi'
@@ -41,12 +41,12 @@ export function ConsentLetterTable({
   selectedIds,
   onToggle,
   onToggleAll,
-  onDownload,
+  onPrint,
   onView,
   onViewTestParameters,
   onEdit,
   onDelete,
-  downloadBusyId,
+  printBusyId,
   viewBusyId,
   deleteBusyId,
 }: {
@@ -56,12 +56,12 @@ export function ConsentLetterTable({
   selectedIds: Set<string>
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
-  onDownload: (row: ConsentLetterListRow) => void
+  onPrint: (row: ConsentLetterListRow) => void
   onView: (row: ConsentLetterListRow) => void
   onViewTestParameters: (row: ConsentLetterListRow) => void
   onEdit: (row: ConsentLetterListRow) => void
   onDelete: (row: ConsentLetterListRow) => void
-  downloadBusyId: string | null
+  printBusyId: string | null
   viewBusyId: string | null
   deleteBusyId: string | null
 }) {
@@ -121,7 +121,7 @@ export function ConsentLetterTable({
                 const even = index % 2 === 0
                 const rowTone = selected ? rowSelectedClass : even ? rowEvenClass : rowOddClass
                 const busy =
-                  deleteBusyId === r.id || viewBusyId === r.id || downloadBusyId === r.id
+                  deleteBusyId === r.id || viewBusyId === r.id || printBusyId === r.id
 
                 return (
                   <TableRow
@@ -200,12 +200,12 @@ export function ConsentLetterTable({
                           size="sm"
                           variant="ghost"
                           className={actionBtnClass}
-                          aria-label={`Download ${fmt(r.consentLetterNo)}`}
-                          title="Download PDF"
+                          aria-label={`Print ${fmt(r.consentLetterNo)}`}
+                          title="Print"
                           disabled={busy}
-                          onClick={() => onDownload(r)}
+                          onClick={() => onPrint(r)}
                         >
-                          <Download size={16} />
+                          <Printer size={16} />
                         </Button>
                         <Button
                           type="button"

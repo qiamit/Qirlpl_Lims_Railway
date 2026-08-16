@@ -1,5 +1,5 @@
 import type { SampleRow } from '../types'
-import { getSampleWorkflowStatusLabel } from '../sampleWorkflowStatus'
+import { getSampleWorkflowStatusSortRank } from '../sampleWorkflowStatus'
 
 export type SampleReceivingSortKey =
   | 'srfDate'
@@ -54,11 +54,17 @@ export function sortSampleReceivingRows(
         cmp = da.localeCompare(db)
         break
       }
-      case 'status':
-        cmp = getSampleWorkflowStatusLabel(a).localeCompare(getSampleWorkflowStatusLabel(b), undefined, {
-          numeric: true,
-        })
+      case 'status': {
+        cmp = getSampleWorkflowStatusSortRank(a) - getSampleWorkflowStatusSortRank(b)
+        if (cmp === 0) {
+          cmp = (a.srf_number ?? a.sample_code ?? '').localeCompare(
+            b.srf_number ?? b.sample_code ?? '',
+            undefined,
+            { numeric: true },
+          )
+        }
         break
+      }
     }
     return cmp * mul
   })

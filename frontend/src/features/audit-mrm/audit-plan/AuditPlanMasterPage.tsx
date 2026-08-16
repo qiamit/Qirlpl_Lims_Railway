@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,6 +13,7 @@ import { AuditPlanForm } from './AuditPlanForm'
 import { AuditPlanFooterBar } from './AuditPlanFooterBar'
 import { AuditPlanHeaderBar } from './AuditPlanHeaderBar'
 import { AuditPlanTable } from './AuditPlanTable'
+import { AuditPlanTeamViewDialog } from './AuditPlanTeamViewDialog'
 import {
   auditTypeLabel,
   emptyAuditPlanForm,
@@ -66,6 +68,7 @@ export default function AuditPlanMasterPage() {
 
   const [showForm, setShowForm] = useState(false)
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
+  const [viewRow, setViewRow] = useState<AuditPlanRow | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<AuditPlanFormType>(() => emptyAuditPlanForm())
   const [saveLoading, setSaveLoading] = useState(false)
@@ -232,6 +235,10 @@ export default function AuditPlanMasterPage() {
       setShowForm(true)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     })()
+  }
+
+  const handleView = (row: AuditPlanRow) => {
+    setViewRow(row)
   }
 
   const handleEdit = (row: AuditPlanRow) => {
@@ -461,35 +468,48 @@ export default function AuditPlanMasterPage() {
 
   return (
     <div className={limsPageShellClass}>
-      <AuditPlanHeaderBar search={search} onSearchChange={setSearch} onNew={handleNew} />
+      <AuditPlanHeaderBar
+        search={search}
+        onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        onNew={handleNew}
+      />
 
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
-          className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:w-full sm:rounded-lg [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100"
           aria-describedby={undefined}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="!items-stretch !justify-start md:pl-0"
+          className={cn(
+            limsDialogClass,
+            '!flex h-[100dvh] max-h-[100dvh] w-full !max-w-none !translate-x-0 !translate-y-0 flex-col',
+            'left-0 top-0',
+            'md:!left-[268px] md:!right-0 md:!w-[calc(100vw-268px)] md:!max-w-[calc(100vw-268px)]',
+            '[&>button]:!text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
+          )}
         >
-          <div className="relative bg-slate-900 px-4 py-4 text-white sm:px-6 sm:py-5">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
+              className="pointer-events-none absolute inset-0 opacity-[0.18]"
               style={{
                 backgroundImage:
-                  'linear-gradient(rgba(45,212,191,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.35) 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
+                  'radial-gradient(circle at 12% 20%, rgba(217,119,6,0.45), transparent 42%), radial-gradient(circle at 88% 0%, rgba(251,191,36,0.25), transparent 35%)',
               }}
             />
-            <div className="absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative pr-8 text-left">
-              <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-teal-300/90">
-                {editingId ? 'Audit Plan · Edit Entry' : 'Audit Plan · New Entry'}
-              </p>
-              <DialogTitle className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 {editingId ? 'Edit Audit Plan' : 'Add New Audit Plan'}
               </DialogTitle>
             </DialogHeader>
           </div>
 
-          <div className="max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-[#fafbfc] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
             {saveMessage && showForm ? (
               <p className="mb-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {saveMessage}
@@ -506,6 +526,14 @@ export default function AuditPlanMasterPage() {
         </DialogContent>
       </Dialog>
 
+      <AuditPlanTeamViewDialog
+        open={viewRow != null}
+        onOpenChange={(open) => {
+          if (!open) setViewRow(null)
+        }}
+        row={viewRow}
+      />
+
       <AuditPlanTable
         rows={pagedRows}
         loading={listLoading}
@@ -514,6 +542,7 @@ export default function AuditPlanMasterPage() {
         selectedIds={selectedIds}
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
+        onView={handleView}
         onEdit={handleEdit}
         onCopy={handleCopy}
       />
@@ -522,14 +551,8 @@ export default function AuditPlanMasterPage() {
         message={showForm ? null : saveMessage}
         loading={saveLoading}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={page}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}
         onDeleteSelected={handleDeleteSelected}

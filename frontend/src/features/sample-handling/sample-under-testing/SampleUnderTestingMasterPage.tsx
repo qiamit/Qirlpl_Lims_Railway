@@ -1002,31 +1002,59 @@ export default function SampleUnderTestingMasterPage() {
     setResultsDialogSaving(true)
     setSaveMessage(null)
     try {
-      for (const p of draft) {
-        await persistParameterFieldToDb(
-          allocationId,
-          p.paramRowId,
-          p.testLabel,
-          'test_start_date',
-          p.testStartDate,
-          row,
+      const withIds = draft.filter((p) => Boolean(p.paramRowId?.trim()))
+      const withoutIds = draft.filter((p) => !p.paramRowId?.trim())
+
+      if (withIds.length > 0) {
+        const results = await Promise.all(
+          withIds.map((p) =>
+            supabase
+              .from('test_allocation_parameters')
+              .update({
+                test_start_date: p.testStartDate || null,
+                test_end_date: p.testEndDate || null,
+                results: p.results || null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', p.paramRowId as string),
+          ),
         )
-        await persistParameterFieldToDb(
-          allocationId,
-          p.paramRowId,
-          p.testLabel,
-          'test_end_date',
-          p.testEndDate,
-          row,
-        )
-        await persistParameterFieldToDb(
-          allocationId,
-          p.paramRowId,
-          p.testLabel,
-          'results',
-          p.results,
-          row,
-        )
+        const failed = results.find((r) => r.error)
+        if (failed?.error) throw failed.error
+      }
+
+      for (const p of withoutIds) {
+        const testParameterIdForInsert =
+          row.parameters?.find((x) => x.testLabel === p.testLabel)?.testParameterId ?? null
+        const label = (p.testLabel ?? '').trim()
+        const { data: existingRow } = await supabase
+          .from('test_allocation_parameters')
+          .select('id')
+          .eq('test_allocation_id', allocationId)
+          .eq('test_label', label)
+          .maybeSingle()
+        const existingId = (existingRow as { id?: string } | null)?.id
+        const fields = {
+          test_start_date: p.testStartDate || null,
+          test_end_date: p.testEndDate || null,
+          results: p.results || null,
+          updated_at: new Date().toISOString(),
+        }
+        if (existingId) {
+          const { error } = await supabase
+            .from('test_allocation_parameters')
+            .update(fields)
+            .eq('id', existingId)
+          if (error) throw error
+        } else {
+          const { error } = await supabase.from('test_allocation_parameters').insert({
+            test_allocation_id: allocationId,
+            test_parameter_id: testParameterIdForInsert,
+            test_label: label,
+            ...fields,
+          })
+          if (error) throw error
+        }
       }
 
       setRows((prev) =>

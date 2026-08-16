@@ -1,174 +1,31 @@
-import { useState } from 'react'
 import { Copy, Eye, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 import {
   auditTypeLabel,
   formatDate,
-  formatOrgTriple,
   formatProposedRange,
-  formatTeamAuditee,
-  formatTeamAuditor,
-  formatTeamCriteria,
   type AuditPlanRow,
-  type AuditTeamRow,
 } from './types'
 
 const GRID_TABLE =
-  'min-w-[920px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
+  'min-w-[780px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
 
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-function TeamSummaryDialog({
-  open,
-  onOpenChange,
-  auditId,
-  teamRows,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  auditId: string
-  teamRows: AuditTeamRow[]
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-3xl flex-col gap-3 overflow-hidden">
-        <DialogHeader>
-          <DialogTitle>Team Summary — {auditId}</DialogTitle>
-        </DialogHeader>
-        {teamRows.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No team rows.</p>
-        ) : (
-          <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
-            {teamRows.map((row, index) => {
-              const auditee =
-                formatTeamAuditee(row) ||
-                formatOrgTriple(row.auditeeDivision, row.auditeeDepartment, row.auditeeDesignation) ||
-                '—'
-              const auditor =
-                formatTeamAuditor(row) ||
-                formatOrgTriple(row.auditorDivision, row.auditorDepartment, row.auditorDesignation) ||
-                '—'
-              const criteria = formatTeamCriteria(row)
-              const clauses = row.criteriaClauseNos ?? []
+const TH =
+  'text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200'
 
-              return (
-                <div
-                  key={`team-${index}-${auditee}-${auditor}`}
-                  className="rounded-md border border-border bg-card p-3"
-                >
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Row {index + 1}
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Auditee
-                      </p>
-                      <p className="text-sm text-foreground">{auditee}</p>
-                      <dl className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                        <div className="flex gap-1">
-                          <dt className="shrink-0 font-medium">Division:</dt>
-                          <dd>{row.auditeeDivision || '—'}</dd>
-                        </div>
-                        <div className="flex gap-1">
-                          <dt className="shrink-0 font-medium">Department:</dt>
-                          <dd>{row.auditeeDepartment || '—'}</dd>
-                        </div>
-                        <div className="flex gap-1">
-                          <dt className="shrink-0 font-medium">Designation:</dt>
-                          <dd>{row.auditeeDesignation || '—'}</dd>
-                        </div>
-                      </dl>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Auditor
-                      </p>
-                      <p className="text-sm text-foreground">{auditor}</p>
-                      <dl className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                        <div className="flex gap-1">
-                          <dt className="shrink-0 font-medium">Division:</dt>
-                          <dd>{row.auditorDivision || '—'}</dd>
-                        </div>
-                        <div className="flex gap-1">
-                          <dt className="shrink-0 font-medium">Department:</dt>
-                          <dd>{row.auditorDepartment || '—'}</dd>
-                        </div>
-                        <div className="flex gap-1">
-                          <dt className="shrink-0 font-medium">Designation:</dt>
-                          <dd>{row.auditorDesignation || '—'}</dd>
-                        </div>
-                      </dl>
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-1.5">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Audit Criteria
-                    </p>
-                    {clauses.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {clauses.map((no) => (
-                          <Badge key={no} variant="secondary" className="font-mono text-[10px] font-normal">
-                            {no}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : criteria ? (
-                      <p className="text-sm text-foreground">{criteria}</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No clauses selected</p>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function ViewTeamSummaryButton({
-  auditId,
-  teamRows,
-}: {
-  auditId: string
-  teamRows: AuditTeamRow[]
-}) {
-  const [open, setOpen] = useState(false)
-  const count = teamRows.length
-
-  if (count === 0) {
-    return <p className="text-sm text-muted-foreground">—</p>
-  }
-
-  return (
-    <>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="h-8 border-teal-600/40 px-2.5 text-xs font-medium text-teal-800 hover:bg-teal-50"
-        onClick={() => setOpen(true)}
-        aria-label={`View team summary for ${auditId}`}
-      >
-        <Eye size={14} className="mr-1" />
-        View
-      </Button>
-      <TeamSummaryDialog
-        open={open}
-        onOpenChange={setOpen}
-        auditId={auditId}
-        teamRows={teamRows}
-      />
-    </>
-  )
-}
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/80 hover:bg-[#fde68a]/80'
+const stickyEven = 'bg-[#f7f3eb]'
+const stickyOdd = 'bg-[#fffcf7]'
+const stickySelected = 'bg-[#fde68a]/80'
+const stickyHover = 'group-hover:bg-[#f3e9d8]'
+const stickySelectedHover = 'group-hover:bg-[#fde68a]/80'
 
 export function AuditPlanTable({
   rows,
@@ -178,6 +35,7 @@ export function AuditPlanTable({
   selectedIds,
   onToggle,
   onToggleAll,
+  onView,
   onEdit,
   onCopy,
 }: {
@@ -188,6 +46,7 @@ export function AuditPlanTable({
   selectedIds: Set<string>
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
+  onView: (row: AuditPlanRow) => void
   onEdit: (row: AuditPlanRow) => void
   onCopy: (row: AuditPlanRow) => void
 }) {
@@ -215,7 +74,7 @@ export function AuditPlanTable({
         <Table className={GRID_TABLE}>
           <TableHeader>
             <TableRow className="bg-stone-800 hover:bg-stone-800">
-              <TableHead className="sticky left-0 z-10 w-12 bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 sm:w-14">
+              <TableHead className={`sticky left-0 z-10 w-12 bg-stone-800 sm:w-14 ${TH}`}>
                 <input
                   type="checkbox"
                   className={checkboxClass}
@@ -227,27 +86,43 @@ export function AuditPlanTable({
                   onChange={(e) => onToggleAll(e.target.checked)}
                 />
               </TableHead>
-              <TableHead className="sticky left-12 z-10 min-w-[120px] bg-stone-800 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 sm:left-14">
+              <TableHead
+                className={`sticky left-12 z-10 min-w-[110px] bg-stone-800 text-left sm:left-14 ${TH}`}
+              >
                 Audit ID
               </TableHead>
-              <TableHead className="min-w-[90px] text-center text-xs">Type</TableHead>
-              <TableHead className="min-w-[180px] text-center text-xs">Proposed From–To</TableHead>
-              <TableHead className="min-w-[120px] text-center text-xs">Next Audit Date</TableHead>
-              <TableHead className="min-w-[100px] text-center text-xs">Team Summary</TableHead>
-              <TableHead className="min-w-[96px] text-center text-xs">Actions</TableHead>
+              <TableHead className={`min-w-[80px] ${TH}`}>Type</TableHead>
+              <TableHead className={`min-w-[160px] ${TH}`}>Proposed From–To</TableHead>
+              <TableHead className={`min-w-[110px] ${TH}`}>Next Audit Date</TableHead>
+              <TableHead className={`min-w-[120px] ${TH}`}>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => {
+            {rows.map((r, index) => {
               const selected = selectedIds.has(r.id)
-              const teamRows = Array.isArray(r.team_rows) ? r.team_rows : []
+              const even = index % 2 === 0
+              const stickyBg = selected
+                ? stickySelected
+                : even
+                  ? stickyEven
+                  : stickyOdd
+              const stickyHoverClass = selected ? stickySelectedHover : stickyHover
 
               return (
-                <TableRow key={r.id} data-state={selected ? 'selected' : undefined}>
+                <TableRow
+                  key={r.id}
+                  data-state={selected ? 'selected' : undefined}
+                  className={cn(
+                    'group border-b border-[#e7e0d4] transition-colors',
+                    selected ? rowSelectedClass : even ? rowEvenClass : rowOddClass,
+                  )}
+                >
                   <TableCell
-                    className={`sticky left-0 z-10 text-center align-middle ${
-                      selected ? 'bg-muted' : 'bg-card'
-                    }`}
+                    className={cn(
+                      'sticky left-0 z-10 text-center align-middle',
+                      stickyBg,
+                      stickyHoverClass,
+                    )}
                   >
                     <input
                       type="checkbox"
@@ -258,9 +133,11 @@ export function AuditPlanTable({
                     />
                   </TableCell>
                   <TableCell
-                    className={`sticky left-12 z-10 align-middle text-left sm:left-14 ${
-                      selected ? 'bg-muted' : 'bg-card'
-                    }`}
+                    className={cn(
+                      'sticky left-12 z-10 align-middle text-left sm:left-14',
+                      stickyBg,
+                      stickyHoverClass,
+                    )}
                   >
                     <p className="font-mono text-sm font-medium text-foreground" title={r.audit_id}>
                       {r.audit_id}
@@ -280,10 +157,17 @@ export function AuditPlanTable({
                     </span>
                   </TableCell>
                   <TableCell className="align-middle text-center">
-                    <ViewTeamSummaryButton auditId={r.audit_id} teamRows={teamRows} />
-                  </TableCell>
-                  <TableCell className="align-middle text-center">
                     <div className="inline-flex items-center justify-center gap-0.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`View team details ${r.audit_id}`}
+                        title="View Auditee / Auditor / Criteria"
+                        onClick={() => onView(r)}
+                      >
+                        <Eye size={16} />
+                      </Button>
                       <Button
                         type="button"
                         size="sm"

@@ -1,4 +1,4 @@
-import { Download, Eye, Undo2 } from 'lucide-react'
+import { Eye, Printer, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -19,8 +19,8 @@ export function IssuedTestReportRowActions({
   row,
   busy,
   onViewSrf,
-  onDownloadNabl,
-  onDownloadNonNabl,
+  onPrintNabl,
+  onPrintNonNabl,
   onReferbackToPreparation,
   onReferbackToResultsReview,
   canReferbackToResultsReview,
@@ -28,8 +28,8 @@ export function IssuedTestReportRowActions({
   row: IssuedTestReportListRow
   busy?: boolean
   onViewSrf: (row: IssuedTestReportListRow) => void
-  onDownloadNabl: (row: IssuedTestReportListRow) => void
-  onDownloadNonNabl: (row: IssuedTestReportListRow) => void
+  onPrintNabl: (row: IssuedTestReportListRow) => void
+  onPrintNonNabl: (row: IssuedTestReportListRow) => void
   onReferbackToPreparation: (row: IssuedTestReportListRow) => void
   onReferbackToResultsReview: (row: IssuedTestReportListRow) => void
   /** Logged-in user required to assign review queue */
@@ -37,7 +37,7 @@ export function IssuedTestReportRowActions({
 }) {
   const canNabl = Boolean(row.nablIssuedAt && row.reportNumberBase)
   const canNonNabl = Boolean(row.nonNablIssuedAt && row.reportNumberBase)
-  const canDownload = canNabl || canNonNabl
+  const canPrint = canNabl || canNonNabl
 
   return (
     <div className="inline-flex items-center justify-center gap-1.5">
@@ -60,24 +60,24 @@ export function IssuedTestReportRowActions({
             variant="outline"
             size="icon"
             className={iconBtnClass}
-            disabled={busy || !canDownload}
-            aria-label={`Download report for ${row.srfNumber ?? 'SRF'}`}
-            title="Report Download"
+            disabled={busy || !canPrint}
+            aria-label={`Print report for ${row.srfNumber ?? 'SRF'}`}
+            title="Print report"
           >
-            <Download size={15} />
+            <Printer size={15} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-56 rounded-none border-2 border-stone-500 bg-[#fffcf7]"
+          className="w-48 rounded-none border-2 border-stone-500 bg-[#fffcf7]"
         >
-          <DropdownMenuItem disabled={!canNabl || busy} onClick={() => onDownloadNabl(row)}>
-            <Download size={14} className="mr-2" />
-            NABL report (PDF)
+          <DropdownMenuItem disabled={!canNabl || busy} onClick={() => onPrintNabl(row)}>
+            <Printer size={14} className="mr-2" />
+            Accredited
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={!canNonNabl || busy} onClick={() => onDownloadNonNabl(row)}>
-            <Download size={14} className="mr-2" />
-            Non-NABL report (PDF)
+          <DropdownMenuItem disabled={!canNonNabl || busy} onClick={() => onPrintNonNabl(row)}>
+            <Printer size={14} className="mr-2" />
+            Non Accredited
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

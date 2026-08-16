@@ -88,6 +88,31 @@ export function resolveConfiguredAccessLevel(
   return null
 }
 
+const CAPA_HUB_PATH = '/nonconforming-work/corrective-action'
+const AUDIT_NC_PATH = '/audit-mrm/non-conformities'
+const CUSTOMER_FEEDBACK_PATH = '/complaints/customer-feedback'
+const FEEDBACK_EVALUATION_PATH = '/complaints/feedback-evaluation'
+
+function accessLevelRank(level: ModuleAccessLevel): number {
+  if (level === 'edit') return 2
+  if (level === 'view') return 1
+  return 0
+}
+
+function maxAccessLevel(a: ModuleAccessLevel, b: ModuleAccessLevel): ModuleAccessLevel {
+  return accessLevelRank(a) >= accessLevelRank(b) ? a : b
+}
+
+function resolveSinglePathAccessLevel(
+  pathname: string,
+  ctx: ModuleAccessUserContext,
+  rules: ModuleAccessRuleRow[],
+): ModuleAccessLevel {
+  const configured = resolveConfiguredAccessLevel(pathname, ctx, rules)
+  if (configured !== null) return configured
+  return legacyCanAccessPath(pathname, ctx) ? 'edit' : 'none'
+}
+
 export function resolveModuleAccessLevel(
   pathname: string,
   ctx: ModuleAccessUserContext,
@@ -95,11 +120,24 @@ export function resolveModuleAccessLevel(
 ): ModuleAccessLevel {
   if (isLaboratoryDirector(ctx.designation)) return 'edit'
 
-  const configured = resolveConfiguredAccessLevel(pathname, ctx, rules)
-  if (configured !== null) return configured
+  const path = pathname.replace(/\/+$/, '') || '/'
+  // Unified CAPA hub: allow if either NCW Corrective Action or Audit Non Conformities is granted.
+  if (path === CAPA_HUB_PATH || path.startsWith(`${CAPA_HUB_PATH}/`)) {
+    return maxAccessLevel(
+      resolveSinglePathAccessLevel(CAPA_HUB_PATH, ctx, rules),
+      resolveSinglePathAccessLevel(AUDIT_NC_PATH, ctx, rules),
+    )
+  }
 
-  const legacyOk = legacyCanAccessPath(pathname, ctx)
-  return legacyOk ? 'edit' : 'none'
+  // Feedback Evaluation: also honor legacy combined Customer Feedback grant after the split.
+  if (path === FEEDBACK_EVALUATION_PATH || path.startsWith(`${FEEDBACK_EVALUATION_PATH}/`)) {
+    return maxAccessLevel(
+      resolveSinglePathAccessLevel(FEEDBACK_EVALUATION_PATH, ctx, rules),
+      resolveSinglePathAccessLevel(CUSTOMER_FEEDBACK_PATH, ctx, rules),
+    )
+  }
+
+  return resolveSinglePathAccessLevel(pathname, ctx, rules)
 }
 
 export function canAccessPathWithRules(

@@ -20,6 +20,22 @@ export const MODULE_ACCESS_LEVELS: { value: ModuleAccessLevel; label: string }[]
 export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { key: '/', label: 'Dashboard', section: 'General' },
 
+  {
+    key: '/general-requirements/list-of-objectives',
+    label: 'List of Objectives',
+    section: 'General Requirements',
+  },
+  {
+    key: '/general-requirements/risk-analysis',
+    label: 'Risk Analysis',
+    section: 'General Requirements',
+  },
+  {
+    key: '/general-requirements/improvement',
+    label: 'Improvement',
+    section: 'General Requirements',
+  },
+
   { key: '/management-docs/level-1', label: 'Level 1 Documents', section: 'Management Documentation' },
   { key: '/management-docs/level-2', label: 'Level 2 Documents', section: 'Management Documentation' },
   { key: '/management-docs/level-3', label: 'Level 3 Documents', section: 'Management Documentation' },
@@ -29,8 +45,99 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { key: '/audit-mrm/audit-checklist', label: 'Audit Checklist', section: 'Audit & MRM' },
   { key: '/audit-mrm/audit-summary', label: 'Audit Summary', section: 'Audit & MRM' },
   { key: '/audit-mrm/non-conformities', label: 'Non Conformities', section: 'Audit & MRM' },
-  { key: '/audit-mrm/mrm-agenda', label: 'MRM Agenda', section: 'Audit & MRM' },
+  { key: '/audit-mrm/mrm-agenda', label: 'MRM Plan & Agenda', section: 'Audit & MRM' },
   { key: '/audit-mrm/management-review-meeting', label: 'Management Review Meeting', section: 'Audit & MRM' },
+
+  { key: '/personnel/employees', label: 'List of Employees with All Details', section: 'Personnel' },
+  { key: '/personnel/selection', label: 'Selection of Employee', section: 'Personnel' },
+  { key: '/personnel/required-competency-matrix', label: 'Required Competency Matrix', section: 'Personnel' },
+  { key: '/personnel/actual-competency-matrix', label: 'Actual Competency Matrix', section: 'Personnel' },
+  { key: '/personnel/roles-responsibilities', label: 'Roles & Responsibilities', section: 'Personnel' },
+  { key: '/personnel/authorities', label: 'Authorities', section: 'Personnel' },
+
+  {
+    key: '/complaints/customer-complaints',
+    label: 'Customer Complaints Records',
+    section: 'Complaints',
+  },
+  {
+    key: '/complaints/customer-feedback',
+    label: 'Customer Feedback',
+    section: 'Complaints',
+  },
+  {
+    key: '/complaints/feedback-evaluation',
+    label: 'Feedback Evaluation',
+    section: 'Complaints',
+  },
+
+  {
+    key: '/nonconforming-work/records',
+    label: 'Nonconforming Work Records',
+    section: 'Non Conforming Work',
+  },
+  {
+    key: '/nonconforming-work/evaluation-actions',
+    label: 'Evaluation, Actions & Decisions',
+    section: 'Non Conforming Work',
+  },
+  {
+    key: '/nonconforming-work/corrective-action',
+    label: 'Corrective Action',
+    section: 'Non Conforming Work',
+  },
+
+  {
+    key: '/calibration/equipment-for-calibration',
+    label: 'Master Equipment of Calibration',
+    section: 'Equipment',
+  },
+  {
+    key: '/masters/equipment',
+    label: 'Master Equipment of Testing',
+    section: 'Equipment',
+  },
+  {
+    key: '/equipment-management/iqc',
+    label: 'Equipments for IQC',
+    section: 'Equipment',
+  },
+  {
+    key: '/equipment-management/crm-list',
+    label: 'List of CRM',
+    section: 'Equipment',
+  },
+  {
+    key: '/equipment-management/maintenance-schedule',
+    label: 'Maintenance Schedule',
+    section: 'Equipment',
+  },
+  {
+    key: '/equipment-management/calibration-schedule',
+    label: 'Calibration Schedule',
+    section: 'Equipment',
+  },
+  {
+    key: '/equipment-management/breakdown-register',
+    label: 'Equipment Breakdown Register',
+    section: 'Equipment',
+  },
+
+  {
+    key: '/externally-providers/supplier-list',
+    label: 'Externally Supplier List',
+    section: 'Externally Providers',
+  },
+  {
+    key: '/externally-providers/supplier-evaluation',
+    label: 'Supplier Evaluation',
+    section: 'Externally Providers',
+  },
+  {
+    key: '/externally-providers/list-of-consumables',
+    label: 'List of Consumables',
+    section: 'Externally Providers',
+  },
 
   { key: '/training/competency-matrix', label: 'Competency Matrix', section: 'Training' },
   { key: '/training/need-identification', label: 'Training Need Identification', section: 'Training' },
@@ -53,8 +160,6 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { key: '/samples/result-validation', label: 'Validating the Results', section: 'Testing LIMS' },
   { key: '/masters/nabl-scope', label: 'NABL Scope', section: 'Testing LIMS' },
   { key: '/masters/test-parameter', label: 'Test Parameter', section: 'Testing LIMS' },
-  { key: '/masters/equipment', label: 'Equipment Master', section: 'Testing LIMS' },
-  { key: '/masters/iqc', label: 'Masters for IQC', section: 'Testing LIMS' },
 
   { key: '/calibration/handling/service-request', label: 'Service Request', section: 'Calibration LIMS' },
   { key: '/calibration/handling/job-allocation', label: 'Job Allocation', section: 'Calibration LIMS' },
@@ -63,8 +168,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { key: '/calibration/handling/review-data', label: 'Review Data', section: 'Calibration LIMS' },
   { key: '/calibration/handling/certificate-preparation', label: 'Certificate Preparation', section: 'Calibration LIMS' },
   { key: '/calibration/equipments', label: 'Calibration Equipments', section: 'Calibration LIMS' },
-  { key: '/calibration/equipment-for-calibration', label: 'Master Equipments', section: 'Calibration LIMS' },
-  { key: '/calibration/masters-for-iqc', label: 'Masters for IQC (Calibration)', section: 'Calibration LIMS' },
+  { key: '/calibration/nabl-scope', label: 'NABL Scope (Calibration)', section: 'Calibration LIMS' },
 
   { key: '/finance/sale/quotation', label: 'Quotation', section: 'Finance' },
   { key: '/finance/sale/proforma-invoice', label: 'Proforma Invoice', section: 'Finance' },

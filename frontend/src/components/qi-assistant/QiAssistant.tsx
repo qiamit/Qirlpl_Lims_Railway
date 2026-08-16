@@ -35,6 +35,8 @@ function newId() {
 function assistantDialogTitle(activeRecordTable?: string, isCodeId?: string, page?: string): string {
   if (page === 'samples/receiving') return 'Sample Receiving Assistant'
   if (page === 'nabl-scope') return 'NABL Scope Assistant'
+  if (page === 'calibration-nabl-scope') return 'Calibration NABL Scope Assistant'
+  if (page === 'equipment-breakdown-register') return 'Equipment Breakdown Register Assistant'
   if (activeRecordTable === 'test_parameters') return 'Test Parameter Assistant'
   if (activeRecordTable === 'is_codes' || isCodeId) return 'IS Code Assistant'
   return 'QI Assistant'

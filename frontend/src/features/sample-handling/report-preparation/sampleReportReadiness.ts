@@ -16,37 +16,35 @@ type SectionApprovalState = {
   approved: boolean
 }
 
-/** Section was approved in Results Under Review (status column; legacy name marker supported). */
-async function testAllocationSectionIsReviewApproved(
-  testAllocationId: string,
-  options?: SectionApprovalOptions,
-): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('test_allocation_parameters')
-    .select('results_reviewer_id, results_reviewer_name, results_review_status, results')
-    .eq('test_allocation_id', testAllocationId)
-  if (error) throw error
+type ParamApprovalRow = {
+  test_allocation_id: string
+  results_reviewer_id?: string | null
+  results_reviewer_name?: string | null
+  results_review_status?: string | null
+  results?: string | null
+}
 
-  const rows = Array.isArray(data) ? data : []
+/** Section was approved in Results Under Review (status column; legacy name marker supported). */
+function sectionParamsAreReviewApproved(
+  rows: ParamApprovalRow[],
+  options?: SectionApprovalOptions,
+): boolean {
   if (rows.length === 0) return false
 
   const hasApprovedStatus = rows.some((p) =>
-    isResultsReviewStatusApproved(
-      (p as { results_review_status?: string | null }).results_review_status,
-      (p as { results_reviewer_name?: string | null }).results_reviewer_name,
-    ),
+    isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name),
   )
   if (hasApprovedStatus) return true
 
   const hasPendingReviewer = rows.some((p) => {
-    const status = (p as { results_review_status?: string | null }).results_review_status
+    const status = p.results_review_status
     if (String(status ?? '').trim().toLowerCase() === RESULTS_REVIEW_STATUS_APPROVED) return false
-    return Boolean((p as { results_reviewer_id?: string | null }).results_reviewer_id)
+    return Boolean(p.results_reviewer_id)
   })
   if (hasPendingReviewer) return false
 
   if (options?.allowLegacyCompleteResults) {
-    return rows.every((p) => String((p as { results?: string | null }).results ?? '').trim().length > 0)
+    return rows.every((p) => String(p.results ?? '').trim().length > 0)
   }
 
   return false
@@ -69,39 +67,72 @@ function pickTestAllocationPerSection(
   return byAlloc
 }
 
-async function loadSampleSectionApprovalStates(
-  sampleId: string,
-): Promise<{ states: SectionApprovalState[]; allowLegacyCompleteResults: boolean }> {
-  const { data: sampleRow, error: sampleErr } = await supabase
+function paramsIndicateStillInReview(rows: ParamApprovalRow[]): boolean {
+  return rows.some((p) => {
+    if (isResultsReviewStatusApproved(p.results_review_status, p.results_reviewer_name)) return true
+    return Boolean(p.results_reviewer_id)
+  })
+}
+
+type ApprovalGraph = {
+  stageBySample: Map<string, string>
+  allocIdsBySample: Map<string, string[]>
+  taByAlloc: Map<string, { id: string; sent_for_testing: boolean }>
+  /** All test allocation ids per sample (for still-in-review; not only picked). */
+  allTaIdsBySample: Map<string, string[]>
+  paramsByTa: Map<string, ParamApprovalRow[]>
+}
+
+async function loadApprovalGraph(sampleIds: string[]): Promise<ApprovalGraph> {
+  const ids = [...new Set(sampleIds.map((id) => id.trim()).filter(Boolean))]
+  const stageBySample = new Map<string, string>()
+  const allocIdsBySample = new Map<string, string[]>()
+  const taByAlloc = new Map<string, { id: string; sent_for_testing: boolean }>()
+  const allTaIdsBySample = new Map<string, string[]>()
+  const paramsByTa = new Map<string, ParamApprovalRow[]>()
+
+  if (ids.length === 0) {
+    return { stageBySample, allocIdsBySample, taByAlloc, allTaIdsBySample, paramsByTa }
+  }
+
+  const { data: sampleRows, error: sampleErr } = await supabase
     .from('samples')
-    .select('stage')
-    .eq('id', sampleId)
-    .maybeSingle()
+    .select('id, stage')
+    .in('id', ids)
   if (sampleErr) throw sampleErr
-  const sampleStage = String((sampleRow as { stage?: string | null } | null)?.stage ?? '').trim()
-  const stillInReview = await sampleStillHasResultsInReview(sampleId)
-  const allowLegacyCompleteResults =
-    sampleStage === 'report_preparation' ||
-    (sampleStage === 'results_review' && !stillInReview)
+  for (const row of Array.isArray(sampleRows) ? sampleRows : []) {
+    const id = String((row as { id?: string }).id ?? '').trim()
+    if (!id) continue
+    stageBySample.set(id, String((row as { stage?: string | null }).stage ?? '').trim())
+  }
 
   const { data: allocRows, error: allocErr } = await supabase
     .from('sample_allocations')
-    .select('id')
-    .eq('sample_id', sampleId)
+    .select('id, sample_id')
+    .in('sample_id', ids)
   if (allocErr) throw allocErr
 
-  const allocIds = (Array.isArray(allocRows) ? allocRows : [])
-    .map((r) => String((r as { id?: string }).id ?? '').trim())
-    .filter(Boolean)
+  const allAllocIds: string[] = []
+  const sampleIdByAlloc = new Map<string, string>()
+  for (const row of Array.isArray(allocRows) ? allocRows : []) {
+    const sampleId = String((row as { sample_id?: string }).sample_id ?? '').trim()
+    const allocId = String((row as { id?: string }).id ?? '').trim()
+    if (!sampleId || !allocId) continue
+    const list = allocIdsBySample.get(sampleId) ?? []
+    list.push(allocId)
+    allocIdsBySample.set(sampleId, list)
+    allAllocIds.push(allocId)
+    sampleIdByAlloc.set(allocId, sampleId)
+  }
 
-  if (allocIds.length === 0) {
-    return { states: [], allowLegacyCompleteResults }
+  if (allAllocIds.length === 0) {
+    return { stageBySample, allocIdsBySample, taByAlloc, allTaIdsBySample, paramsByTa }
   }
 
   const { data: taRows, error: taErr } = await supabase
     .from('test_allocations')
     .select('id, sample_allocation_id, sent_for_testing')
-    .in('sample_allocation_id', allocIds)
+    .in('sample_allocation_id', allAllocIds)
   if (taErr) throw taErr
 
   const taList = (Array.isArray(taRows) ? taRows : []) as Array<{
@@ -109,11 +140,68 @@ async function loadSampleSectionApprovalStates(
     sample_allocation_id: string
     sent_for_testing?: boolean | null
   }>
-  const taByAlloc = pickTestAllocationPerSection(taList)
+  const picked = pickTestAllocationPerSection(taList)
+  for (const [allocId, ta] of picked) {
+    taByAlloc.set(allocId, ta)
+  }
+
+  const allTaIds: string[] = []
+  for (const ta of taList) {
+    const taId = String(ta.id ?? '').trim()
+    const allocId = String(ta.sample_allocation_id ?? '').trim()
+    if (!taId || !allocId) continue
+    allTaIds.push(taId)
+    const sampleId = sampleIdByAlloc.get(allocId)
+    if (!sampleId) continue
+    const list = allTaIdsBySample.get(sampleId) ?? []
+    list.push(taId)
+    allTaIdsBySample.set(sampleId, list)
+  }
+
+  const uniqueTaIds = [...new Set(allTaIds)]
+  if (uniqueTaIds.length === 0) {
+    return { stageBySample, allocIdsBySample, taByAlloc, allTaIdsBySample, paramsByTa }
+  }
+
+  const { data: paramRows, error: paramErr } = await supabase
+    .from('test_allocation_parameters')
+    .select(
+      'test_allocation_id, results_reviewer_id, results_reviewer_name, results_review_status, results',
+    )
+    .in('test_allocation_id', uniqueTaIds)
+  if (paramErr) throw paramErr
+
+  for (const row of Array.isArray(paramRows) ? paramRows : []) {
+    const p = row as ParamApprovalRow
+    const taId = String(p.test_allocation_id ?? '').trim()
+    if (!taId) continue
+    const list = paramsByTa.get(taId) ?? []
+    list.push(p)
+    paramsByTa.set(taId, list)
+  }
+
+  return { stageBySample, allocIdsBySample, taByAlloc, allTaIdsBySample, paramsByTa }
+}
+
+function buildStatesFromGraph(
+  sampleId: string,
+  graph: ApprovalGraph,
+): { states: SectionApprovalState[]; allowLegacyCompleteResults: boolean } {
+  const sampleStage = graph.stageBySample.get(sampleId) ?? ''
+  const allocIds = graph.allocIdsBySample.get(sampleId) ?? []
+
+  const sampleParamRows: ParamApprovalRow[] = []
+  for (const taId of graph.allTaIdsBySample.get(sampleId) ?? []) {
+    sampleParamRows.push(...(graph.paramsByTa.get(taId) ?? []))
+  }
+  const stillInReview = paramsIndicateStillInReview(sampleParamRows)
+  const allowLegacyCompleteResults =
+    sampleStage === 'report_preparation' ||
+    (sampleStage === 'results_review' && !stillInReview)
 
   const states: SectionApprovalState[] = []
   for (const allocId of allocIds) {
-    const ta = taByAlloc.get(allocId)
+    const ta = graph.taByAlloc.get(allocId)
     if (!ta) {
       states.push({
         sampleAllocationId: allocId,
@@ -123,7 +211,7 @@ async function loadSampleSectionApprovalStates(
       })
       continue
     }
-    const approved = await testAllocationSectionIsReviewApproved(ta.id, {
+    const approved = sectionParamsAreReviewApproved(graph.paramsByTa.get(ta.id) ?? [], {
       allowLegacyCompleteResults,
     })
     states.push({
@@ -135,6 +223,34 @@ async function loadSampleSectionApprovalStates(
   }
 
   return { states, allowLegacyCompleteResults }
+}
+
+async function loadSampleSectionApprovalStates(
+  sampleId: string,
+): Promise<{ states: SectionApprovalState[]; allowLegacyCompleteResults: boolean }> {
+  const graph = await loadApprovalGraph([sampleId])
+  return buildStatesFromGraph(sampleId, graph)
+}
+
+/**
+ * Batch visibility filter for Test Report Preparation list (avoids N+1 per SRF).
+ */
+export async function filterSampleIdsVisibleInReportPreparation(
+  sampleIds: string[],
+): Promise<Set<string>> {
+  const ids = [...new Set(sampleIds.map((id) => id.trim()).filter(Boolean))]
+  if (ids.length === 0) return new Set()
+
+  const graph = await loadApprovalGraph(ids)
+  const visible = new Set<string>()
+  for (const id of ids) {
+    const { states } = buildStatesFromGraph(id, graph)
+    if (states.some((s) => s.sentForTesting && s.approved)) {
+      visible.add(id)
+    }
+  }
+
+  return visible
 }
 
 /**
@@ -158,60 +274,72 @@ export async function isSampleReadyForReportPreparation(sampleId: string): Promi
 
 /** Any parameter still assigned to a results reviewer for this SRF. */
 export async function sampleStillHasResultsInReview(sampleId: string): Promise<boolean> {
-  const { data: allocRows, error: allocErr } = await supabase
-    .from('sample_allocations')
-    .select('id')
-    .eq('sample_id', sampleId)
-  if (allocErr) throw allocErr
+  const graph = await loadApprovalGraph([sampleId])
+  const rows: ParamApprovalRow[] = []
+  for (const taId of graph.allTaIdsBySample.get(sampleId) ?? []) {
+    rows.push(...(graph.paramsByTa.get(taId) ?? []))
+  }
+  return paramsIndicateStillInReview(rows)
+}
 
-  const allocIds = (Array.isArray(allocRows) ? allocRows : [])
-    .map((r) => String((r as { id?: string }).id ?? '').trim())
+/** Keep sample stage aligned: report_preparation when any section is approved for prep. */
+export async function syncSampleReportPreparationStages(
+  sampleIds: string[],
+): Promise<{ toPrep: string[]; toReview: string[]; changedIds: string[] }> {
+  const ids = [...new Set(sampleIds.map((id) => id.trim()).filter(Boolean))]
+  if (ids.length === 0) return { toPrep: [], toReview: [], changedIds: [] }
+
+  // Stage-only prefilter so we do not load allocation graphs for unrelated stages.
+  const { data: stageRows, error: stageErr } = await supabase
+    .from('samples')
+    .select('id, stage')
+    .in('id', ids)
+  if (stageErr) throw stageErr
+
+  const relevantIds = (Array.isArray(stageRows) ? stageRows : [])
+    .filter((row) => {
+      const stage = String((row as { stage?: string | null }).stage ?? '').trim()
+      return stage === 'results_review' || stage === 'report_preparation'
+    })
+    .map((row) => String((row as { id?: string }).id ?? '').trim())
     .filter(Boolean)
-  if (allocIds.length === 0) return false
 
-  const { data: taRows, error: taErr } = await supabase
-    .from('test_allocations')
-    .select('id')
-    .in('sample_allocation_id', allocIds)
-  if (taErr) throw taErr
+  if (relevantIds.length === 0) return { toPrep: [], toReview: [], changedIds: [] }
 
-  const taIds = (Array.isArray(taRows) ? taRows : [])
-    .map((r) => String((r as { id?: string }).id ?? '').trim())
-    .filter(Boolean)
-  if (taIds.length === 0) return false
+  const graph = await loadApprovalGraph(relevantIds)
+  const toPrep: string[] = []
+  const toReview: string[] = []
 
-  const { data: paramRows, error: paramErr } = await supabase
-    .from('test_allocation_parameters')
-    .select('results_reviewer_id, results_reviewer_name, results_review_status')
-    .in('test_allocation_id', taIds)
-  if (paramErr) throw paramErr
+  for (const id of relevantIds) {
+    const stage = graph.stageBySample.get(id) ?? ''
+    if (stage !== 'results_review' && stage !== 'report_preparation') continue
+    const { states } = buildStatesFromGraph(id, graph)
+    const visible = states.some((s) => s.sentForTesting && s.approved)
+    const nextStage = visible ? 'report_preparation' : 'results_review'
+    if (stage === nextStage) continue
+    if (nextStage === 'report_preparation') toPrep.push(id)
+    else toReview.push(id)
+  }
 
-  return (Array.isArray(paramRows) ? paramRows : []).some((p) => {
-    const row = p as {
-      results_reviewer_id?: string | null
-      results_reviewer_name?: string | null
-      results_review_status?: string | null
-    }
-    if (isResultsReviewStatusApproved(row.results_review_status, row.results_reviewer_name)) return true
-    return Boolean(row.results_reviewer_id)
-  })
+  if (toPrep.length > 0) {
+    const { error } = await supabase
+      .from('samples')
+      .update({ stage: 'report_preparation' })
+      .in('id', toPrep)
+    if (error) throw error
+  }
+  if (toReview.length > 0) {
+    const { error } = await supabase
+      .from('samples')
+      .update({ stage: 'results_review' })
+      .in('id', toReview)
+    if (error) throw error
+  }
+
+  return { toPrep, toReview, changedIds: [...toPrep, ...toReview] }
 }
 
 /** Keep sample stage aligned: report_preparation when any section is approved for prep. */
 export async function syncSampleReportPreparationStage(sampleId: string): Promise<void> {
-  const id = sampleId.trim()
-  if (!id) return
-
-  const { data, error } = await supabase.from('samples').select('stage').eq('id', id).maybeSingle()
-  if (error) throw error
-
-  const stage = String((data as { stage?: string | null } | null)?.stage ?? '').trim()
-  if (stage !== 'results_review' && stage !== 'report_preparation') return
-
-  const visible = await isSampleVisibleInReportPreparation(id)
-  const nextStage = visible ? 'report_preparation' : 'results_review'
-  if (stage === nextStage) return
-
-  const { error: updErr } = await supabase.from('samples').update({ stage: nextStage }).eq('id', id)
-  if (updErr) throw updErr
+  await syncSampleReportPreparationStages([sampleId])
 }

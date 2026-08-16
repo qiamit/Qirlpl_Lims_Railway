@@ -6,7 +6,7 @@ import { ConsentLetterGenerateDialog } from './ConsentLetterGenerateDialog'
 import { ConsentLetterHeaderBar } from './ConsentLetterHeaderBar'
 import { ConsentLetterTable } from './ConsentLetterTable'
 import { ConsentLetterTestParametersViewDialog } from './ConsentLetterTestParametersViewDialog'
-import { reprintConsentLetter, previewConsentLetter } from './reprintConsentLetter'
+import { printConsentLetter, previewConsentLetter } from './reprintConsentLetter'
 import type { ConsentLetterListRow } from './types'
 
 export default function ConsentLetterMasterPage() {
@@ -21,7 +21,7 @@ export default function ConsentLetterMasterPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editRow, setEditRow] = useState<ConsentLetterListRow | null>(null)
-  const [downloadBusyId, setDownloadBusyId] = useState<string | null>(null)
+  const [printBusyId, setPrintBusyId] = useState<string | null>(null)
   const [viewBusyId, setViewBusyId] = useState<string | null>(null)
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
   const [testParamsRow, setTestParamsRow] = useState<ConsentLetterListRow | null>(null)
@@ -107,12 +107,12 @@ export default function ConsentLetterMasterPage() {
     })
   }
 
-  const handleDownload = async (row: ConsentLetterListRow) => {
-    setDownloadBusyId(row.id)
+  const handlePrint = async (row: ConsentLetterListRow) => {
+    setPrintBusyId(row.id)
     try {
-      await reprintConsentLetter(row)
+      await printConsentLetter(row)
     } finally {
-      setDownloadBusyId(null)
+      setPrintBusyId(null)
     }
   }
 
@@ -174,12 +174,12 @@ export default function ConsentLetterMasterPage() {
         selectedIds={selectedIds}
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
-        onDownload={(row) => void handleDownload(row)}
+        onPrint={(row) => void handlePrint(row)}
         onView={(row) => void handleView(row)}
         onViewTestParameters={handleViewTestParameters}
         onEdit={openEditDialog}
         onDelete={(row) => void handleDelete(row)}
-        downloadBusyId={downloadBusyId}
+        printBusyId={printBusyId}
         viewBusyId={viewBusyId}
         deleteBusyId={deleteBusyId}
       />

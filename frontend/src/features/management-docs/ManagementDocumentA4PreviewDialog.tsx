@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn, formatDate } from '@/lib/utils'
+import { useShowAiButtons } from '@/hooks/useShowAiAssistant'
 import {
   limsDarkBarBtnClass,
   limsDarkBarGlowStyle,
@@ -838,6 +839,7 @@ function SectionHoverActions({
   onTogglePageBreak?: (section: DraftSection) => void
   onAiSection?: (section: DraftSection) => void
 }) {
+  const showAiButtons = useShowAiButtons()
   const label = displaySectionLabel(section)
   return (
     <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 print:hidden">
@@ -848,16 +850,18 @@ function SectionHoverActions({
       >
         Edit
       </button>
-      <button
-        type="button"
-        className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900 hover:bg-amber-100"
-        onClick={() => onAiSection?.(section)}
-        title="Update this section with AI"
-        aria-label={`AI update section ${label}`}
-      >
-        <Sparkles size={10} aria-hidden />
-        AI
-      </button>
+      {showAiButtons ? (
+        <button
+          type="button"
+          className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900 hover:bg-amber-100"
+          onClick={() => onAiSection?.(section)}
+          title="Update this section with AI"
+          aria-label={`AI update section ${label}`}
+        >
+          <Sparkles size={10} aria-hidden />
+          AI
+        </button>
+      ) : null}
       <button
         type="button"
         className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600 hover:bg-slate-200"
@@ -1419,6 +1423,7 @@ export function ManagementDocumentA4PreviewDialog({
   /** When true, open print dialog once pages are ready, then close. */
   autoPrint?: boolean
 }) {
+  const showAiButtons = useShowAiButtons()
   const [letterhead, setLetterhead] = useState<ManagementDocLetterhead | null>(null)
   const [pages, setPages] = useState<ContentBlock[][]>([[]])
   const [pageBySectionId, setPageBySectionId] = useState<Map<string, number>>(
@@ -2266,27 +2271,29 @@ export function ManagementDocumentA4PreviewDialog({
               <Settings2 size={14} />
               Settings
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className={cn('h-8 gap-1.5 text-xs', limsDarkBarBtnClass)}
-              onClick={() => {
-                setAiError(null)
-                setAiProgress(null)
-                setReferenceResult(null)
-                setAiTask('chat')
-                setAiChatMessage('')
-                setAiAttachedPdfs([])
-                // One section only — keep current single selection, else none (user picks in dialog)
-                setAiSelectedSectionIds((prev) => (prev.length === 1 ? prev : []))
-                setAiOpen(true)
-              }}
-              aria-label="AI update section"
-            >
-              <Sparkles size={14} />
-              AI
-            </Button>
+            {showAiButtons ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className={cn('h-8 gap-1.5 text-xs', limsDarkBarBtnClass)}
+                onClick={() => {
+                  setAiError(null)
+                  setAiProgress(null)
+                  setReferenceResult(null)
+                  setAiTask('chat')
+                  setAiChatMessage('')
+                  setAiAttachedPdfs([])
+                  // One section only — keep current single selection, else none (user picks in dialog)
+                  setAiSelectedSectionIds((prev) => (prev.length === 1 ? prev : []))
+                  setAiOpen(true)
+                }}
+                aria-label="AI update section"
+              >
+                <Sparkles size={14} />
+                AI
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"

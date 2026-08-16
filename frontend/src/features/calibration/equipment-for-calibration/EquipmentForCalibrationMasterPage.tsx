@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
@@ -96,6 +97,7 @@ export default function EquipmentForCalibrationMasterPage({
   const isIqc = variant === 'iqc'
   const moduleTitle = isIqc ? 'Masters for IQC' : 'Master Equipments'
   const { session, loading: authLoading } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [saveLoading, setSaveLoading] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -347,6 +349,18 @@ export default function EquipmentForCalibrationMasterPage({
     setSaveMessage(null)
     setShowForm(true)
   }
+
+  useEffect(() => {
+    const viewId = searchParams.get('view')?.trim()
+    if (!viewId || listLoading || rows.length === 0) return
+    const row = rows.find((r) => r.id === viewId)
+    if (!row) return
+    openViewDetails(row)
+    const next = new URLSearchParams(searchParams)
+    next.delete('view')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
+  }, [searchParams, listLoading, rows])
 
   const openCopy = (row: EquipmentForCalibrationRow) => {
     setEditingId(null)

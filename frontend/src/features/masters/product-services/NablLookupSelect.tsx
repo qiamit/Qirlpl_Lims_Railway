@@ -40,6 +40,20 @@ const KIND_LABELS: Record<
     editTitle: 'Edit Materials or Products',
     addAria: 'Add materials or products',
   },
+  discipline_name: {
+    singular: 'Discipline Name',
+    plural: 'Discipline Names',
+    manageTitle: 'Manage Discipline Names',
+    editTitle: 'Edit Discipline Name',
+    addAria: 'Add discipline name',
+  },
+  group_name: {
+    singular: 'Group',
+    plural: 'Groups',
+    manageTitle: 'Manage Groups',
+    editTitle: 'Edit Group',
+    addAria: 'Add group',
+  },
 }
 
 export function NablLookupSelect({
@@ -312,7 +326,15 @@ export function NablLookupSelect({
               </Label>
               <Input
                 id={nameInputId}
-                placeholder={`e.g. ${kind === 'discipline_group' ? 'Chemical - Building Material' : 'Fine & Coarse Aggregates'}`}
+                placeholder={`e.g. ${
+                  kind === 'discipline_group'
+                    ? 'Chemical - Building Material'
+                    : kind === 'discipline_name'
+                      ? 'Mechanical'
+                      : kind === 'group_name'
+                        ? 'Dimensional'
+                        : 'Fine & Coarse Aggregates'
+                }`}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 className={limsFieldClass}

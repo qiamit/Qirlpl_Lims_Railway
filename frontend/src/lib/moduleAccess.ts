@@ -23,6 +23,7 @@ export const RECEPTIONIST_ALLOWED_PATHS = [
   '/masters/clients',
   '/masters/is-codes',
   '/masters/nabl-scope',
+  '/calibration/nabl-scope',
   '/masters/product-services',
   '/masters/test-parameter',
 ] as const
@@ -36,10 +37,12 @@ export const SAMPLE_INCHARGE_ALLOWED_PATHS = [
   '/masters/is-codes',
   '/masters/consent-letter',
   '/masters/nabl-scope',
+  '/calibration/nabl-scope',
   '/masters/product-services',
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/equipment-management/iqc',
   '/calibration/equipments',
   '/calibration/handling',
   '/calibration/handling/service-request',
@@ -56,10 +59,12 @@ export const MECHANICAL_TECHNICAL_MANAGER_ALLOWED_PATHS = [
   '/masters/is-codes',
   '/masters/consent-letter',
   '/masters/nabl-scope',
+  '/calibration/nabl-scope',
   '/masters/product-services',
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/equipment-management/iqc',
   '/calibration/equipments',
   '/calibration/handling',
 ] as const
@@ -73,10 +78,12 @@ export const CHEMICAL_TECHNICAL_MANAGER_ALLOWED_PATHS = [
   '/masters/is-codes',
   '/masters/consent-letter',
   '/masters/nabl-scope',
+  '/calibration/nabl-scope',
   '/masters/product-services',
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/equipment-management/iqc',
   '/calibration/equipments',
   '/calibration/handling',
 ] as const
@@ -88,9 +95,11 @@ export const CHEMICAL_TESTING_ENGINEER_ALLOWED_PATHS = [
   '/samples/result-validation',
   '/masters/is-codes',
   '/masters/nabl-scope',
+  '/calibration/nabl-scope',
   '/masters/product-services',
   '/masters/equipment',
   '/masters/iqc',
+  '/equipment-management/iqc',
   '/calibration/equipments',
   '/calibration/handling',
 ] as const
@@ -102,8 +111,10 @@ export const MECHANICAL_TESTING_ENGINEER_ALLOWED_PATHS = [
   '/samples/result-validation',
   '/masters/is-codes',
   '/masters/nabl-scope',
+  '/calibration/nabl-scope',
   '/masters/equipment',
   '/masters/iqc',
+  '/equipment-management/iqc',
   '/calibration/equipments',
   '/calibration/handling',
 ] as const
@@ -119,9 +130,11 @@ export const QUALITY_ASSURANCE_QUALITY_MANAGER_ALLOWED_PATHS = [
   '/masters/is-codes',
   '/masters/consent-letter',
   '/masters/nabl-scope',
+  '/calibration/nabl-scope',
   '/masters/test-parameter',
   '/masters/equipment',
   '/masters/iqc',
+  '/equipment-management/iqc',
   '/calibration/equipments',
   '/calibration/handling',
 ] as const
@@ -241,6 +254,8 @@ function isEquipmentIqcOrResultValidationPath(pathname: string | undefined): boo
     path.startsWith('/calibration/masters-for-iqc/') ||
     path === '/masters/iqc' ||
     path.startsWith('/masters/iqc/') ||
+    path === '/equipment-management/iqc' ||
+    path.startsWith('/equipment-management/iqc/') ||
     path === '/samples/result-validation' ||
     path.startsWith('/samples/result-validation/')
   )

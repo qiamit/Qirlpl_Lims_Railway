@@ -261,14 +261,22 @@ async function referbackToTestAllocation(testAllocationId: string): Promise<void
   if (error) throw error
 }
 
+export async function syncSampleStageAfterReportPrepReferback(
+  sampleId: string,
+): Promise<SampleStage | 'report_preparation'> {
+  return syncSampleStageAfterReferback(sampleId)
+}
+
 /**
  * Refer back one section from Test Report Preparation.
  * Only workflow fields required for the target stage are updated; test results and parameters are kept
  * except when referring to Sample Allocation or Sample Receiving (existing delete flows).
+ * Pass `skipStageSync: true` when referring multiple sections, then call
+ * `syncSampleStageAfterReportPrepReferback` once.
  */
 export async function referbackSectionFromReportPreparation(
-  payload: ReportPrepReferbackPayload,
-): Promise<{ sampleStage: SampleStage | 'report_preparation' }> {
+  payload: ReportPrepReferbackPayload & { skipStageSync?: boolean },
+): Promise<{ sampleStage: SampleStage | 'report_preparation' | null }> {
   const sampleId = payload.sampleId.trim()
   const sampleAllocationId = payload.sampleAllocationId.trim()
   const testAllocationId = payload.testAllocationId.trim()
@@ -306,11 +314,14 @@ export async function referbackSectionFromReportPreparation(
     }
     case 'receiving': {
       await referbackSectionToSampleReceiving(sampleAllocationId, sampleId)
-      const stage = await syncSampleStageAfterReferback(sampleId)
-      return { sampleStage: stage }
+      break
     }
     default:
       throw new Error('Select where to refer back.')
+  }
+
+  if (payload.skipStageSync) {
+    return { sampleStage: null }
   }
 
   const sampleStage = await syncSampleStageAfterReferback(sampleId)

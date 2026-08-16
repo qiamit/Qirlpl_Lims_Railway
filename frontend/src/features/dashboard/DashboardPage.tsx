@@ -71,7 +71,6 @@ type HeroKpi = {
   id: string
   label: string
   value: string | number
-  hint: string
   icon: ElementType
   tone: HeroTone
   href?: string
@@ -91,7 +90,7 @@ const heroIconClass: Record<HeroTone, string> = {
   danger: 'bg-red-700 text-white',
 }
 
-function HeroKpiCard({ label, value, hint, icon: Icon, tone, href }: HeroKpi) {
+function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
   const body = (
     <div
       className={cn(
@@ -119,7 +118,6 @@ function HeroKpiCard({ label, value, hint, icon: Icon, tone, href }: HeroKpi) {
       <div className="mt-3 min-w-0">
         <p className="text-3xl font-bold tabular-nums tracking-tight sm:text-4xl">{value}</p>
         <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-stone-700">{label}</p>
-        <p className="mt-0.5 text-[11px] text-stone-600">{hint}</p>
       </div>
     </div>
   )
@@ -212,20 +210,6 @@ interface DashboardStats {
   resultChecksCount: number
   usersCount: number
   quotationsCount: number
-  delayedSamplesList: Array<{
-    id: string
-    sample_code: string | null
-    description: string | null
-    client_name: string | null
-    stage: string | null
-    tentative_date_by_lab: string | null
-  }>
-  calibrationOverdueList: Array<{
-    id: string
-    asset_code: string | null
-    equipment_name: string | null
-    next_calibration_due: string | null
-  }>
 }
 
 type RoleDashboardProfile = {
@@ -354,7 +338,7 @@ export default function DashboardPage() {
         const { data: samples, error: samplesErr } = await supabase
           .from('samples')
           .select(
-            'id, stage, tentative_date_by_lab, test_report_nabl_ulr_number, statement_conformity_required, witness_test_required, deviation_from_methods, date_of_sample_receiving, sample_code, description, client_name',
+            'id, stage, tentative_date_by_lab, test_report_nabl_ulr_number, statement_conformity_required, witness_test_required, deviation_from_methods, date_of_sample_receiving',
           )
         if (samplesErr) throw samplesErr
 
@@ -374,7 +358,7 @@ export default function DashboardPage() {
           supabase
             .from('equipment_master')
             .select(
-              'id, asset_code, equipment_name, equipment_status, next_calibration_due, next_intermediate_check_date, next_maintenance_date',
+              'id, equipment_status, next_calibration_due, next_intermediate_check_date, next_maintenance_date',
             ),
           supabase.from('consent_letters').select('*', { count: 'exact', head: true }),
           supabase.from('test_parameters').select('*', { count: 'exact', head: true }),
@@ -392,7 +376,6 @@ export default function DashboardPage() {
         let calibrationOverdue = 0
         let intermediateOverdue = 0
         let maintenanceOverdue = 0
-        const calibrationOverdueList: DashboardStats['calibrationOverdueList'] = []
         for (const eq of equipmentRows) {
           const status = String((eq as { equipment_status?: string | null }).equipment_status ?? '')
             .trim()
@@ -401,23 +384,10 @@ export default function DashboardPage() {
           const cal = (eq as { next_calibration_due?: string | null }).next_calibration_due
           const ic = (eq as { next_intermediate_check_date?: string | null }).next_intermediate_check_date
           const mt = (eq as { next_maintenance_date?: string | null }).next_maintenance_date
-          if (cal && cal < todayStr) {
-            calibrationOverdue++
-            calibrationOverdueList.push({
-              id: String((eq as { id: string }).id),
-              asset_code: (eq as { asset_code?: string | null }).asset_code ?? null,
-              equipment_name: (eq as { equipment_name?: string | null }).equipment_name ?? null,
-              next_calibration_due: cal,
-            })
-          }
+          if (cal && cal < todayStr) calibrationOverdue++
           if (ic && ic < todayStr) intermediateOverdue++
           if (mt && mt < todayStr) maintenanceOverdue++
         }
-        calibrationOverdueList.sort((a, b) => {
-          if (!a.next_calibration_due) return 1
-          if (!b.next_calibration_due) return -1
-          return a.next_calibration_due.localeCompare(b.next_calibration_due)
-        })
 
         let activeSamples = 0
         let completedSamples = 0
@@ -440,8 +410,6 @@ export default function DashboardPage() {
           completed: 0,
         }
 
-        const delayedSamplesList: DashboardStats['delayedSamplesList'] = []
-
         if (samples) {
           for (const sample of samples) {
             const stage = sample.stage ?? 'receiving'
@@ -462,14 +430,6 @@ export default function DashboardPage() {
                 const due = sample.tentative_date_by_lab
                 if (due < todayStr) {
                   delayedSamplesCount++
-                  delayedSamplesList.push({
-                    id: sample.id,
-                    sample_code: sample.sample_code,
-                    description: sample.description,
-                    client_name: sample.client_name,
-                    stage: sample.stage,
-                    tentative_date_by_lab: sample.tentative_date_by_lab,
-                  })
                 } else {
                   onTimeSamplesCount++
                   if (due <= dueSoonEnd) dueSoonCount++
@@ -478,12 +438,6 @@ export default function DashboardPage() {
             }
           }
         }
-
-        delayedSamplesList.sort((a, b) => {
-          if (!a.tentative_date_by_lab) return 1
-          if (!b.tentative_date_by_lab) return -1
-          return a.tentative_date_by_lab.localeCompare(b.tentative_date_by_lab)
-        })
 
         const totalWithTat = onTimeSamplesCount + delayedSamplesCount
         const tatComplianceRate =
@@ -516,8 +470,6 @@ export default function DashboardPage() {
           resultChecksCount: resultCheckRes.count ?? 0,
           usersCount: usersRes.count ?? 0,
           quotationsCount: quotationsRes.error ? 0 : (quotationsRes.count ?? 0),
-          delayedSamplesList,
-          calibrationOverdueList,
         })
       } catch (err) {
         console.error('Error loading dashboard stats:', err)
@@ -1055,7 +1007,6 @@ export default function DashboardPage() {
           id: 'overdue',
           label: 'Overdue Samples',
           value: stats.delayedSamplesCount,
-          hint: stats.delayedSamplesCount > 0 ? 'Needs immediate attention' : 'All samples on track',
           icon: AlertTriangle,
           tone: stats.delayedSamplesCount > 0 ? 'danger' : 'ok',
           href: overdueHref,
@@ -1064,7 +1015,6 @@ export default function DashboardPage() {
           id: 'due-soon',
           label: 'Due in 7 Days',
           value: stats.dueSoonCount,
-          hint: 'Upcoming lab TAT deadlines',
           icon: CalendarClock,
           tone: stats.dueSoonCount > 0 ? 'warn' : 'neutral',
           href: overdueHref,
@@ -1073,7 +1023,6 @@ export default function DashboardPage() {
           id: 'active',
           label: 'Active Load',
           value: stats.activeSamples,
-          hint: `${stats.receivedToday} received today`,
           icon: FlaskConical,
           tone: 'neutral',
           href: receivingHref,
@@ -1082,7 +1031,6 @@ export default function DashboardPage() {
           id: 'tat',
           label: 'TAT Compliance',
           value: `${stats.tatComplianceRate}%`,
-          hint: stats.tatComplianceRate >= 90 ? 'Healthy turnaround' : 'Review delayed work',
           icon: Clock,
           tone: stats.tatComplianceRate >= 90 ? 'ok' : 'warn',
         },
@@ -1093,7 +1041,6 @@ export default function DashboardPage() {
           id: 'cal-overdue',
           label: 'Cal. Overdue',
           value: stats.calibrationOverdue,
-          hint: 'Equipment past calibration due',
           icon: CalendarClock,
           tone: stats.calibrationOverdue > 0 ? 'danger' : 'ok',
           href: '/masters/equipment',
@@ -1102,7 +1049,6 @@ export default function DashboardPage() {
           id: 'ic-maint',
           label: 'IC / Maint. Overdue',
           value: `${stats.intermediateOverdue}/${stats.maintenanceOverdue}`,
-          hint: 'Intermediate check & maintenance',
           icon: Wrench,
           tone:
             stats.intermediateOverdue + stats.maintenanceOverdue > 0 ? 'warn' : 'ok',
@@ -1112,7 +1058,6 @@ export default function DashboardPage() {
           id: 'equipment',
           label: 'Equipment Active',
           value: `${stats.equipmentActiveCount}/${stats.equipmentCount}`,
-          hint: 'Assets in service',
           icon: Wrench,
           tone: 'neutral',
           href: '/masters/equipment',
@@ -1155,158 +1100,6 @@ export default function DashboardPage() {
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
   }, [role.focusStages, access, stats])
-
-  const renderOverdueCard = () => {
-    if (!stats) return null
-    const sampleLimit = isDirector ? 10 : 8
-    const calLimit = isDirector ? 10 : 8
-    const sampleList = stats.delayedSamplesList.slice(0, sampleLimit)
-    const calList = stats.calibrationOverdueList.slice(0, calLimit)
-    const equipmentHref = canAccessPath('/masters/equipment', access) ? '/masters/equipment' : undefined
-    const totalOverdue = stats.delayedSamplesCount + stats.calibrationOverdue
-
-    return (
-      <div className={cn(limsPanelClass)}>
-        <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
-          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
-          <div className={limsDarkBarAccentClass} />
-          <div className="relative flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-              <AlertTriangle size={16} className="text-amber-300" />
-              Overdue Attention
-              {totalOverdue > 0 ? (
-                <span className="border border-amber-500/50 bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-100">
-                  {totalOverdue}
-                </span>
-              ) : null}
-            </h3>
-            <p className="text-[11px] text-stone-300">
-              Samples {stats.delayedSamplesCount} · Calibration {stats.calibrationOverdue}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 divide-y divide-stone-300 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-          <section className="min-w-0 bg-[#f7f3eb]/40">
-            <div className="flex items-center justify-between gap-2 border-b border-stone-300 bg-stone-100/80 px-4 py-2">
-              <h4 className="text-xs font-bold uppercase tracking-wide text-stone-800">Overdue Samples</h4>
-              <Badge
-                variant={stats.delayedSamplesCount > 0 ? 'warning' : 'success'}
-                className="rounded-none px-1.5 py-0 text-[10px]"
-              >
-                {stats.delayedSamplesCount}
-              </Badge>
-            </div>
-            {sampleList.length > 0 ? (
-              <div className="max-h-[280px] overflow-auto">
-                <table className="w-full border-collapse text-left text-[11px]">
-                  <thead className="sticky top-0 z-[1] bg-stone-200/95">
-                    <tr className="border-b border-stone-300 font-semibold uppercase tracking-wide text-stone-600">
-                      <th className="px-3 py-2">Sample</th>
-                      <th className="px-3 py-2">Client</th>
-                      <th className="hidden px-3 py-2 md:table-cell">Description</th>
-                      <th className="px-3 py-2">Stage</th>
-                      <th className="px-3 py-2 text-right">Due</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-200 bg-white">
-                    {sampleList.map((sample) => {
-                      const stagePath = stageHref(sample.stage ?? '')
-                      const href =
-                        stagePath && canAccessPath(stagePath, access)
-                          ? stagePath
-                          : role.primaryHref && canAccessPath(role.primaryHref, access)
-                            ? role.primaryHref
-                            : '/'
-                      return (
-                        <tr key={sample.id} className="hover:bg-amber-50/50">
-                          <td className="px-3 py-1.5 font-semibold text-amber-900">
-                            <NavLink to={href} className="hover:underline">
-                              {sample.sample_code || '—'}
-                            </NavLink>
-                          </td>
-                          <td className="max-w-[120px] truncate px-3 py-1.5 text-stone-700">
-                            {sample.client_name || '—'}
-                          </td>
-                          <td className="hidden max-w-[180px] truncate px-3 py-1.5 text-stone-600 md:table-cell">
-                            {sample.description || '—'}
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Badge variant="warning" className="rounded-none text-[9px] capitalize">
-                              {(sample.stage ?? 'receiving').replace(/_/g, ' ')}
-                            </Badge>
-                          </td>
-                          <td className="px-3 py-1.5 text-right font-medium tabular-nums text-red-700">
-                            {sample.tentative_date_by_lab || '—'}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="bg-white px-4 py-8 text-center text-xs text-stone-600">
-                <ShieldCheck size={22} className="mx-auto mb-1.5 text-emerald-600" />
-                All active samples are within target timelines.
-              </div>
-            )}
-          </section>
-
-          <section className="min-w-0 bg-[#f7f3eb]/40">
-            <div className="flex items-center justify-between gap-2 border-b border-stone-300 bg-stone-100/80 px-4 py-2">
-              <h4 className="text-xs font-bold uppercase tracking-wide text-stone-800">Overdue Calibration</h4>
-              <Badge
-                variant={stats.calibrationOverdue > 0 ? 'destructive' : 'success'}
-                className="rounded-none px-1.5 py-0 text-[10px]"
-              >
-                {stats.calibrationOverdue}
-              </Badge>
-            </div>
-            {calList.length > 0 ? (
-              <div className="max-h-[280px] overflow-auto">
-                <table className="w-full border-collapse text-left text-[11px]">
-                  <thead className="sticky top-0 z-[1] bg-stone-200/95">
-                    <tr className="border-b border-stone-300 font-semibold uppercase tracking-wide text-stone-600">
-                      <th className="px-3 py-2">Asset</th>
-                      <th className="px-3 py-2">Equipment</th>
-                      <th className="px-3 py-2 text-right">Cal. Due</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-200 bg-white">
-                    {calList.map((eq) => (
-                      <tr key={eq.id} className="hover:bg-amber-50/50">
-                        <td className="px-3 py-1.5 font-semibold text-amber-900">
-                          {equipmentHref ? (
-                            <NavLink to={equipmentHref} className="hover:underline">
-                              {eq.asset_code || '—'}
-                            </NavLink>
-                          ) : (
-                            eq.asset_code || '—'
-                          )}
-                        </td>
-                        <td className="max-w-[220px] truncate px-3 py-1.5 text-stone-700">
-                          {eq.equipment_name || '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-medium tabular-nums text-red-700">
-                          {eq.next_calibration_due || '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="bg-white px-4 py-8 text-center text-xs text-stone-600">
-                <ShieldCheck size={22} className="mx-auto mb-1.5 text-emerald-600" />
-                No equipment calibration is overdue.
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
-    )
-  }
 
   if (loading) {
     return (
@@ -1423,8 +1216,6 @@ export default function DashboardPage() {
           ))}
         </section>
       ) : null}
-
-      {renderOverdueCard()}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useShowAiButtons } from '@/hooks/useShowAiAssistant'
 import { limsOutlineBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import type { MaintenanceCheckpointRow } from './maintenanceChecklist'
@@ -20,6 +21,7 @@ export function ConductMaintenanceAssistant({
   onStatusMessage?: (message: string | null, isError?: boolean) => void
   disabled?: boolean
 }) {
+  const showAiButtons = useShowAiButtons()
   const [loading, setLoading] = useState(false)
 
   const handleGenerate = async () => {
@@ -38,6 +40,8 @@ export function ConductMaintenanceAssistant({
       setLoading(false)
     }
   }
+
+  if (!showAiButtons) return null
 
   return (
     <Button

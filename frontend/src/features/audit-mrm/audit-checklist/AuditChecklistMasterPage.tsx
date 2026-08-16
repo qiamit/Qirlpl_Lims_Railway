@@ -311,7 +311,15 @@ export default function AuditChecklistMasterPage() {
 
   return (
     <div className={limsPageShellClass}>
-      <AuditChecklistHeaderBar search={search} onSearchChange={setSearch} />
+      <AuditChecklistHeaderBar
+        search={search}
+        onSearchChange={setSearch}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+      />
 
       <AuditChecklistDialog
         open={showChecklist}
@@ -336,14 +344,8 @@ export default function AuditChecklistMasterPage() {
         message={message}
         loading={listLoading}
         selectedCount={selectedIds.size}
-        totalCount={filteredRows.length}
         page={page}
         pageCount={pageCount}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
         onExport={handleExport}
         onPrint={handlePrint}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}

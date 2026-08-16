@@ -26,8 +26,8 @@ export function CompletedResultsTable({
   onToggle,
   onToggleAll,
   onViewSrf,
-  onDownloadNabl,
-  onDownloadNonNabl,
+  onPrintNabl,
+  onPrintNonNabl,
   onReferbackToPreparation,
   onReferbackToResultsReview,
   canReferbackToResultsReview,
@@ -40,8 +40,8 @@ export function CompletedResultsTable({
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
   onViewSrf: (row: IssuedTestReportListRow) => void
-  onDownloadNabl: (row: IssuedTestReportListRow) => void
-  onDownloadNonNabl: (row: IssuedTestReportListRow) => void
+  onPrintNabl: (row: IssuedTestReportListRow) => void
+  onPrintNonNabl: (row: IssuedTestReportListRow) => void
   onReferbackToPreparation: (row: IssuedTestReportListRow) => void
   onReferbackToResultsReview: (row: IssuedTestReportListRow) => void
   canReferbackToResultsReview: boolean
@@ -152,8 +152,8 @@ export function CompletedResultsTable({
                       row={r}
                       busy={busy}
                       onViewSrf={onViewSrf}
-                      onDownloadNabl={onDownloadNabl}
-                      onDownloadNonNabl={onDownloadNonNabl}
+                      onPrintNabl={onPrintNabl}
+                      onPrintNonNabl={onPrintNonNabl}
                       onReferbackToPreparation={onReferbackToPreparation}
                       onReferbackToResultsReview={onReferbackToResultsReview}
                       canReferbackToResultsReview={canReferbackToResultsReview}

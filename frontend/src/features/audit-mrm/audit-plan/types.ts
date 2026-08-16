@@ -1,4 +1,5 @@
 import { getCompanyInitials } from '@/features/settings/lab-settings/brandMark'
+import { formatDate } from '@/lib/utils'
 
 export type AuditType = 'internal' | 'external'
 
@@ -221,7 +222,7 @@ export function nextAuditPlanId(firmInitials: string, existingIds: string[]): st
   return `${initials}/AP-${String(max + 1).padStart(2, '0')}`
 }
 
-export { formatDate } from '@/lib/utils'
+export { formatDate }
 
 export function formatProposedRange(from: string | null | undefined, to: string | null | undefined): string {
   const a = formatDate(from)

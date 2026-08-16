@@ -65,6 +65,7 @@ import {
   limsRegistryFormClass,
 } from '@/lib/limsThemeUi'
 import { sendQiAssistantMessage } from '@/components/qi-assistant/qiAssistantApi'
+import { useShowAiButtons } from '@/hooks/useShowAiAssistant'
 import {
   extractSectionHtmlFromAiReply,
   normalizeSectionHtml,
@@ -1031,6 +1032,7 @@ export function DraftSectionRichEditor({
   aiContext?: string
   fillHeight?: boolean
 }) {
+  const showAiButtons = useShowAiButtons()
   const [aiOpen, setAiOpen] = useState(false)
   const [aiOptions, setAiOptions] = useState<AiOptions>(defaultAiOptions)
   const [aiLoading, setAiLoading] = useState(false)
@@ -1217,25 +1219,27 @@ export function DraftSectionRichEditor({
             <Redo2 size={14} />
           </ToolbarBtn>
           <div className="ml-auto flex items-center gap-1">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 border-teal-300 text-teal-800 hover:bg-teal-50"
-              aria-label="AI assist"
-              onClick={() => {
-                setAiError(null)
-                const opts = defaultAiOptions()
-                if (editor.isActive('table') || /<table[\s>]/i.test(editor.getHTML())) {
-                  opts.action = 'update_table'
-                }
-                setAiOptions(opts)
-                setAiOpen(true)
-              }}
-            >
-              <Sparkles size={14} />
-              AI
-            </Button>
+            {showAiButtons ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 border-teal-300 text-teal-800 hover:bg-teal-50"
+                aria-label="AI assist"
+                onClick={() => {
+                  setAiError(null)
+                  const opts = defaultAiOptions()
+                  if (editor.isActive('table') || /<table[\s>]/i.test(editor.getHTML())) {
+                    opts.action = 'update_table'
+                  }
+                  setAiOptions(opts)
+                  setAiOpen(true)
+                }}
+              >
+                <Sparkles size={14} />
+                AI
+              </Button>
+            ) : null}
           </div>
         </div>
 

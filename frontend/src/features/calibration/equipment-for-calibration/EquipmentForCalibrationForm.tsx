@@ -71,6 +71,7 @@ import {
 } from './intermediateCheck'
 import { MeasurementUnitSelect } from '@/features/masters/measurement-units/MeasurementUnitSelect'
 import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
+import { LocationFieldWithAdd } from '@/components/lims/LocationFieldWithAdd'
 import { AddClientDialog } from '@/features/sample-handling/receiving/AddClientDialog'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -1114,10 +1115,14 @@ export function EquipmentForCalibrationForm({
             <Label htmlFor="efc-serial">Serial Number</Label>
             <Input id="efc-serial" value={form.serialNumber} onChange={(e) => set('serialNumber', e.target.value)} />
           </div>
-          <div className="min-w-0 space-y-0.5">
-            <Label htmlFor="efc-loc">Location</Label>
-            <Input id="efc-loc" value={form.currentLocation} onChange={(e) => set('currentLocation', e.target.value)} />
-          </div>
+          <LocationFieldWithAdd
+            inputId="efc-loc"
+            listId="efc-location-list"
+            label="Location"
+            value={form.currentLocation}
+            onChange={(currentLocation) => patchForm({ currentLocation })}
+            disabled={readOnly}
+          />
           <div className="min-w-0 space-y-0.5">
             <Label htmlFor="efc-range">Range / Capacity</Label>
             <div className={limsFieldWithAddShellClass}>

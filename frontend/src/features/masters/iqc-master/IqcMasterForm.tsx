@@ -39,6 +39,7 @@ import {
   type FilterComboboxOption,
 } from '@/features/sample-handling/receiving/FilterCombobox'
 import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
+import { LocationFieldWithAdd } from '@/components/lims/LocationFieldWithAdd'
 
 const sectionTitleClass =
   'mb-3 border-b border-amber-700/25 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800'
@@ -75,7 +76,7 @@ export function IqcMasterForm({
   onSave,
   clients,
   employees,
-  locations,
+  locations: _locations,
   onViewFile,
   activeSection,
   hideScheduleSections = false,
@@ -124,8 +125,6 @@ export function IqcMasterForm({
   const [custodianQuery, setCustodianQuery] = useState('')
   const [maintDoneByOpen, setMaintDoneByOpen] = useState(false)
   const [maintDoneByQuery, setMaintDoneByQuery] = useState('')
-  const [locationOpen, setLocationOpen] = useState(false)
-  const [locationQuery, setLocationQuery] = useState('')
 
   const {
     parsedReadings,
@@ -238,23 +237,6 @@ export function IqcMasterForm({
   const applyCustodianSelection = (employeeId: string) => {
     onChange({ ...form, custodianEmployeeId: employeeId })
   }
-
-  const locationOptions = useMemo<FilterComboboxOption[]>(
-    () =>
-      locations
-        .map((loc) => String(loc ?? '').trim())
-        .filter(Boolean)
-        .map((loc) => ({ id: loc, label: loc }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [locations],
-  )
-
-  const filteredLocationOptions = useMemo(() => {
-    const q = locationQuery.trim().toLowerCase()
-    if (!q || !locationOpen) return locationOptions
-    return locationOptions.filter((opt) => opt.label.toLowerCase().includes(q))
-  }, [locationQuery, locationOpen, locationOptions])
-
 
   const defaultLimit = parseAcceptanceLimit(form.accuracyAcceptanceCriteria)
 
@@ -1446,28 +1428,13 @@ export function IqcMasterForm({
                 </LimsFieldWithAdd>
               </div>
               <div className="min-w-0 space-y-0.5">
-                <Label htmlFor="iqc-location">Current Location</Label>
-                <FilterCombobox
+                <LocationFieldWithAdd
                   inputId="iqc-location"
                   listId="iqc-location-list"
-                  value={locationOpen ? locationQuery : form.currentLocation}
-                  onValueChange={(v) => {
-                    setLocationQuery(v)
-                    if (!locationOpen) setLocationOpen(true)
-                    if (!v.trim()) onChange({ ...form, currentLocation: '' })
-                  }}
-                  options={filteredLocationOptions}
-                  onSelectOption={(opt) => {
-                    onChange({ ...form, currentLocation: opt.label })
-                    setLocationQuery(opt.label)
-                    setLocationOpen(false)
-                  }}
-                  open={locationOpen}
-                  onOpenChange={(open) => {
-                    setLocationOpen(open)
-                    if (open) setLocationQuery(form.currentLocation)
-                  }}
-                  placeholder="Type to search department…"
+                  label="Current Location"
+                  value={form.currentLocation}
+                  onChange={(currentLocation) => onChange({ ...form, currentLocation })}
+                  disabled={readOnly}
                 />
               </div>
             </div>

@@ -13,7 +13,6 @@ import {
   ClientsPage,
   ConsentLetterPage,
   EquipmentPage,
-  IqcPage,
   CompletedResultsMasterPage,
   RetainDisposedMasterPage,
   ResultValidationPage,
@@ -38,7 +37,6 @@ import {
   CalibrationEquipmentsRoute,
   CalibrationServiceRequestRoute,
   EquipmentForCalibrationRoute,
-  MastersForIqcRoute,
   JobAllocationRoute,
   CalibrationConductRoute,
   CalibrationConductInsideRoute,
@@ -46,6 +44,7 @@ import {
   ReviewDataRoute,
   CertificatePreparationRoute,
   CalibrationCertificatesRoute,
+  CalibrationNablScopeRoute,
   SaleQuotationRoute,
   SaleProformaInvoiceRoute,
   SaleInvoiceRoute,
@@ -65,6 +64,29 @@ import {
   TrainingEvaluationRoute,
   InductionTrainingRoute,
   EffectivenessReviewRoute,
+  EmployeeListRoute,
+  EmployeeSelectionRoute,
+  RequiredCompetencyMatrixRoute,
+  ActualCompetencyMatrixRoute,
+  RolesResponsibilitiesRoute,
+  AuthoritiesRoute,
+  CustomerComplaintsRecordsRoute,
+  CustomerFeedbackRoute,
+  FeedbackEvaluationRoute,
+  EquipmentBreakdownRegisterRoute,
+  MaintenanceScheduleRoute,
+  CalibrationScheduleRoute,
+  EquipmentsForIqcRoute,
+  NonconformingWorkRecordsRoute,
+  NcWorkEvaluationActionsRoute,
+  NcWorkCorrectiveActionRoute,
+  ListOfObjectivesRoute,
+  RiskAnalysisRoute,
+  ImprovementRoute,
+  ExternallySupplierListRoute,
+  SupplierEvaluationRoute,
+  ListOfConsumablesRoute,
+  CrmListRoute,
 } from '@/routes/routeElements'
 
 function PlaceholderPage({ title, clause }: { title: string; clause: string }) {
@@ -136,7 +158,10 @@ export default function App() {
           <Route path="masters/product-services" element={<ProductServicesPage />} />
           <Route path="masters/test-parameter" element={<TestParameterPage />} />
           <Route path="masters/equipment" element={<EquipmentPage />} />
-          <Route path="masters/iqc" element={<IqcPage />} />
+          <Route
+            path="masters/iqc"
+            element={<Navigate to="/equipment-management/iqc" replace />}
+          />
 
           {/* Management Documentation */}
           <Route path="management-docs/level-1" element={<ManagementDocsLevel1Route />} />
@@ -157,6 +182,110 @@ export default function App() {
           <Route
             path="audit-mrm/management-review-meeting"
             element={<ManagementReviewMeetingRoute />}
+          />
+
+          {/* Personnel Management (ISO 17025 §6.2) */}
+          <Route path="personnel" element={<Navigate to="/personnel/employees" replace />} />
+          <Route path="personnel/employees" element={<EmployeeListRoute />} />
+          <Route path="personnel/selection" element={<EmployeeSelectionRoute />} />
+          <Route
+            path="personnel/required-competency-matrix"
+            element={<RequiredCompetencyMatrixRoute />}
+          />
+          <Route
+            path="personnel/actual-competency-matrix"
+            element={<ActualCompetencyMatrixRoute />}
+          />
+          <Route
+            path="personnel/roles-responsibilities"
+            element={<RolesResponsibilitiesRoute />}
+          />
+          <Route path="personnel/authorities" element={<AuthoritiesRoute />} />
+
+          {/* General Requirements (ISO 17025 related) */}
+          <Route
+            path="general-requirements"
+            element={<Navigate to="/general-requirements/list-of-objectives" replace />}
+          />
+          <Route
+            path="general-requirements/list-of-objectives"
+            element={<ListOfObjectivesRoute />}
+          />
+          <Route path="general-requirements/risk-analysis" element={<RiskAnalysisRoute />} />
+          <Route path="general-requirements/improvement" element={<ImprovementRoute />} />
+
+          {/* Externally Providers (ISO 17025 §6.6) */}
+          <Route
+            path="externally-providers"
+            element={<Navigate to="/externally-providers/supplier-list" replace />}
+          />
+          <Route
+            path="externally-providers/supplier-list"
+            element={<ExternallySupplierListRoute />}
+          />
+          <Route
+            path="externally-providers/supplier-evaluation"
+            element={<SupplierEvaluationRoute />}
+          />
+          <Route
+            path="externally-providers/list-of-consumables"
+            element={<ListOfConsumablesRoute />}
+          />
+
+          {/* Complaints Management (ISO 17025 §7.9) */}
+          <Route
+            path="complaints"
+            element={<Navigate to="/complaints/customer-complaints" replace />}
+          />
+          <Route
+            path="complaints/customer-complaints"
+            element={<CustomerComplaintsRecordsRoute />}
+          />
+          <Route
+            path="complaints/customer-feedback"
+            element={<CustomerFeedbackRoute />}
+          />
+          <Route
+            path="complaints/feedback-evaluation"
+            element={<FeedbackEvaluationRoute />}
+          />
+
+          {/* Non Conforming Work (ISO 17025 §7.10) */}
+          <Route
+            path="nonconforming-work"
+            element={<Navigate to="/nonconforming-work/records" replace />}
+          />
+          <Route
+            path="nonconforming-work/records"
+            element={<NonconformingWorkRecordsRoute />}
+          />
+          <Route
+            path="nonconforming-work/evaluation-actions"
+            element={<NcWorkEvaluationActionsRoute />}
+          />
+          <Route
+            path="nonconforming-work/corrective-action"
+            element={<NcWorkCorrectiveActionRoute />}
+          />
+
+          {/* Equipment Management (ISO 17025 §6.4) */}
+          <Route
+            path="equipment-management"
+            element={<Navigate to="/equipment-management/iqc" replace />}
+          />
+          <Route path="equipment-management/iqc" element={<EquipmentsForIqcRoute />} />
+          <Route path="equipment-management/crm-list" element={<CrmListRoute />} />
+          <Route
+            path="equipment-management/maintenance-schedule"
+            element={<MaintenanceScheduleRoute />}
+          />
+          <Route
+            path="equipment-management/calibration-schedule"
+            element={<CalibrationScheduleRoute />}
+          />
+          <Route
+            path="equipment-management/breakdown-register"
+            element={<EquipmentBreakdownRegisterRoute />}
           />
 
           {/* Training Management (ISO 17025 §6.2) */}
@@ -211,11 +340,15 @@ export default function App() {
             element={<CalibrationCertificatesRoute />}
           />
           <Route path="calibration/equipments" element={<CalibrationEquipmentsRoute />} />
+          <Route path="calibration/nabl-scope" element={<CalibrationNablScopeRoute />} />
           <Route
             path="calibration/equipment-for-calibration"
             element={<EquipmentForCalibrationRoute />}
           />
-          <Route path="calibration/masters-for-iqc" element={<MastersForIqcRoute />} />
+          <Route
+            path="calibration/masters-for-iqc"
+            element={<Navigate to="/equipment-management/iqc" replace />}
+          />
 
           {/* Finance Management · Sale */}
           <Route

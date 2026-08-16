@@ -26,6 +26,7 @@ import CalibrationEquipmentsPage from '@/features/calibration/equipments/Calibra
 import CalibrationHandlingPage from '@/features/calibration/handling/CalibrationHandlingPage'
 import CalibrationServiceRequestPage from '@/features/calibration/handling/CalibrationServiceRequestPage'
 import EquipmentForCalibrationPage from '@/features/calibration/equipment-for-calibration/EquipmentForCalibrationPage'
+import CalibrationNablScopePage from '@/features/calibration/nabl-scope/CalibrationNablScopePage'
 import MastersForIqcPage from '@/features/calibration/equipment-for-calibration/MastersForIqcPage'
 import JobAllocationPage from '@/features/calibration/handling/job-allocation/JobAllocationPage'
 import CalibrationConductPage from '@/features/calibration/handling/calibration-conduct/CalibrationConductPage'
@@ -53,6 +54,29 @@ import TrainingRegisterPage from '@/features/training/register/TrainingRegisterP
 import TrainingEvaluationPage from '@/features/training/evaluation/TrainingEvaluationPage'
 import InductionTrainingPage from '@/features/training/induction/InductionTrainingPage'
 import EffectivenessReviewPage from '@/features/training/effectiveness-review/EffectivenessReviewPage'
+import EmployeeListPage from '@/features/personnel/employees/EmployeeListPage'
+import EmployeeSelectionPage from '@/features/personnel/selection/EmployeeSelectionPage'
+import RequiredCompetencyMatrixPage from '@/features/personnel/required-competency-matrix/RequiredCompetencyMatrixPage'
+import ActualCompetencyMatrixPage from '@/features/personnel/actual-competency-matrix/ActualCompetencyMatrixPage'
+import RolesResponsibilitiesPage from '@/features/personnel/roles-responsibilities/RolesResponsibilitiesPage'
+import AuthoritiesPage from '@/features/personnel/authorities/AuthoritiesPage'
+import CustomerComplaintsRecordsPage from '@/features/complaints/customer-complaints/CustomerComplaintsRecordsPage'
+import CustomerFeedbackPage from '@/features/complaints/customer-feedback/CustomerFeedbackPage'
+import FeedbackEvaluationPage from '@/features/complaints/feedback-evaluation/FeedbackEvaluationPage'
+import EquipmentBreakdownRegisterPage from '@/features/equipment-management/breakdown-register/EquipmentBreakdownRegisterPage'
+import EquipmentsForIqcPage from '@/features/equipment-management/iqc/EquipmentsForIqcPage'
+import MaintenanceSchedulePage from '@/features/equipment-management/maintenance-schedule/MaintenanceSchedulePage'
+import CalibrationSchedulePage from '@/features/equipment-management/calibration-schedule/CalibrationSchedulePage'
+import NonconformingWorkRecordsPage from '@/features/nonconforming-work/records/NonconformingWorkRecordsPage'
+import NcWorkEvaluationActionsPage from '@/features/nonconforming-work/evaluation-actions/NcWorkEvaluationActionsPage'
+import NcWorkCorrectiveActionPage from '@/features/nonconforming-work/corrective-action/NcWorkCorrectiveActionPage'
+import ListOfObjectivesPage from '@/features/general-requirements/list-of-objectives/ListOfObjectivesPage'
+import RiskAnalysisPage from '@/features/general-requirements/risk-analysis/RiskAnalysisPage'
+import ImprovementPage from '@/features/general-requirements/improvement/ImprovementPage'
+import ExternallySupplierListPage from '@/features/externally-providers/supplier-list/ExternallySupplierListPage'
+import SupplierEvaluationPage from '@/features/externally-providers/supplier-evaluation/SupplierEvaluationPage'
+import ListOfConsumablesPage from '@/features/externally-providers/list-of-consumables/ListOfConsumablesPage'
+import CrmListPage from '@/features/equipment-management/crm-list/CrmListPage'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { RequireLaboratoryDirector } from '@/components/auth/RequireLaboratoryDirector'
 import { RequireSampleReceivingAccess } from '@/components/auth/RequireSampleReceivingAccess'
@@ -188,6 +212,10 @@ export function MastersForIqcRoute() {
   return <MastersForIqcPage />
 }
 
+export function CalibrationNablScopeRoute() {
+  return <CalibrationNablScopePage />
+}
+
 export function SaleQuotationRoute() {
   return <QuotationPage />
 }
@@ -262,6 +290,98 @@ export function InductionTrainingRoute() {
 
 export function EffectivenessReviewRoute() {
   return <EffectivenessReviewPage />
+}
+
+export function EmployeeListRoute() {
+  return <EmployeeListPage />
+}
+
+export function EmployeeSelectionRoute() {
+  return <EmployeeSelectionPage />
+}
+
+export function RequiredCompetencyMatrixRoute() {
+  return <RequiredCompetencyMatrixPage />
+}
+
+export function ActualCompetencyMatrixRoute() {
+  return <ActualCompetencyMatrixPage />
+}
+
+export function RolesResponsibilitiesRoute() {
+  return <RolesResponsibilitiesPage />
+}
+
+export function AuthoritiesRoute() {
+  return <AuthoritiesPage />
+}
+
+export function CustomerComplaintsRecordsRoute() {
+  return <CustomerComplaintsRecordsPage />
+}
+
+export function CustomerFeedbackRoute() {
+  return <CustomerFeedbackPage />
+}
+
+export function FeedbackEvaluationRoute() {
+  return <FeedbackEvaluationPage />
+}
+
+export function EquipmentBreakdownRegisterRoute() {
+  return <EquipmentBreakdownRegisterPage />
+}
+
+export function MaintenanceScheduleRoute() {
+  return <MaintenanceSchedulePage />
+}
+
+export function CalibrationScheduleRoute() {
+  return <CalibrationSchedulePage />
+}
+
+export function EquipmentsForIqcRoute() {
+  return <EquipmentsForIqcPage />
+}
+
+export function NonconformingWorkRecordsRoute() {
+  return <NonconformingWorkRecordsPage />
+}
+
+export function NcWorkEvaluationActionsRoute() {
+  return <NcWorkEvaluationActionsPage />
+}
+
+export function NcWorkCorrectiveActionRoute() {
+  return <NcWorkCorrectiveActionPage />
+}
+
+export function ListOfObjectivesRoute() {
+  return <ListOfObjectivesPage />
+}
+
+export function RiskAnalysisRoute() {
+  return <RiskAnalysisPage />
+}
+
+export function ImprovementRoute() {
+  return <ImprovementPage />
+}
+
+export function ExternallySupplierListRoute() {
+  return <ExternallySupplierListPage />
+}
+
+export function SupplierEvaluationRoute() {
+  return <SupplierEvaluationPage />
+}
+
+export function ListOfConsumablesRoute() {
+  return <ListOfConsumablesPage />
+}
+
+export function CrmListRoute() {
+  return <CrmListPage />
 }
 
 export {

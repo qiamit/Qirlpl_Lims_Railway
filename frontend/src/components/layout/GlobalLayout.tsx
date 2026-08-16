@@ -38,6 +38,26 @@ import {
   UserRoundCheck,
   ListChecks,
   Award,
+  UsersRound,
+  IdCard,
+  UserCheck,
+  Grid3x3,
+  Briefcase,
+  MessageSquareWarning,
+  MessagesSquare,
+  Star,
+  HardDrive,
+  AlertTriangle,
+  CircleAlert,
+  Scale,
+  RefreshCw,
+  CalendarClock,
+  BookMarked,
+  ListTodo,
+  Truck,
+  Building2,
+  BadgeCheck,
+  TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -119,8 +139,23 @@ function useNavSectionOpen(initialOpen = false) {
   return { open, setOpen, toggleOpen }
 }
 
+function navItemMatchesPath(item: NavItem, pathname: string): boolean {
+  if (item.to && (pathname === item.to || pathname.startsWith(`${item.to}/`))) return true
+  return (item.children ?? []).some((c) => navItemMatchesPath(c, pathname))
+}
+
+function sectionContainsPath(section: NavSection, pathname: string): boolean {
+  return section.items.some((item) => navItemMatchesPath(item, pathname))
+}
+
 function SidebarMainNav() {
+  const location = useLocation()
   const [openSectionId, setOpenSectionId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const match = NAV_SECTIONS.find((s) => sectionContainsPath(s, location.pathname))
+    if (match) setOpenSectionId(match.clause)
+  }, [location.pathname])
 
   return (
     <nav className="w-full min-w-0 max-w-full space-y-2 overflow-x-hidden px-2 pb-3" aria-label="Main navigation">
@@ -165,126 +200,325 @@ const NAV_SECTIONS: NavSection[] = [
     icon: FolderOpen,
     items: [
       {
-        label: 'Level 1 Documents',
-        to: '/management-docs/level-1',
-        icon: FileText,
-        clause: 'Level 1',
+        label: 'Master Document',
+        icon: FolderOpen,
+        clause: 'master-document',
+        children: [
+          {
+            label: 'Level 1 Documents',
+            to: '/management-docs/level-1',
+            icon: FileText,
+            clause: 'Level 1',
+          },
+          {
+            label: 'Level 2 Documents',
+            to: '/management-docs/level-2',
+            icon: FileText,
+            clause: 'Level 2',
+          },
+          {
+            label: 'Level 3 Documents',
+            to: '/management-docs/level-3',
+            icon: FileText,
+            clause: 'Level 3',
+          },
+          {
+            label: 'Level 4 Documents',
+            to: '/management-docs/level-4',
+            icon: FileText,
+            clause: 'Level 4',
+          },
+        ],
       },
       {
-        label: 'Level 2 Documents',
-        to: '/management-docs/level-2',
-        icon: FileText,
-        clause: 'Level 2',
+        label: 'General Requirements',
+        icon: BookMarked,
+        clause: 'general-requirements',
+        children: [
+          {
+            label: 'List of Objectives',
+            to: '/general-requirements/list-of-objectives',
+            icon: ListTodo,
+            clause: '8.2',
+          },
+          {
+            label: 'Risk Analysis',
+            to: '/general-requirements/risk-analysis',
+            icon: AlertTriangle,
+            clause: '8.5',
+          },
+          {
+            label: 'Improvement',
+            to: '/general-requirements/improvement',
+            icon: TrendingUp,
+            clause: '8.6',
+          },
+        ],
       },
       {
-        label: 'Level 3 Documents',
-        to: '/management-docs/level-3',
-        icon: FileText,
-        clause: 'Level 3',
+        label: 'Audit & MRM Management',
+        icon: FileSearch,
+        clause: 'audit-mrm-management',
+        children: [
+          {
+            label: 'Audit Plan',
+            to: '/audit-mrm/audit-plan',
+            icon: ClipboardList,
+            clause: 'audit',
+          },
+          {
+            label: 'Audit Checklist',
+            to: '/audit-mrm/audit-checklist',
+            icon: ClipboardCheck,
+            clause: 'audit',
+          },
+          {
+            label: 'Audit Summary',
+            to: '/audit-mrm/audit-summary',
+            icon: FileText,
+            clause: 'audit',
+          },
+          {
+            label: 'Non Conformities',
+            to: '/audit-mrm/non-conformities',
+            icon: ShieldCheck,
+            clause: 'audit',
+          },
+          {
+            label: 'MRM Plan & Agenda',
+            to: '/audit-mrm/mrm-agenda',
+            icon: BookOpen,
+            clause: 'mrm',
+          },
+          {
+            label: 'Management Review Meeting',
+            to: '/audit-mrm/management-review-meeting',
+            icon: Users,
+            clause: 'mrm',
+          },
+        ],
       },
       {
-        label: 'Level 4 Documents',
-        to: '/management-docs/level-4',
-        icon: FileText,
-        clause: 'Level 4',
+        label: 'Personnel Management',
+        icon: UsersRound,
+        clause: 'personnel-management',
+        children: [
+          {
+            label: 'List of Employees with All Details',
+            to: '/personnel/employees',
+            icon: IdCard,
+            clause: '6.2',
+          },
+          {
+            label: 'Selection of Employee',
+            to: '/personnel/selection',
+            icon: UserCheck,
+            clause: '6.2',
+          },
+          {
+            label: 'Required Competency Matrix',
+            to: '/personnel/required-competency-matrix',
+            icon: ListChecks,
+            clause: '6.2',
+          },
+          {
+            label: 'Actual Competency Matrix',
+            to: '/personnel/actual-competency-matrix',
+            icon: Grid3x3,
+            clause: '6.2',
+          },
+          {
+            label: 'Roles & Responsibilities',
+            to: '/personnel/roles-responsibilities',
+            icon: Briefcase,
+            clause: '6.2',
+          },
+          {
+            label: 'Authorities',
+            to: '/personnel/authorities',
+            icon: Shield,
+            clause: '6.2',
+          },
+        ],
+      },
+      {
+        label: 'Complaints Management',
+        icon: MessageSquareWarning,
+        clause: 'complaints-management',
+        children: [
+          {
+            label: 'Customer Complaints Records',
+            to: '/complaints/customer-complaints',
+            icon: MessagesSquare,
+            clause: '7.9',
+          },
+          {
+            label: 'Customer Feedback',
+            to: '/complaints/customer-feedback',
+            icon: Star,
+            clause: '7.9',
+          },
+          {
+            label: 'Feedback Evaluation',
+            to: '/complaints/feedback-evaluation',
+            icon: ClipboardPen,
+            clause: '7.9',
+          },
+        ],
+      },
+      {
+        label: 'Non Conforming Work',
+        icon: CircleAlert,
+        clause: 'nonconforming-work',
+        children: [
+          {
+            label: 'Nonconforming Work Records',
+            to: '/nonconforming-work/records',
+            icon: ClipboardList,
+            clause: '7.10.2',
+          },
+          {
+            label: 'Evaluation, Actions & Decisions',
+            to: '/nonconforming-work/evaluation-actions',
+            icon: Scale,
+            clause: '7.10.1 b–f',
+          },
+          {
+            label: 'Corrective Action',
+            to: '/nonconforming-work/corrective-action',
+            icon: RefreshCw,
+            clause: '7.10.3',
+          },
+        ],
+      },
+      {
+        label: 'Externally Providers',
+        icon: Truck,
+        clause: 'externally-providers',
+        children: [
+          {
+            label: 'Externally Supplier List',
+            to: '/externally-providers/supplier-list',
+            icon: Building2,
+            clause: '6.6',
+          },
+          {
+            label: 'Supplier Evaluation',
+            to: '/externally-providers/supplier-evaluation',
+            icon: BadgeCheck,
+            clause: '6.6',
+          },
+          {
+            label: 'List of Consumables',
+            to: '/externally-providers/list-of-consumables',
+            icon: Package,
+            clause: '6.6',
+          },
+        ],
+      },
+      {
+        label: 'Training Management',
+        icon: GraduationCap,
+        clause: 'training-management',
+        children: [
+          {
+            label: 'Competency Matrix',
+            to: '/training/competency-matrix',
+            icon: ListChecks,
+            clause: '6.2',
+          },
+          {
+            label: 'Training Need Identification',
+            to: '/training/need-identification',
+            icon: Target,
+            clause: '6.2',
+          },
+          {
+            label: 'Training Plan',
+            to: '/training/plan',
+            icon: ClipboardList,
+            clause: '6.2',
+          },
+          {
+            label: 'Training Calendar',
+            to: '/training/calendar',
+            icon: CalendarDays,
+            clause: '6.2',
+          },
+          {
+            label: 'Training Register',
+            to: '/training/register',
+            icon: BookOpen,
+            clause: '6.2',
+          },
+          {
+            label: 'Training Evaluation',
+            to: '/training/evaluation',
+            icon: ClipboardPen,
+            clause: '6.2',
+          },
+          {
+            label: 'Induction Training',
+            to: '/training/induction',
+            icon: UserRoundCheck,
+            clause: '6.2',
+          },
+          {
+            label: 'Effectiveness Review',
+            to: '/training/effectiveness-review',
+            icon: Award,
+            clause: '6.2',
+          },
+        ],
       },
     ],
   },
   {
-    title: 'Audit & MRM Management',
-    clause: 'audit-mrm-management',
-    icon: FileSearch,
+    title: 'Equipment Management',
+    clause: 'equipment-management',
+    icon: HardDrive,
     items: [
       {
-        label: 'Audit Plan',
-        to: '/audit-mrm/audit-plan',
-        icon: ClipboardList,
-        clause: 'audit',
+        label: 'Master Equipment of Calibration',
+        to: '/calibration/equipment-for-calibration',
+        icon: Gauge,
+        clause: '6.4',
       },
       {
-        label: 'Audit Checklist',
-        to: '/audit-mrm/audit-checklist',
+        label: 'Master Equipment of Testing',
+        to: '/masters/equipment',
+        icon: Wrench,
+        clause: '6.4',
+      },
+      {
+        label: 'Equipments for IQC',
+        to: '/equipment-management/iqc',
         icon: ClipboardCheck,
-        clause: 'audit',
+        clause: '6.4',
       },
       {
-        label: 'Audit Summary',
-        to: '/audit-mrm/audit-summary',
-        icon: FileText,
-        clause: 'audit',
+        label: 'List of CRM',
+        to: '/equipment-management/crm-list',
+        icon: FlaskConical,
+        clause: '6.4',
       },
       {
-        label: 'Non Conformities',
-        to: '/audit-mrm/non-conformities',
-        icon: ShieldCheck,
-        clause: 'audit',
+        label: 'Maintenance Schedule',
+        to: '/equipment-management/maintenance-schedule',
+        icon: CalendarClock,
+        clause: '6.4',
       },
       {
-        label: 'MRM Agenda',
-        to: '/audit-mrm/mrm-agenda',
-        icon: BookOpen,
-        clause: 'mrm',
-      },
-      {
-        label: 'Management Review Meeting',
-        to: '/audit-mrm/management-review-meeting',
-        icon: Users,
-        clause: 'mrm',
-      },
-    ],
-  },
-  {
-    title: 'Training Management',
-    clause: 'training-management',
-    icon: GraduationCap,
-    items: [
-      {
-        label: 'Competency Matrix',
-        to: '/training/competency-matrix',
-        icon: ListChecks,
-        clause: '6.2',
-      },
-      {
-        label: 'Training Need Identification',
-        to: '/training/need-identification',
-        icon: Target,
-        clause: '6.2',
-      },
-      {
-        label: 'Training Plan',
-        to: '/training/plan',
-        icon: ClipboardList,
-        clause: '6.2',
-      },
-      {
-        label: 'Training Calendar',
-        to: '/training/calendar',
+        label: 'Calibration Schedule',
+        to: '/equipment-management/calibration-schedule',
         icon: CalendarDays,
-        clause: '6.2',
+        clause: '6.4',
       },
       {
-        label: 'Training Register',
-        to: '/training/register',
-        icon: BookOpen,
-        clause: '6.2',
-      },
-      {
-        label: 'Training Evaluation',
-        to: '/training/evaluation',
-        icon: ClipboardPen,
-        clause: '6.2',
-      },
-      {
-        label: 'Induction Training',
-        to: '/training/induction',
-        icon: UserRoundCheck,
-        clause: '6.2',
-      },
-      {
-        label: 'Effectiveness Review',
-        to: '/training/effectiveness-review',
-        icon: Award,
-        clause: '6.2',
+        label: 'Equipment Breakdown Register',
+        to: '/equipment-management/breakdown-register',
+        icon: AlertTriangle,
+        clause: '6.4',
       },
     ],
   },
@@ -344,8 +578,6 @@ const NAV_SECTIONS: NavSection[] = [
       RESULT_VALIDATION_NAV,
       { label: 'NABL Scope', to: '/masters/nabl-scope', icon: ShieldCheck },
       { label: 'Test Parameter', to: '/masters/test-parameter', icon: TestTube },
-      { label: 'Equipment Master', to: '/masters/equipment', icon: Wrench },
-      { label: 'Masters for IQC', to: '/masters/iqc', icon: Wrench },
     ],
   },
   {
@@ -403,15 +635,9 @@ const NAV_SECTIONS: NavSection[] = [
         clause: '6.4',
       },
       {
-        label: 'Master Equipments',
-        to: '/calibration/equipment-for-calibration',
-        icon: Gauge,
-        clause: '6.4',
-      },
-      {
-        label: 'Masters for IQC',
-        to: '/calibration/masters-for-iqc',
-        icon: Gauge,
+        label: 'NABL Scope',
+        to: '/calibration/nabl-scope',
+        icon: ShieldCheck,
         clause: '6.4',
       },
     ],
@@ -500,8 +726,11 @@ const ROUTE_LABELS: Record<string, string> = {
   '/masters/nabl-scope': 'NABL Scope',
   '/masters/product-services': 'Master Managements / Product & Services',
   '/masters/test-parameter': 'Test Parameter',
-  '/masters/equipment': 'Equipment Master',
-  '/masters/iqc': 'Masters for IQC',
+  '/masters/equipment': 'Equipment Management / Master Equipment of Testing',
+  '/masters/iqc': 'Equipment Management / Equipments for IQC',
+  '/equipment-management/iqc': 'Equipment Management / Equipments for IQC',
+  '/calibration/masters-for-iqc': 'Equipment Management / Equipments for IQC',
+  '/calibration/masters-for-iqc': 'Equipment Management / Equipments for IQC',
   '/calibration/handling': 'Calibration LIMS / Calibration Handling',
   '/calibration/handling/service-request': 'Calibration Handling / Service Request',
   '/calibration/handling/job-allocation': 'Calibration Handling / Job Allocation',
@@ -515,33 +744,90 @@ const ROUTE_LABELS: Record<string, string> = {
     'Calibration Handling / Certificate Preparation',
   '/calibration/handling/certificates': 'Calibration Handling / Calibration Certificates',
   '/calibration/equipments': 'Calibration LIMS / Calibration Equipments',
-  '/calibration/equipment-for-calibration': 'Calibration LIMS / Master Equipments',
-  '/calibration/masters-for-iqc': 'Calibration LIMS / Masters for IQC',
+  '/calibration/nabl-scope': 'Calibration LIMS / NABL Scope',
+  '/calibration/equipment-for-calibration':
+    'Equipment Management / Master Equipment of Calibration',
   '/finance/sale': 'Finance Management / Sale',
   '/finance/sale/quotation': 'Finance Management / Sale / Quotation',
   '/finance/sale/proforma-invoice': 'Finance Management / Sale / Proforma Invoice',
   '/finance/sale/invoice': 'Finance Management / Sale / Invoice',
   '/finance/sale/credit-note': 'Finance Management / Sale / Credit Note',
   '/finance/sale/payment-receipt': 'Finance Management / Sale / Payment Receipt',
-  '/management-docs/level-1': 'Management Documentation / Level 1 Documents',
-  '/management-docs/level-2': 'Management Documentation / Level 2 Documents',
-  '/management-docs/level-3': 'Management Documentation / Level 3 Documents',
-  '/management-docs/level-4': 'Management Documentation / Level 4 Documents',
-  '/audit-mrm/audit-plan': 'Audit & MRM Management / Audit Plan',
-  '/audit-mrm/audit-checklist': 'Audit & MRM Management / Audit Checklist',
-  '/audit-mrm/audit-summary': 'Audit & MRM Management / Audit Summary',
-  '/audit-mrm/non-conformities': 'Audit & MRM Management / Non Conformities',
-  '/audit-mrm/mrm-agenda': 'Audit & MRM Management / MRM Agenda',
+  '/general-requirements/list-of-objectives':
+    'Management Documentation / General Requirements / List of Objectives',
+  '/general-requirements/risk-analysis':
+    'Management Documentation / General Requirements / Risk Analysis',
+  '/general-requirements/improvement':
+    'Management Documentation / General Requirements / Improvement',
+  '/management-docs/level-1':
+    'Management Documentation / Master Document / Level 1 Documents',
+  '/management-docs/level-2':
+    'Management Documentation / Master Document / Level 2 Documents',
+  '/management-docs/level-3':
+    'Management Documentation / Master Document / Level 3 Documents',
+  '/management-docs/level-4':
+    'Management Documentation / Master Document / Level 4 Documents',
+  '/audit-mrm/audit-plan': 'Management Documentation / Audit & MRM Management / Audit Plan',
+  '/audit-mrm/audit-checklist':
+    'Management Documentation / Audit & MRM Management / Audit Checklist',
+  '/audit-mrm/audit-summary':
+    'Management Documentation / Audit & MRM Management / Audit Summary',
+  '/audit-mrm/non-conformities':
+    'Management Documentation / Audit & MRM Management / Non Conformities',
+  '/audit-mrm/mrm-agenda':
+    'Management Documentation / Audit & MRM Management / MRM Plan & Agenda',
   '/audit-mrm/management-review-meeting':
-    'Audit & MRM Management / Management Review Meeting',
-  '/training/competency-matrix': 'Training Management / Competency Matrix',
-  '/training/need-identification': 'Training Management / Training Need Identification',
-  '/training/plan': 'Training Management / Training Plan',
-  '/training/calendar': 'Training Management / Training Calendar',
-  '/training/register': 'Training Management / Training Register',
-  '/training/evaluation': 'Training Management / Training Evaluation',
-  '/training/induction': 'Training Management / Induction Training',
-  '/training/effectiveness-review': 'Training Management / Effectiveness Review',
+    'Management Documentation / Audit & MRM Management / Management Review Meeting',
+  '/personnel/employees':
+    'Management Documentation / Personnel Management / List of Employees with All Details',
+  '/personnel/selection':
+    'Management Documentation / Personnel Management / Selection of Employee',
+  '/personnel/required-competency-matrix':
+    'Management Documentation / Personnel Management / Required Competency Matrix',
+  '/personnel/actual-competency-matrix':
+    'Management Documentation / Personnel Management / Actual Competency Matrix',
+  '/personnel/roles-responsibilities':
+    'Management Documentation / Personnel Management / Roles & Responsibilities',
+  '/personnel/authorities':
+    'Management Documentation / Personnel Management / Authorities',
+  '/complaints/customer-complaints':
+    'Management Documentation / Complaints Management / Customer Complaints Records',
+  '/complaints/customer-feedback':
+    'Management Documentation / Complaints Management / Customer Feedback',
+  '/complaints/feedback-evaluation':
+    'Management Documentation / Complaints Management / Feedback Evaluation',
+  '/nonconforming-work/records':
+    'Management Documentation / Non Conforming Work / Nonconforming Work Records',
+  '/nonconforming-work/evaluation-actions':
+    'Management Documentation / Non Conforming Work / Evaluation, Actions & Decisions',
+  '/nonconforming-work/corrective-action':
+    'Management Documentation / Non Conforming Work / Corrective Action',
+  '/equipment-management/crm-list': 'Equipment Management / List of CRM',
+  '/equipment-management/maintenance-schedule':
+    'Equipment Management / Maintenance Schedule',
+  '/equipment-management/calibration-schedule':
+    'Equipment Management / Calibration Schedule',
+  '/equipment-management/breakdown-register':
+    'Equipment Management / Equipment Breakdown Register',
+  '/externally-providers/supplier-list':
+    'Management Documentation / Externally Providers / Externally Supplier List',
+  '/externally-providers/supplier-evaluation':
+    'Management Documentation / Externally Providers / Supplier Evaluation',
+  '/externally-providers/list-of-consumables':
+    'Management Documentation / Externally Providers / List of Consumables',
+  '/training/competency-matrix':
+    'Management Documentation / Training Management / Competency Matrix',
+  '/training/need-identification':
+    'Management Documentation / Training Management / Training Need Identification',
+  '/training/plan': 'Management Documentation / Training Management / Training Plan',
+  '/training/calendar': 'Management Documentation / Training Management / Training Calendar',
+  '/training/register': 'Management Documentation / Training Management / Training Register',
+  '/training/evaluation':
+    'Management Documentation / Training Management / Training Evaluation',
+  '/training/induction':
+    'Management Documentation / Training Management / Induction Training',
+  '/training/effectiveness-review':
+    'Management Documentation / Training Management / Effectiveness Review',
   '/lab-settings': 'Lab Settings',
   '/lab-settings/user-management': 'User Management',
   '/lab-settings/module-access': 'Module Access',
@@ -552,7 +838,13 @@ const ROUTE_LABELS: Record<string, string> = {
 
 function Breadcrumbs() {
   const location = useLocation()
-  const label = ROUTE_LABELS[location.pathname]
+  let label = ROUTE_LABELS[location.pathname]
+  if (
+    location.pathname === '/nonconforming-work/corrective-action' &&
+    new URLSearchParams(location.search).get('source') === 'audit'
+  ) {
+    label = 'Management Documentation / Audit & MRM Management / Non Conformities (Corrective Action)'
+  }
 
   if (!label || location.pathname === '/') return null
 
@@ -671,7 +963,11 @@ function NavItemGroup({ item, collapsed }: { item: NavItem; collapsed: boolean }
     })
   }, [visibleChildren, location.pathname])
 
-  const { open, toggleOpen } = useNavSectionOpen(false)
+  const { open, setOpen, toggleOpen } = useNavSectionOpen(isAnyChildActive)
+
+  useEffect(() => {
+    if (isAnyChildActive) setOpen(true)
+  }, [isAnyChildActive, setOpen])
 
   if (visibleChildren.length === 0) return null
 
