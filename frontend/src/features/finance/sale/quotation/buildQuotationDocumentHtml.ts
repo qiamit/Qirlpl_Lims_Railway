@@ -1,4 +1,5 @@
 import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/report-preparation/reportScopeConfig'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 import {
   documentMetaFieldLabels,
   type DocumentTemplateKind,
@@ -350,8 +351,8 @@ function buildOneQuotationHtml(
         ${tpl.lineShowHsn ? `<td class="c">${cell(l.hsn_sac)}</td>` : ''}
         ${tpl.lineShowQty ? `<td class="c">${cell(String(l.quantity))}</td>` : ''}
         ${tpl.lineShowUnit ? `<td class="c">${cell(l.unit)}</td>` : ''}
-        ${tpl.lineShowRate ? `<td class="r">₹ ${esc(formatMoney(l.rate))}</td>` : ''}
-        ${tpl.lineShowAmount ? `<td class="r">₹ ${esc(formatMoney(lineAmt))}</td>` : ''}
+        ${tpl.lineShowRate ? `<td class="r">${getCurrencySymbol()} ${esc(formatMoney(l.rate))}</td>` : ''}
+        ${tpl.lineShowAmount ? `<td class="r">${getCurrencySymbol()} ${esc(formatMoney(lineAmt))}</td>` : ''}
       </tr>`
     })
     .join('')
@@ -387,47 +388,47 @@ function buildOneQuotationHtml(
   const totalRows: string[] = []
   if (tpl.showBasicAmount) {
     totalRows.push(
-      `<tr><td class="k">Basic Amount</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(row.subtotal))}</td></tr>`,
+      `<tr><td class="k">Basic Amount</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(row.subtotal))}</td></tr>`,
     )
   }
   if (tpl.showDiscount && Number(row.discount_amount) > 0) {
     totalRows.push(
-      `<tr><td class="k">Discount</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(row.discount_amount))}</td></tr>`,
+      `<tr><td class="k">Discount</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(row.discount_amount))}</td></tr>`,
     )
   }
   if (tpl.showTransportationCharges && Number(row.transportation_charges ?? 0) > 0) {
     totalRows.push(
-      `<tr><td class="k">Transportation Charges</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(row.transportation_charges ?? 0))}</td></tr>`,
+      `<tr><td class="k">Transportation Charges</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(row.transportation_charges ?? 0))}</td></tr>`,
     )
   }
   if (tpl.showPackagingCharge && Number(row.packaging_charges ?? 0) > 0) {
     totalRows.push(
-      `<tr><td class="k">Packaging Charge</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(row.packaging_charges ?? 0))}</td></tr>`,
+      `<tr><td class="k">Packaging Charge</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(row.packaging_charges ?? 0))}</td></tr>`,
     )
   }
   if (tpl.showGstAmount) {
     totalRows.push(
-      `<tr><td class="k">GST Amount</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(row.gst_amount))}</td></tr>`,
+      `<tr><td class="k">GST Amount</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(row.gst_amount))}</td></tr>`,
     )
   }
   if (tpl.showCgst) {
     totalRows.push(
-      `<tr><td class="k">CGST</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(cgstTotal))}</td></tr>`,
+      `<tr><td class="k">CGST</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(cgstTotal))}</td></tr>`,
     )
   }
   if (tpl.showSgst) {
     totalRows.push(
-      `<tr><td class="k">SGST</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(sgstTotal))}</td></tr>`,
+      `<tr><td class="k">SGST</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(sgstTotal))}</td></tr>`,
     )
   }
   if (tpl.showIgst) {
     totalRows.push(
-      `<tr><td class="k">IGST</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(igstTotal))}</td></tr>`,
+      `<tr><td class="k">IGST</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(igstTotal))}</td></tr>`,
     )
   }
   if (tpl.showGrandTotal) {
     totalRows.push(
-      `<tr class="grand"><td class="k">Grand Total</td><td class="sep">:</td><td class="v">₹ ${esc(formatMoney(row.grand_total))}</td></tr>`,
+      `<tr class="grand"><td class="k">Grand Total</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(row.grand_total))}</td></tr>`,
     )
   }
 

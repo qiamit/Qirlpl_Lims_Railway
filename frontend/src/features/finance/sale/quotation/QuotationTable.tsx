@@ -1,4 +1,5 @@
 import { Copy, Download, Pencil, Printer } from 'lucide-react'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -236,7 +237,7 @@ export function QuotationTable({
                   {paymentLedger && ledger ? (
                     <>
                       <TableCell className="text-center align-middle text-sm tabular-nums">
-                        <span className="font-medium">₹ {formatMoney(ledger.opening.amount)}</span>
+                        <span className="font-medium">{getCurrencySymbol()} {formatMoney(ledger.opening.amount)}</span>
                         <span
                           className={cn(
                             'ml-1 text-[11px] font-bold uppercase',
@@ -247,10 +248,10 @@ export function QuotationTable({
                         </span>
                       </TableCell>
                       <TableCell className="text-center align-middle text-sm font-medium tabular-nums">
-                        ₹ {formatMoney(ledger.received)}
+                        {getCurrencySymbol()} {formatMoney(ledger.received)}
                       </TableCell>
                       <TableCell className="text-center align-middle text-sm tabular-nums">
-                        <span className="font-medium">₹ {formatMoney(ledger.after.amount)}</span>
+                        <span className="font-medium">{getCurrencySymbol()} {formatMoney(ledger.after.amount)}</span>
                         <span
                           className={cn(
                             'ml-1 text-[11px] font-bold uppercase',
@@ -302,7 +303,7 @@ export function QuotationTable({
                     </Select>
                   </TableCell>
                   <TableCell className="text-center align-middle text-sm font-medium tabular-nums">
-                    ₹ {formatMoney(r.grand_total)}
+                    {getCurrencySymbol()} {formatMoney(r.grand_total)}
                   </TableCell>
                     </>
                   )}

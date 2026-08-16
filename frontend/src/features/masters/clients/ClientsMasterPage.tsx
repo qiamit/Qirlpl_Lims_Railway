@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -1203,7 +1204,7 @@ function buildClientsPrintHtml(rows: ClientRow[]) {
             <div class="field span2"><div class="k">Contact / Mobile / Email</div><div class="v mono">${esc(contactLine)}</div></div>
             <div class="field span2"><div class="k">Address</div><div class="v">${esc(address)}</div></div>
             <div class="field span2"><div class="k">Remark</div><div class="v">${esc(r.remark || '-')}</div></div>
-            <div class="field"><div class="k">Opening Balance</div><div class="v">₹ ${esc(String(r.opening_balance ?? 0))} (${esc(r.balance_type)})</div></div>
+            <div class="field"><div class="k">Opening Balance</div><div class="v">${getCurrencySymbol()} ${esc(String(r.opening_balance ?? 0))} (${esc(r.balance_type)})</div></div>
             <div class="field"><div class="k">Payment Term</div><div class="v">${esc(r.payment_term)}</div></div>
           </div>
         </section>

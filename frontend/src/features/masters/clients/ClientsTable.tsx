@@ -5,6 +5,7 @@ import type { ClientRow } from './types'
 import { formatClientAddress, formatClientContact, formatClientContactLines } from './types'
 import { clientPanelClass } from './clientsFormUi'
 import { cn } from '@/lib/utils'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 
 const GRID_TABLE =
   'table-fixed min-w-[920px] w-full border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4] [&_th]:p-[1mm] [&_td]:!p-[1mm]'
@@ -200,7 +201,7 @@ export function ClientsTable({
                       <p className={cn('text-[11px] font-bold uppercase tracking-[0.12em]', balanceTone)}>
                         {r.balance_type}
                       </p>
-                      <p className={moneyClass}>₹ {formatMoney(r.opening_balance)}</p>
+                      <p className={moneyClass}>{getCurrencySymbol()} {formatMoney(r.opening_balance)}</p>
                       <p className={secondaryLineClass}>{r.payment_term}</p>
                     </div>
                   </TableCell>

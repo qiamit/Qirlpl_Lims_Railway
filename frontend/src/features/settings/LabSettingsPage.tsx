@@ -1,5 +1,15 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { getThemeSelectOptions, normalizeAppThemeId } from '@/lib/appTheme'
+import { useAppTheme } from '@/lib/AppThemeProvider'
+import { useAppDateFormat } from '@/lib/AppDateFormatProvider'
+import { useAppCurrency } from '@/lib/AppCurrencyProvider'
+import {
+  BUILTIN_DATE_FORMAT_OPTIONS,
+  BUILTIN_TIME_FORMAT_OPTIONS,
+  toDateFormatValue,
+} from '@/lib/appDateFormat'
+import { BUILTIN_CURRENCY_OPTIONS, parseCurrencyFromLabel } from '@/lib/appCurrency'
 import { LimsFieldWithAdd, LimsFieldAddButton } from '@/components/lims/LimsFieldWithAdd'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
@@ -15,6 +25,7 @@ import { PrefixesTab } from './lab-settings/PrefixesTab'
 import { LetterheadTab } from './lab-settings/LetterheadTab'
 import { LabSettingsHeaderBar } from './lab-settings/LabSettingsHeaderBar'
 import { LabManageDialogContent } from './lab-settings/LabManageDialogContent'
+import { CustomThemeDialog } from './lab-settings/CustomThemeDialog'
 import { LabSettingsPanel } from './lab-settings/labSettingsUi'
 import { persistLabNameLocal } from './lab-settings/brandMark'
 import {
@@ -43,6 +54,38 @@ import {
   letterheadFromRow,
 } from './lab-settings/labSettingsDb'
 
+function mergeDateFormatOptions(items: OptionItem[]): OptionItem[] {
+  const map = new Map<string, OptionItem>()
+  for (const opt of BUILTIN_DATE_FORMAT_OPTIONS) map.set(opt.value, opt)
+  for (const opt of items) {
+    const value = toDateFormatValue(opt.value) || opt.value
+    map.set(value, { value, label: opt.label || value })
+  }
+  return Array.from(map.values())
+}
+
+function mergeCurrencyOptions(items: OptionItem[]): OptionItem[] {
+  const map = new Map<string, OptionItem>()
+  for (const opt of BUILTIN_CURRENCY_OPTIONS) {
+    map.set(opt.id, { value: opt.id, label: opt.label })
+  }
+  for (const opt of items) {
+    const value = String(opt.value ?? '').trim().toLowerCase() || opt.value
+    map.set(value, { value, label: opt.label || value })
+  }
+  return Array.from(map.values())
+}
+
+function mergeTimeFormatOptions(items: OptionItem[]): OptionItem[] {
+  const map = new Map<string, OptionItem>()
+  for (const opt of BUILTIN_TIME_FORMAT_OPTIONS) map.set(opt.value, opt)
+  for (const opt of items) {
+    const value = String(opt.value ?? '').trim().toLowerCase() || opt.value
+    map.set(value, { value, label: opt.label || value })
+  }
+  return Array.from(map.values())
+}
+
 function mergeOption(
   prev: OptionItem[],
   item: OptionItem,
@@ -52,6 +95,16 @@ function mergeOption(
 }
 
 export default function LabSettingsPage() {
+  const { theme: selectedTheme, setTheme: setSelectedTheme, customThemes, saveCustomTheme, removeCustomTheme } =
+    useAppTheme()
+  const [themeDialogOpen, setThemeDialogOpen] = useState(false)
+  const {
+    dateFormat: selectedDateFormat,
+    setDateFormat: setSelectedDateFormat,
+    timeFormat: selectedTimeFormat,
+    setTimeFormat: setSelectedTimeFormat,
+  } = useAppDateFormat()
+  const { currencyId: selectedCurrency, setCurrency: setSelectedCurrency } = useAppCurrency()
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'laboratory-details'
     const stored = window.localStorage.getItem('labSettings.activeTab') ?? 'laboratory-details'
@@ -131,32 +184,19 @@ export default function LabSettingsPage() {
   const [selectedCountryCode, setSelectedCountryCode] = useState('+91')
   const [newCountryCode, setNewCountryCode] = useState('')
   const [countryCodeDialogOpen, setCountryCodeDialogOpen] = useState(false)
-  const [currencies, setCurrencies] = useState([
-    { value: 'inr', label: 'INR (₹) - Indian Rupee' },
-    { value: 'usd', label: 'USD ($) - US Dollar' },
-    { value: 'eur', label: 'EUR (€) - Euro' },
-    { value: 'gbp', label: 'GBP (£) - British Pound' },
-  ])
-  const [selectedCurrency, setSelectedCurrency] = useState('inr')
+  const [currencies, setCurrencies] = useState(
+    BUILTIN_CURRENCY_OPTIONS.map((c) => ({ value: c.id, label: c.label })),
+  )
   const [currencyDialogOpen, setCurrencyDialogOpen] = useState(false)
   const [newCurrency, setNewCurrency] = useState('')
-  const [dateFormats, setDateFormats] = useState([
-    { value: 'dd-mmm-yy', label: 'DD-Mmm-YY' },
-    { value: 'dd-mm-yyyy', label: 'DD-MM-YYYY' },
-    { value: 'mm-dd-yyyy', label: 'MM-DD-YYYY' },
-    { value: 'yyyy-mm-dd', label: 'YYYY-MM-DD' },
-  ])
-  const [selectedDateFormat, setSelectedDateFormat] = useState('dd-mmm-yy')
+  const [dateFormats, setDateFormats] = useState(BUILTIN_DATE_FORMAT_OPTIONS)
   const [dateDialogOpen, setDateDialogOpen] = useState(false)
   const [newDateFormat, setNewDateFormat] = useState('')
-  const [timeFormats, setTimeFormats] = useState([
-    { value: '24h', label: '24 Hour (HH:MM)' },
-    { value: '12h', label: '12 Hour (hh:MM AM/PM)' },
-  ])
-  const [selectedTimeFormat, setSelectedTimeFormat] = useState('24h')
+  const [timeFormats, setTimeFormats] = useState(
+    BUILTIN_TIME_FORMAT_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+  )
   const [timeDialogOpen, setTimeDialogOpen] = useState(false)
   const [newTimeFormat, setNewTimeFormat] = useState('')
-  const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>('light')
   const [generateReportEnabled, setGenerateReportEnabled] = useState(true)
   type AccreditationCard = {
     id: string
@@ -363,38 +403,51 @@ export default function LabSettingsPage() {
   const handleAddCurrency = () => {
     if (!newCurrency.trim()) return
     const label = newCurrency.trim()
-    const value = slugifyLabOptionValue(label, 'currency')
+    const parsed = parseCurrencyFromLabel(label)
+    const value = parsed.id
     persistNewMasterOption(
       'currency',
       label,
       value,
       setCurrencies,
-      setSelectedCurrency,
+      (id: string) => setSelectedCurrency(id, label),
       () => setNewCurrency(''),
       () => setCurrencyDialogOpen(false),
     )
   }
   const handleUpdateCurrency = (value: string) => {
     if (!newCurrency.trim()) return
+    const label = newCurrency.trim()
     persistUpdateMasterOption(
       'currency',
       value,
-      newCurrency.trim(),
+      label,
       setCurrencies,
       selectedCurrency,
-      setSelectedCurrency,
+      (id: string) => setSelectedCurrency(id, label),
       () => setNewCurrency(''),
       () => setCurrencyDialogOpen(false),
     )
   }
   const handleDeleteCurrency = (value: string) => {
     if (currencies.length <= 1) return
-    persistDeleteMasterOption('currency', value, currencies, setCurrencies, selectedCurrency, setSelectedCurrency)
+    persistDeleteMasterOption(
+      'currency',
+      value,
+      currencies,
+      setCurrencies,
+      selectedCurrency,
+      (id: string) => {
+        const match = currencies.find((c) => c.value === id)
+        setSelectedCurrency(id, match?.label)
+      },
+    )
   }
   const handleAddDateFormat = () => {
     if (!newDateFormat.trim()) return
-    const label = newDateFormat.trim().toUpperCase()
-    const value = slugifyLabOptionValue(label, 'date')
+    const label = newDateFormat.trim()
+    const value = toDateFormatValue(label)
+    if (!value) return
     persistNewMasterOption(
       'date_format',
       label,
@@ -407,7 +460,7 @@ export default function LabSettingsPage() {
   }
   const handleUpdateDateFormat = (value: string) => {
     if (!newDateFormat.trim()) return
-    const label = newDateFormat.trim().toUpperCase()
+    const label = newDateFormat.trim()
     persistUpdateMasterOption(
       'date_format',
       value,
@@ -935,9 +988,9 @@ export default function LabSettingsPage() {
         setStates(grouped.state)
         setCountries(grouped.country)
         setCountryCodes(grouped.country_code)
-        setCurrencies(grouped.currency)
-        setDateFormats(grouped.date_format)
-        setTimeFormats(grouped.time_format)
+        setCurrencies(mergeCurrencyOptions(grouped.currency))
+        setDateFormats(mergeDateFormatOptions(grouped.date_format))
+        setTimeFormats(mergeTimeFormatOptions(grouped.time_format))
       } catch (err) {
         if (!canceled) {
           console.error('Failed to load lab master options:', err)
@@ -1014,11 +1067,13 @@ export default function LabSettingsPage() {
       if (parsed.designation) setSelectedDesignation(parsed.designation)
       if (parsed.state) setSelectedState(parsed.state)
       if (parsed.country) setSelectedCountry(parsed.country)
-      if (parsed.currency) setSelectedCurrency(parsed.currency)
+      if (parsed.currency) {
+        setSelectedCurrency(parsed.currency)
+      }
       if (parsed.dateFormat) setSelectedDateFormat(parsed.dateFormat)
       if (parsed.timeFormat) setSelectedTimeFormat(parsed.timeFormat)
-      if (parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system') {
-        setSelectedTheme(parsed.theme)
+      if (parsed.theme) {
+        setSelectedTheme(normalizeAppThemeId(parsed.theme))
       }
       setGenerateReportEnabled(parsed.generateReportEnabled)
     }
@@ -1899,9 +1954,15 @@ export default function LabSettingsPage() {
                         </DialogTrigger>
                       }
                     >
-                      <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-                        <SelectTrigger id="currency" className="w-full">
-                          <SelectValue />
+                      <Select
+                        value={selectedCurrency}
+                        onValueChange={(value) => {
+                          const match = currencies.find((c) => c.value === value)
+                          setSelectedCurrency(value, match?.label)
+                        }}
+                      >
+                        <SelectTrigger id="currency" className="w-full !border-0 !bg-transparent shadow-none focus:!bg-transparent focus:ring-0">
+                          <SelectValue placeholder="Select currency" />
                         </SelectTrigger>
                         <SelectContent>
                           {currencies.map((currency) => (
@@ -1941,8 +2002,8 @@ export default function LabSettingsPage() {
                       }
                     >
                       <Select value={selectedDateFormat} onValueChange={setSelectedDateFormat}>
-                        <SelectTrigger id="date-format" className="w-full">
-                          <SelectValue />
+                        <SelectTrigger id="date-format" className="w-full !border-0 !bg-transparent shadow-none focus:!bg-transparent focus:ring-0">
+                          <SelectValue placeholder="Select date format" />
                         </SelectTrigger>
                         <SelectContent>
                           {dateFormats.map((format) => (
@@ -1958,7 +2019,7 @@ export default function LabSettingsPage() {
                       title="Manage Date Formats"
                       addLabel="Add Date Format"
                       inputId="new-date-format"
-                      placeholder="e.g., DD/MM/YYYY"
+                      placeholder="e.g., DD-Mmm-YYYY or DD/MM/YYYY"
                       value={newDateFormat}
                       onValueChange={setNewDateFormat}
                       onSave={handleAddDateFormat}
@@ -1981,9 +2042,16 @@ export default function LabSettingsPage() {
                         </DialogTrigger>
                       }
                     >
-                      <Select value={selectedTimeFormat} onValueChange={setSelectedTimeFormat}>
-                        <SelectTrigger id="time-format" className="w-full">
-                          <SelectValue />
+                      <Select
+                        value={
+                          timeFormats.some((f) => f.value === selectedTimeFormat)
+                            ? selectedTimeFormat
+                            : (timeFormats[0]?.value ?? '24h')
+                        }
+                        onValueChange={setSelectedTimeFormat}
+                      >
+                        <SelectTrigger id="time-format" className="w-full !border-0 !bg-transparent shadow-none focus:!bg-transparent focus:ring-0">
+                          <SelectValue placeholder="Select time format" />
                         </SelectTrigger>
                         <SelectContent>
                           {timeFormats.map((format) => (
@@ -2016,16 +2084,44 @@ export default function LabSettingsPage() {
                   <div className="flex items-center h-5">
                     <Label htmlFor="theme">Theme</Label>
                   </div>
-                  <Select value={selectedTheme} onValueChange={(value) => setSelectedTheme(value as 'light' | 'dark' | 'system')}>
-                    <SelectTrigger id="theme" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
-                      <SelectItem value="system">System Default</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Dialog open={themeDialogOpen} onOpenChange={setThemeDialogOpen}>
+                    <LimsFieldWithAdd
+                      addButton={
+                        <DialogTrigger asChild>
+                          <LimsFieldAddButton
+                            aria-label="Create custom theme"
+                            title="Create Custom Theme"
+                          />
+                        </DialogTrigger>
+                      }
+                    >
+                      <Select
+                        value={selectedTheme}
+                        onValueChange={(value) => setSelectedTheme(normalizeAppThemeId(value))}
+                      >
+                        <SelectTrigger
+                          id="theme"
+                          className="w-full !border-0 !bg-transparent shadow-none focus:!bg-transparent focus:ring-0"
+                        >
+                          <SelectValue placeholder="Select theme" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getThemeSelectOptions(customThemes).map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </LimsFieldWithAdd>
+                    <CustomThemeDialog
+                      open={themeDialogOpen}
+                      onOpenChange={setThemeDialogOpen}
+                      themes={customThemes}
+                      onSave={saveCustomTheme}
+                      onDelete={removeCustomTheme}
+                    />
+                  </Dialog>
                 </div>
               </div>
 

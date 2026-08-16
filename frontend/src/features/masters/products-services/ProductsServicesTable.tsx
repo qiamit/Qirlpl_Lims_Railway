@@ -1,4 +1,5 @@
 import { Copy, Pencil } from 'lucide-react'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
@@ -130,9 +131,9 @@ export function ProductsServicesTable({
                   </TableCell>
                   <TableCell className="align-middle text-center">
                     <div className="space-y-0.5">
-                      <p className="text-sm text-foreground">Sale: ₹ {formatMoney(r.sale_price)}</p>
+                      <p className="text-sm text-foreground">Sale: {getCurrencySymbol()} {formatMoney(r.sale_price)}</p>
                       <p className="text-xs text-muted-foreground">
-                        GST {formatMoney(r.gst_percent)}% · Disc ₹ {formatMoney(r.discount)}
+                        GST {formatMoney(r.gst_percent)}% · Disc {getCurrencySymbol()} {formatMoney(r.discount)}
                       </p>
                     </div>
                   </TableCell>

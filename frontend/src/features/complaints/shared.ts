@@ -1,21 +1,11 @@
+import { formatDate, formatDateTime } from '@/lib/utils'
+
 export function formatDateDisplay(value: string | null | undefined): string {
-  if (!value) return '—'
-  const iso = value.slice(0, 10)
-  const [y, m, d] = iso.split('-')
-  if (y && m && d) return `${d}-${m}-${y}`
-  return value
+  return formatDate(value)
 }
 
 export function formatDateTimeDisplay(value: string | null | undefined): string {
-  if (!value) return '—'
-  try {
-    const d = new Date(value)
-    if (Number.isNaN(d.getTime())) return formatDateDisplay(value)
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-  } catch {
-    return formatDateDisplay(value)
-  }
+  return formatDateTime(value)
 }
 
 export function formatSupabaseError(err: unknown) {

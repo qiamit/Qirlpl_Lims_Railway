@@ -223,11 +223,11 @@ export function MeasurementUnitSelect({
           </Label>
         ) : null}
 
-        <div className="relative">
+        <div className="relative h-full min-h-0">
           <div
             ref={fieldRef}
             className={cn(
-              'flex h-8 overflow-hidden rounded-none border border-stone-500 bg-stone-50',
+              'flex h-8 min-h-0 overflow-hidden rounded-none border border-stone-500 bg-stone-50',
               'focus-within:border-amber-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-amber-500/20',
               disabled && 'opacity-50',
               shellClassName,
@@ -257,7 +257,7 @@ export function MeasurementUnitSelect({
             {showManageButton ? (
               <button
                 type="button"
-                className="inline-flex h-full w-9 shrink-0 items-center justify-center border-l border-stone-500 bg-stone-100 text-amber-800 transition-colors hover:bg-amber-500/15 hover:text-amber-950 disabled:pointer-events-none"
+                className="inline-flex h-full w-9 shrink-0 items-center justify-center self-stretch border-l border-stone-500 bg-stone-100 text-amber-800 transition-colors hover:bg-amber-500/15 hover:text-amber-950 disabled:pointer-events-none disabled:opacity-50"
                 onClick={() => openManageDialog()}
                 onMouseDown={(e) => e.preventDefault()}
                 aria-label="Add measurement unit"

@@ -2593,38 +2593,85 @@ export function EquipmentMasterForm({
               </div>
             </div>
 
-            {/* Maintenance — same layout as Calibration LIMS master equipment */}
-            <div id="section-maintenance" className="col-span-12 flex flex-col space-y-2 md:col-span-4">
-              <p className="border-b border-stone-300 pb-2 text-center text-[12px] font-medium text-stone-600">
+            {/* Maintenance — Applicable / Not Applicable + Open Form (same as Intermediate Check) */}
+            <div id="section-maintenance" className="col-span-12 space-y-3 md:col-span-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Maintenance
-              </p>
-              <div className="flex h-full flex-col gap-3 rounded-none border border-stone-400 bg-white/90 px-3 py-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={cn('h-10 w-full shrink-0', limsOutlineBtnClass)}
-                  title="Open Maintenance form"
-                  aria-label="Open Maintenance form"
-                  onClick={() => {
-                    if (!form.maintenanceScheduleFrequency) {
-                      onChange({
-                        ...form,
-                        maintenanceScheduleFrequency: 'Quarterly',
-                        maintenanceDoneBy:
-                          form.maintenanceDoneBy || form.custodianEmployeeId || '',
-                      })
-                    } else if (!form.maintenanceDoneBy && form.custodianEmployeeId) {
-                      onChange({
-                        ...form,
-                        maintenanceDoneBy: form.custodianEmployeeId,
-                      })
+              </h4>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={maintApplicable}
+                    onValueChange={(v) => {
+                      setMaintApplicable(v as 'applicable' | 'not-applicable')
+                      if (v === 'not-applicable') {
+                        setMaintenanceScheduleOpen(false)
+                        onChange({
+                          ...form,
+                          maintenanceScheduleFrequency: '',
+                          lastMaintenanceDate: '',
+                          nextMaintenanceDate: '',
+                          maintenanceDoneBy: '',
+                          maintenanceChecklist: [],
+                        })
+                      } else {
+                        onChange({
+                          ...form,
+                          maintenanceScheduleFrequency:
+                            form.maintenanceScheduleFrequency || 'Quarterly',
+                          maintenanceDoneBy:
+                            form.maintenanceDoneBy || form.custodianEmployeeId || '',
+                        })
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="min-w-0 flex-1 bg-white border-slate-200">
+                      <SelectValue placeholder="Select Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="applicable">Applicable</SelectItem>
+                      <SelectItem value="not-applicable">Not Applicable</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn('h-8 shrink-0 gap-1.5 px-3', limsOutlineBtnClass)}
+                    disabled={maintApplicable !== 'applicable'}
+                    aria-disabled={maintApplicable !== 'applicable'}
+                    title={
+                      maintApplicable === 'applicable'
+                        ? 'Open Maintenance form'
+                        : 'Set status to Applicable to open the form'
                     }
-                    setMaintenanceScheduleOpen(true)
-                  }}
-                >
-                  <Wrench size={16} className="mr-2" />
-                  Open Form
-                </Button>
+                    aria-label={
+                      maintApplicable === 'applicable'
+                        ? 'Open Maintenance form'
+                        : 'Open Maintenance form (disabled when Not Applicable)'
+                    }
+                    onClick={() => {
+                      if (maintApplicable !== 'applicable') return
+                      if (!form.maintenanceScheduleFrequency) {
+                        onChange({
+                          ...form,
+                          maintenanceScheduleFrequency: 'Quarterly',
+                          maintenanceDoneBy:
+                            form.maintenanceDoneBy || form.custodianEmployeeId || '',
+                        })
+                      } else if (!form.maintenanceDoneBy && form.custodianEmployeeId) {
+                        onChange({
+                          ...form,
+                          maintenanceDoneBy: form.custodianEmployeeId,
+                        })
+                      }
+                      setMaintenanceScheduleOpen(true)
+                    }}
+                  >
+                    <Wrench size={14} />
+                    Open Form
+                  </Button>
+                </div>
               </div>
             </div>
             </div>

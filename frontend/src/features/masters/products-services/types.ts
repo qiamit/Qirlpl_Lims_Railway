@@ -1,3 +1,5 @@
+import { stripCurrencyNoise } from '@/lib/appCurrency'
+
 export const ITEM_TYPES = ['Product', 'Service'] as const
 export type ItemType = (typeof ITEM_TYPES)[number]
 
@@ -65,9 +67,9 @@ export function normalizeText(value: string): string {
   return value.trim()
 }
 
-/** Strip currency formatting noise (₹, commas, spaces) before parse. */
+/** Strip currency formatting noise (symbols, commas, spaces) before parse. */
 export function sanitizeMoneyInput(value: string): string {
-  const cleaned = value.replace(/[₹,\s]/g, '')
+  const cleaned = stripCurrencyNoise(value)
   if (!cleaned) return ''
   const parts = cleaned.split('.')
   const intPart = (parts[0] ?? '').replace(/[^0-9]/g, '')

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { getCurrencyCode, getCurrencySymbol } from '@/lib/appCurrency'
 import { ChevronDown, ChevronUp, Columns3, Plus, Trash2, X } from 'lucide-react'
 import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
 import { Button } from '@/components/ui/button'
@@ -130,7 +131,7 @@ function CurrencyInrField({
           className="inline-flex shrink-0 items-center border-r border-stone-500 bg-stone-100 px-2.5 text-sm font-semibold text-stone-700"
           aria-hidden
         >
-          ₹
+          {getCurrencySymbol()}
         </span>
         <Input
           id={id}
@@ -145,7 +146,7 @@ function CurrencyInrField({
           }}
           placeholder={placeholder}
           className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent text-right tabular-nums shadow-none focus-visible:ring-0"
-          aria-label={`${label} in INR`}
+          aria-label={`${label} in ${getCurrencyCode()}`}
         />
       </div>
     </div>
@@ -180,7 +181,7 @@ function CurrencyBalanceField({
           className="inline-flex shrink-0 items-center border-r border-stone-500 bg-stone-100 px-2.5 text-sm font-semibold text-stone-700"
           aria-hidden
         >
-          ₹
+          {getCurrencySymbol()}
         </span>
         {emptyText ? (
           <span className="flex min-w-0 flex-1 items-center px-3 text-sm">{emptyText}</span>
@@ -1237,7 +1238,7 @@ export function QuotationFormView({
                                 className="inline-flex shrink-0 items-center border-r border-stone-500 bg-stone-100 px-1.5 text-xs font-semibold text-stone-700"
                                 aria-hidden
                               >
-                                ₹
+                                {getCurrencySymbol()}
                               </span>
                               <Input
                                 className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-1 text-center tabular-nums shadow-none focus-visible:ring-0"
@@ -1263,7 +1264,7 @@ export function QuotationFormView({
                                     rate: formatMoneyInput(line.rate || '0'),
                                   })
                                 }}
-                                aria-label="Rate in INR"
+                                aria-label={`Rate in ${getCurrencyCode()}`}
                               />
                             </div>
                           </td>
@@ -1286,12 +1287,12 @@ export function QuotationFormView({
                         ) : null}
                         {visibleLineColumns.amount ? (
                           <td className="align-middle px-2 py-1.5 text-center tabular-nums font-medium text-stone-900">
-                            ₹ {formatMoney(lineAmount(line))}
+                            {getCurrencySymbol()} {formatMoney(lineAmount(line))}
                           </td>
                         ) : null}
                         {visibleLineColumns.taxableAmount ? (
                           <td className="align-middle px-2 py-1.5 text-center tabular-nums font-medium text-stone-900">
-                            ₹ {formatMoney(lineTaxableAmount(line))}
+                            {getCurrencySymbol()} {formatMoney(lineTaxableAmount(line))}
                           </td>
                         ) : null}
                         {visibleLineColumns.gstPercent ? (
@@ -1324,13 +1325,13 @@ export function QuotationFormView({
                           </td>
                         ) : null}
                         {visibleLineColumns.cgstAmount ? (
-                          <td className={moneyCellClass}>₹ {formatMoney(gstSplit.cgstAmount)}</td>
+                          <td className={moneyCellClass}>{getCurrencySymbol()} {formatMoney(gstSplit.cgstAmount)}</td>
                         ) : null}
                         {visibleLineColumns.sgstAmount ? (
-                          <td className={moneyCellClass}>₹ {formatMoney(gstSplit.sgstAmount)}</td>
+                          <td className={moneyCellClass}>{getCurrencySymbol()} {formatMoney(gstSplit.sgstAmount)}</td>
                         ) : null}
                         {visibleLineColumns.igstAmount ? (
-                          <td className={moneyCellClass}>₹ {formatMoney(gstSplit.igstAmount)}</td>
+                          <td className={moneyCellClass}>{getCurrencySymbol()} {formatMoney(gstSplit.igstAmount)}</td>
                         ) : null}
                         {visibleLineColumns.lineRemarks ? (
                           <td className="align-middle px-2 py-1.5">
@@ -1399,7 +1400,7 @@ export function QuotationFormView({
                         ) : null}
                         {visibleLineColumns.rate ? (
                           <td className={cn(cellTextClass, 'tabular-nums')}>
-                            ₹ {formatMoney(parseMoney(line.rate))}
+                            {getCurrencySymbol()} {formatMoney(parseMoney(line.rate))}
                           </td>
                         ) : null}
                         {visibleLineColumns.discountPercent ? (
@@ -1409,12 +1410,12 @@ export function QuotationFormView({
                         ) : null}
                         {visibleLineColumns.amount ? (
                           <td className="align-middle px-2 py-1.5 text-center tabular-nums font-medium text-stone-900">
-                            ₹ {formatMoney(lineAmount(line))}
+                            {getCurrencySymbol()} {formatMoney(lineAmount(line))}
                           </td>
                         ) : null}
                         {visibleLineColumns.taxableAmount ? (
                           <td className="align-middle px-2 py-1.5 text-center tabular-nums font-medium text-stone-900">
-                            ₹ {formatMoney(lineTaxableAmount(line))}
+                            {getCurrencySymbol()} {formatMoney(lineTaxableAmount(line))}
                           </td>
                         ) : null}
                         {visibleLineColumns.gstPercent ? (
@@ -1438,13 +1439,13 @@ export function QuotationFormView({
                           </td>
                         ) : null}
                         {visibleLineColumns.cgstAmount ? (
-                          <td className={moneyCellClass}>₹ {formatMoney(gstSplit.cgstAmount)}</td>
+                          <td className={moneyCellClass}>{getCurrencySymbol()} {formatMoney(gstSplit.cgstAmount)}</td>
                         ) : null}
                         {visibleLineColumns.sgstAmount ? (
-                          <td className={moneyCellClass}>₹ {formatMoney(gstSplit.sgstAmount)}</td>
+                          <td className={moneyCellClass}>{getCurrencySymbol()} {formatMoney(gstSplit.sgstAmount)}</td>
                         ) : null}
                         {visibleLineColumns.igstAmount ? (
-                          <td className={moneyCellClass}>₹ {formatMoney(gstSplit.igstAmount)}</td>
+                          <td className={moneyCellClass}>{getCurrencySymbol()} {formatMoney(gstSplit.igstAmount)}</td>
                         ) : null}
                         {visibleLineColumns.lineRemarks ? (
                           <td className={cn(cellTextClass, 'text-left')}>
@@ -1596,14 +1597,14 @@ export function QuotationFormView({
 
           <div className="flex items-center justify-between gap-3">
             <span className="text-stone-600">Basic Amount</span>
-            <span className="tabular-nums">₹ {formatMoney(totals.subtotal)}</span>
+            <span className="tabular-nums">{getCurrencySymbol()} {formatMoney(totals.subtotal)}</span>
           </div>
 
           {showDiscountRow ? (
             <div className="flex items-center justify-between gap-2">
               <span className="text-stone-600">Discount</span>
               <div className="flex items-center gap-1">
-                <span className="text-stone-500">₹</span>
+                <span className="text-stone-500">{getCurrencySymbol()}</span>
                 <Input
                   type="text"
                   inputMode="decimal"
@@ -1635,7 +1636,7 @@ export function QuotationFormView({
             <div className="flex items-center justify-between gap-2">
               <span className="text-stone-600">Transportation Charges</span>
               <div className="flex items-center gap-1">
-                <span className="text-stone-500">₹</span>
+                <span className="text-stone-500">{getCurrencySymbol()}</span>
                 <Input
                   type="text"
                   inputMode="decimal"
@@ -1666,7 +1667,7 @@ export function QuotationFormView({
             <div className="flex items-center justify-between gap-2">
               <span className="text-stone-600">Packaging Charge</span>
               <div className="flex items-center gap-1">
-                <span className="text-stone-500">₹</span>
+                <span className="text-stone-500">{getCurrencySymbol()}</span>
                 <Input
                   type="text"
                   inputMode="decimal"
@@ -1697,7 +1698,7 @@ export function QuotationFormView({
             <div className="flex items-center justify-between gap-2">
               <span className="text-stone-600">CGST</span>
               <div className="flex items-center gap-1">
-                <span className="tabular-nums">₹ {formatMoney(totals.cgstAmount)}</span>
+                <span className="tabular-nums">{getCurrencySymbol()} {formatMoney(totals.cgstAmount)}</span>
                 <button
                   type="button"
                   className="inline-flex h-7 w-7 items-center justify-center text-stone-500 hover:text-red-700"
@@ -1715,7 +1716,7 @@ export function QuotationFormView({
             <div className="flex items-center justify-between gap-2">
               <span className="text-stone-600">SGST</span>
               <div className="flex items-center gap-1">
-                <span className="tabular-nums">₹ {formatMoney(totals.sgstAmount)}</span>
+                <span className="tabular-nums">{getCurrencySymbol()} {formatMoney(totals.sgstAmount)}</span>
                 <button
                   type="button"
                   className="inline-flex h-7 w-7 items-center justify-center text-stone-500 hover:text-red-700"
@@ -1733,7 +1734,7 @@ export function QuotationFormView({
             <div className="flex items-center justify-between gap-2">
               <span className="text-stone-600">IGST</span>
               <div className="flex items-center gap-1">
-                <span className="tabular-nums">₹ {formatMoney(totals.igstAmount)}</span>
+                <span className="tabular-nums">{getCurrencySymbol()} {formatMoney(totals.igstAmount)}</span>
                 <button
                   type="button"
                   className="inline-flex h-7 w-7 items-center justify-center text-stone-500 hover:text-red-700"
@@ -1750,12 +1751,12 @@ export function QuotationFormView({
           {!showGstBreakdown ? (
             <div className="flex items-center justify-between gap-3">
               <span className="text-stone-600">GST Amount</span>
-              <span className="tabular-nums">₹ {formatMoney(totals.gstAmount)}</span>
+              <span className="tabular-nums">{getCurrencySymbol()} {formatMoney(totals.gstAmount)}</span>
             </div>
           ) : null}
           <div className="flex items-center justify-between gap-3 border-t-2 border-stone-800 pt-2 text-base font-semibold">
             <span>Grand Total</span>
-            <span className="tabular-nums text-amber-900">₹ {formatMoney(totals.grandTotal)}</span>
+            <span className="tabular-nums text-amber-900">{getCurrencySymbol()} {formatMoney(totals.grandTotal)}</span>
           </div>
         </div>
       </section>

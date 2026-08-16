@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ElementType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useAppDateFormat } from '@/lib/AppDateFormatProvider'
+import { useAppCurrency } from '@/lib/AppCurrencyProvider'
 import {
   FileSignature,
   FlaskConical,
@@ -1101,6 +1103,9 @@ function NavItemLink({
 }
 
 export default function GlobalLayout() {
+  // Re-render entire shell when Lab Settings date/time/currency preferences change
+  useAppDateFormat()
+  useAppCurrency()
   const navigate = useNavigate()
   const location = useLocation()
   const { profileName, designation, departmentName } = useAuth()

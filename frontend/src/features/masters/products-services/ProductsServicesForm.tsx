@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getCurrencyCode, getCurrencySymbol } from '@/lib/appCurrency'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,7 +58,7 @@ function CurrencyInrField({
           className="inline-flex shrink-0 items-center border-r border-stone-500 bg-stone-100 px-2.5 text-sm font-semibold text-stone-700"
           aria-hidden
         >
-          ₹
+          {getCurrencySymbol()}
         </span>
         <Input
           id={id}
@@ -72,7 +73,7 @@ function CurrencyInrField({
           }}
           placeholder={placeholder}
           className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent text-right tabular-nums shadow-none focus-visible:ring-0"
-          aria-label={`${label} in INR`}
+          aria-label={`${label} in ${getCurrencyCode()}`}
         />
       </div>
     </div>

@@ -1,3 +1,5 @@
+import { formatDate, formatDateTime } from '@/lib/utils'
+
 export const EQUIPMENT_SOURCE_FILTERS = ['testing', 'calibration', 'iqc'] as const
 export type EquipmentSourceFilter = (typeof EQUIPMENT_SOURCE_FILTERS)[number]
 
@@ -268,20 +270,11 @@ export function formToPayload(form: BreakdownRegisterForm) {
 }
 
 export function formatDateDisplay(value: string | null | undefined): string {
-  if (!value) return '—'
-  const iso = value.slice(0, 10)
-  const [y, m, d] = iso.split('-')
-  if (y && m && d) return `${d}-${m}-${y}`
-  return value
+  return formatDate(value)
 }
 
 export function formatDateTimeDisplay(value: string | null | undefined): string {
-  if (!value) return '—'
-  const local = toLocalDateTimeInput(value)
-  if (!local) return formatDateDisplay(value)
-  const [datePart, timePart] = local.split('T')
-  const dateDisp = formatDateDisplay(datePart)
-  return timePart ? `${dateDisp} ${timePart}` : dateDisp
+  return formatDateTime(value)
 }
 
 export function statusTone(status: string): string {

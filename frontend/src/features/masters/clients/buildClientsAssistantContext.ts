@@ -1,4 +1,5 @@
 import { formatClientContact } from './types'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 import type { ClientRow } from './types'
 
 /** Compact client list for QI Assistant context (token-safe). */
@@ -19,7 +20,7 @@ export function buildClientsAssistantContext(rows: ClientRow[], search: string):
   } else {
     for (const r of slice) {
       lines.push(
-        `- id=${r.id} | ${r.company_name} | ${r.company_type} / ${r.company_scale} | GST: ${r.gst_number ?? '-'} | ${formatClientContact(r)} | Balance: ${r.balance_type} ₹${r.opening_balance ?? 0} | ${r.payment_term}`,
+        `- id=${r.id} | ${r.company_name} | ${r.company_type} / ${r.company_scale} | GST: ${r.gst_number ?? '-'} | ${formatClientContact(r)} | Balance: ${r.balance_type} ${getCurrencySymbol()}${r.opening_balance ?? 0} | ${r.payment_term}`,
       )
     }
     if (rows.length > 30) {

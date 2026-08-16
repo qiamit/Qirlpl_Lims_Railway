@@ -1,4 +1,5 @@
 import type { FinanceDocumentTemplate } from '@/features/settings/lab-settings/documentTemplateTypes'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 import { documentMetaFieldLabels } from '@/features/settings/lab-settings/documentTemplateTypes'
 import { cn } from '@/lib/utils'
 import { amountInIndianRupeesWords } from './amountInIndianRupeesWords'
@@ -192,7 +193,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'basic',
       label: 'Basic Amount',
-      value: `₹ ${formatMoney(row.subtotal)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(row.subtotal)}`,
       bold: true,
     })
   }
@@ -200,7 +201,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'disc',
       label: 'Discount',
-      value: `₹ ${formatMoney(row.discount_amount)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(row.discount_amount)}`,
       bold: true,
     })
   }
@@ -208,7 +209,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'trans',
       label: 'Transportation Charges',
-      value: `₹ ${formatMoney(row.transportation_charges ?? 0)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(row.transportation_charges ?? 0)}`,
       bold: true,
     })
   }
@@ -216,7 +217,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'pack',
       label: 'Packaging Charge',
-      value: `₹ ${formatMoney(row.packaging_charges ?? 0)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(row.packaging_charges ?? 0)}`,
       bold: true,
     })
   }
@@ -224,7 +225,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'gst',
       label: 'GST Amount',
-      value: `₹ ${formatMoney(row.gst_amount)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(row.gst_amount)}`,
       bold: true,
     })
   }
@@ -232,7 +233,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'cgst',
       label: 'CGST',
-      value: `₹ ${formatMoney(cgstTotal)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(cgstTotal)}`,
       bold: true,
     })
   }
@@ -240,7 +241,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'sgst',
       label: 'SGST',
-      value: `₹ ${formatMoney(sgstTotal)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(sgstTotal)}`,
       bold: true,
     })
   }
@@ -248,7 +249,7 @@ export function QuotationDocumentView({
     totalRows.push({
       key: 'igst',
       label: 'IGST',
-      value: `₹ ${formatMoney(igstTotal)}`,
+      value: `${getCurrencySymbol()} ${formatMoney(igstTotal)}`,
       bold: true,
     })
   }
@@ -484,12 +485,12 @@ export function QuotationDocumentView({
                         ) : null}
                         {tpl.lineShowRate ? (
                           <td className="border border-black px-1 py-1 text-right">
-                            ₹ {formatMoney(l.rate)}
+                            {getCurrencySymbol()} {formatMoney(l.rate)}
                           </td>
                         ) : null}
                         {tpl.lineShowAmount ? (
                           <td className="border border-black px-1 py-1 text-right">
-                            ₹ {formatMoney(lineAmt)}
+                            {getCurrencySymbol()} {formatMoney(lineAmt)}
                           </td>
                         ) : null}
                       </tr>
@@ -570,7 +571,7 @@ export function QuotationDocumentView({
                         :
                       </td>
                       <td className="w-[28mm] border border-l-0 border-black px-2 py-0 text-right align-middle text-sm font-bold">
-                        ₹ {formatMoney(row.grand_total)}
+                        {getCurrencySymbol()} {formatMoney(row.grand_total)}
                       </td>
                     </tr>
                   ) : null}

@@ -932,7 +932,7 @@ th{background:#1c1917;color:#fde68a}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5">
             {!editingId && !formReadOnly ? (
-              <div className="mb-4 max-w-xs space-y-1.5">
+              <div className="mx-auto mb-4 max-w-xs space-y-1.5">
                 <Label htmlFor="iqc-type" className="text-xs font-semibold text-stone-700">
                   IQC Type
                 </Label>

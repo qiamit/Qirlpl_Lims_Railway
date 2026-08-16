@@ -1,23 +1,23 @@
-import { Copy, Pencil } from 'lucide-react'
+import { Copy, Eye, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { limsPanelClass } from '@/lib/limsThemeUi'
+import { limsOutlineBtnClass, limsPanelClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
-import { formatDateDisplay, type CrmRow } from './types'
+import { formatDateDisplay, formatTraceabilityValidity, type CrmRow } from './types'
 
 const GRID_TABLE =
-  'table-fixed min-w-[1100px] w-full border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4] [&_th]:p-[1mm] [&_td]:!p-[1mm]'
+  'w-max min-w-full border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4] [&_th]:p-[1mm] [&_td]:!p-[1mm]'
 
 const thBase =
-  'bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200'
+  'whitespace-nowrap bg-stone-800 px-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200'
 
 const primaryLineClass =
-  'break-words text-[12.5px] font-semibold tracking-tight text-[#292524]'
+  'text-[12.5px] font-semibold tracking-tight text-[#292524]'
 
-const secondaryLineClass = 'break-words text-[11px] font-medium leading-snug text-[#78716c]'
+const secondaryLineClass = 'text-[11px] font-medium leading-snug text-[#78716c]'
 
 const monoLineClass =
-  'break-words font-mono text-[12px] font-semibold tabular-nums tracking-tight text-[#1c1917]'
+  'whitespace-nowrap font-mono text-[12px] font-semibold tabular-nums tracking-tight text-[#1c1917]'
 
 const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
 const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
@@ -39,6 +39,7 @@ export function CrmListTable({
   onToggleAll,
   onEdit,
   onCopy,
+  onViewUncertainty,
 }: {
   rows: CrmRow[]
   loading: boolean
@@ -49,6 +50,7 @@ export function CrmListTable({
   onToggleAll: (checked: boolean) => void
   onEdit: (row: CrmRow) => void
   onCopy: (row: CrmRow) => void
+  onViewUncertainty: (row: CrmRow) => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -73,22 +75,9 @@ export function CrmListTable({
       ) : (
         <div className="overflow-x-auto">
           <Table className={GRID_TABLE}>
-            <colgroup>
-              <col className="w-[3%]" />
-              <col className="w-[5%]" />
-              <col className="w-[9%]" />
-              <col className="w-[16%]" />
-              <col className="w-[10%]" />
-              <col className="w-[7%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[9%]" />
-              <col className="w-[9%]" />
-              <col className="w-[8%]" />
-            </colgroup>
             <TableHeader>
               <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
-                <TableHead className={thBase}>
+                <TableHead className={cn(thBase, 'w-0 px-1.5')}>
                   <input
                     type="checkbox"
                     className={checkboxClass}
@@ -100,16 +89,31 @@ export function CrmListTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className={thBase}>Sr. No.</TableHead>
                 <TableHead className={thBase}>ID No</TableHead>
-                <TableHead className={thBase}>CRM Type</TableHead>
+                <TableHead className={cn(thBase, 'min-w-[10rem] whitespace-normal')}>
+                  CRM Type
+                </TableHead>
                 <TableHead className={thBase}>Make</TableHead>
-                <TableHead className={thBase}>Year of Purchase</TableHead>
-                <TableHead className={thBase}>Traceability From</TableHead>
-                <TableHead className={thBase}>Traceability As Per</TableHead>
+                <TableHead className={thBase}>
+                  Date of
+                  <span className="mt-0.5 block text-[9px] font-semibold tracking-wide text-amber-200/80">
+                    Purchase
+                  </span>
+                </TableHead>
+                <TableHead className={thBase}>
+                  Traceability
+                  <span className="mt-0.5 block text-[9px] font-semibold tracking-wide text-amber-200/80">
+                    Duration
+                  </span>
+                </TableHead>
+                <TableHead className={thBase}>
+                  Traceability
+                  <span className="mt-0.5 block text-[9px] font-semibold tracking-wide text-amber-200/80">
+                    As Per
+                  </span>
+                </TableHead>
                 <TableHead className={thBase}>Uncertainty</TableHead>
-                <TableHead className={thBase}>Valid Up To</TableHead>
-                <TableHead className={thBase}>Action</TableHead>
+                <TableHead className={cn(thBase, 'w-0')}>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -125,7 +129,7 @@ export function CrmListTable({
                       selected ? rowSelectedClass : even ? rowEvenClass : rowOddClass,
                     )}
                   >
-                    <TableCell className="align-middle text-center">
+                    <TableCell className="w-0 whitespace-nowrap px-1.5 align-middle text-center">
                       <input
                         type="checkbox"
                         className={checkboxClass}
@@ -134,36 +138,53 @@ export function CrmListTable({
                         onChange={() => onToggle(r.id)}
                       />
                     </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <span className={monoLineClass}>{r.s_no}</span>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
+                    <TableCell className="whitespace-nowrap px-2 align-middle text-center">
                       <span className={monoLineClass}>{r.id_no || '—'}</span>
                     </TableCell>
-                    <TableCell className="align-top">
-                      <p className={primaryLineClass}>{r.crm_type || '—'}</p>
+                    <TableCell className="min-w-[10rem] max-w-[16rem] px-2 align-middle text-center">
+                      <p className={cn(primaryLineClass, 'text-center')}>{r.crm_type || '—'}</p>
                     </TableCell>
-                    <TableCell className="align-top">
-                      <p className={secondaryLineClass}>{r.make || '—'}</p>
+                    <TableCell className="whitespace-nowrap px-2 align-middle text-center">
+                      <p className={cn(secondaryLineClass, 'text-center')}>{r.make || '—'}</p>
                     </TableCell>
-                    <TableCell className="align-middle text-center">
+                    <TableCell className="whitespace-nowrap px-2 align-middle text-center">
                       <span className={monoLineClass}>
-                        {r.year_of_purchase != null ? r.year_of_purchase : '—'}
+                        {formatDateDisplay(r.date_of_purchase)}
                       </span>
                     </TableCell>
-                    <TableCell className="align-top">
-                      <p className={secondaryLineClass}>{r.traceability_from || '—'}</p>
+                    <TableCell className="whitespace-nowrap px-2 align-middle text-center">
+                      <div
+                        className="leading-tight"
+                        title={formatTraceabilityValidity(r.traceability_from, r.valid_upto)}
+                      >
+                        <span className={cn(monoLineClass, 'block')}>
+                          {formatDateDisplay(r.traceability_from)}
+                        </span>
+                        <span className={cn(monoLineClass, 'mt-0.5 block text-[11px] text-[#57534e]')}>
+                          {formatDateDisplay(r.valid_upto)}
+                        </span>
+                      </div>
                     </TableCell>
-                    <TableCell className="align-top">
-                      <p className={secondaryLineClass}>{r.traceability_as_per || '—'}</p>
+                    <TableCell className="whitespace-nowrap px-2 align-middle text-center">
+                      <p className={cn(secondaryLineClass, 'text-center')}>
+                        {r.traceability_as_per || '—'}
+                      </p>
                     </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <span className={monoLineClass}>{r.uncertainty || '—'}</span>
+                    <TableCell className="w-0 whitespace-nowrap px-2 align-middle text-center">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className={cn(limsOutlineBtnClass, 'h-7 gap-1 px-2 text-[11px]')}
+                        aria-label={`View uncertainty for ${r.id_no || 'CRM'}`}
+                        title="View element-wise uncertainty"
+                        onClick={() => onViewUncertainty(r)}
+                      >
+                        <Eye size={13} />
+                        View
+                      </Button>
                     </TableCell>
-                    <TableCell className="align-middle text-center">
-                      <span className={monoLineClass}>{formatDateDisplay(r.valid_upto)}</span>
-                    </TableCell>
-                    <TableCell className="align-middle text-center">
+                    <TableCell className="w-0 whitespace-nowrap px-1.5 align-middle text-center">
                       <div className="inline-flex items-center justify-center gap-0.5">
                         <Button
                           type="button"

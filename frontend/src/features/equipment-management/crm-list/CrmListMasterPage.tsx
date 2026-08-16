@@ -8,15 +8,18 @@ import { CrmListFooterBar } from './CrmListFooterBar'
 import { CrmListForm } from './CrmListForm'
 import { CrmListHeaderBar } from './CrmListHeaderBar'
 import { CrmListTable } from './CrmListTable'
+import { CrmUncertaintyViewDialog } from './CrmUncertaintyViewDialog'
 import {
   emptyCrmForm,
   formToPayload,
   formatDateDisplay,
+  formatTraceabilityValidity,
   isValidIntegerOrEmpty,
-  isValidYearOrEmpty,
+  parseUncertaintyRowsFromDb,
   rowToForm,
   type CrmForm,
   type CrmRow,
+  type CrmUncertaintyItem,
 } from './types'
 
 function formatSupabaseError(err: unknown) {
@@ -69,11 +72,10 @@ function buildPrintHtml(rows: CrmRow[]) {
           <td>${r.id_no || ''}</td>
           <td>${r.crm_type || ''}</td>
           <td>${r.make || ''}</td>
-          <td>${r.year_of_purchase ?? ''}</td>
-          <td>${r.traceability_from || ''}</td>
+          <td>${formatDateDisplay(r.date_of_purchase)}</td>
+          <td>${formatTraceabilityValidity(r.traceability_from, r.valid_upto)}</td>
           <td>${r.traceability_as_per || ''}</td>
           <td>${r.uncertainty || ''}</td>
-          <td>${formatDateDisplay(r.valid_upto)}</td>
         </tr>`,
     )
     .join('')
@@ -88,8 +90,8 @@ function buildPrintHtml(rows: CrmRow[]) {
 <h1>List of CRMs</h1>
 <table>
 <thead><tr>
-  <th>Sr. No.</th><th>ID No</th><th>CRM Type</th><th>Make</th><th>Year of Purchase</th>
-  <th>Traceability From</th><th>Traceability As Per</th><th>Uncertainty</th><th>Valid Up To</th>
+  <th>Sr. No.</th><th>ID No</th><th>CRM Type</th><th>Make</th><th>Date of Purchase</th>
+  <th>Traceability Duration</th><th>Traceability As Per</th><th>Uncertainty</th>
 </tr></thead>
 <tbody>${body}</tbody>
 </table>
@@ -111,14 +113,17 @@ export default function CrmListMasterPage() {
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
   const [form, setForm] = useState<CrmForm>(() => emptyCrmForm())
+  const [viewUncertaintyOpen, setViewUncertaintyOpen] = useState(false)
+  const handleViewUncertaintyOpenChange = useFormDialogOpenChange(setViewUncertaintyOpen)
+  const [viewUncertaintyRows, setViewUncertaintyRows] = useState<CrmUncertaintyItem[]>([])
+  const [viewUncertaintySubtitle, setViewUncertaintySubtitle] = useState('')
 
   const canSave =
     !saveLoading &&
     form.sNo.trim().length > 0 &&
     form.idNo.trim().length > 0 &&
     form.crmType.trim().length > 0 &&
-    isValidIntegerOrEmpty(form.sNo) &&
-    isValidYearOrEmpty(form.yearOfPurchase)
+    isValidIntegerOrEmpty(form.sNo)
 
   const loadItems = async () => {
     setListError(null)
@@ -151,7 +156,7 @@ export default function CrmListMasterPage() {
         r.id_no,
         r.crm_type,
         r.make,
-        r.year_of_purchase,
+        r.date_of_purchase,
         r.traceability_from,
         r.traceability_as_per,
         r.uncertainty,
@@ -197,6 +202,14 @@ export default function CrmListMasterPage() {
       idNo: '',
     })
     setShowForm(true)
+  }
+
+  const handleViewUncertainty = (row: CrmRow) => {
+    setViewUncertaintyRows(parseUncertaintyRowsFromDb(row.uncertainty_rows, row.uncertainty))
+    setViewUncertaintySubtitle(
+      [row.id_no, row.crm_type, row.make].map((p) => String(p ?? '').trim()).filter(Boolean).join(' · '),
+    )
+    setViewUncertaintyOpen(true)
   }
 
   const handleSave = () => {
@@ -285,11 +298,10 @@ export default function CrmListMasterPage() {
       'ID No',
       'CRM Type',
       'Make',
-      'Year of Purchase',
-      'Traceability From',
+      'Date of Purchase',
+      'Traceability Duration',
       'Traceability As Per',
       'Uncertainty',
-      'Valid Up To',
     ]
     const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
     const lines = [
@@ -300,11 +312,10 @@ export default function CrmListMasterPage() {
           r.id_no,
           r.crm_type,
           r.make,
-          r.year_of_purchase != null ? String(r.year_of_purchase) : '',
-          r.traceability_from,
+          r.date_of_purchase ? String(r.date_of_purchase).slice(0, 10) : '',
+          formatTraceabilityValidity(r.traceability_from, r.valid_upto),
           r.traceability_as_per,
           r.uncertainty,
-          r.valid_upto ? String(r.valid_upto).slice(0, 10) : '',
         ]
           .map(esc)
           .join(','),
@@ -350,7 +361,7 @@ export default function CrmListMasterPage() {
           portalClassName="md:pl-[268px]"
           className={cn(
             limsDialogClass,
-            'flex w-[min(100%-1.5rem,48rem)] max-h-[min(90dvh,48rem)] flex-col',
+            'flex w-[min(100%-1.5rem,64rem)] max-w-none max-h-[min(92dvh,52rem)] flex-col',
             '[&>button]:!text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
           )}
         >
@@ -395,6 +406,14 @@ export default function CrmListMasterPage() {
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
         onCopy={handleCopy}
+        onViewUncertainty={handleViewUncertainty}
+      />
+
+      <CrmUncertaintyViewDialog
+        open={viewUncertaintyOpen}
+        onOpenChange={handleViewUncertaintyOpenChange}
+        rows={viewUncertaintyRows}
+        subtitle={viewUncertaintySubtitle}
       />
 
       <CrmListFooterBar

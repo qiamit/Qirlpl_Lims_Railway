@@ -2,6 +2,7 @@ import {
   calculateNextDueDate,
   type Frequency,
 } from '@/features/masters/equipment-master/types'
+import { formatDate } from '@/lib/utils'
 
 export type CalibrationSource =
   | 'testing_master'
@@ -114,10 +115,7 @@ export function mapEquipmentToCalibrationScheduleRow(input: {
 }
 
 export function formatDateDisplay(value: string): string {
-  if (!value) return '—'
-  const [y, m, d] = value.split('-')
-  if (y && m && d) return `${d}-${m}-${y}`
-  return value
+  return formatDate(value)
 }
 
 export function dueTone(bucket: DueBucket): string {

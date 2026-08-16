@@ -1,9 +1,7 @@
+import { formatDate } from '@/lib/utils'
+
 export function formatDateDisplay(value: string | null | undefined): string {
-  if (!value) return '—'
-  const iso = String(value).slice(0, 10)
-  const [y, m, d] = iso.split('-')
-  if (y && m && d) return `${d}-${m}-${y}`
-  return iso
+  return formatDate(value)
 }
 
 export function formatSupabaseError(err: unknown) {

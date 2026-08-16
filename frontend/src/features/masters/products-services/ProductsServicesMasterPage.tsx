@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getCurrencySymbol } from '@/lib/appCurrency'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
@@ -113,10 +114,10 @@ function buildPrintHtml(rows: ProductServiceRow[]) {
         </div>
         <div class="grid">
           <div class="field span2"><div class="k">Description</div><div class="v">${esc(r.item_description || '—')}</div></div>
-          <div class="field"><div class="k">Sale Price</div><div class="v">₹ ${esc(formatMoney(r.sale_price))}</div></div>
-          <div class="field"><div class="k">Purchase Price</div><div class="v">₹ ${esc(formatMoney(r.purchase_price))}</div></div>
+          <div class="field"><div class="k">Sale Price</div><div class="v">${getCurrencySymbol()} ${esc(formatMoney(r.sale_price))}</div></div>
+          <div class="field"><div class="k">Purchase Price</div><div class="v">${getCurrencySymbol()} ${esc(formatMoney(r.purchase_price))}</div></div>
           <div class="field"><div class="k">GST %</div><div class="v">${esc(formatMoney(r.gst_percent))}%</div></div>
-          <div class="field"><div class="k">Discount</div><div class="v">₹ ${esc(formatMoney(r.discount))}</div></div>
+          <div class="field"><div class="k">Discount</div><div class="v">${getCurrencySymbol()} ${esc(formatMoney(r.discount))}</div></div>
           <div class="field"><div class="k">UOM</div><div class="v">${esc(r.unit_of_measurement || '—')}</div></div>
           <div class="field"><div class="k">Make</div><div class="v">${esc(r.make || '—')}</div></div>
           ${stockBlock}
@@ -257,7 +258,7 @@ export default function ProductsServicesMasterPage() {
     else {
       for (const r of slice) {
         lines.push(
-          `- id=${r.id} | ${r.item_code} | ${r.item_type}/${r.item_category} | ${r.item_name} | Sale ₹${r.sale_price}`,
+          `- id=${r.id} | ${r.item_code} | ${r.item_type}/${r.item_category} | ${r.item_name} | Sale ${getCurrencySymbol()}${r.sale_price}`,
         )
       }
     }
