@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEnterTogglesCheckbox } from '@/hooks/useEnterTogglesCheckbox'
 import { RoutePersistence } from '@/components/routing/RoutePersistence'
-import { Construction } from 'lucide-react'
 import AuthPage from '@/features/auth/AuthPage'
 import {
   DEFAULT_RESULT_VALIDATION_MODULE_SLUG,
@@ -30,6 +29,8 @@ import {
   TestReportPreparationMasterPage,
   UserManagementRoute,
   ModuleAccessRoute,
+  HelpRoute,
+  ContactUsRoute,
   ManagementDocsLevel1Route,
   ManagementDocsLevel2Route,
   ManagementDocsLevel3Route,
@@ -88,35 +89,6 @@ import {
   ListOfConsumablesRoute,
   CrmListRoute,
 } from '@/routes/routeElements'
-
-function PlaceholderPage({ title, clause }: { title: string; clause: string }) {
-  return (
-    <div className="flex flex-1 items-center justify-center p-6">
-      <div className="flex flex-col items-center gap-4 text-center max-w-md">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-          <Construction size={28} className="text-primary" />
-        </div>
-        <div className="space-y-1.5">
-          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-          <p className="text-sm text-muted-foreground">
-            ISO 17025:2017 — {clause}
-          </p>
-        </div>
-        <p className="text-sm text-muted-foreground/70">
-          This module is under development and will be available in an upcoming release.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function HelpRoute() {
-  return <PlaceholderPage title="Help" clause="Help" />
-}
-
-function ContactUsRoute() {
-  return <PlaceholderPage title="Contact Us" clause="Support" />
-}
 
 export default function App() {
   useEnterTogglesCheckbox()

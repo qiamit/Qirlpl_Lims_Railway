@@ -1,5 +1,5 @@
 import type { ElementType } from 'react'
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   FlaskConical,
   ArrowRight,
@@ -27,7 +27,7 @@ import { NavLink } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  canAccessPath,
+  canAccessPath as legacyCanAccessPath,
   isChemicalTechnicalManager,
   isChemicalTestingEngineer,
   isMechanicalTechnicalManager,
@@ -38,6 +38,8 @@ import {
   type UserAccessContext,
 } from '@/lib/moduleAccess'
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
+import { useModuleAccessOptional } from '@/features/settings/module-access/ModuleAccessProvider'
+import { MODULE_CATALOG } from '@/features/settings/module-access/moduleCatalog'
 import { supabase } from '@/lib/supabaseClient'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -315,8 +317,16 @@ function addDaysIso(baseIso: string, days: number): string {
 
 export default function DashboardPage() {
   const { designation, departmentName } = useAuth()
+  const moduleAccess = useModuleAccessOptional()
   const access: UserAccessContext = { designation, departmentName }
   const isDirector = isLaboratoryDirector(designation)
+  const canAccess = useCallback(
+    (pathname: string) => {
+      if (moduleAccess && !moduleAccess.loading) return moduleAccess.canAccessPath(pathname)
+      return legacyCanAccessPath(pathname, { designation, departmentName })
+    },
+    [moduleAccess, designation, departmentName],
+  )
   const role = useMemo(
     () => resolveRoleProfile(access, designation, departmentName),
     [designation, departmentName],
@@ -485,8 +495,18 @@ export default function DashboardPage() {
   const dashboardSections = useMemo((): DashboardSection[] => {
     if (!stats) return []
 
-    const link = (path: string) => (canAccessPath(path, access) ? path : undefined)
-    const keep = (card: StatCardProps) => !card.href || canAccessPath(card.href, access)
+    const link = (path: string) => (canAccess(path) ? path : undefined)
+    const keep = (card: StatCardProps) => !card.href || canAccess(card.href)
+
+    const calibrationLimsPaths = MODULE_CATALOG.filter((m) => m.section === 'Calibration LIMS').map(
+      (m) => m.key,
+    )
+    const canSeeCalibrationLims =
+      isDirector || calibrationLimsPaths.some((path) => canAccess(path))
+    const calEquipmentHref = link('/calibration/equipments')
+    const calScheduleHref = link('/equipment-management/calibration-schedule')
+    const equipmentHref = link('/masters/equipment')
+    const equipmentDashboardHref = calEquipmentHref ?? calScheduleHref ?? equipmentHref
 
     const testingCommon: StatCardProps[] = [
       {
@@ -638,7 +658,7 @@ export default function DashboardPage() {
           title: 'Equipment Active',
           value: `${stats.equipmentActiveCount}/${stats.equipmentCount}`,
           icon: Wrench,
-          href: link('/masters/equipment'),
+          href: equipmentDashboardHref,
           badgeLabel: 'Assets',
           colorClass: 'bg-blue-500/10 text-blue-700',
         },
@@ -646,7 +666,7 @@ export default function DashboardPage() {
           title: 'Cal. Overdue',
           value: stats.calibrationOverdue,
           icon: CalendarClock,
-          href: link('/masters/equipment'),
+          href: equipmentDashboardHref,
           badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
           badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
           colorClass: 'bg-red-500/10 text-red-600',
@@ -655,7 +675,7 @@ export default function DashboardPage() {
           title: 'IC / Maint. Overdue',
           value: `${stats.intermediateOverdue}/${stats.maintenanceOverdue}`,
           icon: Wrench,
-          href: link('/masters/equipment'),
+          href: equipmentDashboardHref,
           badgeLabel:
             stats.intermediateOverdue + stats.maintenanceOverdue > 0 ? 'Attention' : 'OK',
           badgeVariant:
@@ -748,7 +768,7 @@ export default function DashboardPage() {
         title: 'Equipment',
         value: stats.equipmentCount,
         icon: Wrench,
-        href: link('/masters/equipment'),
+        href: equipmentDashboardHref,
         badgeLabel: 'Assets',
         colorClass: 'bg-slate-500/10 text-slate-700',
       })
@@ -791,7 +811,7 @@ export default function DashboardPage() {
         title: 'Cal. Overdue',
         value: stats.calibrationOverdue,
         icon: Wrench,
-        href: link('/masters/equipment'),
+        href: equipmentDashboardHref,
         badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
         badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
         colorClass: 'bg-red-500/10 text-red-600',
@@ -828,7 +848,7 @@ export default function DashboardPage() {
           title: 'Equipment',
           value: stats.equipmentCount,
           icon: Wrench,
-          href: link('/masters/equipment'),
+          href: equipmentDashboardHref,
           badgeLabel: 'Assets',
           colorClass: 'bg-sky-500/10 text-sky-600',
         },
@@ -836,7 +856,7 @@ export default function DashboardPage() {
           title: 'IC Overdue',
           value: stats.intermediateOverdue,
           icon: CalendarClock,
-          href: link('/masters/equipment'),
+          href: equipmentDashboardHref,
           badgeVariant: stats.intermediateOverdue > 0 ? 'warning' : 'success',
           badgeLabel: stats.intermediateOverdue > 0 ? 'Due' : 'OK',
           colorClass: 'bg-orange-500/10 text-orange-600',
@@ -891,7 +911,7 @@ export default function DashboardPage() {
         title: 'Cal. Overdue',
         value: stats.calibrationOverdue,
         icon: Wrench,
-        href: link('/masters/equipment'),
+        href: equipmentDashboardHref,
         badgeVariant: stats.calibrationOverdue > 0 ? 'destructive' : 'success',
         badgeLabel: stats.calibrationOverdue > 0 ? 'Due' : 'OK',
         colorClass: 'bg-red-500/10 text-red-600',
@@ -925,7 +945,7 @@ export default function DashboardPage() {
       '/finance/sale/credit-note',
       '/finance/sale/payment-receipt',
     ] as const
-    const canSeeFinance = financePaths.some((p) => canAccessPath(p, access))
+    const canSeeFinance = financePaths.some((p) => canAccess(p))
     const finance: StatCardProps[] = canSeeFinance
       ? [
           {
@@ -975,10 +995,14 @@ export default function DashboardPage() {
       { id: 'administrative', title: 'Administrative', cards: administrative.filter(keep) },
       { id: 'management', title: 'Management System', cards: management.filter(keep) },
       { id: 'testing', title: 'Testing LIMS', cards: testing.filter(keep) },
-      { id: 'calibration', title: 'Calibration LIMS', cards: calibration.filter(keep) },
+      {
+        id: 'calibration',
+        title: 'Calibration LIMS',
+        cards: canSeeCalibrationLims ? calibration.filter(keep) : [],
+      },
       { id: 'finance', title: 'Finance', cards: finance },
     ].filter((section) => section.cards.length > 0)
-  }, [stats, access, isDirector])
+  }, [stats, access, isDirector, canAccess])
 
   const heroKpis = useMemo((): HeroKpi[] => {
     if (!stats) return []
@@ -992,10 +1016,10 @@ export default function DashboardPage() {
       '/samples/report-preparation',
       '/samples/completed',
     ]
-    const canSamples = isDirector || samplePaths.some((p) => canAccessPath(p, access))
-    const canEquipment = isDirector || canAccessPath('/masters/equipment', access)
-    const overdueHref = samplePaths.find((p) => canAccessPath(p, access))
-    const receivingHref = canAccessPath('/samples/receiving', access)
+    const canSamples = isDirector || samplePaths.some((p) => canAccess(p))
+    const canEquipment = isDirector || canAccess('/masters/equipment')
+    const overdueHref = samplePaths.find((p) => canAccess(p))
+    const receivingHref = canAccess('/samples/receiving')
       ? '/samples/receiving'
       : overdueHref
 
@@ -1043,7 +1067,9 @@ export default function DashboardPage() {
           value: stats.calibrationOverdue,
           icon: CalendarClock,
           tone: stats.calibrationOverdue > 0 ? 'danger' : 'ok',
-          href: '/masters/equipment',
+          href: canAccess('/equipment-management/calibration-schedule')
+            ? '/equipment-management/calibration-schedule'
+            : '/masters/equipment',
         },
         {
           id: 'ic-maint',
@@ -1052,7 +1078,9 @@ export default function DashboardPage() {
           icon: Wrench,
           tone:
             stats.intermediateOverdue + stats.maintenanceOverdue > 0 ? 'warn' : 'ok',
-          href: '/masters/equipment',
+          href: canAccess('/equipment-management/maintenance-schedule')
+            ? '/equipment-management/maintenance-schedule'
+            : '/masters/equipment',
         },
         {
           id: 'equipment',
@@ -1066,7 +1094,7 @@ export default function DashboardPage() {
     }
 
     return kpis
-  }, [stats, access, isDirector])
+  }, [stats, isDirector, canAccess])
 
   const moduleSections = useMemo(() => {
     const heroTitles = new Set([
@@ -1090,7 +1118,7 @@ export default function DashboardPage() {
     return role.focusStages
       .map((stage) => {
         const href = stageHref(stage)
-        if (!href || !canAccessPath(href, access)) return null
+        if (!href || !canAccess(href)) return null
         return {
           stage,
           href,
@@ -1099,7 +1127,7 @@ export default function DashboardPage() {
         }
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
-  }, [role.focusStages, access, stats])
+  }, [role.focusStages, canAccess, stats])
 
   if (loading) {
     return (

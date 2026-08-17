@@ -75,7 +75,7 @@ import {
 import { useAuth, signOut } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
-import { canAccessNavItem as checkNavAccess, isRestrictedModuleRole } from '@/lib/moduleAccess'
+import { canAccessNavItem as checkNavAccess } from '@/lib/moduleAccess'
 import { useModuleAccessOptional } from '@/features/settings/module-access/ModuleAccessProvider'
 import { RequireModuleAccess } from '@/components/auth/RequireModuleAccess'
 import {
@@ -560,6 +560,12 @@ const NAV_SECTIONS: NavSection[] = [
           {
             label: 'Test Report Preparation',
             to: '/samples/report-preparation',
+            icon: FlaskConical,
+            clause: '7.4',
+          },
+          {
+            label: 'Issued Test Report',
+            to: '/samples/completed',
             icon: FlaskConical,
             clause: '7.4',
           },
@@ -1108,12 +1114,7 @@ export default function GlobalLayout() {
   useAppCurrency()
   const navigate = useNavigate()
   const location = useLocation()
-  const { profileName, designation, departmentName } = useAuth()
-  const access = useMemo(
-    () => ({ designation: designation ?? '', departmentName: departmentName ?? '' }),
-    [designation, departmentName],
-  )
-  const restrictedRole = isRestrictedModuleRole(access)
+  const { profileName, designation } = useAuth()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem('app.sidebarCollapsed') === '1'
@@ -1422,24 +1423,20 @@ export default function GlobalLayout() {
                     <DropdownMenuSeparator />
                   </>
                 )}
-                {!restrictedRole && (
-                  <>
-                    <DropdownMenuItem asChild>
-                      <NavLink to="/help" className="flex items-center gap-2">
-                        <HelpCircle size={14} />
-                        Help
-                      </NavLink>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <NavLink to="/contact-us" className="flex items-center gap-2">
-                        <Mail size={14} />
-                        Contact Us
-                      </NavLink>
-                    </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <NavLink to="/help" className="flex items-center gap-2">
+                    <HelpCircle size={14} />
+                    Help
+                  </NavLink>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <NavLink to="/contact-us" className="flex items-center gap-2">
+                    <Mail size={14} />
+                    Contact Us
+                  </NavLink>
+                </DropdownMenuItem>
 
-                    <DropdownMenuSeparator />
-                  </>
-                )}
+                <DropdownMenuSeparator />
 
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"

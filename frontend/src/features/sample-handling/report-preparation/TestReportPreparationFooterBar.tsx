@@ -9,6 +9,7 @@ import {
   limsPanelClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function TestReportPreparationFooterBar({
   message,
@@ -47,7 +48,8 @@ export function TestReportPreparationFooterBar({
 
         <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="outline"
               size="sm"
@@ -64,6 +66,7 @@ export function TestReportPreparationFooterBar({
                 onClick={onDeleteSelected}
               />
             ) : null}
+            </LaboratoryDirectorOnly>
             <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
           </div>
 

@@ -41,34 +41,54 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { key: '/management-docs/level-3', label: 'Level 3 Documents', section: 'Management Documentation' },
   { key: '/management-docs/level-4', label: 'Level 4 Documents', section: 'Management Documentation' },
 
-  { key: '/audit-mrm/audit-plan', label: 'Audit Plan', section: 'Audit & MRM' },
-  { key: '/audit-mrm/audit-checklist', label: 'Audit Checklist', section: 'Audit & MRM' },
-  { key: '/audit-mrm/audit-summary', label: 'Audit Summary', section: 'Audit & MRM' },
-  { key: '/audit-mrm/non-conformities', label: 'Non Conformities', section: 'Audit & MRM' },
-  { key: '/audit-mrm/mrm-agenda', label: 'MRM Plan & Agenda', section: 'Audit & MRM' },
-  { key: '/audit-mrm/management-review-meeting', label: 'Management Review Meeting', section: 'Audit & MRM' },
+  { key: '/audit-mrm/audit-plan', label: 'Audit Plan', section: 'Audit & MRM Management' },
+  { key: '/audit-mrm/audit-checklist', label: 'Audit Checklist', section: 'Audit & MRM Management' },
+  { key: '/audit-mrm/audit-summary', label: 'Audit Summary', section: 'Audit & MRM Management' },
+  { key: '/audit-mrm/non-conformities', label: 'Non Conformities', section: 'Audit & MRM Management' },
+  { key: '/audit-mrm/mrm-agenda', label: 'MRM Plan & Agenda', section: 'Audit & MRM Management' },
+  {
+    key: '/audit-mrm/management-review-meeting',
+    label: 'Management Review Meeting',
+    section: 'Audit & MRM Management',
+  },
 
-  { key: '/personnel/employees', label: 'List of Employees with All Details', section: 'Personnel' },
-  { key: '/personnel/selection', label: 'Selection of Employee', section: 'Personnel' },
-  { key: '/personnel/required-competency-matrix', label: 'Required Competency Matrix', section: 'Personnel' },
-  { key: '/personnel/actual-competency-matrix', label: 'Actual Competency Matrix', section: 'Personnel' },
-  { key: '/personnel/roles-responsibilities', label: 'Roles & Responsibilities', section: 'Personnel' },
-  { key: '/personnel/authorities', label: 'Authorities', section: 'Personnel' },
+  {
+    key: '/personnel/employees',
+    label: 'List of Employees with All Details',
+    section: 'Personnel Management',
+  },
+  { key: '/personnel/selection', label: 'Selection of Employee', section: 'Personnel Management' },
+  {
+    key: '/personnel/required-competency-matrix',
+    label: 'Required Competency Matrix',
+    section: 'Personnel Management',
+  },
+  {
+    key: '/personnel/actual-competency-matrix',
+    label: 'Actual Competency Matrix',
+    section: 'Personnel Management',
+  },
+  {
+    key: '/personnel/roles-responsibilities',
+    label: 'Roles & Responsibilities',
+    section: 'Personnel Management',
+  },
+  { key: '/personnel/authorities', label: 'Authorities', section: 'Personnel Management' },
 
   {
     key: '/complaints/customer-complaints',
     label: 'Customer Complaints Records',
-    section: 'Complaints',
+    section: 'Complaints Management',
   },
   {
     key: '/complaints/customer-feedback',
     label: 'Customer Feedback',
-    section: 'Complaints',
+    section: 'Complaints Management',
   },
   {
     key: '/complaints/feedback-evaluation',
     label: 'Feedback Evaluation',
-    section: 'Complaints',
+    section: 'Complaints Management',
   },
 
   {
@@ -90,37 +110,37 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   {
     key: '/calibration/equipment-for-calibration',
     label: 'Master Equipment of Calibration',
-    section: 'Equipment',
+    section: 'Equipment Management',
   },
   {
     key: '/masters/equipment',
     label: 'Master Equipment of Testing',
-    section: 'Equipment',
+    section: 'Equipment Management',
   },
   {
     key: '/equipment-management/iqc',
     label: 'Equipments for IQC',
-    section: 'Equipment',
+    section: 'Equipment Management',
   },
   {
     key: '/equipment-management/crm-list',
     label: 'List of CRM',
-    section: 'Equipment',
+    section: 'Equipment Management',
   },
   {
     key: '/equipment-management/maintenance-schedule',
     label: 'Maintenance Schedule',
-    section: 'Equipment',
+    section: 'Equipment Management',
   },
   {
     key: '/equipment-management/calibration-schedule',
     label: 'Calibration Schedule',
-    section: 'Equipment',
+    section: 'Equipment Management',
   },
   {
     key: '/equipment-management/breakdown-register',
     label: 'Equipment Breakdown Register',
-    section: 'Equipment',
+    section: 'Equipment Management',
   },
 
   {
@@ -139,14 +159,22 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     section: 'Externally Providers',
   },
 
-  { key: '/training/competency-matrix', label: 'Competency Matrix', section: 'Training' },
-  { key: '/training/need-identification', label: 'Training Need Identification', section: 'Training' },
-  { key: '/training/plan', label: 'Training Plan', section: 'Training' },
-  { key: '/training/calendar', label: 'Training Calendar', section: 'Training' },
-  { key: '/training/register', label: 'Training Register', section: 'Training' },
-  { key: '/training/evaluation', label: 'Training Evaluation', section: 'Training' },
-  { key: '/training/induction', label: 'Induction Training', section: 'Training' },
-  { key: '/training/effectiveness-review', label: 'Effectiveness Review', section: 'Training' },
+  { key: '/training/competency-matrix', label: 'Competency Matrix', section: 'Training Management' },
+  {
+    key: '/training/need-identification',
+    label: 'Training Need Identification',
+    section: 'Training Management',
+  },
+  { key: '/training/plan', label: 'Training Plan', section: 'Training Management' },
+  { key: '/training/calendar', label: 'Training Calendar', section: 'Training Management' },
+  { key: '/training/register', label: 'Training Register', section: 'Training Management' },
+  { key: '/training/evaluation', label: 'Training Evaluation', section: 'Training Management' },
+  { key: '/training/induction', label: 'Induction Training', section: 'Training Management' },
+  {
+    key: '/training/effectiveness-review',
+    label: 'Effectiveness Review',
+    section: 'Training Management',
+  },
 
   { key: '/samples/receiving', label: 'Sample Receiving', section: 'Testing LIMS' },
   { key: '/samples/allocation', label: 'Sample Allocation', section: 'Testing LIMS' },
@@ -168,17 +196,29 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { key: '/calibration/handling/review-data', label: 'Review Data', section: 'Calibration LIMS' },
   { key: '/calibration/handling/certificate-preparation', label: 'Certificate Preparation', section: 'Calibration LIMS' },
   { key: '/calibration/equipments', label: 'Calibration Equipments', section: 'Calibration LIMS' },
-  { key: '/calibration/nabl-scope', label: 'NABL Scope (Calibration)', section: 'Calibration LIMS' },
+  { key: '/calibration/nabl-scope', label: 'NABL Scope', section: 'Calibration LIMS' },
 
-  { key: '/finance/sale/quotation', label: 'Quotation', section: 'Finance' },
-  { key: '/finance/sale/proforma-invoice', label: 'Proforma Invoice', section: 'Finance' },
-  { key: '/finance/sale/invoice', label: 'Invoice', section: 'Finance' },
-  { key: '/finance/sale/credit-note', label: 'Credit Note', section: 'Finance' },
-  { key: '/finance/sale/payment-receipt', label: 'Payment Receipt', section: 'Finance' },
+  { key: '/finance/sale/quotation', label: 'Quotation', section: 'Finance Management' },
+  {
+    key: '/finance/sale/proforma-invoice',
+    label: 'Proforma Invoice',
+    section: 'Finance Management',
+  },
+  { key: '/finance/sale/invoice', label: 'Invoice', section: 'Finance Management' },
+  { key: '/finance/sale/credit-note', label: 'Credit Note', section: 'Finance Management' },
+  {
+    key: '/finance/sale/payment-receipt',
+    label: 'Payment Receipt',
+    section: 'Finance Management',
+  },
 
-  { key: '/masters/clients', label: 'Client Master', section: 'Masters' },
-  { key: '/masters/is-codes', label: 'IS Code Master', section: 'Masters' },
-  { key: '/masters/product-services', label: 'Product & Services', section: 'Masters' },
+  { key: '/masters/clients', label: 'Client Master', section: 'Master Managements' },
+  { key: '/masters/is-codes', label: 'IS Code Master', section: 'Master Managements' },
+  {
+    key: '/masters/product-services',
+    label: 'Product & Services',
+    section: 'Master Managements',
+  },
 ]
 
 export function moduleSections(): string[] {

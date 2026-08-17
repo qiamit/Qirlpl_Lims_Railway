@@ -151,6 +151,18 @@ function pathMatchesAllowlist(pathname: string, allowed: readonly string[]): boo
   })
 }
 
+/** Help (and Contact Us) — available to every signed-in user. */
+export function isPublicSupportPath(pathname: string | undefined): boolean {
+  if (!pathname) return false
+  const path = pathname.replace(/\/+$/, '') || '/'
+  return (
+    path === '/help' ||
+    path.startsWith('/help/') ||
+    path === '/contact-us' ||
+    path.startsWith('/contact-us/')
+  )
+}
+
 export function isSampleCellReceptionist(ctx: UserAccessContext): boolean {
   return norm(ctx.departmentName) === SAMPLE_CELL_DEPARTMENT && norm(ctx.designation) === RECEPTIONIST_DESIGNATION
 }
@@ -241,13 +253,10 @@ export function canAccessEquipmentIqcAndResultValidation(ctx: UserAccessContext)
 function isEquipmentIqcOrResultValidationPath(pathname: string | undefined): boolean {
   if (!pathname) return false
   const path = pathname.replace(/\/+$/, '') || '/'
+  // Calibration LIMS routes are NOT included here — they follow Module Access / role allowlists.
   return (
     path === '/masters/equipment' ||
     path.startsWith('/masters/equipment/') ||
-    path === '/calibration/equipments' ||
-    path.startsWith('/calibration/equipments/') ||
-    path === '/calibration/handling' ||
-    path.startsWith('/calibration/handling/') ||
     path === '/calibration/equipment-for-calibration' ||
     path.startsWith('/calibration/equipment-for-calibration/') ||
     path === '/calibration/masters-for-iqc' ||
@@ -289,6 +298,7 @@ function getAllowedPaths(ctx: UserAccessContext): readonly string[] | null {
 
 export function canAccessPath(pathname: string, ctx: UserAccessContext): boolean {
   if (isLaboratoryDirector(ctx.designation)) return true
+  if (isPublicSupportPath(pathname)) return true
   if (isConsentLetterPath(pathname)) return canAccessConsentLetter(ctx)
   if (isRetainDisposedPath(pathname)) return canAccessRetainDisposed(ctx)
   if (isEquipmentIqcOrResultValidationPath(pathname)) {
@@ -301,6 +311,7 @@ export function canAccessPath(pathname: string, ctx: UserAccessContext): boolean
 
 export function canAccessNavPath(to: string | undefined, ctx: UserAccessContext): boolean {
   if (!to) return false
+  if (isPublicSupportPath(to)) return true
   if (isConsentLetterPath(to)) return canAccessConsentLetter(ctx)
   if (isRetainDisposedPath(to)) return canAccessRetainDisposed(ctx)
   if (isEquipmentIqcOrResultValidationPath(to)) {
@@ -351,6 +362,7 @@ export function canAccessNavItem(
   to: string | undefined,
   ctx: UserAccessContext,
 ): boolean {
+  if (isPublicSupportPath(to)) return true
   if (isConsentLetterPath(to)) return canAccessConsentLetter(ctx)
   if (isRetainDisposedPath(to)) return canAccessRetainDisposed(ctx)
   if (isEquipmentIqcOrResultValidationPath(to)) {

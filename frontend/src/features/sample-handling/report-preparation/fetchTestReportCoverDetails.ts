@@ -15,13 +15,14 @@ const fmtDate = (v: string | null | undefined) => formatDateDmyMmm(v)
 const fmtYesNo = (v: boolean | null | undefined) =>
   v === true ? 'Yes' : v === false ? 'No' : null
 
+/** Product IS Code Title: `IS Title as per IS Number: Revision Year` */
 export function formatIsDetails(
   isNumber: string | null | undefined,
   productTitle: string | null | undefined,
 ): string | null {
   const number = fmt(isNumber)
   const title = fmt(productTitle)
-  if (number && title) return `${number} - ${title}`
+  if (number && title) return `${title} as per ${number}`
   return number ?? title ?? null
 }
 

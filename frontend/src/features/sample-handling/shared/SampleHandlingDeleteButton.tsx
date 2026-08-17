@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useIsLaboratoryDirector } from '@/components/lims/LaboratoryDirectorOnly'
 import { limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 
@@ -10,6 +11,9 @@ export function SampleHandlingDeleteButton({
   disabled?: boolean
   onClick: () => void
 }) {
+  const isLaboratoryDirector = useIsLaboratoryDirector()
+  if (!isLaboratoryDirector) return null
+
   return (
     <Button
       type="button"

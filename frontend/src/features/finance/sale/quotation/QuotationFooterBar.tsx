@@ -3,6 +3,7 @@ import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '
 import { ChevronLeft, ChevronRight, LayoutTemplate, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function QuotationFooterBar({
   message,
@@ -56,7 +57,8 @@ export function QuotationFooterBar({
             <LayoutTemplate className="size-3.5 shrink-0 sm:size-4" />
             <span className="hidden lg:inline">Templates</span>
           </Button>
-          <Button
+          <LaboratoryDirectorOnly>
+            <Button
             type="button"
             variant="outline"
             size="sm"
@@ -83,6 +85,7 @@ export function QuotationFooterBar({
             <Trash2 className="size-3.5 shrink-0 sm:size-4" />
             <span className="hidden lg:inline">Delete</span>
           </Button>
+          </LaboratoryDirectorOnly>
           {selectedCount > 0 ? (
             <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
               Selected: {selectedCount}

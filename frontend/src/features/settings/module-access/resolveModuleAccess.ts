@@ -2,6 +2,7 @@ import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   canAccessPath as legacyCanAccessPath,
   canAccessNavItem as legacyCanAccessNavItem,
+  isPublicSupportPath,
   type UserAccessContext,
 } from '@/lib/moduleAccess'
 import {
@@ -52,7 +53,10 @@ function subjectKeyFor(
 /**
  * Resolve access from configurable rules.
  * Priority: user → designation → department → division.
- * Returns null when no DB rule applies for this module (caller should use legacy logic).
+ *
+ * When a subject has any saved matrix rows, missing module keys are treated as
+ * explicit None (UI "None" deletes grant rows — must not fall back to legacy allowlists).
+ * Returns null only when no subject-level matrix applies (caller uses legacy logic).
  */
 export function resolveConfiguredAccessLevel(
   pathname: string,
@@ -65,26 +69,23 @@ export function resolveConfiguredAccessLevel(
   const moduleKey = pathToModuleKey(pathname)
   if (!moduleKey) return null
 
-  const moduleRules = rules.filter((r) => r.module_key === moduleKey)
-  if (moduleRules.length === 0) return null
-
   for (const type of SUBJECT_PRIORITY) {
     const key = subjectKeyFor(type, ctx)
     if (!key) continue
-    const match = moduleRules.find(
+
+    const subjectRules = rules.filter(
       (r) =>
         r.subject_type === type &&
         (type === 'user'
           ? r.subject_key === key
           : normalizeAccessKey(r.subject_key) === key),
     )
-    if (match) return match.access_level
+    if (subjectRules.length === 0) continue
+
+    const match = subjectRules.find((r) => r.module_key === moduleKey)
+    return match?.access_level ?? 'none'
   }
 
-  // Rules exist for this module but none match this user → deny when matrix is intentional.
-  // Only deny if at least one non-none rule exists for this module (matrix is in use).
-  const hasAnyGrant = moduleRules.some((r) => r.access_level !== 'none')
-  if (hasAnyGrant) return 'none'
   return null
 }
 
@@ -119,6 +120,7 @@ export function resolveModuleAccessLevel(
   rules: ModuleAccessRuleRow[],
 ): ModuleAccessLevel {
   if (isLaboratoryDirector(ctx.designation)) return 'edit'
+  if (isPublicSupportPath(pathname)) return 'view'
 
   const path = pathname.replace(/\/+$/, '') || '/'
   // Unified CAPA hub: allow if either NCW Corrective Action or Audit Non Conformities is granted.
@@ -164,6 +166,7 @@ export function canAccessNavItemWithRules(
 ): boolean {
   if (!to) return false
   if (isLaboratoryDirector(ctx.designation)) return true
+  if (isPublicSupportPath(to)) return true
 
   const configured = resolveConfiguredAccessLevel(to, ctx, rules)
   if (configured !== null) return configured !== 'none'

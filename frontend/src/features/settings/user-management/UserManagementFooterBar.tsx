@@ -8,6 +8,7 @@ import {
   limsPanelClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 type UserManagementFooterBarProps = {
   totalCount: number
@@ -47,7 +48,8 @@ export function UserManagementFooterBar({
 
         <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
           <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="outline"
               size="sm"
@@ -59,6 +61,7 @@ export function UserManagementFooterBar({
               <Printer size={14} />
               <span className="hidden lg:inline">Print</span>
             </Button>
+            </LaboratoryDirectorOnly>
             {selectedCount > 0 ? (
               <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
                 Selected: {selectedCount}

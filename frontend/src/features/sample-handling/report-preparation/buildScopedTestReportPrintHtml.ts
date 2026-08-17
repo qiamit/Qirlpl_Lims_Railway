@@ -145,7 +145,7 @@ function buildPartAPrintHtml(
     }
     ${partAFullRow('Customer Name', cover.customerName ?? fallback.client)}
     ${partAFullRow('Customer Address', cover.customerAddress)}
-    ${partAFullRow('Product IS Code Title', cover.productTitle ?? cover.isDetails)}
+    ${partAFullRow('Product IS Code Title', cover.isDetails ?? cover.productTitle)}
     ${partAFullRow('Sample Description', cover.sampleDescription)}
     ${partAFullRow('Declared Values', cover.declaredValue)}
     ${partAFullRow('Batch Number', cover.batchNumber)}
@@ -438,7 +438,7 @@ export function buildScopedTestReportPrintHtml(opts: {
     ? `<div class="report-title-block"><h1>** Test Report **</h1></div>`
     : ''
 
-  const isLabel = opts.coverDetails?.isDetails ?? opts.isStandard
+  const isLabel = opts.coverDetails?.isCode ?? opts.isStandard
   const partAHtml = buildPartAPrintHtml(opts.coverDetails, {
     scope: opts.scope,
     srf: opts.srf,

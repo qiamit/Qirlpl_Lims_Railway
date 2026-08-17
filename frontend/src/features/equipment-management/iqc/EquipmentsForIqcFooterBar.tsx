@@ -8,6 +8,7 @@ import {
   limsPanelClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function EquipmentsForIqcFooterBar({
   message,
@@ -54,7 +55,8 @@ export function EquipmentsForIqcFooterBar({
 
         <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
           <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="outline"
               className={limsDarkBarBtnClass}
@@ -84,6 +86,7 @@ export function EquipmentsForIqcFooterBar({
               <Trash2 size={16} />
               Delete
             </Button>
+            </LaboratoryDirectorOnly>
           </div>
 
           <div className="flex min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2">

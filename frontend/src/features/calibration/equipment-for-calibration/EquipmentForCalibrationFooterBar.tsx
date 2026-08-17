@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { limsDarkBarFieldClass, limsPanelClass } from '@/lib/limsThemeUi'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function EquipmentForCalibrationFooterBar({
   message,
@@ -44,7 +45,8 @@ export function EquipmentForCalibrationFooterBar({
         <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
         <div className="relative flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="outline"
               size="sm"
@@ -66,6 +68,7 @@ export function EquipmentForCalibrationFooterBar({
               <Trash2 size={12} />
               Delete
             </Button>
+            </LaboratoryDirectorOnly>
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-center px-2">
             {message ? (

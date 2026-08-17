@@ -3,6 +3,7 @@ import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function IqcPlanFooterBar({
   loading,
@@ -55,7 +56,8 @@ export function IqcPlanFooterBar({
             Selected: {selectedCount}
           </span>
           {selectedCount > 0 && (
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="destructive" size="sm" className={limsDeleteBtnClass}
               disabled={deleteBusy || loading}
@@ -64,6 +66,7 @@ export function IqcPlanFooterBar({
               <Trash2 size={14} />
               Delete Selected
             </Button>
+            </LaboratoryDirectorOnly>
           )}
           <div className="flex items-center justify-end gap-2">
             <div className="flex items-center gap-2">

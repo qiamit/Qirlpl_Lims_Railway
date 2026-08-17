@@ -8,6 +8,7 @@ import {
   limsPanelClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 const footerBtnClass = limsDarkBarBtnClass
 const footerFieldClass = limsDarkBarFieldClass
@@ -62,7 +63,8 @@ export function CalibrationEquipmentsFooterBar({
 
         <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
           <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="outline"
               size="sm"
@@ -122,6 +124,7 @@ export function CalibrationEquipmentsFooterBar({
               <Trash2 size={14} />
               <span className="hidden lg:inline">Delete</span>
             </Button>
+            </LaboratoryDirectorOnly>
             {selectedCount > 0 ? (
               <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
                 Selected: {selectedCount}

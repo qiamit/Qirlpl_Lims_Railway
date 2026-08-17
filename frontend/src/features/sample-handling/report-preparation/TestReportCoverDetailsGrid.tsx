@@ -93,7 +93,7 @@ export function TestReportCoverDetailsGrid({
   const ulrPlaceholder = nablUlrPlaceholder(ulrPrefix)
 
   const customerName = details.customerName ?? details.customerDetails
-  const productTitle = details.productTitle ?? details.isDetails
+  const productTitle = details.isDetails ?? details.productTitle
 
   return (
     <div className="overflow-x-auto border-2 border-stone-500 bg-white p-2 shadow-sm ring-1 ring-amber-700/15 sm:p-3">

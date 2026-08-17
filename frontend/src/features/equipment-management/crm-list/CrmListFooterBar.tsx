@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function CrmListFooterBar({
   message,
@@ -39,7 +40,8 @@ export function CrmListFooterBar({
     <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white shadow-sm ring-1 ring-amber-700/20">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <Button
+          <LaboratoryDirectorOnly>
+            <Button
             type="button"
             variant="outline"
             className={limsDarkBarBtnClass}
@@ -69,6 +71,7 @@ export function CrmListFooterBar({
             <Trash2 size={16} />
             Delete
           </Button>
+          </LaboratoryDirectorOnly>
         </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-3">

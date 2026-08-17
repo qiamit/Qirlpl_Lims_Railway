@@ -52,9 +52,9 @@ export function UserManagementHeaderBar({
                 type="search"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search team members…"
+                placeholder="Search Team Members"
                 className={cn(limsDarkBarSearchClass, 'pl-9')}
-                aria-label="Search team members"
+                aria-label="Search Team Members"
               />
             </div>
             <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>

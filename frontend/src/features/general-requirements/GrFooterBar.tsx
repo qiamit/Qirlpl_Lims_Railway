@@ -8,6 +8,7 @@ import {
   limsPanelClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function GrFooterBar({
   message,
@@ -51,7 +52,8 @@ export function GrFooterBar({
         <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
         <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
           <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
-            <Button type="button" variant="outline" className={limsDarkBarBtnClass} onClick={onExport} disabled={loading}>
+            <LaboratoryDirectorOnly>
+              <Button type="button" variant="outline" className={limsDarkBarBtnClass} onClick={onExport} disabled={loading}>
               <Download size={16} />
               Export
             </Button>
@@ -69,6 +71,7 @@ export function GrFooterBar({
               <Trash2 size={16} />
               Delete
             </Button>
+            </LaboratoryDirectorOnly>
           </div>
           <div className="flex min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2">
             {message ? (

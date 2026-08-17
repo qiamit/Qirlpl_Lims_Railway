@@ -3,6 +3,7 @@ import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '
 import { ChevronLeft, ChevronRight, Download, FileUp, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function EquipmentFooterBar({
   message,
@@ -41,7 +42,8 @@ export function EquipmentFooterBar({
     <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-5 py-3 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" className={limsDarkBarBtnClass} onClick={onImport} disabled={loading}>
+          <LaboratoryDirectorOnly>
+            <Button type="button" variant="outline" className={limsDarkBarBtnClass} onClick={onImport} disabled={loading}>
             <FileUp size={16} />
             Import
           </Button>
@@ -57,6 +59,7 @@ export function EquipmentFooterBar({
             <Trash2 size={16} />
             Delete Selected
           </Button>
+          </LaboratoryDirectorOnly>
         </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-3">

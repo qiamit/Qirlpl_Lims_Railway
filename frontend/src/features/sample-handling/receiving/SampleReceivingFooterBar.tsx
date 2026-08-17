@@ -1,9 +1,10 @@
 import { cn } from '@/lib/utils'
-import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
+import { limsDarkBarBtnClass, limsDarkBarFieldClass } from '@/lib/limsThemeUi'
 import { ChevronLeft, ChevronRight, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SampleHandlingDeleteButton } from '@/features/sample-handling/shared/SampleHandlingDeleteButton'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function SampleReceivingTableFooterBar({
   message,
@@ -38,7 +39,8 @@ export function SampleReceivingTableFooterBar({
     <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-5 py-3 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" className={limsDarkBarBtnClass} onClick={onPrintSelected} disabled={loading}>
+          <LaboratoryDirectorOnly>
+            <Button type="button" variant="outline" className={limsDarkBarBtnClass} onClick={onPrintSelected} disabled={loading}>
             <Printer size={16} />
             Print
           </Button>
@@ -48,6 +50,7 @@ export function SampleReceivingTableFooterBar({
               onClick={onDeleteSelected}
             />
           ) : null}
+          </LaboratoryDirectorOnly>
         </div>
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-3">
           <div>

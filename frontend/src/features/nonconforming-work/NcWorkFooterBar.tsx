@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass, limsPanelClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function NcWorkFooterBar({
   message,
@@ -50,7 +51,8 @@ export function NcWorkFooterBar({
         <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
         <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
           <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="outline"
               className={limsDarkBarBtnClass}
@@ -82,6 +84,7 @@ export function NcWorkFooterBar({
                 Delete
               </Button>
             ) : null}
+            </LaboratoryDirectorOnly>
           </div>
           <div className="flex min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2">
             {message ? (

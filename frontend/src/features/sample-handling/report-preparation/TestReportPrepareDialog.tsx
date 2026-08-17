@@ -222,7 +222,7 @@ export function TestReportPrepareDialog({
               <TestReportRemarksSection
                 remarks={draftNotes}
                 onRemarksChange={onDraftNotesChange}
-                isCodeLabel={active?.isCodeLabel ?? liveCoverDetails?.isDetails ?? null}
+                isCodeLabel={active?.isCodeLabel ?? liveCoverDetails?.isCode ?? null}
                 disabled={saveLoading || issueLoading}
               />
             </div>

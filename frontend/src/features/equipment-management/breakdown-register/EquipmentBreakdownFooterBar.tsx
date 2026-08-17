@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass, limsPanelClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
 
 export function EquipmentBreakdownFooterBar({
   message,
@@ -49,7 +50,8 @@ export function EquipmentBreakdownFooterBar({
 
         <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
           <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
-            <Button
+            <LaboratoryDirectorOnly>
+              <Button
               type="button"
               variant="outline"
               className={limsDarkBarBtnClass}
@@ -79,6 +81,7 @@ export function EquipmentBreakdownFooterBar({
               <Trash2 size={16} />
               Delete
             </Button>
+            </LaboratoryDirectorOnly>
           </div>
 
           <div className="flex min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2">

@@ -7,8 +7,8 @@ import { limsOutlineBtnClass } from '@/lib/limsThemeUi'
 const SAMPLE = {
   customerName: 'ABC Industries Pvt. Ltd.',
   customerAddress: '12 Industrial Area, Phase-II, New Delhi – 110020',
-  productTitle: 'IS 1786 : 2008 High Strength Deformed Steel Bars',
-  testReportAsPer: 'IS 1786 : 2008',
+  productTitle: 'High Strength Deformed Steel Bars as per IS 1786: 2008',
+  testReportAsPer: 'IS 1786: 2008',
   ulrNumber: 'TC-XXXX-250000001',
   sampleCode: 'SRF/2026/0001',
   reportNumberBase: 'TR/2026/0001',
