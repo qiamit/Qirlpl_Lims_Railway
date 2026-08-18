@@ -1150,6 +1150,8 @@ export function CalibrationEquipmentsForm({
 
       <CalibrationRangePointsDialog
         open={pointsRangeId != null && pointsRange != null}
+        rangeId={pointsRangeId}
+        autoSaveStatus={autoSaveStatus}
         initialSection={pointsDialogSection}
         onOpenChange={(open) => {
           if (!open) {

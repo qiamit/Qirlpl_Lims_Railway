@@ -6,13 +6,14 @@ import { ConsentLetterGenerateDialog } from './ConsentLetterGenerateDialog'
 import { ConsentLetterHeaderBar } from './ConsentLetterHeaderBar'
 import { ConsentLetterTable } from './ConsentLetterTable'
 import { ConsentLetterTestParametersViewDialog } from './ConsentLetterTestParametersViewDialog'
-import { printConsentLetter, previewConsentLetter } from './reprintConsentLetter'
+import { printConsentLetter, previewConsentLetter, downloadConsentLetterPdf, emailConsentLetter } from './reprintConsentLetter'
 import type { ConsentLetterListRow } from './types'
 
 export default function ConsentLetterMasterPage() {
   const [rows, setRows] = useState<ConsentLetterListRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -109,8 +110,48 @@ export default function ConsentLetterMasterPage() {
 
   const handlePrint = async (row: ConsentLetterListRow) => {
     setPrintBusyId(row.id)
+    setError(null)
+    setNotice(null)
     try {
       await printConsentLetter(row)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Print failed')
+    } finally {
+      setPrintBusyId(null)
+    }
+  }
+
+  const handleDownloadPdf = async (row: ConsentLetterListRow) => {
+    setPrintBusyId(row.id)
+    setError(null)
+    setNotice(null)
+    try {
+      const filename = await downloadConsentLetterPdf(row)
+      setNotice(`Downloaded ${filename}.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'PDF download failed')
+    } finally {
+      setPrintBusyId(null)
+    }
+  }
+
+  const handleEmailToClient = async (row: ConsentLetterListRow) => {
+    const email = row.clientEmail?.trim()
+    if (!email) {
+      setError('Client email is not set in Client Master.')
+      return
+    }
+    const label = row.consentLetterNo.trim() || 'this consent letter'
+    if (!window.confirm(`Send consent letter ${label} to ${email}?`)) return
+
+    setPrintBusyId(row.id)
+    setError(null)
+    setNotice(null)
+    try {
+      const sent = await emailConsentLetter(row)
+      setNotice(`Consent letter emailed to ${sent.email}.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Email failed')
     } finally {
       setPrintBusyId(null)
     }
@@ -171,10 +212,13 @@ export default function ConsentLetterMasterPage() {
         rows={paged}
         loading={loading}
         error={error}
+        notice={notice}
         selectedIds={selectedIds}
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
         onPrint={(row) => void handlePrint(row)}
+        onDownloadPdf={(row) => void handleDownloadPdf(row)}
+        onEmailToClient={(row) => void handleEmailToClient(row)}
         onView={(row) => void handleView(row)}
         onViewTestParameters={handleViewTestParameters}
         onEdit={openEditDialog}

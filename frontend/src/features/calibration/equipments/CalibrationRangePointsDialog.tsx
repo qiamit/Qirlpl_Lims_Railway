@@ -852,6 +852,17 @@ function MasterEquipmentStatusDialog({
   )
 }
 
+function AutoSaveHint({
+  status,
+}: {
+  status?: 'idle' | 'saving' | 'saved' | 'error'
+}) {
+  if (status === 'saving') return <span className="text-[11px] text-stone-500">Saving…</span>
+  if (status === 'saved') return <span className="text-[11px] text-emerald-700">Saved</span>
+  if (status === 'error') return <span className="text-[11px] text-rose-700">Save failed</span>
+  return null
+}
+
 function MasterCalibrationPointsViewDialog({
   open,
   onOpenChange,
@@ -861,6 +872,7 @@ function MasterCalibrationPointsViewDialog({
   masterMetadata,
   loading,
   loadHint,
+  autoSaveStatus,
   onUpdateTable,
 }: {
   open: boolean
@@ -871,6 +883,7 @@ function MasterCalibrationPointsViewDialog({
   masterMetadata: Map<string, MasterEquipmentMeta>
   loading: boolean
   loadHint: string | null
+  autoSaveStatus?: 'idle' | 'saving' | 'saved' | 'error'
   onUpdateTable: (table: CalibrationPointsStored) => void
 }) {
   const title = tab
@@ -914,7 +927,8 @@ function MasterCalibrationPointsViewDialog({
             />
           ) : null}
         </div>
-        <DialogFooter className="shrink-0 border-t border-stone-300 bg-white px-4 py-3 sm:px-6">
+        <DialogFooter className="shrink-0 gap-2 border-t border-stone-300 bg-white px-4 py-3 sm:justify-between sm:px-6">
+          <AutoSaveHint status={autoSaveStatus} />
           <Button
             type="button"
             className={limsPrimaryBtnClass}
@@ -931,6 +945,7 @@ function MasterCalibrationPointsViewDialog({
 export function CalibrationRangePointsDialog({
   open,
   onOpenChange,
+  rangeId,
   pointsTable,
   masterEquipmentIds = [],
   masterPointsTabs,
@@ -942,11 +957,14 @@ export function CalibrationRangePointsDialog({
   generateReportContent = null,
   modeOfCalibrationContent = null,
   initialSection = 'masters',
+  autoSaveStatus,
   onChange,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   rangeLabel: string
+  /** Stable range id so tab state is not reset when parent auto-saves. */
+  rangeId?: string | null
   unit: string
   pointsTable: CalibrationPointsStored
   masterEquipmentIds?: string[]
@@ -966,6 +984,7 @@ export function CalibrationRangePointsDialog({
   modeOfCalibrationContent?: ReactNode
   /** Section to open when the dialog becomes visible. */
   initialSection?: CalibrationPointsDialogSection
+  autoSaveStatus?: 'idle' | 'saving' | 'saved' | 'error'
   onChange: (next: {
     calibrationPointsTable: CalibrationPointsStored
     masterEquipmentIds: string[]
@@ -991,6 +1010,31 @@ export function CalibrationRangePointsDialog({
     : null
   const statusViewTitle = statusViewMeta?.equipmentName ?? 'Master Equipment Status'
 
+  const persistTabs = useCallback(
+    (nextTabs: MasterPointsTab[]) => {
+      const resolvedTabs = nextTabs.length > 0 ? nextTabs : [emptyMasterPointsTab()]
+      onChange({
+        calibrationPointsTable: primaryCalibrationPointsTable(resolvedTabs),
+        masterEquipmentIds: masterEquipmentIdsFromTabs(resolvedTabs),
+        masterPointsTabs: resolvedTabs,
+      })
+    },
+    [onChange],
+  )
+
+  const replaceTabTable = useCallback(
+    (tabId: string, table: CalibrationPointsStored) => {
+      setTabs((prev) => {
+        const next = prev.map((tab) =>
+          tab.id === tabId ? { ...tab, calibrationPointsTable: table } : tab,
+        )
+        persistTabs(next)
+        return next
+      })
+    },
+    [persistTabs],
+  )
+
   const loadPointsForTab = useCallback(async (masterId: string, tabId: string) => {
     if (!masterId.trim()) {
       setViewLoadHint('Select a master equipment first.')
@@ -1001,21 +1045,11 @@ export function CalibrationRangePointsDialog({
     try {
       const table = await fetchSingleMasterTable(masterId)
       if (table) {
-        setTabs((prev) =>
-          prev.map((tab) =>
-            tab.id === tabId ? { ...tab, calibrationPointsTable: table } : tab,
-          ),
-        )
+        replaceTabTable(tabId, table)
         setViewLoadHint(`Loaded ${table.rows.length} check point(s) from master equipment.`)
         return
       }
-      setTabs((prev) =>
-        prev.map((tab) =>
-          tab.id === tabId
-            ? { ...tab, calibrationPointsTable: singleColumnPointsTable() }
-            : tab,
-        ),
-      )
+      replaceTabTable(tabId, singleColumnPointsTable())
       setViewLoadHint(
         'Selected master has no calibration points yet. Add them under Equipment for Calibration.',
       )
@@ -1024,7 +1058,7 @@ export function CalibrationRangePointsDialog({
     } finally {
       setLoadingPointsTabId(null)
     }
-  }, [])
+  }, [replaceTabTable])
 
   useEffect(() => {
     if (!open) return
@@ -1032,10 +1066,16 @@ export function CalibrationRangePointsDialog({
     setViewTabId(null)
     setStatusViewMasterId(null)
     setSelectedTabIds(new Set())
-    setActiveSection(initialSection ?? 'masters')
     const initial = buildInitialTabs(masterPointsTabs, masterEquipmentIds, pointsTable)
     setTabs(initial.length > 0 ? initial : [emptyMasterPointsTab()])
-  }, [open, pointsTable, masterEquipmentIds, masterPointsTabs, initialSection])
+    // Hydrate only when this dialog opens or the range changes — not when parent auto-saves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, rangeId])
+
+  useEffect(() => {
+    if (!open) return
+    setActiveSection(initialSection ?? 'masters')
+  }, [open, initialSection])
 
   useEffect(() => {
     if (!open) return
@@ -1093,11 +1133,13 @@ export function CalibrationRangePointsDialog({
   }
 
   const selectMasterForTab = (tabId: string, masterId: string) => {
-    setTabs((prev) =>
-      prev.map((tab) =>
+    setTabs((prev) => {
+      const next = prev.map((tab) =>
         tab.id === tabId ? { ...tab, masterEquipmentId: masterId } : tab,
-      ),
-    )
+      )
+      persistTabs(next)
+      return next
+    })
     if (masterId.trim()) {
       void loadPointsForTab(masterId, tabId)
     }
@@ -1105,7 +1147,11 @@ export function CalibrationRangePointsDialog({
 
   const addMasterRow = () => {
     const tab = emptyMasterPointsTab()
-    setTabs((prev) => [...prev, tab])
+    setTabs((prev) => {
+      const next = [...prev, tab]
+      persistTabs(next)
+      return next
+    })
   }
 
   const removeMasterRow = (tabId: string) => {
@@ -1114,6 +1160,7 @@ export function CalibrationRangePointsDialog({
         const only = emptyMasterPointsTab()
         setSelectedTabIds(new Set())
         if (viewTabId === tabId) setViewTabId(null)
+        persistTabs([only])
         return [only]
       }
       const next = prev.filter((t) => t.id !== tabId)
@@ -1123,6 +1170,7 @@ export function CalibrationRangePointsDialog({
         return updated
       })
       if (viewTabId === tabId) setViewTabId(null)
+      persistTabs(next)
       return next
     })
     setViewLoadHint(null)
@@ -1141,37 +1189,11 @@ export function CalibrationRangePointsDialog({
 
   const updateViewTabTable = (table: CalibrationPointsStored) => {
     if (!viewTabId) return
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === viewTabId ? { ...tab, calibrationPointsTable: table } : tab,
-      ),
-    )
+    replaceTabTable(viewTabId, table)
   }
 
   const handleDone = () => {
-    const cleanedTabs = tabs
-      .filter((tab) => tab.masterEquipmentId.trim().length > 0)
-      .map((tab) => {
-        const table = tab.calibrationPointsTable
-        const nextRows = table.rows.filter((r) =>
-          Object.values(r.values).some((v) => String(v ?? '').trim().length > 0),
-        )
-        const cleaned: CalibrationPointsStored =
-          table.columns.length === 0
-            ? emptyCalibrationPointsTable()
-            : { columns: table.columns.map((c) => ({ ...c })), rows: nextRows }
-        return {
-          ...tab,
-          masterEquipmentId: tab.masterEquipmentId.trim(),
-          calibrationPointsTable: cleaned,
-        }
-      })
-    const resolvedTabs = cleanedTabs.length > 0 ? cleanedTabs : [emptyMasterPointsTab()]
-    onChange({
-      calibrationPointsTable: primaryCalibrationPointsTable(resolvedTabs),
-      masterEquipmentIds: masterEquipmentIdsFromTabs(resolvedTabs),
-      masterPointsTabs: resolvedTabs,
-    })
+    persistTabs(tabs)
     onOpenChange(false)
   }
 
@@ -1412,6 +1434,7 @@ export function CalibrationRangePointsDialog({
               {activeSection === 'rawSheet' ? rawSheetFooterActions : null}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
+              <AutoSaveHint status={autoSaveStatus} />
               <Button
                 type="button"
                 className={limsPrimaryBtnClass}
@@ -1439,6 +1462,7 @@ export function CalibrationRangePointsDialog({
         masterMetadata={masterMetadata}
         loading={viewTab != null && loadingPointsTabId === viewTab.id}
         loadHint={viewLoadHint}
+        autoSaveStatus={autoSaveStatus}
         onUpdateTable={updateViewTabTable}
       />
 

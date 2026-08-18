@@ -19,6 +19,7 @@ import {
 import { CONSENT_LETTER_DEFAULTS } from './consentLetterDefaults'
 import type { ConsentLetterLabDetails } from './fetchConsentLetterFormData'
 import { fetchActiveUserProfiles } from '@/features/sample-handling/shared/fetchActiveUserProfiles'
+import { embedPrintImageAsDataUrl } from './embedPrintImages'
 
 const LETTERHEAD_BUCKET = 'laboratory-files'
 const CONSENT_LETTER_SIGNATORY_DESIGNATION = 'Quality Manager'
@@ -184,6 +185,11 @@ export async function fetchConsentLetterPrintContext(): Promise<ConsentLetterPri
   const sealSignUrl = await signedStorageUrl(parsed?.sealSignPath)
   const printSignatures = visibleTestReportSignatures(printSettings)
   const signatory = await resolveConsentLetterSignatory(printSignatures)
+  const [headerUrl, footerUrl, sealEmbedded] = await Promise.all([
+    embedPrintImageAsDataUrl(template.headerUrl),
+    embedPrintImageAsDataUrl(template.footerUrl),
+    embedPrintImageAsDataUrl(sealSignUrl),
+  ])
 
   return {
     lab: {
@@ -196,8 +202,12 @@ export async function fetchConsentLetterPrintContext(): Promise<ConsentLetterPri
       nablCertificateNo: CONSENT_LETTER_DEFAULTS.nablCertificateNo,
     },
     printSettings,
-    template,
-    sealSignUrl,
+    template: {
+      ...template,
+      headerUrl,
+      footerUrl,
+    },
+    sealSignUrl: sealEmbedded,
     signatures: [signatory],
   }
 }

@@ -28,6 +28,8 @@ export function CompletedResultsTable({
   onViewSrf,
   onPrintNabl,
   onPrintNonNabl,
+  onDownloadPdfs,
+  onEmailToClient,
   onReferbackToPreparation,
   onReferbackToResultsReview,
   canReferbackToResultsReview,
@@ -42,6 +44,8 @@ export function CompletedResultsTable({
   onViewSrf: (row: IssuedTestReportListRow) => void
   onPrintNabl: (row: IssuedTestReportListRow) => void
   onPrintNonNabl: (row: IssuedTestReportListRow) => void
+  onDownloadPdfs: (row: IssuedTestReportListRow) => void
+  onEmailToClient: (row: IssuedTestReportListRow) => void
   onReferbackToPreparation: (row: IssuedTestReportListRow) => void
   onReferbackToResultsReview: (row: IssuedTestReportListRow) => void
   canReferbackToResultsReview: boolean
@@ -147,13 +151,15 @@ export function CompletedResultsTable({
                   >
                     {formatDate(r.issuedAt ?? '')}
                   </TableCell>
-                  <TableCell className={cn(tdClass, 'w-0 whitespace-nowrap text-center')}>
+                  <TableCell className={cn(tdClass, 'min-w-[220px] whitespace-nowrap text-center')}>
                     <IssuedTestReportRowActions
                       row={r}
                       busy={busy}
                       onViewSrf={onViewSrf}
                       onPrintNabl={onPrintNabl}
                       onPrintNonNabl={onPrintNonNabl}
+                      onDownloadPdfs={onDownloadPdfs}
+                      onEmailToClient={onEmailToClient}
                       onReferbackToPreparation={onReferbackToPreparation}
                       onReferbackToResultsReview={onReferbackToResultsReview}
                       canReferbackToResultsReview={canReferbackToResultsReview}

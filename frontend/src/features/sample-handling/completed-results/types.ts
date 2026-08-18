@@ -3,6 +3,7 @@ export type IssuedTestReportListRow = {
   srfNumber: string | null
   dateReceiving: string | null
   clientName: string | null
+  clientEmail: string | null
   isCodeId: string | null
   isCodeLabel: string | null
   reportNumberBase: string | null

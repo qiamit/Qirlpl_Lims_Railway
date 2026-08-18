@@ -1,4 +1,4 @@
-import { Eye, List, Pencil, Printer, Trash2 } from 'lucide-react'
+import { Eye, FileDown, List, Mail, Pencil, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { limsPanelClass } from '@/lib/limsThemeUi'
@@ -8,7 +8,7 @@ import type { ConsentLetterListRow } from './types'
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 
 const GRID_TABLE =
-  'table-fixed min-w-[960px] w-full border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4] [&_th]:p-[1mm] [&_td]:!p-[1mm]'
+  'table-auto min-w-[1080px] w-full border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4] [&_th]:p-[1mm] [&_td]:!p-[1mm]'
 
 const thBase =
   'bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200'
@@ -29,19 +29,22 @@ const checkboxClass =
   'h-4 w-4 rounded-none border-stone-500 text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
 
 const actionBtnClass =
-  'rounded-none text-[#92400e] hover:bg-[#f3e9d8] hover:text-[#78350f]'
+  'h-8 w-8 shrink-0 p-0 rounded-none text-[#92400e] hover:bg-[#f3e9d8] hover:text-[#78350f]'
 
 const actionDangerBtnClass =
-  'rounded-none text-red-700 hover:bg-red-50 hover:text-red-800'
+  'h-8 w-8 shrink-0 p-0 rounded-none text-red-700 hover:bg-red-50 hover:text-red-800'
 
 export function ConsentLetterTable({
   rows,
   loading,
   error,
+  notice,
   selectedIds,
   onToggle,
   onToggleAll,
   onPrint,
+  onDownloadPdf,
+  onEmailToClient,
   onView,
   onViewTestParameters,
   onEdit,
@@ -53,10 +56,13 @@ export function ConsentLetterTable({
   rows: ConsentLetterListRow[]
   loading: boolean
   error: string | null
+  notice?: string | null
   selectedIds: Set<string>
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
   onPrint: (row: ConsentLetterListRow) => void
+  onDownloadPdf: (row: ConsentLetterListRow) => void
+  onEmailToClient: (row: ConsentLetterListRow) => void
   onView: (row: ConsentLetterListRow) => void
   onViewTestParameters: (row: ConsentLetterListRow) => void
   onEdit: (row: ConsentLetterListRow) => void
@@ -71,6 +77,7 @@ export function ConsentLetterTable({
   return (
     <div className={cn(limsPanelClass, 'bg-[#f7f3eb]')}>
       {error ? <p className="px-3 pt-3 text-sm text-red-600 sm:px-5 sm:pt-4">{error}</p> : null}
+      {notice ? <p className="px-3 pt-3 text-sm text-emerald-800 sm:px-5 sm:pt-4">{notice}</p> : null}
 
       {loading ? (
         <p className="px-5 py-8 text-center text-sm text-[#78716c]">Loading…</p>
@@ -86,12 +93,12 @@ export function ConsentLetterTable({
           <Table className={GRID_TABLE}>
             <colgroup>
               <col className="w-[3%]" />
-              <col className="w-[14%]" />
-              <col className="w-[10%]" />
-              <col className="w-[24%]" />
-              <col className="w-[16%]" />
               <col className="w-[13%]" />
+              <col className="w-[9%]" />
               <col className="w-[20%]" />
+              <col className="w-[14%]" />
+              <col className="w-[13%]" />
+              <col className="w-[28%]" />
             </colgroup>
             <TableHeader>
               <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
@@ -107,12 +114,12 @@ export function ConsentLetterTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className={cn('w-[14%]', thBase)}>Letter No</TableHead>
-                <TableHead className={cn('w-[10%]', thBase)}>Date</TableHead>
-                <TableHead className={cn('w-[24%]', thBase)}>Client</TableHead>
-                <TableHead className={cn('w-[16%]', thBase)}>IS Code</TableHead>
+                <TableHead className={cn('w-[13%]', thBase)}>Letter No</TableHead>
+                <TableHead className={cn('w-[9%]', thBase)}>Date</TableHead>
+                <TableHead className={cn('w-[20%]', thBase)}>Client</TableHead>
+                <TableHead className={cn('w-[14%]', thBase)}>IS Code</TableHead>
                 <TableHead className={cn('w-[13%]', thBase)}>Test Parameters</TableHead>
-                <TableHead className={cn('w-[20%]', thBase)}>Action</TableHead>
+                <TableHead className={cn('w-[28%] min-w-[260px]', thBase)}>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -181,11 +188,11 @@ export function ConsentLetterTable({
                       </div>
                     </TableCell>
 
-                    <TableCell className="w-[20%] align-middle text-center">
-                      <div className="flex w-full items-center justify-center gap-0.5 p-[1mm]">
+                    <TableCell className="w-[28%] min-w-[260px] align-middle text-center">
+                      <div className="flex w-full flex-nowrap items-center justify-center gap-0.5 p-[1mm]">
                         <Button
                           type="button"
-                          size="sm"
+                          size="icon"
                           variant="ghost"
                           className={actionBtnClass}
                           aria-label={`View ${fmt(r.consentLetterNo)}`}
@@ -197,7 +204,7 @@ export function ConsentLetterTable({
                         </Button>
                         <Button
                           type="button"
-                          size="sm"
+                          size="icon"
                           variant="ghost"
                           className={actionBtnClass}
                           aria-label={`Print ${fmt(r.consentLetterNo)}`}
@@ -209,7 +216,35 @@ export function ConsentLetterTable({
                         </Button>
                         <Button
                           type="button"
-                          size="sm"
+                          size="icon"
+                          variant="ghost"
+                          className={actionBtnClass}
+                          aria-label={`Download PDF ${fmt(r.consentLetterNo)}`}
+                          title="Download PDF"
+                          disabled={busy}
+                          onClick={() => onDownloadPdf(r)}
+                        >
+                          <FileDown size={16} />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className={actionBtnClass}
+                          aria-label={`Email consent letter ${fmt(r.consentLetterNo)}`}
+                          title={
+                            r.clientEmail?.trim()
+                              ? `Email to Client (${r.clientEmail})`
+                              : 'Client email is not set'
+                          }
+                          disabled={busy || !r.clientEmail?.trim()}
+                          onClick={() => onEmailToClient(r)}
+                        >
+                          <Mail size={16} />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
                           variant="ghost"
                           className={actionBtnClass}
                           aria-label={`Edit ${fmt(r.consentLetterNo)}`}
@@ -221,7 +256,7 @@ export function ConsentLetterTable({
                         </Button>
                         <Button
                           type="button"
-                          size="sm"
+                          size="icon"
                           variant="ghost"
                           className={actionDangerBtnClass}
                           aria-label={`Delete ${fmt(r.consentLetterNo)}`}

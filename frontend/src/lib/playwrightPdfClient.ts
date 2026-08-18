@@ -69,13 +69,10 @@ function friendlyPdfServiceError(detail: string, status?: number): string {
   return 'PDF download failed. Start PDF service with: npm run pdf:dev'
 }
 
-/**
- * Render HTML → PDF via Playwright service and download the file.
- * Throws a clear error if the service is not running or Chromium is missing.
- */
-export async function downloadPdfViaPlaywright(
+/** Render HTML → PDF bytes via Playwright service (does not trigger a download). */
+export async function renderPdfViaPlaywright(
   request: PlaywrightPdfRequest,
-): Promise<void> {
+): Promise<Blob> {
   const endpoint = pdfServiceUrl()
   let res: Response
   try {
@@ -112,9 +109,19 @@ export async function downloadPdfViaPlaywright(
 
   const blob = await res.blob()
   if (!blob.size) throw new Error('PDF service returned an empty file')
-  // Some proxies return HTML error pages with 200 — guard against that.
   if (blob.type.includes('text/html')) {
     throw new Error(friendlyPdfServiceError('PDF service is not running'))
   }
+  return blob
+}
+
+/**
+ * Render HTML → PDF via Playwright service and download the file.
+ * Throws a clear error if the service is not running or Chromium is missing.
+ */
+export async function downloadPdfViaPlaywright(
+  request: PlaywrightPdfRequest,
+): Promise<void> {
+  const blob = await renderPdfViaPlaywright(request)
   triggerPdfDownload(blob, request.filename)
 }

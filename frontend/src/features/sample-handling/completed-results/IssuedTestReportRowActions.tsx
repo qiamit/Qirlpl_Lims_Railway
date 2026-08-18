@@ -1,4 +1,4 @@
-import { Eye, Printer, Undo2 } from 'lucide-react'
+import { Eye, FileDown, Mail, Printer, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -12,7 +12,7 @@ import type { IssuedTestReportListRow } from './types'
 
 const iconBtnClass = cn(
   limsOutlineBtnClass,
-  'h-8 w-8 p-0 shadow-none',
+  'h-8 w-8 shrink-0 p-0 shadow-none',
 )
 
 export function IssuedTestReportRowActions({
@@ -21,6 +21,8 @@ export function IssuedTestReportRowActions({
   onViewSrf,
   onPrintNabl,
   onPrintNonNabl,
+  onDownloadPdfs,
+  onEmailToClient,
   onReferbackToPreparation,
   onReferbackToResultsReview,
   canReferbackToResultsReview,
@@ -30,6 +32,8 @@ export function IssuedTestReportRowActions({
   onViewSrf: (row: IssuedTestReportListRow) => void
   onPrintNabl: (row: IssuedTestReportListRow) => void
   onPrintNonNabl: (row: IssuedTestReportListRow) => void
+  onDownloadPdfs: (row: IssuedTestReportListRow) => void
+  onEmailToClient: (row: IssuedTestReportListRow) => void
   onReferbackToPreparation: (row: IssuedTestReportListRow) => void
   onReferbackToResultsReview: (row: IssuedTestReportListRow) => void
   /** Logged-in user required to assign review queue */
@@ -38,9 +42,10 @@ export function IssuedTestReportRowActions({
   const canNabl = Boolean(row.nablIssuedAt && row.reportNumberBase)
   const canNonNabl = Boolean(row.nonNablIssuedAt && row.reportNumberBase)
   const canPrint = canNabl || canNonNabl
+  const canEmail = canPrint && Boolean(row.clientEmail?.trim())
 
   return (
-    <div className="inline-flex items-center justify-center gap-1.5">
+    <div className="inline-flex flex-nowrap items-center justify-center gap-1.5">
       <Button
         type="button"
         variant="outline"
@@ -81,6 +86,37 @@ export function IssuedTestReportRowActions({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={iconBtnClass}
+        disabled={busy || !canPrint}
+        aria-label={`Download PDF reports for ${row.srfNumber ?? 'SRF'}`}
+        title="Download PDF (Accredited & Non Accredited)"
+        onClick={() => onDownloadPdfs(row)}
+      >
+        <FileDown size={15} />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={iconBtnClass}
+        disabled={busy || !canEmail}
+        aria-label={`Email reports to client for ${row.srfNumber ?? 'SRF'}`}
+        title={
+          canEmail
+            ? `Email to Client (${row.clientEmail})`
+            : canPrint
+              ? 'Client email is not set'
+              : 'Email to Client'
+        }
+        onClick={() => onEmailToClient(row)}
+      >
+        <Mail size={15} />
+      </Button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

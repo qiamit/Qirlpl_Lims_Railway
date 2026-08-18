@@ -18,6 +18,7 @@ function mapConsentLetterRow(row: Record<string, unknown>): ConsentLetterListRow
     letterDate: String(row.letter_date ?? '').trim(),
     clientId: row.client_id ? String(row.client_id).trim() : null,
     clientName: String(row.client_name ?? '').trim(),
+    clientEmail: String(row.client_email ?? '').trim() || null,
     clientAddress: String(row.client_address ?? '').trim(),
     isCodeId: row.is_code_id ? String(row.is_code_id).trim() : null,
     isCodeLabel: row.is_code_label ? String(row.is_code_label).trim() : null,
@@ -90,7 +91,7 @@ export async function generateNextConsentLetterNumber(
 export async function fetchConsentLetters(): Promise<ConsentLetterListRow[]> {
   const { data, error } = await supabase
     .from('consent_letters')
-    .select(CONSENT_LETTER_SELECT)
+    .select(`${CONSENT_LETTER_SELECT}, clients(email)`)
     .order('generated_at', { ascending: false })
 
   if (error) {
@@ -102,9 +103,18 @@ export async function fetchConsentLetters(): Promise<ConsentLetterListRow[]> {
     }
     throw new Error(message || 'Unable to load consent letters')
   }
-  return (Array.isArray(data) ? data : []).map((row) =>
-    mapConsentLetterRow(row as Record<string, unknown>),
-  )
+  return (Array.isArray(data) ? data : []).map((row) => {
+    const rec = row as Record<string, unknown>
+    const clientsRaw = rec.clients as
+      | { email?: string | null }
+      | Array<{ email?: string | null }>
+      | null
+    const clients = Array.isArray(clientsRaw) ? (clientsRaw[0] ?? null) : clientsRaw
+    return mapConsentLetterRow({
+      ...rec,
+      client_email: clients?.email ?? null,
+    })
+  })
 }
 
 export async function insertConsentLetter(input: ConsentLetterInsertInput): Promise<ConsentLetterListRow> {

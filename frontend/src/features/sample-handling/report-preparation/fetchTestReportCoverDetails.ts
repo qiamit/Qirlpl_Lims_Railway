@@ -151,6 +151,8 @@ export type TestReportCoverDetails = {
   referenceReportNo: string | null
   anyOtherInformation: string | null
   reportingReferenceOtherLine: string
+  /** Raw Report Issue Date (ISO). Used on digital signature stamps. */
+  issuedAtIso: string | null
   sampleDescription: string | null
   declaredValue: string | null
   partB: TestReportPartBDetails
@@ -426,6 +428,7 @@ export async function fetchTestReportCoverDetails(
       referenceReportNo,
       fmt(row.any_other_information as string),
     ),
+    issuedAtIso: issuedAt,
     sampleDescription: fmt(row.sample_description as string),
     declaredValue: fmt(row.sample_declaration as string),
     partB: buildTestReportPartBDetails(

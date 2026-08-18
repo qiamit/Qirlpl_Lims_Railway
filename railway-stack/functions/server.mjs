@@ -121,11 +121,19 @@ function buildMrmHtml(opts) {
 </body></html>`
 }
 
-async function sendResendEmail({ to, subject, html, text }) {
+async function sendResendEmail({ to, subject, html, text, attachments }) {
   if (!RESEND_API_KEY) {
     const err = new Error('Email service not configured. Set RESEND_API_KEY on the functions service.')
     err.statusCode = 503
     throw err
+  }
+  const payloadBody = {
+    from: EMAIL_FROM,
+    to: Array.isArray(to) ? to : [to],
+    subject,
+    html,
+    ...(text ? { text } : {}),
+    ...(Array.isArray(attachments) && attachments.length > 0 ? { attachments } : {}),
   }
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -133,13 +141,7 @@ async function sendResendEmail({ to, subject, html, text }) {
       Authorization: `Bearer ${RESEND_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      from: EMAIL_FROM,
-      to: Array.isArray(to) ? to : [to],
-      subject,
-      html,
-      ...(text ? { text } : {}),
-    }),
+    body: JSON.stringify(payloadBody),
   })
   const payload = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -154,6 +156,35 @@ async function sendResendEmail({ to, subject, html, text }) {
   return payload
 }
 
+function normalizeAttachments(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  if (raw.length > 4) {
+    const err = new Error('Too many email attachments')
+    err.statusCode = 400
+    throw err
+  }
+  return raw.map((item) => {
+    const filename = String(item?.filename ?? '').trim()
+    const content = String(item?.content ?? '').replace(/\s+/g, '')
+    const contentType = String(item?.contentType ?? item?.content_type ?? '').trim()
+    if (!filename || !content) {
+      const err = new Error('Each attachment needs filename and content')
+      err.statusCode = 400
+      throw err
+    }
+    if (content.length > 12_000_000) {
+      const err = new Error(`Attachment ${filename} is too large`)
+      err.statusCode = 400
+      throw err
+    }
+    return {
+      filename,
+      content,
+      ...(contentType ? { content_type: contentType } : {}),
+    }
+  })
+}
+
 async function handleSendEmail(req, res) {
   await requireUser(req)
   const body = await readBody(req)
@@ -164,7 +195,8 @@ async function handleSendEmail(req, res) {
     json(res, 400, { error: 'to, subject, and html are required' })
     return
   }
-  const sent = await sendResendEmail({ to, subject, html, text: body.text })
+  const attachments = normalizeAttachments(body.attachments)
+  const sent = await sendResendEmail({ to, subject, html, text: body.text, attachments })
   json(res, 200, { ok: true, id: sent.id ?? null })
 }
 

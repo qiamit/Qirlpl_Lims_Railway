@@ -27,6 +27,7 @@ import {
   visiblePartCReportColumns,
 } from './partCReportColumns'
 import { waitForPrintDocumentReady } from './waitForPrintDocumentReady'
+import { digitalSignatureStampFields } from './digitalSignatureStamp'
 
 function escapeHtml(s: string) {
   return s
@@ -320,29 +321,36 @@ function buildPartDPrintHtml(notes: string, isLabel: string): string {
 </table></section>`
 }
 
-function buildSignatureCellHtml(sig: {
-  roleLabel: string
-  name: string
-  designation: string
-  department: string
-}): string {
-  const roleLabel = sig.roleLabel.trim()
-  const name = sig.name.trim() || '—'
-  const designation = formatSignatureDesignationLine(sig)
-  const roleHtml = roleLabel
-    ? `<div class="report-signature-role">${escapeHtml(roleLabel)}</div>`
+function buildSignatureCellHtml(
+  sig: {
+    roleLabel: string
+    name: string
+    designation: string
+    department: string
+  },
+  issuedAtIso: string | null,
+): string {
+  const stamp = digitalSignatureStampFields(
+    { roleLabel: sig.roleLabel, name: sig.name, designation: formatSignatureDesignationLine(sig) },
+    issuedAtIso,
+  )
+  const roleHtml = stamp.roleLabel
+    ? `<div class="report-signature-role">${escapeHtml(stamp.roleLabel)}</div>`
     : ''
   return `<div class="report-signature-cell">
     ${roleHtml}
-    <div class="report-signature-line" aria-hidden="true"></div>
-    <div class="report-signature-name">${escapeHtml(name)}</div>
-    <div class="report-signature-designation">${escapeHtml(designation)}</div>
+    <div class="report-signature-name">${escapeHtml(stamp.name)}</div>
+    <div class="report-signature-designation">${escapeHtml(stamp.designation)}</div>
+    <div class="report-signature-stamp">
+      <div class="report-signature-stamp-value">${escapeHtml(stamp.issueStamp)}</div>
+    </div>
   </div>`
 }
 
 function buildSignaturesPrintHtml(
   printSettings: TestReportPrintSettings,
   part: TestReportSignatureAfterPart,
+  issuedAtIso: string | null,
 ): string {
   const signatures = signaturesForPart(printSettings, part)
   if (signatures.length === 0) return ''
@@ -362,9 +370,9 @@ function buildSignaturesPrintHtml(
   let cellsHtml: string
   if (count === 4) {
     const [left, c1, c2, right] = signatures
-    cellsHtml = `${buildSignatureCellHtml(left)}<div class="report-signatures-center-pair">${buildSignatureCellHtml(c1)}${buildSignatureCellHtml(c2)}</div>${buildSignatureCellHtml(right)}`
+    cellsHtml = `${buildSignatureCellHtml(left, issuedAtIso)}<div class="report-signatures-center-pair">${buildSignatureCellHtml(c1, issuedAtIso)}${buildSignatureCellHtml(c2, issuedAtIso)}</div>${buildSignatureCellHtml(right, issuedAtIso)}`
   } else {
-    cellsHtml = signatures.map((sig) => buildSignatureCellHtml(sig)).join('')
+    cellsHtml = signatures.map((sig) => buildSignatureCellHtml(sig, issuedAtIso)).join('')
   }
 
   return `<section class="report-signatures report-signatures-flow" aria-label="Report signatures after ${part}">
@@ -376,10 +384,11 @@ function withSignaturesAfterPart(
   partHtml: string,
   part: TestReportSignatureAfterPart,
   printSettings: TestReportPrintSettings,
+  issuedAtIso: string | null,
 ): string {
   if (!partHtml.trim()) return partHtml
   if (!signaturesApplyAfterPart(printSettings, part)) return partHtml
-  const signatureBlock = buildSignaturesPrintHtml(printSettings, part)
+  const signatureBlock = buildSignaturesPrintHtml(printSettings, part, issuedAtIso)
   if (!signatureBlock) return partHtml
   return `${partHtml}\n${signatureBlock}`
 }
@@ -398,8 +407,14 @@ export function buildScopedTestReportPrintHtml(opts: {
   template: ResolvedScopeTemplate
   coverDetails?: TestReportCoverDetails | null
   printSettings?: TestReportPrintSettings
+  /** ISO timestamp used on digital signature stamps (Report Issue Date). */
+  signatureIssuedAt?: string | null
 }): string {
   const printSettings = opts.printSettings ?? DEFAULT_TEST_REPORT_PRINT_SETTINGS
+  const signatureIssuedAt =
+    opts.signatureIssuedAt?.trim() ||
+    opts.coverDetails?.issuedAtIso?.trim() ||
+    new Date().toISOString()
   const printStyles = buildPrintStylesCss(printSettings)
   const watermarkStyle = buildWatermarkStyleCss(printSettings, opts.template, escapeHtml)
 
@@ -455,10 +470,30 @@ export function buildScopedTestReportPrintHtml(opts: {
     printSettings,
   )
   const partDHtml = buildPartDPrintHtml(opts.notes, isLabel)
-  const partAWithSignatures = withSignaturesAfterPart(partAHtml, 'part_a', printSettings)
-  const partBWithSignatures = withSignaturesAfterPart(partBHtml, 'part_b', printSettings)
-  const partCWithSignatures = withSignaturesAfterPart(partCHtml, 'part_c', printSettings)
-  const partDWithSignatures = withSignaturesAfterPart(partDHtml, 'part_d', printSettings)
+  const partAWithSignatures = withSignaturesAfterPart(
+    partAHtml,
+    'part_a',
+    printSettings,
+    signatureIssuedAt,
+  )
+  const partBWithSignatures = withSignaturesAfterPart(
+    partBHtml,
+    'part_b',
+    printSettings,
+    signatureIssuedAt,
+  )
+  const partCWithSignatures = withSignaturesAfterPart(
+    partCHtml,
+    'part_c',
+    printSettings,
+    signatureIssuedAt,
+  )
+  const partDWithSignatures = withSignaturesAfterPart(
+    partDHtml,
+    'part_d',
+    printSettings,
+    signatureIssuedAt,
+  )
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><title></title>

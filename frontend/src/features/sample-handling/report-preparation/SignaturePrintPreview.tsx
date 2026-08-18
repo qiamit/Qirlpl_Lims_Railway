@@ -7,20 +7,28 @@ import {
   type TestReportPrintSettings,
   type TestReportSignature,
 } from '@/features/settings/lab-settings/printSettingsTypes'
+import { digitalSignatureStampFields } from './digitalSignatureStamp'
 
 function SignatureCellPreview({ sig }: { sig: TestReportSignature }) {
-  const roleLabel = sig.roleLabel.trim()
-  const name = sig.name.trim() || '—'
-  const designationLine = formatSignatureDesignationLine(sig)
+  const stamp = digitalSignatureStampFields(
+    {
+      roleLabel: sig.roleLabel,
+      name: sig.name,
+      designation: formatSignatureDesignationLine(sig),
+    },
+    new Date().toISOString(),
+  )
 
   return (
-    <div className="inline-flex w-[9.5rem] max-w-[13.75rem] flex-col items-center text-center">
-      {roleLabel ? (
-        <div className="mb-1 text-[9pt] font-bold tracking-[0.02em] text-slate-700">{roleLabel}</div>
+    <div className="inline-flex w-[10.75rem] max-w-[12rem] flex-col items-center bg-transparent px-1.5 py-1.5 text-center text-[#1d4ed8]">
+      {stamp.roleLabel ? (
+        <div className="text-[8.5pt] font-bold tracking-[0.04em]">{stamp.roleLabel}</div>
       ) : null}
-      <div className="mt-7 w-full max-w-[8.5rem] border-t border-slate-700" aria-hidden />
-      <div className="mt-2 text-[10pt] font-bold text-black">{name}</div>
-      <div className="text-[9pt] text-slate-600">{designationLine}</div>
+      <div className="font-serif text-[10.5pt] font-bold italic leading-tight">
+        {stamp.name}
+      </div>
+      <div className="text-[8pt] leading-tight">{stamp.designation}</div>
+      <div className="mt-1 text-[8pt] font-bold leading-tight">{stamp.issueStamp}</div>
     </div>
   )
 }
@@ -95,14 +103,19 @@ export function SignaturePrintPreview({
               Tick Select + Required, assign person, and choose Show after A/B/C/D on a signatory
             </p>
           ) : (
-            partsWithSigs.map(({ part, signatures }) => (
-              <div key={part} className="space-y-2">
-                <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-stone-500">
-                  After {TEST_REPORT_SIGNATURE_PART_LABELS[part]}
-                </p>
-                <SignatureRow signatures={signatures} />
-              </div>
-            ))
+            <>
+              {partsWithSigs.map(({ part, signatures }) => (
+                <div key={part} className="space-y-2">
+                  <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-stone-500">
+                    After {TEST_REPORT_SIGNATURE_PART_LABELS[part]}
+                  </p>
+                  <SignatureRow signatures={signatures} />
+                </div>
+              ))}
+              <p className="text-center text-[9px] text-stone-500">
+                Printed reports use Report Issue Date and time on every digital signature.
+              </p>
+            </>
           )}
         </div>
       </div>

@@ -8,6 +8,7 @@ import {
   injectCssIntoHtml,
 } from './testReportSheetCss'
 import { waitForPrintDocumentReady } from './waitForPrintDocumentReady'
+import { inlineDocumentImagesAsDataUrls } from './embedPrintImages'
 
 const CSS_PX_PER_MM = 96 / 25.4
 
@@ -63,6 +64,7 @@ export async function paginateContinuousTestReportHtml(
 
     await waitForPrintDocumentReady(doc)
     await paginateTestReportPreview(doc, printSettings)
+    await inlineDocumentImagesAsDataUrls(doc)
 
     const printCss = buildTestReportSheetPrintCss(printSettings)
     const styleEl = doc.createElement('style')

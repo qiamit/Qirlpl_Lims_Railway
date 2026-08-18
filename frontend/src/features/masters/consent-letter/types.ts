@@ -4,6 +4,7 @@ export type ConsentLetterListRow = {
   letterDate: string
   clientId: string | null
   clientName: string
+  clientEmail: string | null
   clientAddress: string
   isCodeId: string | null
   isCodeLabel: string | null

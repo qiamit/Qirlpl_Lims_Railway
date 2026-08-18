@@ -1,8 +1,16 @@
 import { buildConsentLetterPrintStylesCss } from './buildConsentLetterPrintStylesCss'
-import { formatConsentLetterClientDisplayLine } from './consentLetterDefaults'
+import { buildPrintStylesCss } from './buildPrintStylesCss'
+import {
+  formatConsentLetterClientDisplayLine,
+  parseConsentLetterDateInput,
+} from './consentLetterDefaults'
 import type { ConsentLetterPrintContext } from './fetchConsentLetterPrintContext'
-import type { TestReportSignature } from '@/features/settings/lab-settings/printSettingsTypes'
+import {
+  formatSignatureDesignationLine,
+  type TestReportSignature,
+} from '@/features/settings/lab-settings/printSettingsTypes'
 import { formatIsCodeLabelFromParts, normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
+import { digitalSignatureStampFields } from './digitalSignatureStamp'
 
 function escapeHtml(s: string): string {
   return String(s ?? '')
@@ -23,7 +31,14 @@ function formatIsCodeDisplay(
 }
 
 function imgTag(url: string, alt: string): string {
-  return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" crossorigin="anonymous" />`
+  return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" />`
+}
+
+function letterDateToIso(letterDate: string): string {
+  const parsed = parseConsentLetterDateInput(letterDate)
+  if (!parsed) return new Date().toISOString()
+  parsed.setHours(12, 0, 0, 0)
+  return parsed.toISOString()
 }
 
 function buildConsentLetterTestParameterRows(
@@ -71,27 +86,29 @@ function buildTestParameterTableRows(
 }
 
 function buildSignatureBlock(
-  sealSignUrl: string | null,
   signatures: TestReportSignature[],
+  letterDate: string,
 ): string {
   const sig = signatures.find((s) => s.name.trim() || s.designation.trim()) ?? signatures[0]
-  const sealHtml = sealSignUrl
-    ? `<div class="consent-seal">${imgTag(sealSignUrl, 'Company seal and signature')}</div>`
+  const stamp = digitalSignatureStampFields(
+    {
+      roleLabel: sig?.roleLabel ?? 'Approved By',
+      name: sig?.name ?? '',
+      designation: sig ? formatSignatureDesignationLine(sig) : 'Quality Manager',
+    },
+    letterDateToIso(letterDate),
+  )
+  const roleHtml = stamp.roleLabel
+    ? `<div class="report-signature-role">${escapeHtml(stamp.roleLabel)}</div>`
     : ''
-
-  const textInner = (() => {
-    if (sig?.name.trim() || sig?.designation.trim()) {
-      return `${sig.name.trim() ? `<p class="signatory-name">${escapeHtml(sig.name.trim())}</p>` : ''}
-      ${sig.designation.trim() ? `<p class="signatory-designation">${escapeHtml(sig.designation.trim())}</p>` : ''}
-      ${sig.roleLabel.trim() ? `<p class="signatory">${escapeHtml(sig.roleLabel.trim())}</p>` : ''}`
-    }
-    return '<p class="signatory">(Authorized Signatory)</p>'
-  })()
-
-  return `<div class="consent-sign-block">
-    <div class="consent-sign-inner">
-      ${sealHtml}
-      <div class="consent-sign-text">${textInner}</div>
+  return `<div class="consent-block closing">
+    <div class="report-signature-cell">
+      ${roleHtml}
+      <div class="report-signature-name">${escapeHtml(stamp.name)}</div>
+      <div class="report-signature-designation">${escapeHtml(stamp.designation)}</div>
+      <div class="report-signature-stamp">
+        <div class="report-signature-stamp-value">${escapeHtml(stamp.issueStamp)}</div>
+      </div>
     </div>
   </div>`
 }
@@ -118,36 +135,37 @@ function buildConsentLetterBody(input: BuildConsentLetterHtmlInput): string {
   const labName = input.lab.labName.trim() || 'Quality International Research & Laboratories Private Limited'
 
   return `
-  <div class="consent-letter">
+  <div class="consent-block">
     <hr class="consent-section-rule" aria-hidden="true" />
-
     <table class="meta-table" role="presentation">
       <tr>
         <td><strong>Consent Letter No :</strong> ${escapeHtml(input.consentLetterNo)}</td>
         <td class="meta-right"><strong>Date :</strong> ${escapeHtml(input.letterDate)}</td>
       </tr>
     </table>
+  </div>
 
-    <div class="client-block">${escapeHtml(formatConsentLetterClientDisplayLine(input.clientName, input.clientAddress))}</div>
+  <div class="consent-block client-block">${escapeHtml(formatConsentLetterClientDisplayLine(input.clientName, input.clientAddress))}</div>
 
-    <div class="is-spec-block">
-      <p><strong>IS Title :</strong> ${escapeHtml(productTitle)}</p>
-      <p><strong>IS Code :</strong> ${escapeHtml(isCodeText)}</p>
-    </div>
+  <div class="consent-block is-spec-block">
+    <p><strong>IS Title :</strong> ${escapeHtml(productTitle)}</p>
+    <p><strong>IS Code :</strong> ${escapeHtml(isCodeText)}</p>
+  </div>
 
-    <p class="subject">
-      <strong>Subject:</strong> Consent Letter for Testing of Samples as per Applicable Indian Standards
-      (${escapeHtml(isCodeText)})
-    </p>
+  <p class="consent-block subject">
+    <strong>Subject:</strong> Consent Letter for Testing of Samples as per Applicable Indian Standards
+    (${escapeHtml(isCodeText)})
+  </p>
 
-    <p class="salutation">Dear Sir,</p>
+  <p class="consent-block salutation">Dear Sir,</p>
 
-    <p class="body-text">
-      This is with reference to your request for the testing of your samples at our laboratory. We,
-      ${escapeHtml(labName)}, hereby give our formal consent to carry out the testing of the following
-      parameters / products as per the requirements of the Bureau of Indian Standards (BIS):
-    </p>
+  <p class="consent-block body-text">
+    This is with reference to your request for the testing of your samples at our laboratory. We,
+    ${escapeHtml(labName)}, hereby give our formal consent to carry out the testing of the following
+    parameters / products as per the requirements of the Bureau of Indian Standards (BIS):
+  </p>
 
+  <div class="consent-block">
     <table class="details">
       <thead>
         <tr>
@@ -160,67 +178,51 @@ function buildConsentLetterBody(input: BuildConsentLetterHtmlInput): string {
         ${buildTestParameterTableRows(input.testParameterNames, clauseText)}
       </tbody>
     </table>
+  </div>
 
-    <div class="credentials">
-      <strong>Laboratory Credentials:</strong>
-      <ol>
-        <li>
-          <strong>BIS Recognition:</strong> We are a BIS Recognized Laboratory (OSL) with OSL Code:
-          ${escapeHtml(input.lab.bisOslCode)}.
-        </li>
-        <li>
-          <strong>NABL Accreditation:</strong> Our laboratory is accredited by NABL (Certificate No.
-          ${escapeHtml(input.lab.nablCertificateNo)}) and the above-mentioned testing is covered under our
-          current scope of accreditation.
-        </li>
-      </ol>
-    </div>
+  <div class="consent-block credentials">
+    <strong>Laboratory Credentials:</strong>
+    <ol>
+      <li>
+        <strong>BIS Recognition:</strong> We are a BIS Recognized Laboratory (OSL) with OSL Code:
+        ${escapeHtml(input.lab.bisOslCode)}.
+      </li>
+      <li>
+        <strong>NABL Accreditation:</strong> Our laboratory is accredited by NABL (Certificate No.
+        ${escapeHtml(input.lab.nablCertificateNo)}) and the above-mentioned testing is covered under our
+        current scope of accreditation.
+      </li>
+    </ol>
+  </div>
 
-    <p class="body-text">
-      We hereby confirm that we have the necessary infrastructure and calibrated equipment to perform these tests
-      with high precision. We agree to test the samples as and when submitted by your firm and will provide the
-      Test Reports in the prescribed format required for BIS compliance.
-    </p>
+  <p class="consent-block body-text">
+    We hereby confirm that we have the necessary infrastructure and calibrated equipment to perform these tests
+    with high precision. We agree to test the samples as and when submitted by your firm and will provide the
+    Test Reports in the prescribed format required for BIS compliance.
+  </p>
 
-    <p class="body-text">
-      This consent is valid for the current Certification / Licensing period or as per the validity of our NABL /
-      BIS recognition.
-    </p>
+  <p class="consent-block body-text">
+    This consent is valid for the current Certification / Licensing period or as per the validity of our NABL /
+    BIS recognition.
+  </p>
 
-    <div class="closing">
-      ${buildSignatureBlock(input.print.sealSignUrl, input.print.signatures)}
-    </div>
-  </div>`
+  ${buildSignatureBlock(input.print.signatures, input.letterDate)}`
 }
 
 export function buildConsentLetterHtml(input: BuildConsentLetterHtmlInput): string {
   const { printSettings, template, lab } = input.print
-  const styles = buildConsentLetterPrintStylesCss(printSettings)
+  const styles = `${buildPrintStylesCss(printSettings)}${buildConsentLetterPrintStylesCss(printSettings)}`
 
-  const headerInner = template.omitHeader
-    ? ''
-    : template.headerUrl
-      ? imgTag(template.headerUrl, 'Letterhead')
-      : `<strong>${escapeHtml(lab.labName)}</strong>`
+  const headerInner = template.headerUrl
+    ? imgTag(template.headerUrl, 'Letterhead')
+    : `<strong>${escapeHtml(lab.labName)}</strong>`
 
-  const footerInner =
-    template.omitFooter || !template.footerUrl
-      ? ''
-      : imgTag(template.footerUrl, 'Footer')
+  const footerInner = template.footerUrl ? imgTag(template.footerUrl, 'Footer') : ''
 
-  const body = buildConsentLetterBody(input)
+  const headerHtml = `<header class="print-header${template.headerUrl ? '' : ' fallback'}">${headerInner}</header>`
+  const footerHtml = footerInner ? `<footer class="print-footer">${footerInner}</footer>` : ''
 
-  const headerHtml =
-    headerInner && !template.omitHeader
-      ? `<header class="consent-header${template.headerUrl ? '' : ' fallback'}">${headerInner}</header>`
-      : ''
-
-  const footerHtml =
-    footerInner && !template.omitFooter
-      ? `<footer class="consent-footer">${footerInner}</footer>`
-      : ''
-
-  return `<!doctype html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -228,12 +230,10 @@ export function buildConsentLetterHtml(input: BuildConsentLetterHtmlInput): stri
 <style>${styles}</style>
 </head>
 <body>
-<main class="consent-page">
 ${headerHtml}
-<div class="consent-body">
-${body}
-</div>
 ${footerHtml}
+<main class="print-body">
+${buildConsentLetterBody(input)}
 </main>
 </body>
 </html>`

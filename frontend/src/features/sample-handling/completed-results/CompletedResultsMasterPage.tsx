@@ -12,7 +12,7 @@ import type { ReportScopeKind } from '@/features/sample-handling/report-preparat
 import { CompletedResultsFooterBar } from './CompletedResultsFooterBar'
 import { CompletedResultsHeaderBar } from './CompletedResultsHeaderBar'
 import { CompletedResultsTable } from './CompletedResultsTable'
-import { printIssuedTestReport } from './printIssuedTestReport'
+import { printIssuedTestReport, downloadIssuedTestReports, emailIssuedTestReports } from './printIssuedTestReport'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   referbackIssuedTestReportToPreparation,
@@ -49,7 +49,7 @@ export default function CompletedResultsMasterPage() {
       const { data, error: qErr } = await supabase
         .from('samples')
         .select(
-          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, test_report_number, test_report_issued_at, test_report_nabl_issued_at, test_report_non_nabl_issued_at, test_report_nabl_ulr_number, clients(company_name)',
+          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, test_report_number, test_report_issued_at, test_report_nabl_issued_at, test_report_non_nabl_issued_at, test_report_nabl_ulr_number, clients(company_name, email)',
         )
         .eq('stage', 'completed')
         .order('test_report_issued_at', { ascending: false, nullsFirst: false })
@@ -81,13 +81,18 @@ export default function CompletedResultsMasterPage() {
 
       setRows(
         list.map((r: Record<string, unknown>) => {
-          const clients = r.clients as { company_name?: string } | null
+          const clientsRaw = r.clients as
+            | { company_name?: string; email?: string | null }
+            | Array<{ company_name?: string; email?: string | null }>
+            | null
+          const clients = Array.isArray(clientsRaw) ? (clientsRaw[0] ?? null) : clientsRaw
           const isId = r.test_report_is_code_id as string | null
           return {
             id: r.id as string,
             srfNumber: (r.srf_number as string) ?? null,
             dateReceiving: (r.date_of_sample_receiving as string) ?? null,
             clientName: clients?.company_name ?? null,
+            clientEmail: clients?.email?.trim() || null,
             isCodeId: isId,
             isCodeLabel: isId ? (isMap.get(isId) ?? null) : null,
             reportNumberBase: (r.test_report_number as string) ?? null,
@@ -174,6 +179,49 @@ export default function CompletedResultsMasterPage() {
       )
     } catch (e) {
       setSaveMessage(e instanceof Error ? e.message : 'Print failed')
+    } finally {
+      setActionBusyId(null)
+    }
+  }
+
+  const handleDownloadPdfs = async (row: IssuedTestReportListRow) => {
+    setActionBusyId(row.id)
+    setSaveMessage(null)
+    try {
+      const labels = await downloadIssuedTestReports(row, labName)
+      setSaveMessage(
+        `Downloaded ${labels.join(' & ')} PDF${labels.length > 1 ? 's' : ''} (${row.srfNumber ?? 'SRF'}).`,
+      )
+    } catch (e) {
+      setSaveMessage(e instanceof Error ? e.message : 'PDF download failed')
+    } finally {
+      setActionBusyId(null)
+    }
+  }
+
+  const handleEmailToClient = async (row: IssuedTestReportListRow) => {
+    const email = row.clientEmail?.trim()
+    if (!email) {
+      setSaveMessage('Client email is not set in Client Master.')
+      return
+    }
+    const label = row.srfNumber?.trim() || 'this SRF'
+    if (
+      !window.confirm(
+        `Send Accredited and Non Accredited PDF reports for ${label} to ${email}?`,
+      )
+    ) {
+      return
+    }
+    setActionBusyId(row.id)
+    setSaveMessage(null)
+    try {
+      const sent = await emailIssuedTestReports(row, labName)
+      setSaveMessage(
+        `${sent.labels.join(' & ')} report${sent.labels.length > 1 ? 's' : ''} emailed to ${sent.email}.`,
+      )
+    } catch (e) {
+      setSaveMessage(e instanceof Error ? e.message : 'Email failed')
     } finally {
       setActionBusyId(null)
     }
@@ -285,6 +333,8 @@ export default function CompletedResultsMasterPage() {
         onViewSrf={openViewSrf}
         onPrintNabl={(row) => void handlePrintReport(row, 'nabl')}
         onPrintNonNabl={(row) => void handlePrintReport(row, 'non_nabl')}
+        onDownloadPdfs={(row) => void handleDownloadPdfs(row)}
+        onEmailToClient={(row) => void handleEmailToClient(row)}
         onReferbackToPreparation={(row) => void handleReferbackToPreparation(row)}
         onReferbackToResultsReview={(row) => void handleReferbackToResultsReview(row)}
         canReferbackToResultsReview={Boolean(user?.id)}

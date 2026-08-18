@@ -640,35 +640,47 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
   }
   .report-signature-cell {
     flex: 0 1 auto;
-    width: 9.5rem;
-    max-width: 220px;
-    min-width: 7.5rem;
+    box-sizing: border-box;
+    width: 10.75rem;
+    max-width: 190px;
+    min-width: 8.25rem;
+    padding: 5px 6px 6px;
+    border: none;
+    background: transparent;
     text-align: center;
+    color: #1d4ed8;
   }
   .report-signature-role {
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
     font-weight: 700;
-    letter-spacing: 0.02em;
-    color: #334155;
-    margin-bottom: 4px;
-  }
-  .report-signature-line {
-    display: inline-block;
-    width: 8.5rem;
-    max-width: 100%;
-    border-top: 1px solid #334155;
-    margin: 28px auto 8px;
+    letter-spacing: 0.04em;
+    color: #1d4ed8;
+    margin-bottom: 2px;
   }
   .report-signature-name {
+    font-family: "Times New Roman", Times, serif;
+    font-style: italic;
     font-weight: 700;
-    font-size: ${baseFontSizePt}pt;
-    line-height: ${lineHeight};
+    font-size: ${Math.max(10, baseFontSizePt)}pt;
+    line-height: 1.15;
+    color: #1d4ed8;
   }
   .report-signature-designation {
-    margin-top: 2px;
-    font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
-    color: #475569;
+    margin-top: 1px;
+    font-size: ${Math.max(7.5, baseFontSizePt - 1.5)}pt;
+    color: #1d4ed8;
     line-height: ${lineHeight};
+  }
+  .report-signature-stamp {
+    margin-top: 4px;
+    padding-top: 0;
+    border-top: none;
+  }
+  .report-signature-stamp-value {
+    font-size: ${Math.max(7.5, baseFontSizePt - 2)}pt;
+    font-weight: 700;
+    color: #1d4ed8;
+    line-height: 1.2;
   }
 
   .terms {
