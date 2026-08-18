@@ -6,8 +6,8 @@
 import http from 'node:http'
 import { chromium } from 'playwright'
 
-const PORT = Number(process.env.PDF_SERVICE_PORT || 3847)
-const HOST = process.env.PDF_SERVICE_HOST || '127.0.0.1'
+const PORT = Number(process.env.PORT || process.env.PDF_SERVICE_PORT || 3847)
+const HOST = process.env.PDF_SERVICE_HOST || '0.0.0.0'
 const MAX_HTML_BYTES = Number(process.env.PDF_MAX_HTML_BYTES || 12_000_000)
 
 /** @type {import('playwright').Browser | null} */
@@ -15,9 +15,13 @@ let browser = null
 
 async function getBrowser() {
   if (browser && browser.isConnected()) return browser
+  const sandboxArgs =
+    process.env.RAILWAY_ENVIRONMENT || process.env.PLAYWRIGHT_NO_SANDBOX === '1'
+      ? ['--no-sandbox']
+      : []
   browser = await chromium.launch({
     headless: true,
-    args: ['--disable-dev-shm-usage', '--font-render-hinting=none'],
+    args: ['--disable-dev-shm-usage', '--font-render-hinting=none', ...sandboxArgs],
   })
   return browser
 }

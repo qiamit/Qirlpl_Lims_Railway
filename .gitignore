@@ -115,6 +115,7 @@ backend/.tmp-*
 
 # Local DB dump scratch (use versioned migrations instead)
 backend/supabase/baseline_from_*.sql
+.migration-tmp/
 *.sql.bak
 *.dump
 *.backup
