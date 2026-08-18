@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Calculator, ChevronDown, ClipboardList, Copy, FileBarChart, FileSpreadsheet, Plus, Thermometer, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -97,6 +97,12 @@ import {
 
 const COLUMN_NONE = '__none__'
 
+function nablAccreditationBodyId(
+  bodies: Array<{ id: string; name: string }>,
+): string {
+  return bodies.find((body) => body.name.trim().toLowerCase() === 'nabl')?.id ?? ''
+}
+
 const VIEW_FACTOR_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
 
 const VIEW_FACTOR_FULLSCREEN_DIALOG_CLASS = cn(
@@ -193,6 +199,11 @@ export function CalibrationEquipmentsForm({
   const [accreditationBodies, setAccreditationBodies] = useState<Array<{ id: string; name: string }>>(
     [],
   )
+  const clearedAccreditationScopeIds = useRef(new Set<string>())
+  const nablAccreditationScopeId = useMemo(
+    () => nablAccreditationBodyId(accreditationBodies),
+    [accreditationBodies],
+  )
 
   useEffect(() => {
     setMethodQuery(form.calibrationMethodLabel)
@@ -230,6 +241,22 @@ export function CalibrationEquipmentsForm({
       canceled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!nablAccreditationScopeId) return
+    let changed = false
+    const nextRanges = form.ranges.map((range) => {
+      if (
+        range.accreditationScopeId.trim() ||
+        clearedAccreditationScopeIds.current.has(range.id)
+      ) {
+        return range
+      }
+      changed = true
+      return { ...range, accreditationScopeId: nablAccreditationScopeId }
+    })
+    if (changed) onChange({ ...form, ranges: nextRanges })
+  }, [nablAccreditationScopeId, form, onChange])
 
   useEffect(() => {
     const valid = new Set(form.ranges.map((r) => r.id))
@@ -612,12 +639,12 @@ export function CalibrationEquipmentsForm({
   }
 
   const addRange = () => {
-    set('ranges', [...form.ranges, emptyEquipmentRangeEntry()])
+    set('ranges', [...form.ranges, emptyEquipmentRangeEntry(nablAccreditationScopeId)])
   }
 
   const removeRange = (id: string) => {
     if (form.ranges.length <= 1) {
-      set('ranges', [emptyEquipmentRangeEntry()])
+      set('ranges', [emptyEquipmentRangeEntry(nablAccreditationScopeId)])
       setSelectedRangeIds(new Set())
       return
     }
@@ -652,7 +679,7 @@ export function CalibrationEquipmentsForm({
   const removeSelectedRanges = () => {
     if (selectedRangeIds.size === 0) return
     const remaining = form.ranges.filter((r) => !selectedRangeIds.has(r.id))
-    set('ranges', remaining.length > 0 ? remaining : [emptyEquipmentRangeEntry()])
+    set('ranges', remaining.length > 0 ? remaining : [emptyEquipmentRangeEntry(nablAccreditationScopeId)])
     setSelectedRangeIds(new Set())
   }
 
@@ -873,11 +900,15 @@ export function CalibrationEquipmentsForm({
                       <td className={rangeTdClass}>
                         <Select
                           value={range.accreditationScopeId || COLUMN_NONE}
-                          onValueChange={(v) =>
-                            updateRange(range.id, {
-                              accreditationScopeId: v === COLUMN_NONE ? '' : v,
-                            })
-                          }
+                          onValueChange={(v) => {
+                            if (v === COLUMN_NONE) {
+                              clearedAccreditationScopeIds.current.add(range.id)
+                              updateRange(range.id, { accreditationScopeId: '' })
+                              return
+                            }
+                            clearedAccreditationScopeIds.current.delete(range.id)
+                            updateRange(range.id, { accreditationScopeId: v })
+                          }}
                         >
                           <SelectTrigger
                             id={`cal-eq-accr-scope-${range.id}`}

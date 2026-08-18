@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEnterTogglesCheckbox } from '@/hooks/useEnterTogglesCheckbox'
 import { RoutePersistence } from '@/components/routing/RoutePersistence'
 import AuthPage from '@/features/auth/AuthPage'
+import PublicSiteLayout from '@/features/public-site/PublicSiteLayout'
+import PublicHomePage from '@/features/public-site/PublicHomePage'
 import {
   DEFAULT_RESULT_VALIDATION_MODULE_SLUG,
   resultValidationModulePath,
@@ -96,7 +98,16 @@ export default function App() {
     <BrowserRouter>
       <RoutePersistence />
       <Routes>
-        <Route path="auth" element={<AuthPage />} />
+        <Route element={<PublicSiteLayout />}>
+          <Route path="home" element={<PublicHomePage />} />
+          <Route path="about" element={<Navigate to="/home#about" replace />} />
+          <Route path="testing" element={<Navigate to="/home" replace />} />
+          <Route path="calibration" element={<Navigate to="/home" replace />} />
+          <Route path="resources" element={<Navigate to="/home" replace />} />
+          <Route path="news" element={<Navigate to="/home" replace />} />
+          <Route path="contact" element={<Navigate to="/home#contact" replace />} />
+          <Route path="auth" element={<AuthPage />} />
+        </Route>
 
         <Route element={<AuthenticatedShell />}>
           <Route index element={<DashboardPage />} />

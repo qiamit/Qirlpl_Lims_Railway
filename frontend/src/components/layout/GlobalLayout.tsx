@@ -481,13 +481,13 @@ const NAV_SECTIONS: NavSection[] = [
     icon: HardDrive,
     items: [
       {
-        label: 'Master Equipment of Calibration',
+        label: 'Master Equipment Calibration',
         to: '/calibration/equipment-for-calibration',
         icon: Gauge,
         clause: '6.4',
       },
       {
-        label: 'Master Equipment of Testing',
+        label: 'Master Equipment Testing',
         to: '/masters/equipment',
         icon: Wrench,
         clause: '6.4',
@@ -564,24 +564,18 @@ const NAV_SECTIONS: NavSection[] = [
             clause: '7.4',
           },
           {
-            label: 'Issued Test Report',
-            to: '/samples/completed',
-            icon: FlaskConical,
-            clause: '7.4',
-          },
-          {
             label: 'Retain & Disposed Sample',
             to: '/samples/retain-disposed',
             icon: FlaskConical,
             clause: '7.4',
           },
-          {
-            label: 'Consent Letter',
-            to: '/masters/consent-letter',
-            icon: FileSignature,
-            clause: '7.4',
-          },
         ],
+      },
+      {
+        label: 'Consent Letter',
+        to: '/masters/consent-letter',
+        icon: FileSignature,
+        clause: '7.4',
       },
       RESULT_VALIDATION_NAV,
       { label: 'NABL Scope', to: '/masters/nabl-scope', icon: ShieldCheck },
@@ -728,13 +722,13 @@ const ROUTE_LABELS: Record<string, string> = {
   '/samples/report-preparation': 'Sample Handling / Test Report Preparation',
   '/samples/completed': 'Sample Handling / Issued Test Report',
   '/samples/retain-disposed': 'Sample Handling / Retain & Disposed Sample',
-  '/masters/consent-letter': 'Sample Handling / Consent Letter',
+  '/masters/consent-letter': 'Testing LIMS / Consent Letter',
   '/masters/clients': 'Client Master',
   '/masters/is-codes': 'IS Code Master',
   '/masters/nabl-scope': 'NABL Scope',
   '/masters/product-services': 'Master Managements / Product & Services',
   '/masters/test-parameter': 'Test Parameter',
-  '/masters/equipment': 'Equipment Management / Master Equipment of Testing',
+  '/masters/equipment': 'Equipment Management / Master Equipment Testing',
   '/masters/iqc': 'Equipment Management / Equipments for IQC',
   '/equipment-management/iqc': 'Equipment Management / Equipments for IQC',
   '/calibration/masters-for-iqc': 'Equipment Management / Equipments for IQC',
@@ -754,7 +748,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/calibration/equipments': 'Calibration LIMS / Calibration Equipments',
   '/calibration/nabl-scope': 'Calibration LIMS / NABL Scope',
   '/calibration/equipment-for-calibration':
-    'Equipment Management / Master Equipment of Calibration',
+    'Equipment Management / Master Equipment Calibration',
   '/finance/sale': 'Finance Management / Sale',
   '/finance/sale/quotation': 'Finance Management / Sale / Quotation',
   '/finance/sale/proforma-invoice': 'Finance Management / Sale / Proforma Invoice',
@@ -1352,11 +1346,19 @@ export default function GlobalLayout() {
               <Menu size={18} aria-hidden />
             </button>
             <div className="min-w-0">
-              <Breadcrumbs />
-              {!ROUTE_LABELS[location.pathname] && (
-                <span className="block truncate text-sm font-semibold text-white sm:text-base">
-                  {labName || 'Quality International Research & Laboratories Pvt. Ltd.'}
-                </span>
+              {location.pathname === '/' ? (
+                <p className="truncate text-sm font-semibold tracking-tight text-white sm:text-base">
+                  Welcome Back, {designation.trim() || 'Team'}
+                </p>
+              ) : (
+                <>
+                  <Breadcrumbs />
+                  {!ROUTE_LABELS[location.pathname] ? (
+                    <span className="block truncate text-sm font-semibold text-white sm:text-base">
+                      {labName || 'Quality International Research & Laboratories Pvt. Ltd.'}
+                    </span>
+                  ) : null}
+                </>
               )}
             </div>
           </div>

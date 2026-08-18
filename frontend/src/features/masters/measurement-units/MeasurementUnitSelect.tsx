@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   FILTER_COMBOBOX_DROPDOWN_ATTR,
+  FILTER_COMBOBOX_OPTION_INDEX_ATTR,
+  useFilterComboboxPointerSelect,
 } from '@/features/sample-handling/receiving/FilterCombobox'
 import {
   limsDarkBarGlowStyle,
@@ -148,6 +150,17 @@ export function MeasurementUnitSelect({
     setDialogOpen(true)
   }
 
+  useFilterComboboxPointerSelect(showDropdown, (index) => {
+    if (index < filteredUnits.length) {
+      pickUnit(filteredUnits[index].name)
+      return
+    }
+    if (showAddUnitAction && index === filteredUnits.length) {
+      openManageDialog(value)
+      setOpen(false)
+    }
+  })
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Tab' || event.key === 'Shift+Tab') {
       setOpen(false)
@@ -272,12 +285,13 @@ export function MeasurementUnitSelect({
             ? createPortal(
                 <div
                   {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
-                  className="fixed z-[9999] rounded-none border border-stone-500 bg-white shadow-lg"
+                  className="pointer-events-auto fixed z-[10000] rounded-none border border-stone-500 bg-white shadow-lg"
                   style={{
                     left: dropdownPos.left,
                     width: dropdownPos.width,
                     top: dropdownPos.top,
                     bottom: dropdownPos.bottom,
+                    pointerEvents: 'auto',
                   }}
                   tabIndex={-1}
                   onMouseDown={(e) => e.stopPropagation()}
@@ -289,9 +303,15 @@ export function MeasurementUnitSelect({
                         <button
                           type="button"
                           tabIndex={-1}
+                          {...{ [FILTER_COMBOBOX_OPTION_INDEX_ATTR]: String(index) }}
                           className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
                           onMouseDown={(e) => e.preventDefault()}
                           onMouseEnter={() => setHighlight(index)}
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            pickUnit(unit.name)
+                          }}
                           onClick={() => pickUnit(unit.name)}
                         >
                           {unit.name}
@@ -303,6 +323,7 @@ export function MeasurementUnitSelect({
                         <button
                           type="button"
                           tabIndex={-1}
+                          {...{ [FILTER_COMBOBOX_OPTION_INDEX_ATTR]: String(filteredUnits.length) }}
                           className={`w-full px-3 py-2 text-left text-amber-800 ${
                             highlight === filteredUnits.length
                               ? 'bg-[#f3e9d8] font-semibold'
@@ -310,6 +331,12 @@ export function MeasurementUnitSelect({
                           }`}
                           onMouseDown={(e) => e.preventDefault()}
                           onMouseEnter={() => setHighlight(filteredUnits.length)}
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            openManageDialog(value)
+                            setOpen(false)
+                          }}
                           onClick={() => {
                             openManageDialog(value)
                             setOpen(false)

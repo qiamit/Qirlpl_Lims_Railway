@@ -354,6 +354,11 @@ export function TestParameterForm({
                           tabIndex={-1}
                           className={`w-full px-3 py-2 text-left ${index === isCodeHighlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
                           onMouseDown={(e) => e.preventDefault()}
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            syncSelectionFromIsCode(code)
+                          }}
                           onMouseEnter={() => setIsCodeHighlight(index)}
                           onClick={() => syncSelectionFromIsCode(code)}
                         >
@@ -370,6 +375,12 @@ export function TestParameterForm({
                             isCodeHighlight === filteredIsCodesByCode.length ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
                           }`}
                           onMouseDown={(e) => e.preventDefault()}
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            openCreateIsDialog()
+                            setIsCodeOpen(false)
+                          }}
                           onMouseEnter={() => setIsCodeHighlight(filteredIsCodesByCode.length)}
                           onClick={() => {
                             openCreateIsDialog()
@@ -429,6 +440,11 @@ export function TestParameterForm({
                           tabIndex={-1}
                           className={`w-full px-3 py-2 text-left ${index === testMethodHighlight ? 'bg-muted font-semibold' : 'hover:bg-muted'}`}
                           onMouseDown={(e) => e.preventDefault()}
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleTestMethodPick(code)
+                          }}
                           onMouseEnter={() => setTestMethodHighlight(index)}
                           onClick={() => handleTestMethodPick(code)}
                         >
@@ -445,6 +461,12 @@ export function TestParameterForm({
                             testMethodHighlight === filteredIsCodesByMethod.length ? 'bg-muted font-semibold' : 'hover:bg-muted'
                           }`}
                           onMouseDown={(e) => e.preventDefault()}
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            onOpenAddIsCodeForm(form.testMethod.trim())
+                            setTestMethodOpen(false)
+                          }}
                           onMouseEnter={() => setTestMethodHighlight(filteredIsCodesByMethod.length)}
                           onClick={() => {
                             onOpenAddIsCodeForm(form.testMethod.trim())

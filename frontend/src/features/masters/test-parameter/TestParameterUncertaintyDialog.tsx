@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
+import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 import {
   limsDarkBarGlowStyle,
   limsDialogClass,
@@ -723,6 +724,7 @@ export function TestParameterUncertaintyDialog({
         .select(
           'id, asset_code, equipment_name, manufacturer, model_number, range_capacity, calibration_certificate_number, calibration_certificate_uncertainty, calibration_uncertainty_unit, calibration_coverage_factor, intermediate_check_result',
         )
+        .eq('equipment_kind', EQUIPMENT_KIND_TESTING)
         .order('equipment_name', { ascending: true })
 
       if (error) {

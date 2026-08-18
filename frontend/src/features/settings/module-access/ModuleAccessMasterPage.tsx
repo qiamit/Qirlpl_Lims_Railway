@@ -33,6 +33,7 @@ import {
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchTeamUsers } from '@/lib/fetchTeamUsers'
 import {
   MODULE_CATALOG,
   moduleSections,
@@ -347,56 +348,15 @@ export default function ModuleAccessMasterPage() {
         return
       }
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`,
-          'x-user-jwt': accessToken,
-          'Content-Type': 'application/json',
-        },
-        body: '{}',
-      })
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null
-        throw new Error(payload?.error || `Unable to load users (${response.status})`)
-      }
-
-      const payload = (await response.json()) as {
-        users?: Array<{
-          id?: string
-          name?: string
-          full_name?: string
-          email?: string
-          designation?: string
-          department_name?: string
-          departmentName?: string
-          division?: string
-        }>
-      }
-
-      const opts: TeamUser[] = (payload.users ?? [])
-        .map((u) => {
-          const id = String(u.id ?? '').trim()
-          if (!id) return null
-          const email = String(u.email ?? '').trim()
-          const name =
-            String(u.name ?? u.full_name ?? '').trim() ||
-            email ||
-            id
-          return {
-            id,
-            name,
-            email,
-            designation: String(u.designation ?? '').trim(),
-            department: String(u.department_name ?? u.departmentName ?? '').trim(),
-            division: String(u.division ?? '').trim(),
-          }
-        })
-        .filter((x): x is TeamUser => Boolean(x))
+      const opts: TeamUser[] = (await fetchTeamUsers())
+        .map((u) => ({
+          id: u.id,
+          name: u.full_name.trim() || u.email || u.id,
+          email: u.email,
+          designation: u.designation,
+          department: u.department_name,
+          division: u.division,
+        }))
         .sort((a, b) => a.name.localeCompare(b.name))
 
       setUsers(opts)

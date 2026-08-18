@@ -586,8 +586,10 @@ function ColumnFormulaInput({
                   'flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm',
                   i === highlight ? 'bg-amber-50 text-stone-900' : 'text-stone-700 hover:bg-stone-50',
                 )}
-                onMouseDown={(e) => {
+                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={(e) => {
                   e.preventDefault()
+                  e.stopPropagation()
                   insertColumn(col)
                 }}
                 onMouseEnter={() => setHighlight(i)}
@@ -870,8 +872,10 @@ function EnvCellFormulaInput({
                     ? 'bg-indigo-50 text-indigo-900'
                     : 'text-slate-700 hover:bg-slate-50',
                 )}
-                onMouseDown={(e) => {
+                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={(e) => {
                   e.preventDefault()
+                  e.stopPropagation()
                   insertField(label)
                 }}
                 onMouseEnter={() => setHighlight(i)}

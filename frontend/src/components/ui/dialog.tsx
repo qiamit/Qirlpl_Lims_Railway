@@ -3,14 +3,18 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { preventFormDialogFocusOutside } from '@/lib/formDialogOpenChange'
-import { isFilterComboboxDropdownTarget } from '@/features/sample-handling/receiving/FilterCombobox'
+import {
+  elementFromEventTarget,
+  isFilterComboboxDropdownTarget,
+} from '@/features/sample-handling/receiving/FilterCombobox'
 
 function isRadixSelectPortalTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false
+  const el = elementFromEventTarget(target)
+  if (!el) return false
   return Boolean(
-    target.closest('[data-radix-select-content]') ||
-      target.closest('[data-radix-dropdown-menu-content]') ||
-      target.closest('[data-radix-popper-content-wrapper]'),
+    el.closest('[data-radix-select-content]') ||
+      el.closest('[data-radix-dropdown-menu-content]') ||
+      el.closest('[data-radix-popper-content-wrapper]'),
   )
 }
 
@@ -72,8 +76,16 @@ function preventOutsideIfComboboxDropdown(
     detail?: { originalEvent?: Event }
   },
 ) {
-  const target = e.detail?.originalEvent?.target ?? e.target
-  if (isFilterComboboxDropdownTarget(target) || isRadixSelectPortalTarget(target)) {
+  const original = e.detail?.originalEvent
+  const path =
+    original && typeof original.composedPath === 'function' ? original.composedPath() : []
+  const targets: EventTarget[] = [
+    ...path,
+    original?.target,
+    e.target,
+  ].filter((node): node is EventTarget => node != null)
+
+  if (targets.some((t) => isFilterComboboxDropdownTarget(t) || isRadixSelectPortalTarget(t))) {
     e.preventDefault()
   }
 }

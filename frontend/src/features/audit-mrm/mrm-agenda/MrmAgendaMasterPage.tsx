@@ -10,6 +10,7 @@ import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchTeamUsers } from '@/lib/fetchTeamUsers'
 import { buildMrmAgendaPrintHtml } from './buildMrmAgendaPrintHtml'
 import { MrmAgendaFooterBar } from './MrmAgendaFooterBar'
 import { MrmAgendaForm } from './MrmAgendaForm'
@@ -45,80 +46,44 @@ function getFirmInitialsFromLabName(labName: string): string {
 }
 
 async function fetchMrmUserOptions(): Promise<MrmUserOption[]> {
-  const { data: sessionData } = await supabase.auth.getSession()
-  const accessToken = sessionData.session?.access_token
+  try {
+    const list = await fetchTeamUsers()
+    return list
+      .filter((u) => u.status.toLowerCase() !== 'inactive')
+      .map((u) => ({
+        id: u.id,
+        name: u.full_name.trim() || u.email || u.id,
+        email: u.email,
+        mobile: u.mobile,
+        designation: u.designation,
+        department: u.department_name,
+        division: u.division,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  } catch {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, designation, department_name, division, mobile, status')
+      .order('full_name', { ascending: true })
+    if (error) throw error
 
-  // Prefer list-users (includes email) when caller is allowed; else profiles without email.
-  if (accessToken) {
-    try {
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`,
-          'x-user-jwt': accessToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
+    return (Array.isArray(data) ? data : [])
+      .filter((u) => String((u as { status?: string }).status ?? '').toLowerCase() !== 'inactive')
+      .map((u) => {
+        const r = u as Record<string, unknown>
+        return {
+          id: String(r.id ?? ''),
+          name: String(r.full_name ?? '').trim() || String(r.id ?? ''),
+          email: '',
+          mobile: String(r.mobile ?? '').trim(),
+          designation: String(r.designation ?? '').trim(),
+          department: String(r.department_name ?? '').trim(),
+          division: String(r.division ?? '').trim(),
+        }
       })
-      if (response.ok) {
-        const payload = (await response.json().catch(() => null)) as unknown
-        const rows =
-          typeof payload === 'object' && payload && 'users' in payload
-            ? ((payload as { users?: unknown }).users as unknown)
-            : []
-        const list = Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : []
-        return list
-          .map((row) => ({
-            id: String(row.id ?? ''),
-            name: String(row.full_name ?? '').trim(),
-            email: String(row.email ?? '').trim(),
-            mobile: String(row.mobile ?? '').trim(),
-            designation: String(row.designation ?? '').trim(),
-            department: String((row as { department_name?: unknown }).department_name ?? '').trim(),
-            division: String((row as { division?: unknown }).division ?? '').trim(),
-            status: String(row.status ?? 'Active'),
-          }))
-          .filter((u) => u.id && u.status.toLowerCase() !== 'inactive')
-          .map(({ id, name, email, mobile, designation, department, division }) => ({
-            id,
-            name: name || email || id,
-            email,
-            mobile,
-            designation,
-            department,
-            division,
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name))
-      }
-    } catch {
-      // fall through to profiles
-    }
+      .filter((u) => u.id)
+      .sort((a, b) => a.name.localeCompare(b.name))
   }
-
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('id, full_name, designation, department_name, division, mobile, status')
-    .order('full_name', { ascending: true })
-  if (error) throw error
-
-  return (Array.isArray(data) ? data : [])
-    .filter((u) => String((u as { status?: string }).status ?? '').toLowerCase() !== 'inactive')
-    .map((u) => {
-      const r = u as Record<string, unknown>
-      return {
-        id: String(r.id ?? ''),
-        name: String(r.full_name ?? '').trim() || String(r.id ?? ''),
-        email: '',
-        mobile: String(r.mobile ?? '').trim(),
-        designation: String(r.designation ?? '').trim(),
-        department: String(r.department_name ?? '').trim(),
-        division: String(r.division ?? '').trim(),
-      }
-    })
-    .filter((u) => u.id)
 }
 
 function openPrintWindow(html: string) {

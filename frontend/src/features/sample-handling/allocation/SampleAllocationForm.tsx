@@ -278,6 +278,11 @@ export function SampleAllocationForm({
                               type="button"
                               className="w-full px-3 py-2 text-left hover:bg-amber-50"
                               onMouseDown={(e) => e.preventDefault()}
+                              onPointerDown={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleSelectSrf(sample)
+                              }}
                               onClick={() => handleSelectSrf(sample)}
                             >
                               {opt.label}

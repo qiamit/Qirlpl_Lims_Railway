@@ -28,19 +28,13 @@ export function IqcPlanHeaderBar({
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-4 sm:px-5">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400">
-            Validating the Results
-          </p>
           <h1 className="text-lg font-semibold tracking-tight text-white whitespace-nowrap">
             IQC Plan
           </h1>
-          <p className="text-xs text-stone-400 mt-0.5">
-            ISO 17025 Clause 7.7 — Internal quality control plan and schedule
-          </p>
         </div>
         <div className="md:w-[28%]">
           <Input
-            placeholder="Search check name, frequency, criteria…"
+            placeholder="Search Check Name | Frequency"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)} className={limsDarkBarSearchClass}
           />
@@ -51,7 +45,7 @@ export function IqcPlanHeaderBar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="all">All Status</SelectItem>
               {Object.entries(IQC_PLAN_STATUS_LABELS).map(([key, label]) => (
                 <SelectItem key={key} value={key}>{label}</SelectItem>
               ))}

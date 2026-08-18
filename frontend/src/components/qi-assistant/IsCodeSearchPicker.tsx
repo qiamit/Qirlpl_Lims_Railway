@@ -126,6 +126,11 @@ export function IsCodeSearchPicker({
                       index === highlight ? 'bg-muted font-semibold' : 'hover:bg-muted',
                     )}
                     onMouseDown={(e) => e.preventDefault()}
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      pick(opt)
+                    }}
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => pick(opt)}
                   >

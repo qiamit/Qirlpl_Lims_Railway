@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchTeamUsers, type TeamUserRecord } from '@/lib/fetchTeamUsers'
 import {
   ensureLabMasterOptionByLabel,
   fetchDesignationAndDepartmentLabels,
@@ -24,6 +25,20 @@ async function syncUserOptionsToLabMaster(users: UserAccount[]) {
     if (u.division.trim()) {
       await ensureLabMasterOptionByLabel('division', u.division)
     }
+  }
+}
+
+function toUserAccount(row: TeamUserRecord): UserAccount {
+  return {
+    id: row.id,
+    name: row.full_name,
+    email: row.email,
+    mobile: row.mobile,
+    password: '',
+    designation: row.designation,
+    departmentName: row.department_name,
+    division: row.division,
+    status: row.status.toLowerCase() === 'inactive' ? 'Inactive' : 'Active',
   }
 }
 
@@ -85,65 +100,73 @@ export default function UserManagementMasterPage() {
         data: { session: latestSession },
       } = await supabase.auth.getSession()
 
-      const accessToken = latestSession?.access_token ?? session?.access_token
-      if (!accessToken) {
+      if (!(latestSession?.access_token ?? session?.access_token)) {
         if (!canceled) setUsersLoadError('Session expired. Please log in again.')
         return
       }
 
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+      try {
+        const mapped = (await fetchTeamUsers()).map(toUserAccount)
+        if (canceled) return
+        setUsers(mapped)
 
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`,
-          'x-user-jwt': accessToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      })
+        try {
+          await syncUserOptionsToLabMaster(mapped)
+          if (!canceled) await refreshLabOptions()
+        } catch {
+          /* keep UI usable if sync fails */
+        }
 
-      const payload = (await response.json().catch(() => null)) as unknown
-
-      if (!response.ok) {
-        const message =
-          typeof payload === 'object' && payload && 'error' in payload
-            ? String((payload as { error?: unknown }).error)
-            : `Unable to load users (${response.status})`
-
-        if (!canceled) setUsersLoadError(message)
-        return
+        const designationByDepartment: Record<string, string[]> = {}
+        for (const u of mapped) {
+          const dept = u.departmentName?.trim()
+          const des = u.designation?.trim()
+          if (dept && des) {
+            if (!designationByDepartment[dept]) designationByDepartment[dept] = []
+            if (!designationByDepartment[dept].includes(des)) designationByDepartment[dept].push(des)
+          }
+        }
+        for (const k of Object.keys(designationByDepartment)) {
+          designationByDepartment[k].sort((a, b) => a.localeCompare(b))
+        }
+        try {
+          window.localStorage.setItem('userManagement.designationByDepartment', JSON.stringify(designationByDepartment))
+        } catch {
+          /* ignore */
+        }
+      } catch (err) {
+        if (!canceled) {
+          setUsersLoadError(err instanceof Error ? err.message : 'Unable to load users')
+        }
       }
+    }
 
-      const rows =
-        typeof payload === 'object' && payload && 'users' in payload
-          ? ((payload as { users?: unknown }).users as unknown)
-          : []
+    void loadUsers()
 
-      const list = Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : []
+    return () => {
+      canceled = true
+    }
+  }, [session])
 
-      if (canceled) return
-      const mapped = list
-        .map((row) => ({
-          id: String(row.id ?? ''),
-          name: String(row.full_name ?? ''),
-          email: String(row.email ?? ''),
-          mobile: String(row.mobile ?? ''),
-          password: '',
-          designation: String(row.designation ?? ''),
-          departmentName: String((row as { department_name?: unknown }).department_name ?? ''),
-          division: String((row as { division?: unknown }).division ?? ''),
-          status: (String(row.status ?? 'Active') as 'Active' | 'Inactive') ?? 'Active',
-        }))
-        .filter((u) => u.id)
+  const reloadUsers = async () => {
+    setUsersLoadError(null)
 
+    const {
+      data: { session: latestSession },
+    } = await supabase.auth.getSession()
+
+    if (!(latestSession?.access_token ?? session?.access_token)) {
+      setUsersLoadError('Session expired. Please log in again.')
+      return
+    }
+
+    try {
+      const mapped = (await fetchTeamUsers()).map(toUserAccount)
       setUsers(mapped)
 
       try {
         await syncUserOptionsToLabMaster(mapped)
-        if (!canceled) await refreshLabOptions()
+        await refreshLabOptions()
       } catch {
         /* keep UI usable if sync fails */
       }
@@ -165,100 +188,8 @@ export default function UserManagementMasterPage() {
       } catch {
         /* ignore */
       }
-    }
-
-    void loadUsers()
-
-    return () => {
-      canceled = true
-    }
-  }, [session])
-
-  const reloadUsers = async () => {
-    setUsersLoadError(null)
-
-    const {
-      data: { session: latestSession },
-    } = await supabase.auth.getSession()
-
-    const accessToken = latestSession?.access_token ?? session?.access_token
-    if (!accessToken) {
-      setUsersLoadError('Session expired. Please log in again.')
-      return
-    }
-
-    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-        'x-user-jwt': accessToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    })
-
-    const payload = (await response.json().catch(() => null)) as unknown
-
-    if (!response.ok) {
-      const message =
-        typeof payload === 'object' && payload && 'error' in payload
-          ? String((payload as { error?: unknown }).error)
-          : `Unable to load users (${response.status})`
-
-      setUsersLoadError(message)
-      return
-    }
-
-    const rows =
-      typeof payload === 'object' && payload && 'users' in payload
-        ? ((payload as { users?: unknown }).users as unknown)
-        : []
-
-    const list = Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : []
-
-    const mapped = list
-      .map((row) => ({
-        id: String(row.id ?? ''),
-        name: String(row.full_name ?? ''),
-        email: String(row.email ?? ''),
-        mobile: String(row.mobile ?? ''),
-        password: '',
-        designation: String(row.designation ?? ''),
-        departmentName: String((row as { department_name?: unknown }).department_name ?? ''),
-        division: String((row as { division?: unknown }).division ?? ''),
-        status: (String(row.status ?? 'Active') as 'Active' | 'Inactive') ?? 'Active',
-      }))
-      .filter((u) => u.id)
-
-    setUsers(mapped)
-
-    try {
-      await syncUserOptionsToLabMaster(mapped)
-      await refreshLabOptions()
-    } catch {
-      /* keep UI usable if sync fails */
-    }
-
-    const designationByDepartment: Record<string, string[]> = {}
-    for (const u of mapped) {
-      const dept = u.departmentName?.trim()
-      const des = u.designation?.trim()
-      if (dept && des) {
-        if (!designationByDepartment[dept]) designationByDepartment[dept] = []
-        if (!designationByDepartment[dept].includes(des)) designationByDepartment[dept].push(des)
-      }
-    }
-    for (const k of Object.keys(designationByDepartment)) {
-      designationByDepartment[k].sort((a, b) => a.localeCompare(b))
-    }
-    try {
-      window.localStorage.setItem('userManagement.designationByDepartment', JSON.stringify(designationByDepartment))
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setUsersLoadError(err instanceof Error ? err.message : 'Unable to load users')
     }
   }
 
@@ -398,31 +329,11 @@ export default function UserManagementMasterPage() {
               throw new Error('Session expired. Please log in again.')
             }
 
-            const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user`
-            const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-            const response = await fetch(functionUrl, {
-              method: 'POST',
-              headers: {
-                apikey: anonKey,
-                Authorization: `Bearer ${anonKey}`,
-                'x-user-jwt': accessToken,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                user_id: user.id,
-                status,
-              }),
-            })
-
-            const payload = (await response.json().catch(() => null)) as unknown
-            if (!response.ok) {
-              const message =
-                typeof payload === 'object' && payload && 'error' in payload
-                  ? String((payload as { error?: unknown }).error)
-                  : `Status update failed (${response.status})`
-              throw new Error(message)
-            }
+            const { error: statusError } = await supabase
+              .from('user_profiles')
+              .update({ status })
+              .eq('id', user.id)
+            if (statusError) throw statusError
 
             setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, status } : u)))
           } catch (err) {
@@ -549,43 +460,28 @@ export default function UserManagementMasterPage() {
               throw new Error('Session expired. Please log in again.')
             }
 
-            const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user`
-            const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-            const response = await fetch(functionUrl, {
-              method: 'POST',
-              headers: {
-                apikey: anonKey,
-                Authorization: `Bearer ${anonKey}`,
-                'x-user-jwt': accessToken,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                user_id: editTarget.id,
-                email: formData.email.trim(),
-                full_name: formData.name.trim(),
-                mobile: mobileFormatted,
-                designation: formData.designation,
-                department_name: formData.department,
-                division: formData.division,
-              }),
+            const { error: updateError } = await supabase.rpc('update_team_user', {
+              p_user_id: editTarget.id,
+              p_full_name: formData.name.trim(),
+              p_mobile: mobileFormatted,
+              p_designation: formData.designation,
+              p_department_name: formData.department,
+              p_division: formData.division,
+              p_email: formData.email.trim(),
             })
-
-            const payload = (await response.json().catch(() => null)) as unknown
-            if (!response.ok) {
-              const message =
-                typeof payload === 'object' && payload && 'error' in payload
-                  ? String((payload as { error?: unknown }).error)
-                  : `Update failed (${response.status})`
-              throw new Error(message)
-            }
-            if (
-              typeof payload === 'object' &&
-              payload &&
-              'warning' in payload &&
-              String((payload as { warning?: unknown }).warning ?? '').trim()
-            ) {
-              setUserUpdateError(String((payload as { warning?: unknown }).warning))
+            if (updateError) {
+              const { error: profileError } = await supabase
+                .from('user_profiles')
+                .update({
+                  full_name: formData.name.trim(),
+                  mobile: mobileFormatted,
+                  designation: formData.designation,
+                  department_name: formData.department,
+                  division: formData.division,
+                  email: formData.email.trim(),
+                })
+                .eq('id', editTarget.id)
+              if (profileError) throw profileError
             }
 
             setEditDialogOpen(false)

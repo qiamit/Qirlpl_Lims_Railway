@@ -1,3 +1,5 @@
+import { isPublicSitePath } from '@/features/public-site/publicNav'
+
 const LAST_ROUTE_KEY = 'app.lastRoute'
 const EXPLICIT_HOME_KEY = 'app.routeExplicitHome'
 
@@ -7,7 +9,8 @@ function canUseStorage(): boolean {
 
 /** Paths that should never be restored after refresh / login. */
 export function isEphemeralRoute(pathname: string): boolean {
-  return pathname === '/auth' || pathname.startsWith('/auth/')
+  const path = pathname.replace(/\/+$/, '') || '/'
+  return isPublicSitePath(path) || path.startsWith('/auth/')
 }
 
 export function readLastRoute(): string | null {
@@ -47,13 +50,9 @@ export function wasExplicitHomeVisit(): boolean {
   }
 }
 
-/** Prefer post-login redirect: location.state.from → last route → dashboard. */
-export function resolvePostAuthTarget(from: unknown): string {
-  const fromPath = typeof from === 'string' ? from.trim() : ''
-  if (fromPath && !isEphemeralRoute(fromPath.split('?')[0] ?? fromPath)) {
-    return fromPath
-  }
-  return readLastRoute() || '/'
+/** After login always open Dashboard (`/`). */
+export function resolvePostAuthTarget(_from?: unknown): string {
+  return '/'
 }
 
 /**

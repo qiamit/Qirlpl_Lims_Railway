@@ -79,14 +79,6 @@ export default function ResultValidationMasterPage({ module }: { module: ResultV
     void loadList()
   }, [loadLookups, loadList])
 
-  const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const r of rows) {
-      counts[r.checkType] = (counts[r.checkType] ?? 0) + 1
-    }
-    return counts
-  }, [rows])
-
   const filtered = useMemo(() => {
     let list = rows
     if (filter !== 'all') {
@@ -210,7 +202,6 @@ export default function ResultValidationMasterPage({ module }: { module: ResultV
           setFilter(v)
           setPage(1)
         }}
-        recordCount={typeCounts[fixedCheckType] ?? 0}
         onNewCheck={openNew}
       />
 
@@ -218,6 +209,7 @@ export default function ResultValidationMasterPage({ module }: { module: ResultV
         rows={paged}
         loading={loading}
         error={error}
+        searchActive={search.trim().length > 0}
         selectedIds={selectedIds}
         onToggle={toggle}
         onToggleAll={toggleAll}

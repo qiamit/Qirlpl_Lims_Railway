@@ -1,118 +1,48 @@
-# Qirlpl LIMS
+# Qirlpl LIMS (Railway)
 
-Monorepo for Qirlpl LIMS (Laboratory Information Management System), split into **frontend** and **backend**.
+Monorepo for Qirlpl LIMS. This project runs **only on Railway** (frontend, API gateway, Auth, PostgREST, Storage, Postgres, PDF).
+
+It is **not** connected to hosted Supabase Cloud, Vercel, or `https://github.com/qiamit/Qirlpl_Lims.git`.
+
+**Repository:** [https://github.com/qiamit/Qirlpl_Lims_Railway](https://github.com/qiamit/Qirlpl_Lims_Railway)
 
 ## Project Structure
 
 ```
-Qirlpl_Lims/
-├── frontend/          # React + TypeScript + Vite web app
-│   ├── src/
-│   ├── public/
-│   └── package.json
-├── backend/           # Supabase (PostgreSQL, Auth, Edge Functions)
-│   └── supabase/
-│       ├── migrations/
-│       ├── functions/
-│       └── config.toml
-└── package.json       # Root scripts (dev, build, db:push)
+Qirlpl_Lims_Railway/
+├── frontend/                 # React + TypeScript + Vite
+├── backend/supabase/         # SQL migrations + function source (applied on Railway Postgres)
+├── railway-stack/gateway/    # Caddy API gateway (Auth / REST / Storage)
+├── pdf-service/              # PDF renderer
+└── package.json
 ```
 
-## Prerequisites
+## Stack
 
-- Node.js 20+
-- npm 10+
-- Supabase project (URL + anon key)
-- Supabase CLI (for database migrations)
+| Piece | Where it runs |
+|---|---|
+| Web app | Railway `frontend` |
+| Auth / REST / Storage | Railway `api` gateway → `auth`, `rest`, `storage-api` |
+| Database | Railway Postgres |
+| Files | Railway object storage bucket |
+| PDF | Railway `pdf-service` |
+
+The browser uses `supabase-js` against the Railway API URL (Supabase-compatible protocol). That is **not** `*.supabase.co`.
 
 ## Local Setup
 
-1. Install frontend dependencies:
+1. `npm install --prefix frontend`
+2. Copy `frontend/.env.example` to `frontend/.env`
+3. Keep Railway values:
 
-   ```bash
-   npm install --prefix frontend
-   ```
+   - `VITE_SUPABASE_URL` = Railway API gateway (`https://api-production-284ab.up.railway.app`)
+   - `VITE_SUPABASE_ANON_KEY` = Railway anon JWT
+   - `VITE_PDF_SERVICE_URL` = Railway PDF service
 
-2. Create frontend env file from template:
-
-   ```bash
-   copy frontend\.env.example frontend\.env
-   ```
-
-3. Add your Supabase values in `frontend/.env`:
-
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-
-4. Run the app from repo root:
-
-   ```bash
-   npm run dev
-   ```
-
-   Or from the frontend folder:
-
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-## Supabase (Backend)
-
-**Connected project:** `Qirlpl_Lims`  
-**Project ref:** `tzbgywlwfcdsgrumstpu`  
-**API URL:** `https://tzbgywlwfcdsgrumstpu.supabase.co`  
-**Region:** `ap-south-1`
-
-- Client is configured in `frontend/src/lib/supabaseClient.ts` via `frontend/.env`.
-- Supabase CLI config: `backend/supabase/config.toml`
-- Migrations: `backend/supabase/migrations`
-- Edge functions: `backend/supabase/functions`
-- Cursor MCP: configured in `.cursor/mcp.json`
-
-Link the CLI (from `backend/`) — use the Supabase account that **owns** this project:
-
-```bash
-cd backend
-npx supabase login
-npx supabase link --project-ref tzbgywlwfcdsgrumstpu
-npm run db:push
-```
-
-From repo root:
-
-```bash
-npm run db:push
-```
-
-## GitHub
-
-**Repository:** [https://github.com/qiamit/Qirlpl_Lims](https://github.com/qiamit/Qirlpl_Lims)
-
-Remote is configured as `origin`. First-time push:
-
-```bash
-git add .
-git commit -m "Initial commit: Qirlpl LIMS frontend/backend monorepo"
-git push -u origin main
-```
-
-If prompted, sign in with your GitHub account or use a [Personal Access Token](https://github.com/settings/tokens) as the password.
-
-## Vercel Deployment
-
-Deploy from the `frontend` directory:
-
-1. `cd frontend`
-2. `npx vercel login`
-3. `npx vercel link`
-4. Add production env vars in Vercel project settings:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-5. Deploy: `npx vercel --prod`
+4. `npm run dev`
 
 ## Notes
 
 - Never commit `.env` files.
-- Only the public Supabase anon key should be used in the frontend.
-- For DB changes, add SQL files under `backend/supabase/migrations`.
+- Do not run `supabase link`, `supabase db push`, or `vercel` against this repo.
+- Schema changes: add SQL under `backend/supabase/migrations/` and apply on Railway Postgres.

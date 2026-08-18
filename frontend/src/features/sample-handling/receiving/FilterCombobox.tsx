@@ -38,9 +38,63 @@ type DropdownPosition = {
 
 /** Portaled list — Dialog must ignore pointer/focus outside for this. */
 export const FILTER_COMBOBOX_DROPDOWN_ATTR = 'data-filter-combobox-dropdown'
+export const FILTER_COMBOBOX_OPTION_INDEX_ATTR = 'data-filter-combobox-option-index'
+
+/** Clicks often hit a Text node inside the option button, not the Element itself. */
+export function elementFromEventTarget(target: EventTarget | null): Element | null {
+  if (target instanceof Element) return target
+  if (target instanceof Node) return target.parentElement
+  return null
+}
 
 export function isFilterComboboxDropdownTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest(`[${FILTER_COMBOBOX_DROPDOWN_ATTR}]`))
+  const el = elementFromEventTarget(target)
+  return Boolean(el?.closest(`[${FILTER_COMBOBOX_DROPDOWN_ATTR}]`))
+}
+
+function optionIndexFromEventTarget(target: EventTarget | null): number | null {
+  const el = elementFromEventTarget(target)
+  if (!el) return null
+  const option = el.closest(`[${FILTER_COMBOBOX_OPTION_INDEX_ATTR}]`)
+  if (!option || !option.closest(`[${FILTER_COMBOBOX_DROPDOWN_ATTR}]`)) return null
+  const index = Number(option.getAttribute(FILTER_COMBOBOX_OPTION_INDEX_ATTR))
+  return Number.isFinite(index) ? index : null
+}
+
+function optionIndexFromPointerEvent(event: Event): number | null {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  for (const node of path) {
+    const index = optionIndexFromEventTarget(node)
+    if (index != null) return index
+  }
+  return optionIndexFromEventTarget(event.target)
+}
+
+/**
+ * Mouse clicks on a body-portaled list are "outside" Radix Dialog (capture on document).
+ * Listen on window capture so we select before Dialog swallows the pointer event.
+ */
+export function useFilterComboboxPointerSelect(
+  enabled: boolean,
+  onSelectIndex: (index: number) => void,
+) {
+  const onSelectIndexRef = useRef(onSelectIndex)
+  onSelectIndexRef.current = onSelectIndex
+
+  useEffect(() => {
+    if (!enabled) return
+
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      const index = optionIndexFromPointerEvent(event)
+      if (index == null) return
+      event.preventDefault()
+      event.stopPropagation()
+      onSelectIndexRef.current(index)
+    }
+
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => window.removeEventListener('pointerdown', onPointerDown, true)
+  }, [enabled])
 }
 
 export function FilterCombobox({
@@ -91,6 +145,35 @@ export function FilterCombobox({
   const itemCount = options.length + extraActions.length
   const showList = open
   const showOptions = itemCount > 0
+  const selectIndexRef = useRef<(index: number) => void>(() => {})
+
+  const selectIndex = (index: number) => {
+    if (index < 0 || selectingRef.current) return
+    selectingRef.current = true
+    try {
+      if (index < options.length) {
+        const selected = options[index]
+        onValueChange(selected.label)
+        onSelectOption(selected)
+        onOpenChange(false)
+        setHighlightIndex(-1)
+        return
+      }
+      const extra = extraActions[index - options.length]
+      if (extra) {
+        extra.onSelect()
+        onOpenChange(false)
+        setHighlightIndex(-1)
+      }
+    } finally {
+      window.setTimeout(() => {
+        selectingRef.current = false
+      }, 0)
+    }
+  }
+  selectIndexRef.current = selectIndex
+
+  useFilterComboboxPointerSelect(showList, (index) => selectIndexRef.current(index))
 
   useEffect(() => {
     if (!open) {
@@ -151,33 +234,7 @@ export function FilterCombobox({
     }
   }, [showList, itemCount, dropdownPlacement, value])
 
-  const selectIndex = (index: number) => {
-    if (index < 0) return
-    selectingRef.current = true
-    try {
-      if (index < options.length) {
-        const selected = options[index]
-        onValueChange(selected.label)
-        onSelectOption(selected)
-        onOpenChange(false)
-        setHighlightIndex(-1)
-        return
-      }
-      const extra = extraActions[index - options.length]
-      if (extra) {
-        extra.onSelect()
-        onOpenChange(false)
-        setHighlightIndex(-1)
-      }
-    } finally {
-      window.setTimeout(() => {
-        selectingRef.current = false
-      }, 0)
-    }
-  }
-
   const handleOptionPointerDown = (index: number) => (e: PointerEvent) => {
-    // Prevent input blur + stop Dialog/DismissableLayer from treating portal click as "outside"
     e.preventDefault()
     e.stopPropagation()
     selectIndex(index)
@@ -239,15 +296,19 @@ export function FilterCombobox({
   const dropdownList = showList && dropdownPosition ? (
     <div
       {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
-      className="fixed z-[9999] overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-xl ring-1 ring-amber-700/25"
+      className="pointer-events-auto fixed z-[10000] overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-xl ring-1 ring-amber-700/25"
       style={{
         left: dropdownPosition.left,
         width: Math.max(dropdownPosition.width, 420),
         top: dropdownPosition.top,
         bottom: dropdownPosition.bottom,
+        pointerEvents: 'auto',
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
     >
       <ul
         id={optionListId}
@@ -263,6 +324,7 @@ export function FilterCombobox({
                   type="button"
                   role="option"
                   tabIndex={-1}
+                  {...{ [FILTER_COMBOBOX_OPTION_INDEX_ATTR]: String(index) }}
                   aria-selected={highlightIndex === index}
                   title={
                     opt.secondaryLabel?.trim()
@@ -297,6 +359,7 @@ export function FilterCombobox({
                     type="button"
                     role="option"
                     tabIndex={-1}
+                    {...{ [FILTER_COMBOBOX_OPTION_INDEX_ATTR]: String(index) }}
                     aria-selected={highlightIndex === index}
                     className={cn(
                       'block w-full px-3 py-2.5 text-left text-[12px] font-semibold text-amber-800 transition-colors',

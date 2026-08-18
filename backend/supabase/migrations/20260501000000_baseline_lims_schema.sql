@@ -1,4 +1,4 @@
--- Baseline schema for Qirlpl_Lims (tzbgywlwfcdsgrumstpu)
+-- Baseline schema for Qirlpl LIMS (Railway Postgres)
 -- Generated: 2026-07-20T15:52:10.2850973+05:30
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";

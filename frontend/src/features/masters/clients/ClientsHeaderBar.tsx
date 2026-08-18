@@ -61,9 +61,9 @@ export function ClientsHeaderBar({
                 type="search"
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search clients…"
+                placeholder="Search Clients"
                 className={cn(clientDarkBarSearchClass, 'pl-9')}
-                aria-label="Search clients"
+                aria-label="Search Clients"
               />
             </div>
             <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>

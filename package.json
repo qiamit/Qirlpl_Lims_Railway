@@ -10,9 +10,10 @@
     "typecheck": "npm run typecheck --prefix frontend",
     "lint": "npm run lint --prefix frontend",
     "preview": "npm run preview --prefix frontend",
-    "db:push": "npm run db:push --prefix backend"
+    "db:push": "node backend/scripts/refuse-hosted-cloud.cjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "pg": "^8.23.0"
   }
 }

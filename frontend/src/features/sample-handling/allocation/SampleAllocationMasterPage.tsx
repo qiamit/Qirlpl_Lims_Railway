@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchTeamUsers } from '@/lib/fetchTeamUsers'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
@@ -265,36 +266,14 @@ export default function SampleAllocationMasterPage() {
       return
     }
 
-    const { data: { session: latestSession } } = await supabase.auth.getSession()
-    const accessToken = latestSession?.access_token
-    if (!accessToken) return
-    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-users`
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-        'x-user-jwt': accessToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    })
-    const payload = (await response.json().catch(() => null)) as unknown
-    if (!response.ok) {
-      // Avoid noisy console/network loops when session is stale or caller lacks permission.
-      return
-    }
-    const rows = typeof payload === 'object' && payload && 'users' in payload
-      ? ((payload as { users?: unknown }).users as unknown)
-      : []
-    const list = Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : []
-    const mapped = list
-      .map((row) => ({
-        designation: String(row.designation ?? '').trim(),
-        departmentName: String((row as { department_name?: unknown }).department_name ?? '').trim(),
-      }))
-      .filter((u) => u.designation || u.departmentName)
+    try {
+      const list = await fetchTeamUsers()
+      const mapped = list
+        .map((row) => ({
+          designation: row.designation,
+          departmentName: row.department_name,
+        }))
+        .filter((u) => u.designation || u.departmentName)
     const uniqueDesignations = Array.from(
       new Set(mapped.map((u) => u.designation).filter((d) => d.length > 0)),
     ).sort((a, b) => a.localeCompare(b))
@@ -339,6 +318,9 @@ export default function SampleAllocationMasterPage() {
       } catch {
         /* ignore */
       }
+    }
+    } catch {
+      // Keep local lab-master options if team directory is unavailable.
     }
   }
 

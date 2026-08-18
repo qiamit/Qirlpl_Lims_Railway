@@ -9,6 +9,7 @@ import {
   type CalibrationJobRow,
   type CalibrationJobStage,
 } from '../types'
+import { EQUIPMENT_KIND_CALIBRATION } from '@/lib/equipmentKind'
 
 const JOB_SELECT =
   'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, location_of_calibration, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, allocated_engineer_designation, outgoing_checklist, inward_checklist, certificate_draft, created_at, updated_at'
@@ -625,6 +626,7 @@ export async function resolveEquipmentMasterForJob(job: {
   const { data, error } = await supabase
     .from('equipment_master')
     .select(SHEET_EQ_SELECT)
+    .eq('equipment_kind', EQUIPMENT_KIND_CALIBRATION)
     .ilike('equipment_name', label)
   if (error) throw error
 
@@ -635,6 +637,7 @@ export async function resolveEquipmentMasterForJob(job: {
     const { data: all, error: allErr } = await supabase
       .from('equipment_master')
       .select(SHEET_EQ_SELECT)
+      .eq('equipment_kind', EQUIPMENT_KIND_CALIBRATION)
       .order('equipment_name', { ascending: true })
       .limit(500)
     if (allErr) throw allErr

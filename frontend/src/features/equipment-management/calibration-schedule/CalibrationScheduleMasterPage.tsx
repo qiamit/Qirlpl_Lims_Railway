@@ -14,6 +14,7 @@ import {
   type CalibrationSource,
   type DueBucket,
 } from './types'
+import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 
 function formatSupabaseError(err: unknown) {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -85,7 +86,7 @@ export default function CalibrationScheduleMasterPage() {
     setError(null)
     try {
       const [testingRes, calibRes, iqcRes] = await Promise.all([
-        supabase.from('equipment_master').select(SELECT_COLS).order('equipment_name'),
+        supabase.from('equipment_master').select(SELECT_COLS).eq('equipment_kind', EQUIPMENT_KIND_TESTING).order('equipment_name'),
         supabase
           .from('equipment_for_calibration')
           .select(`${SELECT_COLS}, is_iqc_master`)

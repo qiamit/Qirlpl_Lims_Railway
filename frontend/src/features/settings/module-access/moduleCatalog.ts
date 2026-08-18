@@ -109,12 +109,12 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
 
   {
     key: '/calibration/equipment-for-calibration',
-    label: 'Master Equipment of Calibration',
+    label: 'Master Equipment Calibration',
     section: 'Equipment Management',
   },
   {
     key: '/masters/equipment',
-    label: 'Master Equipment of Testing',
+    label: 'Master Equipment Testing',
     section: 'Equipment Management',
   },
   {

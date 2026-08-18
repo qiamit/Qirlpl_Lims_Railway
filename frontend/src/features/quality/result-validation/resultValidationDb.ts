@@ -10,6 +10,7 @@ import type {
   SampleOption,
   UserOption,
 } from './types'
+import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 
 function mapRow(r: Record<string, unknown>): ResultValidityCheckRow {
   return {
@@ -160,7 +161,7 @@ export async function fetchLookupOptions(): Promise<{
   userNameMap: Map<string, string>
 }> {
   const [equipmentRes, iqcRes, samplesRes, activeUsers] = await Promise.all([
-    supabase.from('equipment_master').select('id, equipment_name, asset_code').order('equipment_name'),
+    supabase.from('equipment_master').select('id, equipment_name, asset_code').eq('equipment_kind', EQUIPMENT_KIND_TESTING).order('equipment_name'),
     supabase.from('iqc_masters').select('id, asset_code, equipment_name').order('asset_code'),
     supabase
       .from('samples')

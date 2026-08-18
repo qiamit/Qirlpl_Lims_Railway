@@ -224,6 +224,11 @@ export function MakeSelect({
                       tabIndex={-1}
                       className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
                       onMouseDown={(e) => e.preventDefault()}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        pickMake(make.name)
+                      }}
                       onMouseEnter={() => setHighlight(index)}
                       onClick={() => pickMake(make.name)}
                     >
@@ -240,6 +245,12 @@ export function MakeSelect({
                         highlight === filteredMakes.length ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
                       }`}
                       onMouseDown={(e) => e.preventDefault()}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        openManageDialog(value)
+                        setOpen(false)
+                      }}
                       onMouseEnter={() => setHighlight(filteredMakes.length)}
                       onClick={() => {
                         openManageDialog(value)

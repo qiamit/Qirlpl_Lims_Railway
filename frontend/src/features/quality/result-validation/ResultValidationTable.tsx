@@ -1,24 +1,46 @@
 import { Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { limsPanelClass } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
 import { checkTypeLabel, RESULT_VALIDITY_STATUS_LABELS } from './checkTypes'
 import type { ResultValidityCheckRow } from './types'
 
-const compactCol = 'w-0 whitespace-nowrap'
+const GRID_TABLE =
+  'table-fixed min-w-[920px] w-full border-collapse border border-stone-500 font-jakarta'
+
+const thClass =
+  'border border-stone-700 bg-stone-800 !p-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200'
+
+const tdClass = 'border border-[#e7e0d4] !p-2 align-middle text-[12px] text-[#292524]'
+
+const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
+const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
+const rowSelectedClass = 'bg-[#fde68a]/80 hover:bg-[#fde68a]/80'
+
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
+
+const iconBtnClass =
+  'rounded-none text-[#92400e] hover:bg-[#f3e9d8] hover:text-[#78350f]'
 
 function StatusBadge({ status }: { status: ResultValidityCheckRow['status'] }) {
   const className =
     status === 'satisfactory'
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      ? 'border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]'
       : status === 'unsatisfactory'
-        ? 'bg-rose-50 text-rose-700 border-rose-200'
+        ? 'border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]'
         : status === 'in_progress'
-          ? 'bg-amber-50 text-amber-700 border-amber-200'
-          : 'bg-slate-100 text-slate-600 border-slate-200'
+          ? 'border-[#fde68a] bg-[#fffbeb] text-[#b45309]'
+          : 'border-[#d6d3d1] bg-[#f5f5f4] text-[#57534e]'
 
   return (
-    <span className={cn('inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap', className)}>
+    <span
+      className={cn(
+        'inline-flex items-center rounded-none border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]',
+        className,
+      )}
+    >
       {RESULT_VALIDITY_STATUS_LABELS[status] ?? status}
     </span>
   )
@@ -28,6 +50,7 @@ export function ResultValidationTable({
   rows,
   loading,
   error,
+  searchActive,
   selectedIds,
   onToggle,
   onToggleAll,
@@ -37,6 +60,7 @@ export function ResultValidationTable({
   rows: ResultValidityCheckRow[]
   loading: boolean
   error: string | null
+  searchActive?: boolean
   selectedIds: Set<string>
   onToggle: (id: string) => void
   onToggleAll: (checked: boolean) => void
@@ -47,23 +71,40 @@ export function ResultValidationTable({
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
   return (
-    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
-      {error && <p className="px-4 pt-4 text-sm text-destructive">{error}</p>}
+    <div className={cn(limsPanelClass, 'bg-[#f7f3eb]')}>
+      {error ? <p className="px-3 pt-3 text-sm text-red-600 sm:px-5 sm:pt-4">{error}</p> : null}
+
       {loading ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-5 py-8 text-center text-sm text-[#78716c]">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">
-          No internal quality checks recorded yet. Use &quot;New Check&quot; to perform ISO 17025 Clause 7.7 monitoring.
-        </p>
+        <div className="m-3 border border-dashed border-[#d6d3d1] bg-[#fffcf7] p-4 text-center sm:m-4 sm:p-6">
+          <p className="text-sm text-[#57534e]">
+            {searchActive ? 'No checks match your search.' : 'No internal quality checks recorded yet.'}
+          </p>
+          {!searchActive ? (
+            <p className="mt-1 text-xs text-[#78716c]">Use &quot;New Check&quot; to create your first record.</p>
+          ) : null}
+        </div>
       ) : (
-        <div className="overflow-x-auto [&>div]:overflow-visible">
-          <Table className="w-full table-auto">
+        <div className="overflow-x-auto">
+          <Table className={GRID_TABLE}>
+            <colgroup>
+              <col className="w-[4%]" />
+              <col className="w-[12%]" />
+              <col className="w-[10%]" />
+              <col className="w-[16%]" />
+              <col className="w-[22%]" />
+              <col className="w-[12%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[4%]" />
+            </colgroup>
             <TableHeader>
-              <TableRow className="bg-stone-800 hover:bg-stone-800">
-                <TableHead className={cn(compactCol, 'px-1 text-center text-xs')}>
+              <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+                <TableHead className={thClass}>
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5"
+                    className={checkboxClass}
                     aria-label="Select all"
                     checked={allChecked}
                     ref={(el) => {
@@ -72,68 +113,86 @@ export function ResultValidationTable({
                     onChange={(e) => onToggleAll(e.target.checked)}
                   />
                 </TableHead>
-                <TableHead className={cn(compactCol, 'text-xs')}>Ref</TableHead>
-                <TableHead className={cn(compactCol, 'text-xs')}>Date</TableHead>
-                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Check Type</TableHead>
-                <TableHead className="text-left text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">Title / Summary</TableHead>
-                <TableHead className={cn(compactCol, 'text-xs')}>SRF</TableHead>
-                <TableHead className={cn(compactCol, 'text-xs text-center')}>Status</TableHead>
-                <TableHead className={cn(compactCol, 'text-xs')}>Performed By</TableHead>
-                <TableHead className={cn(compactCol, 'text-xs text-center')}>Action</TableHead>
+                <TableHead className={thClass}>Ref</TableHead>
+                <TableHead className={thClass}>Date</TableHead>
+                <TableHead className={thClass}>Check Type</TableHead>
+                <TableHead className={thClass}>Title / Summary</TableHead>
+                <TableHead className={thClass}>SRF</TableHead>
+                <TableHead className={thClass}>Status</TableHead>
+                <TableHead className={thClass}>Performed By</TableHead>
+                <TableHead className={thClass}>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className={cn(compactCol, 'align-middle px-1 text-center')}>
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5"
-                      aria-label={`Select ${r.checkRef}`}
-                      checked={selectedIds.has(r.id)}
-                      onChange={() => onToggle(r.id)}
-                    />
-                  </TableCell>
-                  <TableCell className={cn(compactCol, 'align-middle text-xs font-mono')}>{r.checkRef}</TableCell>
-                  <TableCell className={cn(compactCol, 'align-middle text-xs text-muted-foreground')}>
-                    {formatDate(r.checkDate)}
-                  </TableCell>
-                  <TableCell className="align-middle text-left text-xs">
-                    <div className="font-medium">{checkTypeLabel(r.checkType)}</div>
-                  </TableCell>
-                  <TableCell className="align-middle text-left text-xs">
-                    <div className="line-clamp-2 font-medium">{r.title}</div>
-                    {r.testParameterName ? (
-                      <div className="text-[11px] text-muted-foreground mt-0.5">{r.testParameterName}</div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className={cn(compactCol, 'align-middle text-xs')}>{r.srfNumber ?? '—'}</TableCell>
-                  <TableCell className={cn(compactCol, 'align-middle text-center')}>
-                    <StatusBadge status={r.status} />
-                  </TableCell>
-                  <TableCell className={cn(compactCol, 'align-middle text-xs text-muted-foreground')}>
-                    {r.performedByName ?? '—'}
-                  </TableCell>
-                  <TableCell className={cn(compactCol, 'align-middle text-center px-1')}>
-                    <div className="flex items-center justify-center gap-1">
-                      <Button type="button" size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => onEdit(r)}>
-                        <Pencil size={12} />
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                        aria-label={`Delete ${r.checkRef}`}
-                        onClick={() => onDelete(r)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows.map((r, index) => {
+                const selected = selectedIds.has(r.id)
+                return (
+                  <TableRow
+                    key={r.id}
+                    className={cn(
+                      selected ? rowSelectedClass : index % 2 === 0 ? rowEvenClass : rowOddClass,
+                    )}
+                  >
+                    <TableCell className={cn(tdClass, 'text-center')}>
+                      <input
+                        type="checkbox"
+                        className={checkboxClass}
+                        aria-label={`Select ${r.checkRef}`}
+                        checked={selected}
+                        onChange={() => onToggle(r.id)}
+                      />
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-center font-mono font-semibold text-[#1c1917]')}>
+                      {r.checkRef}
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-center text-[#44403c]')}>
+                      {formatDate(r.checkDate)}
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-left text-[12.5px] font-semibold')}>
+                      {checkTypeLabel(r.checkType)}
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-left')}>
+                      <p className="line-clamp-2 text-[12.5px] font-semibold text-[#1c1917]">{r.title}</p>
+                      {r.testParameterName ? (
+                        <p className="mt-0.5 text-[11px] text-[#78716c]">{r.testParameterName}</p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-center font-mono text-[#b45309]')}>
+                      {r.srfNumber ?? '—'}
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-center')}>
+                      <StatusBadge status={r.status} />
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-left text-[#44403c]')}>
+                      {r.performedByName ?? '—'}
+                    </TableCell>
+                    <TableCell className={cn(tdClass, 'text-center')}>
+                      <div className="flex items-center justify-center gap-0.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className={iconBtnClass}
+                          aria-label={`Edit ${r.checkRef}`}
+                          onClick={() => onEdit(r)}
+                        >
+                          <Pencil size={16} />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className={iconBtnClass}
+                          aria-label={`Delete ${r.checkRef}`}
+                          onClick={() => onDelete(r)}
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </div>

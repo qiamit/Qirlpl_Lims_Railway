@@ -7,6 +7,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
+import {
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsOutlineBtnClass,
+  limsPrimaryBtnClass,
+  limsRegistryFormClass,
+} from '@/lib/limsThemeUi'
 
 import { checkTypeLabel } from './checkTypes'
 import { withIqcPlanAcceptanceCriteria } from './iqcPlanAcceptanceCriteria'
@@ -21,6 +29,14 @@ import type {
   UserOption,
 } from './types'
 import { emptyResultValidityForm, rowToForm } from './types'
+
+const SIDEBAR_CENTERED_DIALOG_CLASS = cn(
+  limsDialogClass,
+  'max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl sm:w-full',
+  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
+  'md:w-[min(64rem,calc(100vw-268px-2rem))] md:max-w-[min(64rem,calc(100vw-268px-2rem))]',
+  'md:!-translate-x-1/2 md:!-translate-y-1/2',
+)
 
 export function ResultValidationRecordDialog({
   open,
@@ -91,30 +107,65 @@ export function ResultValidationRecordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{row ? `Edit Check — ${row.checkRef}` : 'New Internal Quality Check'}</DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        persistOnFocusLoss
+        aria-describedby={undefined}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        className={SIDEBAR_CENTERED_DIALOG_CLASS}
+      >
+        <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={limsDarkBarGlowStyle}
+          />
+          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+          <DialogHeader className="relative pr-10 text-left">
+            <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              {row ? `Edit Check — ${row.checkRef}` : 'New Internal Quality Check'}
+            </DialogTitle>
+          </DialogHeader>
+        </div>
 
-        <ResultValidityCheckFormFields
-          form={form}
-          onChange={setForm}
-          users={users}
-          equipment={equipment}
-          iqcMasters={iqcMasters}
-          samples={samples}
-          isNewRecord={!row}
-          fixedCheckType={fixedCheckType}
-          onCheckTypeChange={(type) => void loadNewForm(type)}
-        />
+        <div
+          className={cn(
+            limsRegistryFormClass,
+            'max-h-[min(72vh,720px)] overflow-y-auto overflow-x-hidden bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-6 sm:py-5',
+          )}
+        >
+          <ResultValidityCheckFormFields
+            form={form}
+            onChange={setForm}
+            users={users}
+            equipment={equipment}
+            iqcMasters={iqcMasters}
+            samples={samples}
+            isNewRecord={!row}
+            fixedCheckType={fixedCheckType}
+            onCheckTypeChange={(type) => void loadNewForm(type)}
+          />
+          {error ? (
+            <p className="mt-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+        <DialogFooter className="gap-2 border-t border-stone-400 bg-stone-100 px-4 py-3 sm:px-6">
+          <Button
+            type="button"
+            variant="outline"
+            className={limsOutlineBtnClass}
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Cancel
           </Button>
-          <Button type="button" onClick={() => void handleSubmit()} disabled={saving}>
+          <Button
+            type="button"
+            className={limsPrimaryBtnClass}
+            onClick={() => void handleSubmit()}
+            disabled={saving}
+          >
             {saving ? 'Saving…' : row ? 'Update Check' : 'Save Check'}
           </Button>
         </DialogFooter>

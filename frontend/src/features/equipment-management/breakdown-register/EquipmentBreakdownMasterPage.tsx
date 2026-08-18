@@ -20,6 +20,7 @@ import {
   type EquipmentPickOption,
   type EquipmentSource,
 } from './types'
+import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 
 function formatSupabaseError(err: unknown) {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -131,6 +132,7 @@ export default function EquipmentBreakdownMasterPage() {
         .select(
           'id, asset_code, equipment_name, manufacturer, model_number, serial_number, current_location, equipment_status',
         )
+        .eq('equipment_kind', EQUIPMENT_KIND_TESTING)
         .order('equipment_name'),
       supabase
         .from('equipment_for_calibration')

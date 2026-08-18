@@ -39,7 +39,11 @@ import {
   type CalibrationJobRow,
   type CalibrationJobStage,
 } from '../types'
-import { FILTER_COMBOBOX_DROPDOWN_ATTR } from '@/features/sample-handling/receiving/FilterCombobox'
+import {
+  FILTER_COMBOBOX_DROPDOWN_ATTR,
+  FILTER_COMBOBOX_OPTION_INDEX_ATTR,
+  useFilterComboboxPointerSelect,
+} from '@/features/sample-handling/receiving/FilterCombobox'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import {
   resolveEquipmentMasterForJob,
@@ -589,8 +593,8 @@ function PortaledSelectList({
   return createPortal(
     <div
       {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
-      className="fixed z-[9999] rounded-none border border-stone-500 bg-white shadow-lg"
-      style={{ left: pos.left, top: pos.top, width: pos.width }}
+      className="pointer-events-auto fixed z-[10000] rounded-none border border-stone-500 bg-white shadow-lg"
+      style={{ left: pos.left, top: pos.top, width: pos.width, pointerEvents: 'auto' }}
       onMouseDown={(e) => e.preventDefault()}
       onPointerDown={(e) => e.stopPropagation()}
     >
@@ -638,6 +642,11 @@ function TypeSelect({
     setQuery(next)
     setOpen(false)
   }
+
+  useFilterComboboxPointerSelect(open, (index) => {
+    const hit = filtered[index]
+    if (hit) pick(hit)
+  })
 
   return (
     <div className="relative mx-auto w-full">
@@ -699,11 +708,17 @@ function TypeSelect({
                 <button
                   type="button"
                   tabIndex={-1}
+                  {...{ [FILTER_COMBOBOX_OPTION_INDEX_ATTR]: String(index) }}
                   className={cn(
                     'w-full px-3 py-2 text-left',
                     index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]',
                   )}
                   onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    pick(opt)
+                  }}
                   onMouseEnter={() => setHighlight(index)}
                   onClick={() => pick(opt)}
                 >
@@ -766,6 +781,11 @@ function EngineerSelect({
     setOpen(false)
   }
 
+  useFilterComboboxPointerSelect(open, (index) => {
+    const hit = filtered[index]
+    if (hit) pick(hit)
+  })
+
   return (
     <div className="relative mx-auto w-full">
       <Input
@@ -826,11 +846,17 @@ function EngineerSelect({
                 <button
                   type="button"
                   tabIndex={-1}
+                  {...{ [FILTER_COMBOBOX_OPTION_INDEX_ATTR]: String(index) }}
                   className={cn(
                     'w-full px-3 py-2 text-left',
                     index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]',
                   )}
                   onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    pick(eng)
+                  }}
                   onMouseEnter={() => setHighlight(index)}
                   onClick={() => pick(eng)}
                 >

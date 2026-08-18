@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Settings2, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import { EQUIPMENT_KIND_CALIBRATION } from '@/lib/equipmentKind'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -572,6 +573,7 @@ export function SelectCalibrationEquipmentDialog({
         .select(
           'id, asset_code, equipment_name, manufacturer, model_number, serial_number, range_capacity, resolution_least_count, measurement_ranges, calibration_method_label, calibration_frequency',
         )
+        .eq('equipment_kind', EQUIPMENT_KIND_CALIBRATION)
         .order('equipment_name', { ascending: true })
       if (err) throw err
       setCatalog((data ?? []) as SelectableCalibrationEquipment[])

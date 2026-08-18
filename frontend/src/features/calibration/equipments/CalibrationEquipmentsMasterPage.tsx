@@ -47,6 +47,7 @@ import {
 } from '@/features/settings/lab-settings/brandMark'
 import { LAB_SETTINGS_SINGLETON_ID } from '@/features/settings/lab-settings/labSettingsDb'
 import { serializeEquipmentChecklistTemplate } from '@/features/calibration/handling/jobs/conductOutsideChecklist'
+import { EQUIPMENT_KIND_CALIBRATION } from '@/lib/equipmentKind'
 
 function equipmentFormToDbPayload(form: CalibrationEquipmentForm) {
   const legacy = legacyRangeColumnsFromRanges(form.ranges)
@@ -81,6 +82,7 @@ function equipmentFormToDbPayload(form: CalibrationEquipmentForm) {
     ),
     outgoing_checklist_template: serializeEquipmentChecklistTemplate(form.outgoingChecklist),
     inward_checklist_template: serializeEquipmentChecklistTemplate(form.inwardChecklist),
+    equipment_kind: EQUIPMENT_KIND_CALIBRATION,
   }
 }
 
@@ -392,6 +394,7 @@ export default function CalibrationEquipmentsMasterPage() {
         .select(
           'id, asset_code, equipment_name, serial_number, equipment_status, range_capacity, resolution_least_count, measurement_ranges, calibration_method_is_code_id, calibration_method_label, master_equipment_id, raw_data_sheet_template, mu_calculation_template, generate_report_config, certificate_template_config, outgoing_checklist_template, inward_checklist_template, created_at, updated_at',
         )
+        .eq('equipment_kind', EQUIPMENT_KIND_CALIBRATION)
         .order('asset_code', { ascending: true })
       if (error) throw error
       setRows((data ?? []) as CalibrationEquipmentRow[])
@@ -733,6 +736,7 @@ export default function CalibrationEquipmentsMasterPage() {
             range_capacity: legacy.range_capacity,
             resolution_least_count: legacy.resolution_least_count,
             measurement_ranges: serializeMeasurementRanges(ranges),
+            equipment_kind: EQUIPMENT_KIND_CALIBRATION,
           }
         })
         .filter((p) => p.asset_code && p.equipment_name)

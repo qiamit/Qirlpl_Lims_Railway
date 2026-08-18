@@ -217,6 +217,11 @@ export function NablTestMethodSelect({
                           index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
                         }`}
                         onMouseDown={(e) => e.preventDefault()}
+                        onPointerDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          pick(opt)
+                        }}
                         onMouseEnter={() => setHighlight(index)}
                         onClick={() => pick(opt)}
                       >
@@ -240,6 +245,11 @@ export function NablTestMethodSelect({
                             : 'hover:bg-[#f7f3eb]'
                         }`}
                         onMouseDown={(e) => e.preventDefault()}
+                        onPointerDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          openAddDialog()
+                        }}
                         onMouseEnter={() => setHighlight(filtered.length)}
                         onClick={openAddDialog}
                       >

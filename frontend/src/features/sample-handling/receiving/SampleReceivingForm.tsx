@@ -245,6 +245,14 @@ export function SampleReceivingForm({
                                   type="button"
                                   className="w-full px-3 py-2 text-left hover:bg-muted"
                                   onMouseDown={(e) => e.preventDefault()}
+                                  onPointerDown={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    const label = stripReceivingReportSuffix(row.srf_number ?? '')
+                                    setSrfSearchInput(label)
+                                    setSrfDropdownOpen(false)
+                                    onSelectReferencedSrf?.(row.id)
+                                  }}
                                   onClick={() => {
                                     const label = stripReceivingReportSuffix(row.srf_number ?? '')
                                     setSrfSearchInput(label)

@@ -250,6 +250,11 @@ export function GstRateSelect({
                       tabIndex={-1}
                       className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
                       onMouseDown={(e) => e.preventDefault()}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        pickRate(row.rate)
+                      }}
                       onMouseEnter={() => setHighlight(index)}
                       onClick={() => pickRate(row.rate)}
                     >
@@ -266,6 +271,12 @@ export function GstRateSelect({
                         highlight === filteredRates.length ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
                       }`}
                       onMouseDown={(e) => e.preventDefault()}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        openManageDialog(value)
+                        setOpen(false)
+                      }}
                       onMouseEnter={() => setHighlight(filteredRates.length)}
                       onClick={() => {
                         openManageDialog(value)

@@ -1,9 +1,15 @@
-import { cn } from '@/lib/utils'
-import { limsPrimaryBtnClass, limsDarkBarSearchClass, limsDarkBarFieldClass, limsDarkBarBtnClass, limsAiTriggerClass } from '@/lib/limsThemeUi'
-import { Plus } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  limsDarkBarFieldClass,
+  limsDarkBarGlowStyle,
+  limsDarkBarSearchClass,
+  limsPanelClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { RESULT_VALIDITY_STATUS_LABELS } from './checkTypes'
 import type { ResultValidationModuleDef } from './resultValidationModules'
 import type { ResultValidityFilter } from './types'
@@ -16,7 +22,6 @@ export function ResultValidationHeaderBar({
   onPageSizeChange,
   filter,
   onFilterChange,
-  recordCount,
   onNewCheck,
 }: {
   module: ResultValidationModuleDef
@@ -26,47 +31,57 @@ export function ResultValidationHeaderBar({
   onPageSizeChange: (size: number) => void
   filter: ResultValidityFilter
   onFilterChange: (value: ResultValidityFilter) => void
-  recordCount: number
   onNewCheck: () => void
 }) {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-amber-200/80">
-              Validating the Results
-            </p>
-            <h1 className="text-lg font-semibold tracking-tight text-white whitespace-nowrap">
-              {module.label}
-            </h1>
-            <p className="mt-0.5 text-xs text-stone-300">
-              ISO 17025 Clause {module.clause} — {module.description}
-            </p>
-          </div>
-          <div className="md:w-[28%]">
-            <Input
-              placeholder="Search ref, title, SRF…"
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)} className={limsDarkBarSearchClass}
-            />
-          </div>
-          <div className="w-36">
+    <div className={cn(limsPanelClass)}>
+      <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-2.5 text-white sm:px-5 sm:py-3">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.18]"
+          style={limsDarkBarGlowStyle}
+        />
+        <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+        <div className="relative flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+          <h1 className="shrink-0 text-base font-semibold tracking-tight text-white sm:text-lg">
+            {module.label}
+          </h1>
+
+          <div className="order-3 flex w-full min-w-0 items-center gap-2 sm:order-none sm:mx-1 sm:w-auto sm:max-w-none sm:flex-none">
+            <div className="relative min-w-0 flex-1 sm:w-[70%] sm:max-w-[19.5rem] sm:flex-none">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search Ref | Title | SRF"
+                className={cn(limsDarkBarSearchClass, 'pl-9')}
+                aria-label="Search Ref, Title, SRF"
+              />
+            </div>
             <Select value={filter} onValueChange={(v) => onFilterChange(v as ResultValidityFilter)}>
-              <SelectTrigger aria-label="Filter by status">
+              <SelectTrigger
+                className={cn(limsDarkBarFieldClass, 'h-8 w-[8.5rem] shrink-0')}
+                aria-label="Filter by Status"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 {Object.entries(RESULT_VALIDITY_STATUS_LABELS).map(([k, label]) => (
-                  <SelectItem key={k} value={k}>{label}</SelectItem>
+                  <SelectItem key={k} value={k}>
+                    {label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="w-28">
             <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-              <SelectTrigger className={cn(limsDarkBarFieldClass, 'w-full')} aria-label="Rows per page">
+              <SelectTrigger
+                className={cn(limsDarkBarFieldClass, 'h-8 w-[7.5rem] shrink-0')}
+                aria-label="Rows per page"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -77,16 +92,21 @@ export function ResultValidationHeaderBar({
               </SelectContent>
             </Select>
           </div>
-        </div>
-        <Button type="button" className={cn('gap-1.5 shrink-0', limsPrimaryBtnClass)} onClick={onNewCheck}>
-          <Plus size={16} />
-          New Check
-        </Button>
-      </div>
 
-      <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-4 py-3">
-        <p className="text-xs text-amber-200/80">{module.clause}</p>
-        <p className="mt-0.5 text-sm font-medium text-white">{recordCount} record(s) in this module</p>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              className={cn('gap-2 shrink-0', limsPrimaryBtnClass)}
+              size="sm"
+              onClick={onNewCheck}
+              aria-label="New Check"
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">New Check</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )

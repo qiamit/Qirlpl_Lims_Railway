@@ -14,16 +14,16 @@ Yeh project **Qirlpl LIMS** (Laboratory Information Management System) hai, ISO 
 
 ## Project Structure
 
-- **Root:** `Qirlpl_Lims` – monorepo root with shared scripts in `package.json`.
+- **Root:** `Qirlpl_Lims_Railway` – Railway-only monorepo (not Vercel, not hosted Supabase Cloud, not `qiamit/Qirlpl_Lims`).
 - **frontend/** – React + Vite + TypeScript web app.
   - `frontend/src/` – Source code
   - `frontend/src/features/` – Feature-wise modules (sample-handling, masters, settings, etc.)
   - `frontend/src/components/` – Reusable UI components (shadcn/ui style)
-  - `frontend/src/lib/` – Shared libs (e.g. Supabase client)
-- **backend/** – Supabase backend (PostgreSQL, Auth, Edge Functions).
+  - `frontend/src/lib/` – Shared libs (supabase-js client pointed at Railway API)
+- **backend/** – SQL migrations and function source applied on Railway Postgres.
   - `backend/supabase/migrations/` – Versioned SQL migrations
-  - `backend/supabase/functions/` – Edge functions
-  - `backend/supabase/config.toml` – Supabase CLI config
+  - `backend/supabase/functions/` – Function source (not deployed to hosted Supabase)
+  - `railway-stack/gateway/` – Caddy API gateway
 
 ---
 
@@ -31,7 +31,7 @@ Yeh project **Qirlpl LIMS** (Laboratory Information Management System) hai, ISO 
 
 - **Frontend:** React 19, TypeScript, Vite 7
 - **Styling:** Tailwind CSS, Radix UI components
-- **Backend / DB:** Supabase (PostgreSQL, Auth, Storage)
+- **Backend / DB:** Railway Postgres + GoTrue + PostgREST + Storage API (supabase-js compatible)
 - **Routing:** React Router v7
 
 Inke hisaab se code likho – naya dependency add karte waqt batao, taaki project style break na ho.
@@ -47,10 +47,11 @@ Inke hisaab se code likho – naya dependency add karte waqt batao, taaki projec
 4. **State:**
    - Local state → `useState`, `useReducer`.
    - Shared / async data → `@tanstack/react-query` ya feature‑level hooks, jahan use ho raha ho.
-5. **Supabase:**
-   - Access hamesha `frontend/src/lib/supabaseClient` se.
-   - Queries: `.from('table_name').select(...)` style.
-   - Migrations: `backend/supabase/migrations/` me versioned SQL files.
+5. **Railway API (supabase-js):**
+ - Access hamesha `frontend/src/lib/supabaseClient` se.
+ - `VITE_SUPABASE_URL` Railway API gateway pe point kare, `*.supabase.co` pe nahi.
+ - Queries: `.from('table_name').select(...)` style.
+ - Migrations: `backend/supabase/migrations/` me versioned SQL files; apply Railway Postgres pe.
 6. **Paths:** Import me `@/` alias use karo (e.g. `@/components/ui/button`), jo `frontend/src` ko point karta hai.
 
 ---
@@ -83,7 +84,7 @@ Inke hisaab se code likho – naya dependency add karte waqt batao, taaki projec
 
 ## Git & Env
 
-- `.env` / `.env.local` kabhi commit mat karo – Supabase URL/keys yahi rahenge.
+- `.env` / `.env.local` kabhi commit mat karo – Railway API URL/keys yahi rahenge.
 - Har schema change ke liye:
   - `backend/supabase/migrations/` me ek naya SQL file banao (date prefix ke sath).
   - Breaking changes clearly comment karo (especially Sample Handling tables pe).
@@ -92,7 +93,7 @@ Inke hisaab se code likho – naya dependency add karte waqt batao, taaki projec
 
 ## Summary
 
-- React + TypeScript + Supabase + Tailwind follow karo.
+- React + TypeScript + Railway (supabase-js) + Tailwind follow karo.
 - Feature structure hamesha `features/<module>/` jaisa rakho.
 - Types shared `types.ts` me rakho; circular imports avoid karo.
 - Sample Handling ke liye:

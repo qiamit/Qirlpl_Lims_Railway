@@ -1793,7 +1793,7 @@ function parseMasterPointsTabs(
   return [emptyMasterPointsTab()]
 }
 
-export function emptyEquipmentRangeEntry(): EquipmentRangeEntry {
+export function emptyEquipmentRangeEntry(accreditationScopeId = ''): EquipmentRangeEntry {
   const tab = emptyMasterPointsTab()
   return {
     id: newEquipmentRangeId(),
@@ -1803,7 +1803,7 @@ export function emptyEquipmentRangeEntry(): EquipmentRangeEntry {
     resolutionLeastCount: '',
     unit: '',
     accuracy: '',
-    accreditationScopeId: '',
+    accreditationScopeId,
     masterEquipmentIds: [],
     calibrationPoints: [],
     calibrationPointsTable: emptyCalibrationPointsTable(),

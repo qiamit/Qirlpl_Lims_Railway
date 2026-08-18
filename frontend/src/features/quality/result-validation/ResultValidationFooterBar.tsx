@@ -1,9 +1,15 @@
-import { cn } from '@/lib/utils'
-import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarFieldClass,
+  limsDarkBarGlowStyle,
+  limsDeleteBtnClass,
+  limsPanelClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 
 export function ResultValidationFooterBar({
   loading,
@@ -32,65 +38,109 @@ export function ResultValidationFooterBar({
   onDeleteSelected: () => void
   deleteBusy: boolean
 }) {
-  return (
-    <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white shadow-sm ring-1 ring-amber-700/20 px-5 py-3 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-2">
-          {message ? (
-            <p
-              className={
-                message.toLowerCase().includes('saved') ||
-                message.toLowerCase().includes('updated') ||
-                message.toLowerCase().includes('deleted')
-                  ? 'text-sm text-emerald-300'
-                  : 'text-sm text-red-300'
-              }
-            >
-              {message}
-            </p>
-          ) : null}
-        </div>
+  const selectionDisabled = selectedCount === 0
 
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-3">
-          <span className="text-xs text-stone-300 md:order-first">
-            Selected: {selectedCount}
-          </span>
-          {selectedCount > 0 && (
+  return (
+    <div className={cn(limsPanelClass)}>
+      <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-1.5 text-white sm:px-5 sm:py-2">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.18]"
+          style={limsDarkBarGlowStyle}
+        />
+        <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+
+        <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
+          <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
             <LaboratoryDirectorOnly>
               <Button
-              type="button"
-              variant="destructive" size="sm" className={limsDeleteBtnClass}
-              disabled={deleteBusy || loading}
-              onClick={onDeleteSelected}
-            >
-              <Trash2 size={14} />
-              Delete Selected
-            </Button>
+                type="button"
+                variant="destructive"
+                size="sm"
+                className={cn(
+                  limsDeleteBtnClass,
+                  'h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs',
+                )}
+                onClick={onDeleteSelected}
+                disabled={deleteBusy || loading || selectionDisabled}
+                title="Delete"
+              >
+                <Trash2 size={14} />
+                <span className="hidden lg:inline">Delete</span>
+              </Button>
             </LaboratoryDirectorOnly>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" size="icon" className={cn('h-8 w-8', limsDarkBarBtnClass)} disabled={page <= 1 || loading} onClick={onPrevPage} aria-label="Previous page">
-                <ChevronLeft size={16} />
-              </Button>
-              <span className="text-xs text-stone-300 whitespace-nowrap">
-                Page {page} of {pageCount}
+            {selectedCount > 0 ? (
+              <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
+                Selected: {selectedCount}
               </span>
-              <Button type="button" variant="outline" size="icon" className={cn('h-8 w-8', limsDarkBarBtnClass)} disabled={page >= pageCount || loading} onClick={onNextPage} aria-label="Next page">
-                <ChevronRight size={16} />
-              </Button>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Input
-                className="h-8 w-14 text-center text-xs"
-                value={jumpTo}
-                onChange={(e) => onJumpToChange(e.target.value)}
-                aria-label="Jump to page"
-              />
-              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" disabled={loading} onClick={onJumpToGo}>
-                Go
-              </Button>
-            </div>
+            ) : null}
+            {message ? (
+              <p
+                className={cn(
+                  'min-w-0 max-w-[8rem] truncate text-[10px] sm:max-w-[12rem] sm:text-xs md:max-w-[16rem]',
+                  message.toLowerCase().includes('saved') ||
+                    message.toLowerCase().includes('updated') ||
+                    message.toLowerCase().includes('deleted')
+                    ? 'text-emerald-300'
+                    : 'text-red-300',
+                )}
+                title={message}
+              >
+                {message}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1 overflow-x-auto overscroll-x-contain sm:gap-1.5 md:gap-2 [-webkit-overflow-scrolling:touch]">
+            <Input
+              aria-label="Jump to page"
+              placeholder="Page"
+              value={jumpTo}
+              onChange={(e) => onJumpToChange(e.target.value.replace(/[^0-9]/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onJumpToGo()
+              }}
+              className={cn(
+                limsDarkBarFieldClass,
+                'h-7 w-10 shrink-0 text-[11px] sm:h-8 sm:w-12 sm:text-xs md:w-14',
+              )}
+              inputMode="numeric"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn('hidden h-7 shrink-0 sm:inline-flex sm:h-8', limsDarkBarBtnClass)}
+              onClick={onJumpToGo}
+              disabled={loading}
+            >
+              Jump
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={cn('h-7 w-7 shrink-0 sm:h-8 sm:w-8', limsDarkBarBtnClass)}
+              onClick={onPrevPage}
+              disabled={loading || page <= 1}
+            >
+              <ChevronLeft size={16} />
+              <span className="sr-only">Previous page</span>
+            </Button>
+            <span className="shrink-0 whitespace-nowrap text-center text-[10px] font-medium text-stone-300 sm:min-w-[4.5rem] sm:text-xs md:min-w-[5.5rem]">
+              <span className="hidden sm:inline">Page </span>
+              {page}/{pageCount}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={cn('h-7 w-7 shrink-0 sm:h-8 sm:w-8', limsDarkBarBtnClass)}
+              onClick={onNextPage}
+              disabled={loading || page >= pageCount}
+            >
+              <ChevronRight size={16} />
+              <span className="sr-only">Next page</span>
+            </Button>
           </div>
         </div>
       </div>

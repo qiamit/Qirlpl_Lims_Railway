@@ -461,6 +461,12 @@ export function QiAssistant({
                       idx === skillHighlight ? 'bg-teal-50 text-teal-950' : 'hover:bg-slate-50',
                     )}
                     onMouseEnter={() => setSkillHighlight(idx)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      applySkillSelection(skill, skillTrigger)
+                    }}
                     onClick={() => applySkillSelection(skill, skillTrigger)}
                   >
                     <span className="font-medium">{skill.name}</span>

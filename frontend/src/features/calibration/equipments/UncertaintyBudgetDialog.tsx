@@ -491,8 +491,10 @@ function BudgetFormulaInput({
                     ? 'bg-indigo-50 text-indigo-900'
                     : 'text-slate-700 hover:bg-slate-50',
                 )}
-                onMouseDown={(e) => {
+                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={(e) => {
                   e.preventDefault()
+                  e.stopPropagation()
                   insertRef(ref)
                 }}
                 onMouseEnter={() => setHighlight(i)}

@@ -55,8 +55,8 @@ export function SampleUnderTestingHeaderBar({
             <div className="order-3 w-full min-w-0 sm:order-none sm:mx-1 sm:w-[40%] sm:max-w-[19.5rem] sm:flex-none">
               <Input
                 type="search"
-                placeholder="Search section, SRF, results..."
-                aria-label="Search"
+                placeholder="Search Section | SRF | Results"
+                aria-label="Search Section, SRF, Results"
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className={cn(limsDarkBarSearchClass, 'h-8')}

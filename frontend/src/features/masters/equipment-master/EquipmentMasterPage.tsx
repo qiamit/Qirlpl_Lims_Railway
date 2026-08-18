@@ -25,6 +25,7 @@ import { parseMaintenanceChecklistFromDb } from './maintenanceChecklist'
 import { parseMaintenanceHistoryFromDb } from './maintenanceHistory'
 import { parseIntermediateCheckHistoryFromDb } from './intermediateCheckHistory'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
+import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 
 const BUCKET = 'equipment-files'
 
@@ -141,6 +142,7 @@ export default function EquipmentMasterPage() {
       const { data, error } = await supabase
         .from('equipment_master')
         .select('*')
+        .eq('equipment_kind', EQUIPMENT_KIND_TESTING)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -333,6 +335,7 @@ export default function EquipmentMasterPage() {
           upload_certificate_path: certPath || null,
           upload_manual_sop_path: manualPath || null,
           custodian_employee_id: form.custodianEmployeeId || null,
+          equipment_kind: EQUIPMENT_KIND_TESTING,
         }
 
         const { error } = await supabase.from('equipment_master').upsert(payload)
@@ -835,6 +838,7 @@ export default function EquipmentMasterPage() {
             maintenance_done_by: maintEmpName ? findEmployeeUuid(maintEmpName) : null,
             custodian_employee_id: custodianEmpName ? findEmployeeUuid(custodianEmpName) : null,
             history_of_damage: get('history_of_damage') || null,
+            equipment_kind: EQUIPMENT_KIND_TESTING,
           })
         }
 

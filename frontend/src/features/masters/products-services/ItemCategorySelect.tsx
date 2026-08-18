@@ -228,6 +228,11 @@ export function ItemCategorySelect({
                       tabIndex={-1}
                       className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'}`}
                       onMouseDown={(e) => e.preventDefault()}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        pickCategory(category.name)
+                      }}
                       onMouseEnter={() => setHighlight(index)}
                       onClick={() => pickCategory(category.name)}
                     >
@@ -244,6 +249,12 @@ export function ItemCategorySelect({
                         highlight === filteredCategories.length ? 'bg-[#f3e9d8] font-semibold' : 'hover:bg-[#f7f3eb]'
                       }`}
                       onMouseDown={(e) => e.preventDefault()}
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        openManageDialog(value)
+                        setOpen(false)
+                      }}
                       onMouseEnter={() => setHighlight(filteredCategories.length)}
                       onClick={() => {
                         openManageDialog(value)

@@ -41,10 +41,10 @@ import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import { useModuleAccessOptional } from '@/features/settings/module-access/ModuleAccessProvider'
 import { MODULE_CATALOG } from '@/features/settings/module-access/moduleCatalog'
 import { supabase } from '@/lib/supabaseClient'
+import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
+import { countPendingUnderTestingSrfs } from '@/features/sample-handling/sample-under-testing/countPendingUnderTestingSrfs'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  limsDarkBarAccentClass,
-  limsDarkBarGlowStyle,
   limsPageShellClass,
   limsPanelClass,
 } from '@/lib/limsThemeUi'
@@ -101,7 +101,7 @@ function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
         href && 'hover:ring-2 hover:ring-amber-600/30',
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div
           className={cn(
             'flex h-10 w-10 shrink-0 items-center justify-center',
@@ -110,17 +110,17 @@ function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
         >
           <Icon size={18} aria-hidden />
         </div>
-        {href ? (
-          <ArrowRight
-            size={16}
-            className="shrink-0 text-stone-400 opacity-0 transition-opacity group-hover:opacity-100"
-          />
-        ) : null}
+        <div className="flex min-w-0 items-center gap-1">
+          <p className="text-3xl font-bold tabular-nums tracking-tight sm:text-4xl">{value}</p>
+          {href ? (
+            <ArrowRight
+              size={16}
+              className="shrink-0 text-stone-400 opacity-0 transition-opacity group-hover:opacity-100"
+            />
+          ) : null}
+        </div>
       </div>
-      <div className="mt-3 min-w-0">
-        <p className="text-3xl font-bold tabular-nums tracking-tight sm:text-4xl">{value}</p>
-        <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-stone-700">{label}</p>
-      </div>
+      <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-stone-700">{label}</p>
     </div>
   )
 
@@ -199,6 +199,8 @@ interface DashboardStats {
   witnessTestCount: number
   deviationCount: number
   stageCounts: Record<string, number>
+  /** Unique SRFs on Sample Under Testing (pending), not samples.stage only. */
+  underTestingPendingSrfCount: number
   clientsCount: number
   isCodesCount: number
   equipmentCount: number
@@ -362,6 +364,7 @@ export default function DashboardPage() {
           resultCheckRes,
           usersRes,
           quotationsRes,
+          underTestingPendingSrfCount,
         ] = await Promise.all([
           supabase.from('clients').select('*', { count: 'exact', head: true }),
           supabase.from('is_codes').select('*', { count: 'exact', head: true }),
@@ -369,13 +372,15 @@ export default function DashboardPage() {
             .from('equipment_master')
             .select(
               'id, equipment_status, next_calibration_due, next_intermediate_check_date, next_maintenance_date',
-            ),
+            )
+            .eq('equipment_kind', EQUIPMENT_KIND_TESTING),
           supabase.from('consent_letters').select('*', { count: 'exact', head: true }),
           supabase.from('test_parameters').select('*', { count: 'exact', head: true }),
           supabase.from('iqc_masters').select('*', { count: 'exact', head: true }),
           supabase.from('result_validity_checks').select('*', { count: 'exact', head: true }),
           supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
           supabase.from('quotations').select('*', { count: 'exact', head: true }),
+          countPendingUnderTestingSrfs(),
         ])
 
         if (clientsRes.error) throw clientsRes.error
@@ -467,6 +472,7 @@ export default function DashboardPage() {
           witnessTestCount,
           deviationCount,
           stageCounts,
+          underTestingPendingSrfCount,
           clientsCount: clientsRes.count ?? 0,
           isCodesCount: isCodesRes.count ?? 0,
           equipmentCount: equipmentRows.length,
@@ -622,7 +628,7 @@ export default function DashboardPage() {
         ...testingCommon,
         {
           title: 'Under Testing',
-          value: stats.stageCounts.under_testing,
+          value: stats.underTestingPendingSrfCount,
           icon: TestTube,
           href: link('/samples/under-testing'),
           badgeLabel: 'Testing',
@@ -757,7 +763,7 @@ export default function DashboardPage() {
         },
         {
           title: 'Under Testing',
-          value: stats.stageCounts.under_testing,
+          value: stats.underTestingPendingSrfCount,
           icon: TestTube,
           badgeLabel: 'In Lab',
           colorClass: 'bg-sky-500/10 text-sky-600',
@@ -800,7 +806,7 @@ export default function DashboardPage() {
         },
         {
           title: 'Under Testing',
-          value: stats.stageCounts.under_testing,
+          value: stats.underTestingPendingSrfCount,
           icon: FlaskConical,
           badgeLabel: 'Testing',
           colorClass: 'bg-sky-500/10 text-sky-600',
@@ -828,7 +834,7 @@ export default function DashboardPage() {
       testing.push(
         {
           title: 'Testing Queue',
-          value: stats.stageCounts.under_testing,
+          value: stats.underTestingPendingSrfCount,
           icon: FlaskConical,
           href: link('/samples/under-testing'),
           badgeLabel: 'Enter Results',
@@ -928,7 +934,7 @@ export default function DashboardPage() {
         },
         {
           title: 'Under Testing',
-          value: stats.stageCounts.under_testing,
+          value: stats.underTestingPendingSrfCount,
           icon: TestTube,
           href: link('/samples/under-testing'),
           badgeLabel: 'Testing',
@@ -1170,21 +1176,6 @@ export default function DashboardPage() {
 
   return (
     <div className={cn(limsPageShellClass, 'min-h-0 overflow-auto')}>
-      <div className={cn(limsPanelClass)}>
-        <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 text-white sm:px-5 sm:py-4">
-          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
-          <div className={limsDarkBarAccentClass} />
-          <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">{role.title}</h1>
-            </div>
-            <p className="shrink-0 text-[11px] tabular-nums text-amber-100/80">
-              {stats.totalSamples} samples · {stats.activeSamples} active · {stats.tatComplianceRate}% TAT
-            </p>
-          </div>
-        </div>
-      </div>
-
       {heroKpis.length > 0 ? (
         <section aria-label="Operations overview">
           <div

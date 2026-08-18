@@ -8,6 +8,9 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   if (loading) return null
 
   if (!user) {
+    if (location.pathname === '/') {
+      return <Navigate to="/home" replace />
+    }
     return (
       <Navigate
         to="/auth"
