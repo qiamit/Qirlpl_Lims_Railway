@@ -12,6 +12,15 @@
   @prod header Origin https://frontend-production-f4ec.up.railway.app
   header @prod Access-Control-Allow-Origin "https://frontend-production-f4ec.up.railway.app"
 
+  @prodAlt header Origin https://frontend-production-3a55.up.railway.app
+  header @prodAlt Access-Control-Allow-Origin "https://frontend-production-3a55.up.railway.app"
+
+  @www header Origin https://www.qirlpl.com
+  header @www Access-Control-Allow-Origin "https://www.qirlpl.com"
+
+  @apex header Origin https://qirlpl.com
+  header @apex Access-Control-Allow-Origin "https://qirlpl.com"
+
   header {
     Access-Control-Allow-Credentials "true"
     Access-Control-Expose-Headers "Content-Range, Range, Content-Location, Content-Profile, Preference-Applied, X-Request-Id"
