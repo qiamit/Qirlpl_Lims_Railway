@@ -219,7 +219,13 @@ export function SectionSampleDescViewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         layer="nested"
-        className={cn(limsDialogClass, 'max-h-[88vh] max-w-3xl overflow-hidden p-0')}
+        className={cn(
+          limsDialogClass,
+          'max-h-[88vh] max-w-3xl overflow-hidden p-0',
+          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+        )}
+        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        portalClassName="md:left-[268px]"
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">

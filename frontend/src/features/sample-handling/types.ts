@@ -104,6 +104,8 @@ export type TestAllocationParameterRow = {
   testParameterId: string | null
   testLabel: string
   clauseNo?: string | null
+  unitValue?: string | null
+  isCodeLabel?: string | null
   /** Raw section override from test_allocation_parameters; null = use Test Parameter master */
   sectionSpecOverride?: string | null
   /** Resolved value for display (section override or master fallback) */

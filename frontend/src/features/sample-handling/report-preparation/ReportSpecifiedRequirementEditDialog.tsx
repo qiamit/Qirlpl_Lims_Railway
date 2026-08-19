@@ -60,9 +60,6 @@ export function ReportSpecifiedRequirementEditDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-1">
-          <p className="text-xs text-muted-foreground">
-            Applies only to this section code. Test Parameter master and other sections are not changed.
-          </p>
           {target?.testName?.trim() ? (
             <p className="text-sm font-medium">{target.testName}</p>
           ) : null}

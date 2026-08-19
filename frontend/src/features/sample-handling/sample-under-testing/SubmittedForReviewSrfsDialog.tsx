@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -10,11 +10,13 @@ import {
   limsDarkBarGlowStyle,
   limsDarkBarSearchClass,
   limsDialogClass,
+  limsPrimaryBtnClass,
   limsTableHeadClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { isActiveReviewerName } from '../results-under-review/resultsUnderReviewPartitions'
 import type { TestAllocationRow } from '../types'
+import { TestAllocationParametersViewDialog } from '../test-allocation/TestAllocationParametersViewDialog'
 import {
   getUnderTestingSubmittedStatus,
   isSectionApprovedForDisplay,
@@ -98,6 +100,7 @@ export function SubmittedForReviewSrfsDialog({
   const [page, setPage] = useState(1)
   const [jumpTo, setJumpTo] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [viewTestsRow, setViewTestsRow] = useState<TestAllocationRow | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -105,6 +108,7 @@ export function SubmittedForReviewSrfsDialog({
       setPage(1)
       setJumpTo('')
       setSelectedIds(new Set())
+      setViewTestsRow(null)
     }
   }, [open])
 
@@ -169,6 +173,7 @@ export function SubmittedForReviewSrfsDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         persistOnFocusLoss
@@ -196,7 +201,7 @@ export function SubmittedForReviewSrfsDialog({
               />
               <Input
                 type="search"
-                placeholder="Search SRF, section, reviewer…"
+                placeholder="Search SRF | Section | Reviewer"
                 aria-label="Search submitted for review"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -255,6 +260,7 @@ export function SubmittedForReviewSrfsDialog({
                   <th className={th}>Status</th>
                   <th className={th}>Reviewer</th>
                   <th className={th}>Assigned Employee</th>
+                  <th className={th}>Test</th>
                 </tr>
               </thead>
               <tbody>
@@ -292,6 +298,19 @@ export function SubmittedForReviewSrfsDialog({
                           : '—'}
                       </td>
                       <td className={cn(td, 'text-center')}>{fmt(r.assignedEmployeeName)}</td>
+                      <td className={cn(td, 'text-center')}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className={cn(limsPrimaryBtnClass, 'h-8 gap-1.5 text-xs')}
+                          aria-label={`View tests for section ${fmt(r.sectionCode)}`}
+                          title="View tests"
+                          onClick={() => setViewTestsRow(r)}
+                        >
+                          <Eye size={14} />
+                          View
+                        </Button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -364,5 +383,15 @@ export function SubmittedForReviewSrfsDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    <TestAllocationParametersViewDialog
+      row={viewTestsRow}
+      open={viewTestsRow !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setViewTestsRow(null)
+      }}
+      layer="nested"
+    />
+    </>
   )
 }

@@ -41,6 +41,9 @@ export type SectionParameterEntry = {
   paramRowId: string | null
   testParameterId: string | null
   testLabel: string
+  clauseNo: string | null
+  isCodeLabel: string | null
+  unitValue: string | null
   sectionSpecOverride: string | null
   specificRequirement: string | null
   testStartDate: string | null
@@ -78,6 +81,9 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
       paramRowId: p.id && !p.id.startsWith('local-') ? p.id : null,
       testParameterId: p.testParameterId,
       testLabel: p.testLabel,
+      clauseNo: p.clauseNo ?? null,
+      isCodeLabel: p.isCodeLabel ?? null,
+      unitValue: p.unitValue ?? null,
       sectionSpecOverride: p.sectionSpecOverride ?? null,
       specificRequirement: p.specificRequirement ?? null,
       testStartDate: p.testStartDate ?? null,
@@ -93,6 +99,9 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
         paramRowId: null,
         testParameterId: null,
         testLabel: '-',
+        clauseNo: null,
+        isCodeLabel: null,
+        unitValue: null,
         sectionSpecOverride: null,
         specificRequirement: null,
         testStartDate: row.testStartDate ?? null,
@@ -105,6 +114,9 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
     paramRowId: null,
     testParameterId: ids[i] ?? null,
     testLabel: label,
+    clauseNo: null,
+    isCodeLabel: null,
+    unitValue: null,
     sectionSpecOverride: null,
     specificRequirement: null,
     testStartDate: row.testStartDate ?? null,

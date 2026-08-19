@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -10,10 +10,12 @@ import {
   limsDarkBarGlowStyle,
   limsDarkBarSearchClass,
   limsDialogClass,
+  limsPrimaryBtnClass,
   limsTableHeadClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import type { TestAllocationRow } from '../types'
+import { SectionResultsEntryDialog } from '../sample-under-testing/SectionResultsEntryDialog'
 import { sectionWasApprovedForReview } from './resultsUnderReviewPartitions'
 
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v : '—')
@@ -88,6 +90,7 @@ export function ResultsReviewedSrfsDialog({
   const [page, setPage] = useState(1)
   const [jumpTo, setJumpTo] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [viewRow, setViewRow] = useState<TestAllocationRow | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -95,6 +98,7 @@ export function ResultsReviewedSrfsDialog({
       setPage(1)
       setJumpTo('')
       setSelectedIds(new Set())
+      setViewRow(null)
     }
   }, [open])
 
@@ -159,6 +163,7 @@ export function ResultsReviewedSrfsDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         persistOnFocusLoss
@@ -186,7 +191,7 @@ export function ResultsReviewedSrfsDialog({
               />
               <Input
                 type="search"
-                placeholder="Search SRF, section, status…"
+                placeholder="Search SRF | Section | Status"
                 aria-label="Search results reviewed"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -244,6 +249,7 @@ export function ResultsReviewedSrfsDialog({
                   <th className={th}>IS Code</th>
                   <th className={th}>Status</th>
                   <th className={th}>Assigned Employee</th>
+                  <th className={th}>View</th>
                 </tr>
               </thead>
               <tbody>
@@ -273,6 +279,19 @@ export function ResultsReviewedSrfsDialog({
                       </span>
                     </td>
                     <td className={cn(td, 'text-center')}>{fmt(r.assignedEmployeeName)}</td>
+                    <td className={cn(td, 'text-center')}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className={cn(limsPrimaryBtnClass, 'h-8 gap-1.5 text-xs')}
+                        aria-label={`View results for section ${fmt(r.sectionCode)}`}
+                        title="View results"
+                        onClick={() => setViewRow(r)}
+                      >
+                        <Eye size={14} />
+                        View
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -346,5 +365,18 @@ export function ResultsReviewedSrfsDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    <SectionResultsEntryDialog
+      open={viewRow !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setViewRow(null)
+      }}
+      row={viewRow}
+      readOnly
+      readOnlyTitle="View Results"
+      layer="nested"
+      onSave={async () => {}}
+    />
+    </>
   )
 }

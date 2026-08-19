@@ -299,7 +299,11 @@ export async function syncSampleReportPreparationStages(
   const relevantIds = (Array.isArray(stageRows) ? stageRows : [])
     .filter((row) => {
       const stage = String((row as { stage?: string | null }).stage ?? '').trim()
-      return stage === 'results_review' || stage === 'report_preparation'
+      return (
+        stage === 'results_review' ||
+        stage === 'report_preparation' ||
+        stage === 'under_testing'
+      )
     })
     .map((row) => String((row as { id?: string }).id ?? '').trim())
     .filter(Boolean)
@@ -312,13 +316,13 @@ export async function syncSampleReportPreparationStages(
 
   for (const id of relevantIds) {
     const stage = graph.stageBySample.get(id) ?? ''
-    if (stage !== 'results_review' && stage !== 'report_preparation') continue
     const { states } = buildStatesFromGraph(id, graph)
     const visible = states.some((s) => s.sentForTesting && s.approved)
-    const nextStage = visible ? 'report_preparation' : 'results_review'
-    if (stage === nextStage) continue
-    if (nextStage === 'report_preparation') toPrep.push(id)
-    else toReview.push(id)
+    if (visible) {
+      if (stage !== 'report_preparation' && stage !== 'completed') toPrep.push(id)
+      continue
+    }
+    if (stage === 'report_preparation') toReview.push(id)
   }
 
   if (toPrep.length > 0) {

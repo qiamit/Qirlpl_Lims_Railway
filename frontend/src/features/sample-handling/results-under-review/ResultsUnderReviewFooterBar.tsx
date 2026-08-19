@@ -58,18 +58,9 @@ export function ResultsUnderReviewFooterBar({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {saveMessage ? (
-              <p
-                className={cn(
-                  'text-sm',
-                  saveMessage.toLowerCase().includes('fail') ||
-                    saveMessage.toLowerCase().includes('error')
-                    ? 'text-red-300'
-                    : 'text-emerald-300',
-                )}
-              >
-                {saveMessage}
-              </p>
+            {saveMessage &&
+            (saveMessage.toLowerCase().includes('fail') || saveMessage.toLowerCase().includes('error')) ? (
+              <p className="text-sm text-red-300">{saveMessage}</p>
             ) : null}
             <Input
               className={cn(limsDarkBarFieldClass, 'w-16')}

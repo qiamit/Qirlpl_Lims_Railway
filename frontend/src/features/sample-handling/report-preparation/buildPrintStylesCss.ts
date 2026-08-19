@@ -648,39 +648,40 @@ export function buildPrintStylesCss(settings: TestReportPrintSettings): string {
     border: none;
     background: transparent;
     text-align: center;
-    color: #1d4ed8;
+    color: #000;
+    font-family: "Times New Roman", Times, serif;
   }
   .report-signature-role {
+    font-family: "Times New Roman", Times, serif;
     font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    color: #1d4ed8;
-    margin-bottom: 2px;
+    font-style: normal;
+    letter-spacing: 0.02em;
+    color: #000;
+    margin-bottom: 0;
+  }
+  .report-signature-line {
+    display: block;
+    width: 8.5rem;
+    max-width: 100%;
+    border-top: 1px solid #000;
+    margin: 7mm auto 4px;
   }
   .report-signature-name {
     font-family: "Times New Roman", Times, serif;
     font-style: italic;
     font-weight: 700;
-    font-size: ${Math.max(10, baseFontSizePt)}pt;
+    font-size: ${Math.max(11, baseFontSizePt + 1)}pt;
     line-height: 1.15;
-    color: #1d4ed8;
+    color: #000;
   }
   .report-signature-designation {
-    margin-top: 1px;
-    font-size: ${Math.max(7.5, baseFontSizePt - 1.5)}pt;
-    color: #1d4ed8;
+    margin-top: 2px;
+    font-family: "Times New Roman", Times, serif;
+    font-style: italic;
+    font-size: ${Math.max(8, baseFontSizePt - 1)}pt;
+    color: #000;
     line-height: ${lineHeight};
-  }
-  .report-signature-stamp {
-    margin-top: 4px;
-    padding-top: 0;
-    border-top: none;
-  }
-  .report-signature-stamp-value {
-    font-size: ${Math.max(7.5, baseFontSizePt - 2)}pt;
-    font-weight: 700;
-    color: #1d4ed8;
-    line-height: 1.2;
   }
 
   .terms {

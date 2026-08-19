@@ -110,12 +110,8 @@ export function SampleAllocationHeaderBar({
                 page="samples/allocation"
                 pageTitle="Sample Allocation"
                 contextSummary={assistantContext}
-                suggestedQuestions={[
-                  'Which SRFs are allocated to the Mechanical department?',
-                  'Add a new section code for an SRF',
-                  'Update department or quantity for a section code',
-                  'Explain the difference between Sample Allocation and Test Allocation',
-                ]}
+                welcomeMessage=""
+                suggestedQuestions={[]}
                 onDataChanged={onAssistantDataChanged}
                 triggerVariant="icon"
                 triggerClassName={limsAiTriggerClass}

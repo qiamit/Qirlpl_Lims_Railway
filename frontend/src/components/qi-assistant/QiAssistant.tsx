@@ -48,7 +48,7 @@ export function QiAssistant({
   page,
   pageTitle,
   contextSummary,
-  suggestedQuestions = [],
+  suggestedQuestions,
   isCodeId,
   isCodeOptions,
   activeRecordId,
@@ -112,7 +112,7 @@ export function QiAssistant({
     'Summarize the clients shown in the list',
   ]
 
-  const prompts = suggestedQuestions.length > 0 ? suggestedQuestions : defaults
+  const prompts = suggestedQuestions ?? defaults
 
   const showIsCodePicker = Boolean(isCodeOptions?.length) && !isCodeId
   const effectiveIsCodeId = isCodeId ?? (selectedIsCodeId || undefined)
@@ -160,9 +160,12 @@ export function QiAssistant({
       : ''
     const skillNote = ' Tap **!** or type **!** in the box to pick a **Skill** for your next message.'
     const intro =
-      welcomeMessage ??
-      `Hello! I'm **QI Assistant** on **${pageTitle}**. Ask me about this screen or the data shown here.${crudNote}${pdfNote}${isCodeNote}${skillNote}`
-    setMessages([{ id: newId(), role: 'assistant', content: intro }])
+      welcomeMessage !== undefined
+        ? welcomeMessage
+        : `Hello! I'm **QI Assistant** on **${pageTitle}**. Ask me about this screen or the data shown here.${crudNote}${pdfNote}${isCodeNote}${skillNote}`
+    if (intro.trim()) {
+      setMessages([{ id: newId(), role: 'assistant', content: intro }])
+    }
   }, [open, messages.length, pageTitle, welcomeMessage, agentCrudEnabled, enablePdfImport, showIsCodePicker])
 
   const openSkillPicker = () => {
@@ -415,7 +418,7 @@ export function QiAssistant({
           )}
         </div>
 
-        {messages.length <= 1 && (
+        {messages.length <= 1 && prompts.length > 0 && (
           <div className="space-y-2 border-t border-slate-200 bg-white px-5 py-3">
             <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Try asking</p>
             <div className="flex flex-col gap-1.5">

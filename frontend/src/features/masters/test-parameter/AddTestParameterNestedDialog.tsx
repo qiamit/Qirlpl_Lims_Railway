@@ -23,6 +23,7 @@ export type AddedTestParameterInfo = {
   unitValue: string | null
   uncertaintyMu: string | null
   isCodeId: string | null
+  isCodeLabel: string | null
   department: string | null
 }
 
@@ -152,7 +153,7 @@ export function AddTestParameterNestedDialog({
           .from('test_parameters')
           .insert(payload)
           .select(
-            'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, clause_no, unit_value, uncertainty_mu',
+            'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, is_code_label, clause_no, unit_value, uncertainty_mu',
           )
           .single()
         if (error) throw error
@@ -165,6 +166,7 @@ export function AddTestParameterNestedDialog({
           department: string | null
           designation: string | null
           is_code_id: string | null
+          is_code_label: string | null
           clause_no: string | null
           unit_value: string | null
           uncertainty_mu: string | null
@@ -183,6 +185,7 @@ export function AddTestParameterNestedDialog({
           unitValue: row.unit_value ?? null,
           uncertaintyMu: row.uncertainty_mu ?? null,
           isCodeId: row.is_code_id ?? null,
+          isCodeLabel: row.is_code_label || isRow?.displayCode || null,
           department: row.department ?? null,
         })
         onOpenChange(false)
@@ -274,7 +277,7 @@ export function AddTestParameterNestedDialog({
         overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
         className={cn(
           limsDialogClass,
-          'max-h-[92vh] w-[calc(100%-1.5rem)] max-w-5xl p-0 sm:w-full',
+          'max-h-[92vh] w-[calc(100%-1.5rem)] max-w-[51.2rem] p-0 sm:w-full',
           'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
         )}
       >

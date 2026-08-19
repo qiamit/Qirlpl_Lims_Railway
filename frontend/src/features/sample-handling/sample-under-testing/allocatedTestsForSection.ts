@@ -7,6 +7,8 @@ export type AllocatedTestOption = {
   testLabel: string
   specificRequirement: string | null
   clauseNo: string | null
+  unitValue: string | null
+  isCodeLabel: string | null
   uncertaintyMu: string | null
   underAccreditation: string | null
   /** Already present on this section (draft / saved). Pre-checked; engineer may unselect to remove. */
@@ -82,7 +84,7 @@ export async function fetchIsCodeTestsForSection(
     supabase
       .from('test_parameters')
       .select(
-        'id, item_name, specific_requirement, clause_no, unit_value, uncertainty_mu, department, is_code_id, under_accreditation_ids',
+        'id, item_name, specific_requirement, clause_no, unit_value, uncertainty_mu, department, is_code_id, is_code_label, under_accreditation_ids',
       )
       .eq('is_code_id', isCodeId)
       .order('item_name', { ascending: true }),
@@ -107,6 +109,8 @@ export async function fetchIsCodeTestsForSection(
       item_name?: string | null
       specific_requirement?: string | null
       clause_no?: string | null
+      unit_value?: string | null
+      is_code_label?: string | null
       uncertainty_mu?: string | null
       department?: string | null
       under_accreditation_ids?: string[] | null
@@ -129,6 +133,8 @@ export async function fetchIsCodeTestsForSection(
       testLabel: testName,
       specificRequirement: sectionSpec || masterSpec,
       clauseNo: (r.clause_no ?? '').trim() || null,
+      unitValue: (r.unit_value ?? '').trim() || null,
+      isCodeLabel: (r.is_code_label ?? '').trim() || null,
       uncertaintyMu: (r.uncertainty_mu ?? '').trim() || null,
       underAccreditation: underAccreditationLabel(r.under_accreditation_ids, bodies),
       alreadyInSection,

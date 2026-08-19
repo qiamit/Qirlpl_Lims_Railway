@@ -305,7 +305,13 @@ export function TestResultsEntryCell({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           layer="nested"
-          className={cn(limsDialogClass, 'max-w-2xl max-h-[90vh] overflow-hidden p-0')}
+          className={cn(
+            limsDialogClass,
+            'max-w-2xl max-h-[90vh] overflow-hidden p-0',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="md:left-[268px]"
           aria-describedby={undefined}
         >
           <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
@@ -739,7 +745,7 @@ export function TestResultsEntryCell({
                   setSelectedStat('manual')
                   setReported(e.target.value)
                 }}
-                placeholder="Final value for report / review"
+                placeholder="Final Value for Report Review"
               />
             </div>
           </div>

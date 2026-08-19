@@ -1,9 +1,6 @@
 import { buildConsentLetterPrintStylesCss } from './buildConsentLetterPrintStylesCss'
 import { buildPrintStylesCss } from './buildPrintStylesCss'
-import {
-  formatConsentLetterClientDisplayLine,
-  parseConsentLetterDateInput,
-} from './consentLetterDefaults'
+import { formatConsentLetterClientDisplayLine } from './consentLetterDefaults'
 import type { ConsentLetterPrintContext } from './fetchConsentLetterPrintContext'
 import {
   formatSignatureDesignationLine,
@@ -32,13 +29,6 @@ function formatIsCodeDisplay(
 
 function imgTag(url: string, alt: string): string {
   return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" />`
-}
-
-function letterDateToIso(letterDate: string): string {
-  const parsed = parseConsentLetterDateInput(letterDate)
-  if (!parsed) return new Date().toISOString()
-  parsed.setHours(12, 0, 0, 0)
-  return parsed.toISOString()
 }
 
 function buildConsentLetterTestParameterRows(
@@ -85,30 +75,22 @@ function buildTestParameterTableRows(
     .join('\n')
 }
 
-function buildSignatureBlock(
-  signatures: TestReportSignature[],
-  letterDate: string,
-): string {
+function buildSignatureBlock(signatures: TestReportSignature[]): string {
   const sig = signatures.find((s) => s.name.trim() || s.designation.trim()) ?? signatures[0]
-  const stamp = digitalSignatureStampFields(
-    {
-      roleLabel: sig?.roleLabel ?? 'Approved By',
-      name: sig?.name ?? '',
-      designation: sig ? formatSignatureDesignationLine(sig) : 'Quality Manager',
-    },
-    letterDateToIso(letterDate),
-  )
+  const stamp = digitalSignatureStampFields({
+    roleLabel: sig?.roleLabel ?? 'Approved By',
+    name: sig?.name ?? '',
+    designation: sig ? formatSignatureDesignationLine(sig) : 'Quality Manager',
+  })
   const roleHtml = stamp.roleLabel
     ? `<div class="report-signature-role">${escapeHtml(stamp.roleLabel)}</div>`
     : ''
   return `<div class="consent-block closing">
     <div class="report-signature-cell">
       ${roleHtml}
+      <div class="report-signature-line" aria-hidden="true"></div>
       <div class="report-signature-name">${escapeHtml(stamp.name)}</div>
       <div class="report-signature-designation">${escapeHtml(stamp.designation)}</div>
-      <div class="report-signature-stamp">
-        <div class="report-signature-stamp-value">${escapeHtml(stamp.issueStamp)}</div>
-      </div>
     </div>
   </div>`
 }
@@ -206,7 +188,7 @@ function buildConsentLetterBody(input: BuildConsentLetterHtmlInput): string {
     BIS recognition.
   </p>
 
-  ${buildSignatureBlock(input.print.signatures, input.letterDate)}`
+  ${buildSignatureBlock(input.print.signatures)}`
 }
 
 export function buildConsentLetterHtml(input: BuildConsentLetterHtmlInput): string {

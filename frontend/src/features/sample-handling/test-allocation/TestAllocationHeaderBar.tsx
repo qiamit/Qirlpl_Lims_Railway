@@ -134,13 +134,8 @@ export function TestAllocationHeaderBar({
                   contextSummary={assistantContextSummary}
                   triggerVariant="icon"
                   triggerClassName={limsAiTriggerClass}
-                  welcomeMessage="I'm your **Test Allocation Assistant**. I can summarize allotted sections, explain pending vs sent status, and help update allocations when you ask."
-                  suggestedQuestions={[
-                    'Summarize pending vs sent for testing sections',
-                    'Which sections still need an employee assigned?',
-                    'What happens when I refer back to Sample Allocation?',
-                    'Explain how to allot tests for a section code',
-                  ]}
+                  welcomeMessage=""
+                  suggestedQuestions={[]}
                   onDataChanged={onAssistantDataChanged}
                   enablePdfImport={false}
                 />

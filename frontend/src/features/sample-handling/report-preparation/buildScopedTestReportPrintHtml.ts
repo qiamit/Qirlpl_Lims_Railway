@@ -328,22 +328,21 @@ function buildSignatureCellHtml(
     designation: string
     department: string
   },
-  issuedAtIso: string | null,
+  _issuedAtIso: string | null,
 ): string {
-  const stamp = digitalSignatureStampFields(
-    { roleLabel: sig.roleLabel, name: sig.name, designation: formatSignatureDesignationLine(sig) },
-    issuedAtIso,
-  )
+  const stamp = digitalSignatureStampFields({
+    roleLabel: sig.roleLabel,
+    name: sig.name,
+    designation: formatSignatureDesignationLine(sig),
+  })
   const roleHtml = stamp.roleLabel
     ? `<div class="report-signature-role">${escapeHtml(stamp.roleLabel)}</div>`
     : ''
   return `<div class="report-signature-cell">
     ${roleHtml}
+    <div class="report-signature-line" aria-hidden="true"></div>
     <div class="report-signature-name">${escapeHtml(stamp.name)}</div>
     <div class="report-signature-designation">${escapeHtml(stamp.designation)}</div>
-    <div class="report-signature-stamp">
-      <div class="report-signature-stamp-value">${escapeHtml(stamp.issueStamp)}</div>
-    </div>
   </div>`
 }
 

@@ -286,7 +286,16 @@ function buildRowsFromTestAllocs(input: {
   allocMap: Map<string, AllocationRow>
   samplesMap: Map<string, SampleMeta>
   paramsByAllocationId: Map<string, ParamRow[]>
-  testParamMetaById: Map<string, { name: string; specificRequirement: string | null }>
+  testParamMetaById: Map<
+    string,
+    {
+      name: string
+      specificRequirement: string | null
+      unitValue: string | null
+      clauseNo: string | null
+      isCodeLabel: string | null
+    }
+  >
 }): TestAllocationRow[] {
   const { testAllocs, allocMap, samplesMap, paramsByAllocationId, testParamMetaById } = input
 
@@ -311,6 +320,15 @@ function buildRowsFromTestAllocs(input: {
         testAllocationId: p.test_allocation_id,
         testParameterId: p.test_parameter_id,
         testLabel: p.test_label,
+        clauseNo: p.test_parameter_id
+          ? (testParamMetaById.get(p.test_parameter_id)?.clauseNo ?? null)
+          : null,
+        unitValue: p.test_parameter_id
+          ? (testParamMetaById.get(p.test_parameter_id)?.unitValue ?? null)
+          : null,
+        isCodeLabel: p.test_parameter_id
+          ? (testParamMetaById.get(p.test_parameter_id)?.isCodeLabel ?? null)
+          : null,
         sectionSpecOverride: p.specific_requirement ?? null,
         specificRequirement: resolveSectionSpecificRequirement(
           p.specific_requirement,
@@ -350,6 +368,9 @@ function buildRowsFromTestAllocs(input: {
               testAllocationId: t.id,
               testParameterId: tpId,
               testLabel: label,
+              clauseNo: tpId ? (testParamMetaById.get(tpId)?.clauseNo ?? null) : null,
+              unitValue: tpId ? (testParamMetaById.get(tpId)?.unitValue ?? null) : null,
+              isCodeLabel: tpId ? (testParamMetaById.get(tpId)?.isCodeLabel ?? null) : null,
               sectionSpecOverride: null,
               specificRequirement: tpId
                 ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
@@ -415,7 +436,18 @@ function buildRowsFromTestAllocs(input: {
 async function loadTestParamMetaById(
   testAllocs: TestAllocRow[],
   paramsByAllocationId: Map<string, ParamRow[]>,
-): Promise<Map<string, { name: string; specificRequirement: string | null }>> {
+): Promise<
+  Map<
+    string,
+    {
+      name: string
+      specificRequirement: string | null
+      unitValue: string | null
+      clauseNo: string | null
+      isCodeLabel: string | null
+    }
+  >
+> {
   const tpIdsForLookup = new Set<string>()
   for (const params of paramsByAllocationId.values()) {
     for (const p of params) {
@@ -430,18 +462,37 @@ async function loadTestParamMetaById(
     }
   }
 
-  const testParamMetaById = new Map<string, { name: string; specificRequirement: string | null }>()
+  const testParamMetaById = new Map<
+    string,
+    {
+      name: string
+      specificRequirement: string | null
+      unitValue: string | null
+      clauseNo: string | null
+      isCodeLabel: string | null
+    }
+  >()
   if (tpIdsForLookup.size === 0) return testParamMetaById
 
   const { data: tpMetaRows } = await supabase
     .from('test_parameters')
-    .select('id, item_name, specific_requirement')
+    .select('id, item_name, specific_requirement, unit_value, clause_no, is_code_label')
     .in('id', [...tpIdsForLookup])
   for (const row of Array.isArray(tpMetaRows) ? tpMetaRows : []) {
-    const r = row as { id: string; item_name?: string | null; specific_requirement?: string | null }
+    const r = row as {
+      id: string
+      item_name?: string | null
+      specific_requirement?: string | null
+      unit_value?: string | null
+      clause_no?: string | null
+      is_code_label?: string | null
+    }
     testParamMetaById.set(r.id, {
       name: (r.item_name ?? '').trim() || r.id,
       specificRequirement: (r.specific_requirement ?? '').trim() || null,
+      unitValue: (r.unit_value ?? '').trim() || null,
+      clauseNo: (r.clause_no ?? '').trim() || null,
+      isCodeLabel: (r.is_code_label ?? '').trim() || null,
     })
   }
   return testParamMetaById

@@ -24,6 +24,8 @@ import { supabase } from '@/lib/supabaseClient'
 import { AddTestParameterNestedDialog } from '@/features/masters/test-parameter/AddTestParameterNestedDialog'
 import { normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
 import { IsCodeFilesViewDialog } from '@/features/sample-handling/shared/IsCodeFilesViewDialog'
+import { formatTestParamClauseLine } from '@/features/sample-handling/shared/formatTestParamClauseLine'
+import { toProperRequirementText } from '@/features/sample-handling/shared/toProperRequirementText'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 import { saveSectionSpecificRequirement } from '../shared/saveSectionSpecificRequirement'
 import type { TestAllocationRow } from '../types'
@@ -62,6 +64,8 @@ export type TestParamOption = {
   unitValue?: string | null
   uncertaintyMu?: string | null
   isCodeId?: string | null
+  /** IS number + revision year, e.g. `IS 8811: 1995`. */
+  isCodeLabel?: string | null
   department?: string | null
 }
 
@@ -151,8 +155,18 @@ export function TestAllocationForm({
         const q = testParamSearch.trim().toLowerCase()
         const label = (opt.label ?? '').toLowerCase()
         const spec = (opt.specificRequirement ?? '').toLowerCase()
+        const unit = (opt.unitValue ?? '').toLowerCase()
+        const clause = (opt.clauseNo ?? '').toLowerCase()
+        const isCode = (opt.isCodeLabel ?? '').toLowerCase()
         const accr = (opt.underAccreditation ?? '').toLowerCase()
-        return label.includes(q) || spec.includes(q) || accr.includes(q)
+        return (
+          label.includes(q) ||
+          spec.includes(q) ||
+          unit.includes(q) ||
+          clause.includes(q) ||
+          isCode.includes(q) ||
+          accr.includes(q)
+        )
       })
     : filteredTestParamOptions
 
@@ -213,8 +227,9 @@ export function TestAllocationForm({
 
   const displaySpecificRequirement = (opt: TestParamOption): string => {
     const override = form.sectionSpecOverrides[opt.id]
-    if (override !== undefined) return override.trim() || '-'
-    return opt.specificRequirement?.trim() || '-'
+    const raw = override !== undefined ? override.trim() || '-' : opt.specificRequirement?.trim() || '-'
+    if (raw === '-') return raw
+    return toProperRequirementText(raw)
   }
 
   const openEditSpec = (opt: TestParamOption) => {
@@ -224,7 +239,7 @@ export function TestAllocationForm({
         form.sectionSpecOverrides[opt.id],
         opt.specificRequirement,
       ) ?? ''
-    setEditSpecValue(current)
+    setEditSpecValue(toProperRequirementText(current))
     setEditSpecError(null)
     setEditSpecOpen(true)
   }
@@ -233,7 +248,7 @@ export function TestAllocationForm({
     if (!editSpecParamId) return
     setEditSpecSaving(true)
     setEditSpecError(null)
-    const nextValue = editSpecValue.trim()
+    const nextValue = toProperRequirementText(editSpecValue).trim()
     try {
       const testAllocationId = row.testAllocationId?.trim()
       const label = testParamOptions.find((o) => o.id === editSpecParamId)?.label ?? editSpecParamId
@@ -299,17 +314,7 @@ export function TestAllocationForm({
     setAddTestParameterOpen(true)
   }
 
-  const handleTestParameterAdded = (param: {
-    id: string
-    label: string
-    specificRequirement: string
-    underAccreditation: string
-    clauseNo: string | null
-    unitValue: string | null
-    uncertaintyMu: string | null
-    isCodeId: string | null
-    department: string | null
-  }) => {
+  const handleTestParameterAdded = (param: TestParamOption) => {
     onTestParamAdded?.(param)
     if (!onTestParamAdded) void onRefreshTestParams?.()
     const nextIds = Array.from(new Set([...form.testParameterIds, param.id]))
@@ -480,11 +485,11 @@ export function TestAllocationForm({
             <table className={cn(limsTableClass, 'table-fixed')}>
               <colgroup>
                 <col className="w-9" />
-                <col className="w-[22%]" />
+                <col className="w-[26%]" />
                 <col className="w-[10%]" />
-                <col className="w-[28%]" />
+                <col className="w-[24%]" />
                 <col className="w-[14%]" />
-                <col className="w-[20%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <thead>
                 <tr className="border-stone-700 bg-stone-800">
@@ -501,15 +506,18 @@ export function TestAllocationForm({
                     </div>
                   </th>
                   <th className={cn(thClass, 'text-left')}>Test Name</th>
-                  <th className={thClass}>Clause Number</th>
+                  <th className={thClass}>Unit</th>
                   <th className={thClass}>Specified Requirement</th>
-                  <th className={thClass}>Uncertainty of Measurement</th>
+                  <th className={thClass} title="Uncertainty of Measurement">
+                    UOM
+                  </th>
                   <th className={thClass}>Under Accreditation</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedOptions.map((opt, index) => {
                   const selected = localSelectedIds.has(opt.id)
+                  const clauseLine = formatTestParamClauseLine(opt, row.isCodeLabel)
                   return (
                   <tr
                     key={opt.id}
@@ -530,13 +538,21 @@ export function TestAllocationForm({
                         />
                       </div>
                     </td>
-                    <td className={cn(tdClass, 'text-left text-[12.5px] font-semibold tracking-tight')}>
-                      <span className="line-clamp-2 break-words" title={opt.label || undefined}>
+                    <td className={cn(tdClass, 'text-left')}>
+                      <span
+                        className="line-clamp-2 break-words text-[12.5px] font-semibold tracking-tight text-[#292524]"
+                        title={opt.label || undefined}
+                      >
                         {opt.label || '-'}
                       </span>
+                      {clauseLine ? (
+                        <span className="mt-0.5 block text-[11px] font-normal text-[#57534e]">
+                          {clauseLine}
+                        </span>
+                      ) : null}
                     </td>
                     <td className={cn(tdClass, 'text-center break-words whitespace-normal text-[#57534e]')}>
-                      {opt.clauseNo?.trim() || '-'}
+                      {opt.unitValue?.trim() || '-'}
                     </td>
                     <td className={cn(tdClass, 'break-words whitespace-normal text-[#57534e]')}>
                       <div className="flex w-full items-center gap-1">
@@ -651,7 +667,15 @@ export function TestAllocationForm({
       </div>
 
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
-        <DialogContent className={cn(limsDialogClass, '!max-w-md !gap-0 !p-0')}>
+        <DialogContent
+          className={cn(
+            limsDialogClass,
+            '!max-w-md !gap-0 !p-0',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="md:left-[268px]"
+        >
           <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
             <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
             <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
@@ -662,9 +686,6 @@ export function TestAllocationForm({
             </DialogHeader>
           </div>
           <div className="space-y-4 bg-[#f7f3eb] p-5">
-            <p className="text-xs text-stone-500">
-              Applies only to this section code. Test Parameter master and other sections are not changed.
-            </p>
             <div className="space-y-2">
               <Label htmlFor="edit-spec-value" className={fieldLabelClass}>
                 Specified Requirement

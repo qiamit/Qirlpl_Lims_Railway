@@ -3,15 +3,23 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ArrowDown, ArrowUp, ArrowUpDown, FileText, FolderOpen } from 'lucide-react'
 import { limsDialogClass, limsOutlineBtnClass, limsTableHeadClass } from '@/lib/limsThemeUi'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { formatTestParamClauseLine } from '../shared/formatTestParamClauseLine'
+import { toProperRequirementText } from '../shared/toProperRequirementText'
+import { formatTestResultForTable } from '../sample-under-testing/testResultValues'
 import type { TestAllocationRow } from '../types'
 
 type ParameterViewRow = {
   id: string
   testName: string
+  clauseNo: string | null
+  isCodeLabel: string | null
   unit: string
   specifiedRequirement: string
+  testStartDate: string
+  testEndDate: string
+  result: string
   uncertainty: string
   underAccreditation: string
 }
@@ -20,6 +28,9 @@ type SectionParamRef = {
   testParameterId: string | null
   testLabel: string
   sectionSpec: string | null
+  testStartDate: string | null
+  testEndDate: string | null
+  results: string | null
 }
 
 type TestParamMeta = {
@@ -29,8 +40,12 @@ type TestParamMeta = {
   uncertaintyMu: string | null
   specificRequirement: string | null
   underAccreditation: string
+  clauseNo: string | null
+  isCodeLabel: string | null
 }
 
+const checkboxClass =
+  'h-4 w-4 rounded-none border-stone-500 text-amber-700 accent-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
 const fmt = (v: string | null | undefined) => (v && v.trim() ? v.trim() : '—')
 const IS_CODE_FILES_BUCKET = 'is-code-files'
 const normLabel = (v: string) => v.trim().toLowerCase()
@@ -39,6 +54,9 @@ type ParamViewSortKey =
   | 'testName'
   | 'unit'
   | 'specifiedRequirement'
+  | 'testStartDate'
+  | 'testEndDate'
+  | 'result'
   | 'uncertainty'
   | 'underAccreditation'
 
@@ -46,7 +64,10 @@ const PARAM_VIEW_SORT_LABELS: Record<ParamViewSortKey, string> = {
   testName: 'Test Name',
   unit: 'Unit',
   specifiedRequirement: 'Specified Requirement',
-  uncertainty: 'Uncertainty of Measurement',
+  testStartDate: 'Test Start Date',
+  testEndDate: 'Test End Date',
+  result: 'Result',
+  uncertainty: 'UOM',
   underAccreditation: 'Under Accreditation',
 }
 
@@ -91,12 +112,13 @@ function SortableParamHeader({
   const justify = align === 'left' ? 'justify-start' : 'justify-center'
 
   return (
-    <th className={cn(limsTableHeadClass, 'border border-stone-700 px-2 py-2')}>
+    <th className={cn(limsTableHeadClass, 'align-middle border border-stone-700 px-2 py-2')}>
       <button
         type="button"
-        className={`inline-flex w-full items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-200 transition-colors hover:text-amber-100 ${justify} ${align === 'left' ? 'text-left' : 'text-center'}`}
+        className={`inline-flex min-h-[2.75rem] w-full items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-200 transition-colors hover:text-amber-100 ${justify} ${align === 'left' ? 'text-left' : 'text-center'}`}
         onClick={() => onSort(columnKey)}
         aria-label={`Sort by ${label}${active ? `, ${sortDir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+        title={columnKey === 'uncertainty' ? 'Uncertainty of Measurement' : undefined}
       >
         <span>{label}</span>
         <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-amber-300' : 'text-amber-200/60'}`} />
@@ -133,7 +155,7 @@ async function fetchTestParamMetaByIds(ids: string[]): Promise<Map<string, TestP
   const [{ data: tpData, error: tpErr }, { data: abData }] = await Promise.all([
     supabase
       .from('test_parameters')
-      .select('id, item_name, specific_requirement, under_accreditation_ids, unit_value, uncertainty_mu')
+      .select('id, item_name, specific_requirement, under_accreditation_ids, unit_value, uncertainty_mu, clause_no, is_code_label')
       .in('id', unique),
     supabase.from('accreditation_bodies').select('id, name'),
   ])
@@ -149,6 +171,8 @@ async function fetchTestParamMetaByIds(ids: string[]): Promise<Map<string, TestP
       under_accreditation_ids?: string[] | null
       unit_value?: string | null
       uncertainty_mu?: string | null
+      clause_no?: string | null
+      is_code_label?: string | null
     }
     map.set(r.id, {
       id: r.id,
@@ -157,6 +181,8 @@ async function fetchTestParamMetaByIds(ids: string[]): Promise<Map<string, TestP
       uncertaintyMu: r.uncertainty_mu ?? null,
       specificRequirement: r.specific_requirement ?? null,
       underAccreditation: accrLabelFromIds(r.under_accreditation_ids ?? null, bodies),
+      clauseNo: (r.clause_no ?? '').trim() || null,
+      isCodeLabel: (r.is_code_label ?? '').trim() || null,
     })
   }
   return map
@@ -184,7 +210,7 @@ async function loadSectionParamRefs(row: TestAllocationRow): Promise<SectionPara
   if (row.testAllocationId) {
     const { data: paramRows, error: paramErr } = await supabase
       .from('test_allocation_parameters')
-      .select('test_parameter_id, test_label, specific_requirement')
+      .select('test_parameter_id, test_label, specific_requirement, test_start_date, test_end_date, results')
       .eq('test_allocation_id', row.testAllocationId)
       .order('test_label', { ascending: true })
     if (paramErr) throw paramErr
@@ -193,6 +219,9 @@ async function loadSectionParamRefs(row: TestAllocationRow): Promise<SectionPara
         testParameterId: String((p as { test_parameter_id?: string | null }).test_parameter_id ?? '').trim() || null,
         testLabel: String((p as { test_label?: string | null }).test_label ?? '').trim(),
         sectionSpec: String((p as { specific_requirement?: string | null }).specific_requirement ?? '').trim() || null,
+        testStartDate: String((p as { test_start_date?: string | null }).test_start_date ?? '').trim() || null,
+        testEndDate: String((p as { test_end_date?: string | null }).test_end_date ?? '').trim() || null,
+        results: String((p as { results?: string | null }).results ?? '').trim() || null,
       })
     }
   }
@@ -205,6 +234,9 @@ async function loadSectionParamRefs(row: TestAllocationRow): Promise<SectionPara
       testParameterId: id,
       testLabel: '',
       sectionSpec: null,
+      testStartDate: null,
+      testEndDate: null,
+      results: null,
     }))
   }
 
@@ -216,6 +248,9 @@ async function loadSectionParamRefs(row: TestAllocationRow): Promise<SectionPara
     testParameterId: null,
     testLabel: label,
     sectionSpec: null,
+    testStartDate: null,
+    testEndDate: null,
+    results: null,
   }))
 }
 
@@ -232,8 +267,13 @@ function buildViewRows(
     return {
       id: tpId,
       testName,
+      clauseNo: meta?.clauseNo ?? null,
+      isCodeLabel: meta?.isCodeLabel ?? null,
       unit: fmt(meta?.unitValue),
       specifiedRequirement: specifiedRequirement || '—',
+      testStartDate: formatDate(ref.testStartDate),
+      testEndDate: formatDate(ref.testEndDate),
+      result: formatTestResultForTable(ref.results) || '—',
       uncertainty: fmt(meta?.uncertaintyMu),
       underAccreditation: meta?.underAccreditation ?? '—',
     }
@@ -244,14 +284,17 @@ export function TestAllocationParametersViewDialog({
   row,
   open,
   onOpenChange,
+  layer = 'default',
 }: {
   row: TestAllocationRow | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  layer?: 'default' | 'nested' | 'stacked' | 'top'
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [parameters, setParameters] = useState<ParameterViewRow[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [sortKey, setSortKey] = useState<ParamViewSortKey>('testName')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -281,6 +324,7 @@ export function TestAllocationParametersViewDialog({
   useEffect(() => {
     if (!open || !row) {
       setParameters([])
+      setSelectedIds(new Set())
       setError(null)
       if (!open) {
         setSortKey('testName')
@@ -312,7 +356,9 @@ export function TestAllocationParametersViewDialog({
           .map((r) => r.testParameterId)
           .filter((id): id is string => Boolean(id?.trim()))
         const metaById = await fetchTestParamMetaByIds(ids)
-        setParameters(buildViewRows(resolvedRefs, metaById))
+        const nextRows = buildViewRows(resolvedRefs, metaById)
+        setParameters(nextRows)
+        setSelectedIds(new Set())
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load test parameters')
         setParameters([])
@@ -412,41 +458,68 @@ export function TestAllocationParametersViewDialog({
         .join(' — ')
     : 'Test Parameters'
 
+  const allChecked =
+    sortedParameters.length > 0 && sortedParameters.every((p) => selectedIds.has(p.id))
+  const someChecked = sortedParameters.some((p) => selectedIds.has(p.id))
+
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = (checked: boolean) => {
+    setSelectedIds(checked ? new Set(sortedParameters.map((p) => p.id)) : new Set())
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className={cn(limsDialogClass, 'flex max-h-[85vh] max-w-[min(96vw,72rem)] flex-col overflow-hidden p-0')}
+          persistOnFocusLoss
+          layer={layer}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          className={cn(
+            limsDialogClass,
+            'left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none',
+            'md:left-[268px] md:h-[100dvh] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            layer !== 'default' && '!z-[60]',
+          )}
         >
           <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
             <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-            <DialogHeader className="relative space-y-2 text-left">
-              <DialogTitle className="text-base font-semibold text-white">
-                Test Parameters — {sectionLabel}
-              </DialogTitle>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className={cn(limsOutlineBtnClass, 'h-8 border-amber-500/40 bg-stone-800/80 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50')}
-                  onClick={() => void openSampleDetails()}
-                >
-                  <FileText className="mr-1 h-4 w-4" />
-                  View Sample Details
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className={cn(limsOutlineBtnClass, 'h-8 border-amber-500/40 bg-stone-800/80 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50 disabled:opacity-50')}
-                  onClick={() => void openViewFilesWindow()}
-                  disabled={!row?.isCodeId}
-                  title={row?.isCodeId ? `View files for ${row.isCodeLabel ?? 'IS Code'}` : 'No IS Code on this section'}
-                >
-                  <FolderOpen className="mr-1 h-4 w-4" />
-                  View Files
-                </Button>
+            <DialogHeader className="relative pr-10 text-left">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <DialogTitle className="min-w-0 flex-1 text-base font-semibold text-white">
+                  Test Parameters — {sectionLabel}
+                </DialogTitle>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn(limsOutlineBtnClass, 'h-8 border-amber-500/40 bg-stone-800/80 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50')}
+                    onClick={() => void openSampleDetails()}
+                  >
+                    <FileText className="mr-1 h-4 w-4" />
+                    View Sample Details
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn(limsOutlineBtnClass, 'h-8 border-amber-500/40 bg-stone-800/80 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50 disabled:opacity-50')}
+                    onClick={() => void openViewFilesWindow()}
+                    disabled={!row?.isCodeId}
+                    title={row?.isCodeId ? `View files for ${row.isCodeLabel ?? 'IS Code'}` : 'No IS Code on this section'}
+                  >
+                    <FolderOpen className="mr-1 h-4 w-4" />
+                    View Files
+                  </Button>
+                </div>
               </div>
             </DialogHeader>
           </div>
@@ -462,14 +535,32 @@ export function TestAllocationParametersViewDialog({
               <div className="overflow-hidden border-2 border-stone-500 bg-white ring-1 ring-amber-700/20">
                 <table className="w-full table-fixed border-collapse text-sm">
                   <colgroup>
-                    <col className="w-[14%]" />
-                    <col className="w-[8%]" />
-                    <col className="w-[36%]" />
+                    <col className="w-10" />
                     <col className="w-[16%]" />
-                    <col className="w-[26%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[11%]" />
                   </colgroup>
                   <thead>
                     <tr>
+                      <th className={cn(limsTableHeadClass, 'w-10 align-middle border border-stone-700 px-2 py-2')}>
+                        <div className="flex justify-center">
+                          <input
+                            type="checkbox"
+                            className={checkboxClass}
+                            aria-label="Select all tests"
+                            checked={allChecked}
+                            ref={(el) => {
+                              if (el) el.indeterminate = !allChecked && someChecked
+                            }}
+                            onChange={(e) => toggleAll(e.target.checked)}
+                          />
+                        </div>
+                      </th>
                       <SortableParamHeader
                         label={PARAM_VIEW_SORT_LABELS.testName}
                         columnKey="testName"
@@ -493,6 +584,27 @@ export function TestAllocationParametersViewDialog({
                         onSort={handleSort}
                       />
                       <SortableParamHeader
+                        label={PARAM_VIEW_SORT_LABELS.testStartDate}
+                        columnKey="testStartDate"
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onSort={handleSort}
+                      />
+                      <SortableParamHeader
+                        label={PARAM_VIEW_SORT_LABELS.testEndDate}
+                        columnKey="testEndDate"
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onSort={handleSort}
+                      />
+                      <SortableParamHeader
+                        label={PARAM_VIEW_SORT_LABELS.result}
+                        columnKey="result"
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onSort={handleSort}
+                      />
+                      <SortableParamHeader
                         label={PARAM_VIEW_SORT_LABELS.uncertainty}
                         columnKey="uncertainty"
                         sortKey={sortKey}
@@ -509,25 +621,55 @@ export function TestAllocationParametersViewDialog({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedParameters.map((p) => (
+                    {sortedParameters.map((p) => {
+                      const clauseLine = formatTestParamClauseLine(p, row?.isCodeLabel)
+                      const specDisplay =
+                        p.specifiedRequirement === '—'
+                          ? '—'
+                          : toProperRequirementText(p.specifiedRequirement)
+                      return (
                       <tr key={p.id} className="odd:bg-white/70 hover:bg-[#f3e9d8]">
-                        <td className="border border-[#e7e0d4] p-2 align-top text-left text-xs font-medium leading-snug break-words text-stone-900">
-                          {p.testName}
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center">
+                          <input
+                            type="checkbox"
+                            className={checkboxClass}
+                            aria-label={`Select ${p.testName}`}
+                            checked={selectedIds.has(p.id)}
+                            onChange={() => toggleRow(p.id)}
+                          />
                         </td>
-                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words text-stone-700">
+                        <td className="border border-[#e7e0d4] p-2 align-top text-left text-xs font-medium leading-snug break-words text-stone-900">
+                          <span className="block">{p.testName}</span>
+                          {clauseLine ? (
+                            <span className="mt-0.5 block text-[11px] font-normal text-[#57534e]">
+                              {clauseLine}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center text-xs leading-snug break-words text-stone-700">
                           {p.unit}
                         </td>
-                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words whitespace-pre-wrap text-stone-700">
-                          {p.specifiedRequirement}
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center text-xs leading-snug break-words whitespace-pre-wrap text-stone-700">
+                          {specDisplay}
                         </td>
-                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words whitespace-pre-wrap text-stone-700">
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center text-xs leading-snug text-stone-700">
+                          {p.testStartDate}
+                        </td>
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center text-xs leading-snug text-stone-700">
+                          {p.testEndDate}
+                        </td>
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center text-xs leading-snug break-words whitespace-pre-wrap text-stone-700">
+                          {p.result}
+                        </td>
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center text-xs leading-snug break-words whitespace-pre-wrap text-stone-700">
                           {p.uncertainty}
                         </td>
-                        <td className="border border-[#e7e0d4] p-2 align-top text-center text-xs leading-snug break-words text-stone-800">
+                        <td className="border border-[#e7e0d4] p-2 align-middle text-center text-xs leading-snug break-words text-stone-800">
                           {p.underAccreditation}
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -537,7 +679,7 @@ export function TestAllocationParametersViewDialog({
       </Dialog>
 
       <Dialog open={sampleDetailsOpen} onOpenChange={setSampleDetailsOpen}>
-        <DialogContent className={cn(limsDialogClass, 'max-w-lg p-0')}>
+        <DialogContent layer="stacked" className={cn(limsDialogClass, 'max-w-lg p-0')}>
           <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
             <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <DialogHeader className="relative text-left">

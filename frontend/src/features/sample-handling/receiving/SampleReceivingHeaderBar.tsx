@@ -52,13 +52,8 @@ export function SampleReceivingHeaderBar({
             contextSummary={assistantContext}
             enablePdfImport
             pdfAttachHint="Test Request PDF"
-            welcomeMessage="Hello! I'm **QI Assistant** for **Sample Receiving**. Attach a **Test Request PDF**, then ask me to **register the sample** — I'll fill fields from the document and create the entry. SRF number is auto-generated."
-            suggestedQuestions={[
-              'Register this test request as a new sample',
-              'Extract customer and sample details from the attached PDF',
-              'Which client matches this test request?',
-              'Summarize samples currently in receiving',
-            ]}
+            welcomeMessage=""
+            suggestedQuestions={[]}
             onDataChanged={onAssistantDataChanged}
             triggerVariant="icon"
             triggerClassName={limsAiTriggerClass}

@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { limsPageShellClass } from '@/lib/limsThemeUi'
+import {
+  limsDarkBarBtnClass,
+  limsDarkBarGlowStyle,
+  limsDialogClass,
+  limsFieldClass,
+  limsPageShellClass,
+  limsPrimaryBtnClass,
+} from '@/lib/limsThemeUi'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
@@ -21,7 +29,7 @@ import {
   removeAllocatedTestsFromSection,
 } from './insertAllocatedTestsIntoSection'
 import { SampleUnderTestingForm } from './SampleUnderTestingForm'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
@@ -376,13 +384,13 @@ export default function SampleUnderTestingMasterPage() {
       }
       const testParamMetaById = new Map<
         string,
-        { name: string; specificRequirement: string | null; clauseNo: string | null }
+        { name: string; specificRequirement: string | null; clauseNo: string | null; unitValue: string | null; isCodeLabel: string | null }
       >()
       if (tpIdsForLookup.size > 0) {
         const tpMetaRows = await fetchByIdChunks([...tpIdsForLookup], 100, async (chunkIds) => {
           const { data, error } = await supabase
             .from('test_parameters')
-            .select('id, item_name, specific_requirement, clause_no')
+            .select('id, item_name, specific_requirement, clause_no, unit_value, is_code_label')
             .in('id', chunkIds)
           if (error) throw error
           return Array.isArray(data) ? data : []
@@ -393,11 +401,15 @@ export default function SampleUnderTestingMasterPage() {
             item_name?: string | null
             specific_requirement?: string | null
             clause_no?: string | null
+            unit_value?: string | null
+            is_code_label?: string | null
           }
           testParamMetaById.set(r.id, {
             name: (r.item_name ?? '').trim() || r.id,
             specificRequirement: (r.specific_requirement ?? '').trim() || null,
             clauseNo: (r.clause_no ?? '').trim() || null,
+            unitValue: (r.unit_value ?? '').trim() || null,
+            isCodeLabel: (r.is_code_label ?? '').trim() || null,
           })
         }
       }
@@ -487,6 +499,12 @@ export default function SampleUnderTestingMasterPage() {
               clauseNo: p.test_parameter_id
                 ? (testParamMetaById.get(p.test_parameter_id)?.clauseNo ?? null)
                 : null,
+              unitValue: p.test_parameter_id
+                ? (testParamMetaById.get(p.test_parameter_id)?.unitValue ?? null)
+                : null,
+              isCodeLabel: p.test_parameter_id
+                ? (testParamMetaById.get(p.test_parameter_id)?.isCodeLabel ?? null)
+                : null,
               sectionSpecOverride: p.specific_requirement ?? null,
               specificRequirement: resolveSectionSpecificRequirement(
                 p.specific_requirement,
@@ -526,6 +544,8 @@ export default function SampleUnderTestingMasterPage() {
                     testParameterId: tpId,
                     testLabel: label,
                     clauseNo: tpId ? (testParamMetaById.get(tpId)?.clauseNo ?? null) : null,
+                    unitValue: tpId ? (testParamMetaById.get(tpId)?.unitValue ?? null) : null,
+                    isCodeLabel: tpId ? (testParamMetaById.get(tpId)?.isCodeLabel ?? null) : null,
                     sectionSpecOverride: null,
                     specificRequirement: tpId
                       ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
@@ -1065,7 +1085,10 @@ export default function SampleUnderTestingMasterPage() {
             testAllocationId: allocationId,
             testParameterId: p.testParameterId,
             testLabel: p.testLabel,
-            clauseNo: r.parameters?.find((x) => x.testLabel === p.testLabel)?.clauseNo ?? null,
+            clauseNo: p.clauseNo ?? r.parameters?.find((x) => x.testLabel === p.testLabel)?.clauseNo ?? null,
+            unitValue: p.unitValue ?? r.parameters?.find((x) => x.testLabel === p.testLabel)?.unitValue ?? null,
+            isCodeLabel:
+              p.isCodeLabel ?? r.parameters?.find((x) => x.testLabel === p.testLabel)?.isCodeLabel ?? null,
             specificRequirement: p.specificRequirement,
             testStartDate: p.testStartDate,
             testEndDate: p.testEndDate,
@@ -1585,126 +1608,183 @@ export default function SampleUnderTestingMasterPage() {
           setSendForReviewOpen(open)
         }}
       >
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Send Result for Review</DialogTitle>
-          </DialogHeader>
+        <DialogContent
+          className={cn(
+            limsDialogClass,
+            'max-h-[90vh] max-w-2xl overflow-hidden p-0',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="md:left-[268px]"
+          aria-describedby={undefined}
+        >
+          <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
+            <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
+            <DialogHeader className="relative pr-10 text-left">
+              <DialogTitle className="text-base font-semibold tracking-tight text-white">
+                Send Result for Review
+              </DialogTitle>
+            </DialogHeader>
+          </div>
           <form
-            className="space-y-4 py-2"
+            className="flex min-h-0 flex-col"
             onSubmit={(e) => {
               e.preventDefault()
               void handleSubmitSendForReview()
             }}
           >
-            <div className="space-y-2">
-              <Label htmlFor="review-section">Section code</Label>
-              <Select
-                value={sendForReviewRow?.sampleAllocationId ?? ''}
-                onValueChange={(v) => {
-                  if (!v) {
-                    applySendForReviewRow(null)
-                    return
-                  }
-                  const row = pendingRows.find((r) => r.sampleAllocationId === v) ?? null
-                  applySendForReviewRow(row)
-                }}
-              >
-                <SelectTrigger id="review-section" aria-label="Select section code">
-                  <SelectValue placeholder="Select section code…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sendForReviewSectionOptions.map((opt) => (
-                    <SelectItem key={opt.sampleAllocationId} value={opt.sampleAllocationId}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {sendForReviewSectionOptions.length === 0 && (
-                <p className="text-xs text-muted-foreground">No sections in the current list. Adjust search or filters.</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="review-department">Department</Label>
-              <Select
-                value={reviewDepartment}
-                onValueChange={(v) => {
-                  setReviewDepartment(v)
-                  setReviewDesignation('')
-                  setReviewEmployeeId('')
-                }}
-                disabled={!sendForReviewRow}
-              >
-                <SelectTrigger id="review-department" aria-label="Select department">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {reviewDepartmentOptions.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="review-designation">Designation</Label>
-              <Select
-                value={reviewDesignation}
-                onValueChange={(v) => {
-                  setReviewDesignation(v)
-                  setReviewEmployeeId('')
-                }}
-                disabled={!sendForReviewRow || !reviewDepartment}
-              >
-                <SelectTrigger id="review-designation" aria-label="Select designation">
-                  <SelectValue placeholder="Select designation" />
-                </SelectTrigger>
-                <SelectContent>
-                  {reviewDesignationOptions.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="review-employee">Name of Employee</Label>
-              <Select
-                value={reviewEmployeeId}
-                onValueChange={setReviewEmployeeId}
-                disabled={
-                  !sendForReviewRow || !reviewDesignation || reviewUsersLoading || reviewUsers.length === 0
-                }
-              >
-                <SelectTrigger id="review-employee" aria-label="Select employee">
-                  <SelectValue
-                    placeholder={
-                      reviewUsersLoading
-                        ? 'Loading users…'
-                        : reviewUsers.length === 0
-                          ? 'No users found in User Management'
-                          : reviewEmployeeOptions.length === 0
-                            ? 'No employee for this department & designation'
-                            : 'Select employee'
+            <div className="max-h-[calc(90vh-7.5rem)] space-y-4 overflow-y-auto bg-[#f7f3eb] px-4 py-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="review-section"
+                    className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                  >
+                    Section code
+                  </Label>
+                  <Select
+                    value={sendForReviewRow?.sampleAllocationId ?? ''}
+                    onValueChange={(v) => {
+                      if (!v) {
+                        applySendForReviewRow(null)
+                        return
+                      }
+                      const row = pendingRows.find((r) => r.sampleAllocationId === v) ?? null
+                      applySendForReviewRow(row)
+                    }}
+                  >
+                    <SelectTrigger
+                      id="review-section"
+                      aria-label="Select section code"
+                      className={cn(limsFieldClass, 'w-full')}
+                    >
+                      <SelectValue placeholder="Select section code…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sendForReviewSectionOptions.map((opt) => (
+                        <SelectItem key={opt.sampleAllocationId} value={opt.sampleAllocationId}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {sendForReviewSectionOptions.length === 0 && (
+                    <p className="text-xs text-stone-600">No sections in the current list. Adjust search or filters.</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="review-department"
+                    className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                  >
+                    Department
+                  </Label>
+                  <Select
+                    value={reviewDepartment}
+                    onValueChange={(v) => {
+                      setReviewDepartment(v)
+                      setReviewDesignation('')
+                      setReviewEmployeeId('')
+                    }}
+                    disabled={!sendForReviewRow}
+                  >
+                    <SelectTrigger
+                      id="review-department"
+                      aria-label="Select department"
+                      className={cn(limsFieldClass, 'w-full')}
+                    >
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reviewDepartmentOptions.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="review-designation"
+                    className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                  >
+                    Designation
+                  </Label>
+                  <Select
+                    value={reviewDesignation}
+                    onValueChange={(v) => {
+                      setReviewDesignation(v)
+                      setReviewEmployeeId('')
+                    }}
+                    disabled={!sendForReviewRow || !reviewDepartment}
+                  >
+                    <SelectTrigger
+                      id="review-designation"
+                      aria-label="Select designation"
+                      className={cn(limsFieldClass, 'w-full')}
+                    >
+                      <SelectValue placeholder="Select designation" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reviewDesignationOptions.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="review-employee"
+                    className="text-[11px] font-semibold uppercase tracking-wide text-stone-600"
+                  >
+                    Name of Employee
+                  </Label>
+                  <Select
+                    value={reviewEmployeeId}
+                    onValueChange={setReviewEmployeeId}
+                    disabled={
+                      !sendForReviewRow || !reviewDesignation || reviewUsersLoading || reviewUsers.length === 0
                     }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {reviewEmployeeOptions.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  >
+                    <SelectTrigger
+                      id="review-employee"
+                      aria-label="Select employee"
+                      className={cn(limsFieldClass, 'w-full')}
+                    >
+                      <SelectValue
+                        placeholder={
+                          reviewUsersLoading
+                            ? 'Loading users…'
+                            : reviewUsers.length === 0
+                              ? 'No users found in User Management'
+                              : reviewEmployeeOptions.length === 0
+                                ? 'No employee for this department & designation'
+                                : 'Select employee'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reviewEmployeeOptions.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {reviewSubmitError ? <p className="text-sm text-red-700">{reviewSubmitError}</p> : null}
             </div>
-            {reviewSubmitError && <p className="text-sm text-destructive">{reviewSubmitError}</p>}
-            <div className="flex justify-end gap-2 pt-2">
+            <DialogFooter className="gap-2 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 sm:justify-end">
               <Button
                 type="button"
-                variant="outline"
+                className={limsDarkBarBtnClass}
                 onClick={() => setSendForReviewOpen(false)}
                 disabled={reviewSubmitLoading}
               >
@@ -1712,11 +1792,12 @@ export default function SampleUnderTestingMasterPage() {
               </Button>
               <Button
                 type="submit"
+                className={limsPrimaryBtnClass}
                 disabled={!sendForReviewRow || !reviewEmployeeId || reviewSubmitLoading}
               >
                 {reviewSubmitLoading ? 'Sending…' : 'Send for Review'}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

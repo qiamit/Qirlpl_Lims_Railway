@@ -7,28 +7,20 @@ import {
   type TestReportPrintSettings,
   type TestReportSignature,
 } from '@/features/settings/lab-settings/printSettingsTypes'
-import { digitalSignatureStampFields } from './digitalSignatureStamp'
 
 function SignatureCellPreview({ sig }: { sig: TestReportSignature }) {
-  const stamp = digitalSignatureStampFields(
-    {
-      roleLabel: sig.roleLabel,
-      name: sig.name,
-      designation: formatSignatureDesignationLine(sig),
-    },
-    new Date().toISOString(),
-  )
+  const roleLabel = sig.roleLabel.trim()
+  const name = sig.name.trim() || '—'
+  const designation = formatSignatureDesignationLine(sig)
 
   return (
-    <div className="inline-flex w-[10.75rem] max-w-[12rem] flex-col items-center bg-transparent px-1.5 py-1.5 text-center text-[#1d4ed8]">
-      {stamp.roleLabel ? (
-        <div className="text-[8.5pt] font-bold tracking-[0.04em]">{stamp.roleLabel}</div>
+    <div className="inline-flex w-[10.75rem] max-w-[12rem] flex-col items-center bg-transparent px-1.5 py-1.5 text-center font-[Times_New_Roman,Times,serif] text-black">
+      {roleLabel ? (
+        <div className="text-[9pt] font-bold tracking-[0.02em]">{roleLabel}</div>
       ) : null}
-      <div className="font-serif text-[10.5pt] font-bold italic leading-tight">
-        {stamp.name}
-      </div>
-      <div className="text-[8pt] leading-tight">{stamp.designation}</div>
-      <div className="mt-1 text-[8pt] font-bold leading-tight">{stamp.issueStamp}</div>
+      <div className="mt-7 w-full max-w-[8.5rem] border-t border-black" aria-hidden />
+      <div className="mt-1.5 text-[11pt] font-bold italic leading-tight">{name}</div>
+      <div className="mt-0.5 text-[9pt] italic leading-tight">{designation}</div>
     </div>
   )
 }
@@ -112,9 +104,6 @@ export function SignaturePrintPreview({
                   <SignatureRow signatures={signatures} />
                 </div>
               ))}
-              <p className="text-center text-[9px] text-stone-500">
-                Printed reports use Report Issue Date and time on every digital signature.
-              </p>
             </>
           )}
         </div>

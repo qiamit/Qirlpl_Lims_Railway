@@ -23,7 +23,7 @@ import {
   FileSpreadsheet,
   Wallet,
 } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -42,7 +42,9 @@ import { useModuleAccessOptional } from '@/features/settings/module-access/Modul
 import { MODULE_CATALOG } from '@/features/settings/module-access/moduleCatalog'
 import { supabase } from '@/lib/supabaseClient'
 import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
-import { countPendingUnderTestingSrfs } from '@/features/sample-handling/sample-under-testing/countPendingUnderTestingSrfs'
+import { fetchAllByRange } from '@/features/sample-handling/shared/fetchByIdChunks'
+import { loadDashboardWorkflowCounts } from '@/features/dashboard/loadDashboardWorkflowCounts'
+import { loadSaleDocumentRows } from '@/features/finance/sale/shared/clientSaleBalance'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   limsPageShellClass,
@@ -214,6 +216,10 @@ interface DashboardStats {
   resultChecksCount: number
   usersCount: number
   quotationsCount: number
+  proformaInvoiceCount: number
+  invoiceCount: number
+  creditNoteCount: number
+  paymentReceiptCount: number
 }
 
 type RoleDashboardProfile = {
@@ -319,6 +325,7 @@ function addDaysIso(baseIso: string, days: number): string {
 
 export default function DashboardPage() {
   const { designation, departmentName } = useAuth()
+  const location = useLocation()
   const moduleAccess = useModuleAccessOptional()
   const access: UserAccessContext = { designation, departmentName }
   const isDirector = isLaboratoryDirector(designation)
@@ -339,20 +346,40 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function loadStats() {
+    let cancelled = false
+    async function loadStats(silent: boolean) {
       try {
-        setLoading(true)
-        setError(null)
+        if (!silent) {
+          setLoading(true)
+          setError(null)
+        }
 
         const todayStr = new Date().toISOString().slice(0, 10)
         const dueSoonEnd = addDaysIso(todayStr, 7)
 
-        const { data: samples, error: samplesErr } = await supabase
-          .from('samples')
-          .select(
-            'id, stage, tentative_date_by_lab, test_report_nabl_ulr_number, statement_conformity_required, witness_test_required, deviation_from_methods, date_of_sample_receiving',
-          )
-        if (samplesErr) throw samplesErr
+        const samples = await fetchAllByRange(async (from, to) => {
+          const { data, error } = await supabase
+            .from('samples')
+            .select(
+              'id, stage, tentative_date_by_lab, test_report_nabl_ulr_number, statement_conformity_required, witness_test_required, deviation_from_methods, date_of_sample_receiving',
+            )
+            .order('id', { ascending: true })
+            .range(from, to)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        })
+
+        const reportPrepCandidates = samples
+          .filter((sample) => {
+            const stage = String(sample.stage ?? '').trim()
+            return (
+              stage === 'report_preparation' ||
+              stage === 'results_review' ||
+              stage === 'under_testing'
+            )
+          })
+          .map((sample) => String(sample.id ?? ''))
+          .filter(Boolean)
 
         const [
           clientsRes,
@@ -364,7 +391,7 @@ export default function DashboardPage() {
           resultCheckRes,
           usersRes,
           quotationsRes,
-          underTestingPendingSrfCount,
+          workflowCounts,
         ] = await Promise.all([
           supabase.from('clients').select('*', { count: 'exact', head: true }),
           supabase.from('is_codes').select('*', { count: 'exact', head: true }),
@@ -380,7 +407,7 @@ export default function DashboardPage() {
           supabase.from('result_validity_checks').select('*', { count: 'exact', head: true }),
           supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
           supabase.from('quotations').select('*', { count: 'exact', head: true }),
-          countPendingUnderTestingSrfs(),
+          loadDashboardWorkflowCounts(reportPrepCandidates),
         ])
 
         if (clientsRes.error) throw clientsRes.error
@@ -454,10 +481,16 @@ export default function DashboardPage() {
           }
         }
 
+        stageCounts.test_allocation = workflowCounts.testAllocation
+        stageCounts.under_testing = workflowCounts.underTesting
+        stageCounts.results_review = workflowCounts.resultsReview
+        stageCounts.report_preparation = workflowCounts.reportPreparation
+
         const totalWithTat = onTimeSamplesCount + delayedSamplesCount
         const tatComplianceRate =
           totalWithTat > 0 ? Math.round((onTimeSamplesCount / totalWithTat) * 100) : 100
 
+        if (cancelled) return
         setStats({
           totalSamples: samples?.length ?? 0,
           activeSamples,
@@ -472,7 +505,7 @@ export default function DashboardPage() {
           witnessTestCount,
           deviationCount,
           stageCounts,
-          underTestingPendingSrfCount,
+          underTestingPendingSrfCount: workflowCounts.underTesting,
           clientsCount: clientsRes.count ?? 0,
           isCodesCount: isCodesRes.count ?? 0,
           equipmentCount: equipmentRows.length,
@@ -486,17 +519,33 @@ export default function DashboardPage() {
           resultChecksCount: resultCheckRes.count ?? 0,
           usersCount: usersRes.count ?? 0,
           quotationsCount: quotationsRes.error ? 0 : (quotationsRes.count ?? 0),
+          proformaInvoiceCount: loadSaleDocumentRows('proformaInvoice').length,
+          invoiceCount: loadSaleDocumentRows('invoice').length,
+          creditNoteCount: loadSaleDocumentRows('creditNote').length,
+          paymentReceiptCount: loadSaleDocumentRows('paymentReceipt').length,
         })
       } catch (err) {
+        if (cancelled) return
         console.error('Error loading dashboard stats:', err)
         setError(err instanceof Error ? err.message : 'Failed to fetch dashboard statistics')
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
-    void loadStats()
-  }, [])
+    void loadStats(false)
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void loadStats(true)
+    }
+    window.addEventListener('focus', refreshIfVisible)
+    document.addEventListener('visibilitychange', refreshIfVisible)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', refreshIfVisible)
+      document.removeEventListener('visibilitychange', refreshIfVisible)
+    }
+  }, [location.pathname, location.key])
 
   const dashboardSections = useMemo((): DashboardSection[] => {
     if (!stats) return []
@@ -964,7 +1013,7 @@ export default function DashboardPage() {
           },
           {
             title: 'Proforma Invoice',
-            value: 0,
+            value: stats.proformaInvoiceCount,
             icon: Receipt,
             href: link('/finance/sale/proforma-invoice'),
             badgeLabel: 'Sale',
@@ -972,7 +1021,7 @@ export default function DashboardPage() {
           },
           {
             title: 'Invoice',
-            value: 0,
+            value: stats.invoiceCount,
             icon: FileText,
             href: link('/finance/sale/invoice'),
             badgeLabel: 'Sale',
@@ -980,7 +1029,7 @@ export default function DashboardPage() {
           },
           {
             title: 'Credit Note',
-            value: 0,
+            value: stats.creditNoteCount,
             icon: FileSignature,
             href: link('/finance/sale/credit-note'),
             badgeLabel: 'Sale',
@@ -988,7 +1037,7 @@ export default function DashboardPage() {
           },
           {
             title: 'Payment Receipt',
-            value: 0,
+            value: stats.paymentReceiptCount,
             icon: Wallet,
             href: link('/finance/sale/payment-receipt'),
             badgeLabel: 'Sale',

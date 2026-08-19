@@ -17,7 +17,8 @@ import { Eye, FileText, Plus } from 'lucide-react'
 import type { TestAllocationRow } from '../types'
 import { AddSectionTestDialog } from './AddSectionTestDialog'
 import type { SectionTestSelectionChange } from './allocatedTestsForSection'
-import { ConfirmLoginPasswordDialog } from '../shared/ConfirmLoginPasswordDialog'
+import { formatTestParamClauseLine } from '../shared/formatTestParamClauseLine'
+import { toProperRequirementText } from '../shared/toProperRequirementText'
 import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
 import { TestResultsEntryCell } from './TestResultsEntryCell'
 import { buildSectionCompareSources, paramKeyFromRow } from './sectionCompareSources'
@@ -33,7 +34,7 @@ export type SectionResultsDraft = SectionParameterEntry
 type BulkDateField = 'testStartDate' | 'testEndDate'
 
 const RESULTS_GRID_COLS =
-  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(10rem,1.6fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.8fr)]'
+  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(4.5rem,0.5fr)_minmax(10rem,1.5fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.7fr)]'
 
 const cellClass =
   'flex h-full min-h-[2.75rem] items-center border-b border-r border-[#e7e0d4] px-2 py-2 text-xs text-[#292524] last:border-r-0'
@@ -51,7 +52,7 @@ const checkboxClass =
 
 const dialogShellClass = cn(
   limsDialogClass,
-  '!fixed !left-0 !top-0 !z-50 !flex !h-[100dvh] !max-h-[100dvh] !w-full !max-w-none !translate-x-0 !translate-y-0 !flex-col !gap-0 !overflow-hidden !rounded-none !border-0 !bg-white !p-0 sm:!rounded-none',
+  '!fixed !left-0 !top-0 !flex !h-[100dvh] !max-h-[100dvh] !w-full !max-w-none !translate-x-0 !translate-y-0 !flex-col !gap-0 !overflow-hidden !rounded-none !border-0 !bg-white !p-0 sm:!rounded-none',
   'md:!left-[268px] md:!w-[calc(100vw-268px)] md:!max-w-[calc(100vw-268px)]',
 )
 
@@ -88,6 +89,7 @@ export function SectionResultsEntryDialog({
   onAddTests,
   onUpdateSpecificRequirement,
   readOnlyTitle = 'Submitted Results',
+  layer = 'default',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -102,6 +104,7 @@ export function SectionResultsEntryDialog({
     nextValue: string,
   ) => Promise<{ sectionSpecOverride: string | null; specificRequirement: string | null }>
   readOnlyTitle?: string
+  layer?: 'default' | 'nested' | 'stacked' | 'top'
 }) {
   const [draft, setDraft] = useState<SectionResultsDraft[]>([])
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set())
@@ -110,7 +113,6 @@ export function SectionResultsEntryDialog({
     value: string
   } | null>(null)
   const [addTestOpen, setAddTestOpen] = useState(false)
-  const [manageTestsPasswordOpen, setManageTestsPasswordOpen] = useState(false)
   const [sampleDetailsOpen, setSampleDetailsOpen] = useState(false)
   const [addingTests, setAddingTests] = useState(false)
   const [editSpecOpen, setEditSpecOpen] = useState(false)
@@ -121,7 +123,6 @@ export function SectionResultsEntryDialog({
   const openSectionKeyRef = useRef<string | null>(null)
   const nestedDialogOpen =
     addTestOpen ||
-    manageTestsPasswordOpen ||
     sampleDetailsOpen ||
     editSpecOpen ||
     bulkDatePrompt !== null
@@ -133,7 +134,6 @@ export function SectionResultsEntryDialog({
       setSelectedKeys(new Set())
       setBulkDatePrompt(null)
       setAddTestOpen(false)
-      setManageTestsPasswordOpen(false)
       setSampleDetailsOpen(false)
       setEditSpecOpen(false)
       setEditSpecEntry(null)
@@ -243,7 +243,11 @@ export function SectionResultsEntryDialog({
 
   const openEditSpec = (entry: SectionParameterEntry) => {
     setEditSpecEntry(entry)
-    setEditSpecValue(entry.specificRequirement?.trim() || entry.sectionSpecOverride?.trim() || '')
+    setEditSpecValue(
+      toProperRequirementText(
+        entry.specificRequirement?.trim() || entry.sectionSpecOverride?.trim() || '',
+      ),
+    )
     setEditSpecError(null)
     setEditSpecOpen(true)
   }
@@ -263,7 +267,10 @@ export function SectionResultsEntryDialog({
     setEditSpecSaving(true)
     setEditSpecError(null)
     try {
-      const next = await onUpdateSpecificRequirement(editSpecEntry, editSpecValue.trim())
+      const next = await onUpdateSpecificRequirement(
+        editSpecEntry,
+        toProperRequirementText(editSpecValue).trim(),
+      )
       setDraft((prev) =>
         prev.map((p) =>
           p.testLabel === editSpecEntry.testLabel && p.paramRowId === editSpecEntry.paramRowId
@@ -289,8 +296,9 @@ export function SectionResultsEntryDialog({
     <Dialog open={open} onOpenChange={handleParentOpenChange}>
       <DialogContent
         persistOnFocusLoss
+        layer={layer}
         overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
-        className={dialogShellClass}
+        className={cn(dialogShellClass, layer !== 'default' && '!z-[60]')}
         showCloseButton={!nestedDialogOpen}
       >
         <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
@@ -324,7 +332,7 @@ export function SectionResultsEntryDialog({
                   size="sm"
                   variant="outline"
                   className={cn('gap-1.5', limsDarkBarBtnClass)}
-                  onClick={() => setManageTestsPasswordOpen(true)}
+                  onClick={() => setAddTestOpen(true)}
                   disabled={saving || addingTests}
                 >
                   <Plus size={14} />
@@ -352,6 +360,7 @@ export function SectionResultsEntryDialog({
                 />
               </div>
               <div className={cn(headCellClass, 'justify-start text-left')}>Test Parameter</div>
+              <div className={headCellClass}>Unit</div>
               <div className={headCellClass}>Specified Requirement</div>
               <div className={headCellClass}>Test Start Date</div>
               <div className={headCellClass}>Test End Date</div>
@@ -370,6 +379,7 @@ export function SectionResultsEntryDialog({
                 const canViewDetails =
                   Boolean(onViewTestParameter) ||
                   (!readOnly && Boolean(onUpdateSpecificRequirement && p.testParameterId))
+                const clauseLine = formatTestParamClauseLine(p, row?.isCodeLabel)
 
                 return (
                   <div
@@ -385,19 +395,26 @@ export function SectionResultsEntryDialog({
                         onChange={() => toggleRow(key)}
                       />
                     </div>
-                    <div className={cn(cellClass, 'justify-start gap-1 text-left')}>
-                      <span
-                        className="min-w-0 flex-1 break-words text-[12.5px] font-semibold text-[#1c1917]"
-                        title={p.testLabel}
-                      >
-                        {p.testLabel}
-                      </span>
+                    <div className={cn(cellClass, 'items-start justify-start gap-1 text-left')}>
+                      <div className="min-w-0 flex-1">
+                        <span
+                          className="block break-words text-[12.5px] font-semibold text-[#1c1917]"
+                          title={p.testLabel}
+                        >
+                          {p.testLabel}
+                        </span>
+                        {clauseLine ? (
+                          <span className="mt-0.5 block text-[11px] font-normal text-[#57534e]">
+                            {clauseLine}
+                          </span>
+                        ) : null}
+                      </div>
                       {canViewDetails ? (
                         <Button
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className={eyeBtnClass}
+                          className={cn(eyeBtnClass, 'mt-0.5')}
                           aria-label={`View parameter details for ${p.testLabel}`}
                           title="View full test parameter details"
                           onClick={() => openParameterDetails(p)}
@@ -407,12 +424,21 @@ export function SectionResultsEntryDialog({
                         </Button>
                       ) : null}
                     </div>
+                    <div className={cn(cellClass, 'justify-center text-center text-[#57534e]')}>
+                      {p.unitValue?.trim() || '—'}
+                    </div>
                     <div className={cn(cellClass, 'justify-center text-center')}>
                       <span
                         className="w-full break-words whitespace-pre-wrap text-center text-[#57534e]"
-                        title={p.specificRequirement ?? undefined}
+                        title={
+                          p.specificRequirement?.trim()
+                            ? toProperRequirementText(p.specificRequirement)
+                            : undefined
+                        }
                       >
-                        {p.specificRequirement?.trim() || '—'}
+                        {p.specificRequirement?.trim()
+                          ? toProperRequirementText(p.specificRequirement)
+                          : '—'}
                       </span>
                     </div>
                     <div className={cn(cellClass, 'justify-center text-center')}>
@@ -556,27 +582,27 @@ export function SectionResultsEntryDialog({
       />
 
       {!readOnly && onAddTests ? (
-        <>
-          <ConfirmLoginPasswordDialog
-            open={manageTestsPasswordOpen}
-            onOpenChange={setManageTestsPasswordOpen}
-            title="Confirm Password"
-            confirmLabel="Confirm"
-            onConfirmed={() => setAddTestOpen(true)}
-          />
-          <AddSectionTestDialog
-            open={addTestOpen}
-            onOpenChange={setAddTestOpen}
-            row={row}
-            existingDraft={draft}
-            onConfirm={handleAddTestsConfirm}
-            saving={addingTests}
-          />
-        </>
+        <AddSectionTestDialog
+          open={addTestOpen}
+          onOpenChange={setAddTestOpen}
+          row={row}
+          existingDraft={draft}
+          onConfirm={handleAddTestsConfirm}
+          saving={addingTests}
+        />
       ) : null}
 
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
-        <DialogContent className={cn(limsDialogClass, '!max-w-md !gap-0 !p-0')} layer="nested">
+        <DialogContent
+          className={cn(
+            limsDialogClass,
+            '!max-w-md !gap-0 !p-0',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="md:left-[268px]"
+          layer="nested"
+        >
           <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
             <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
             <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
@@ -587,9 +613,6 @@ export function SectionResultsEntryDialog({
             </DialogHeader>
           </div>
           <div className="space-y-4 bg-[#f7f3eb] px-4 py-4">
-            <p className="text-xs text-[#57534e]">
-              Applies only to this section code. Test Parameter master and other sections are not changed.
-            </p>
             {editSpecEntry?.testLabel ? (
               <p className="text-sm font-medium text-[#1c1917]">{editSpecEntry.testLabel}</p>
             ) : null}

@@ -105,21 +105,28 @@ export async function fetchSectionParameterRows(
     .map((r) => (r as { test_parameter_id?: string | null }).test_parameter_id)
     .filter((id): id is string => Boolean(id?.trim()))
 
-  const metaById = new Map<string, { specificRequirement: string | null; clauseNo: string | null }>()
+  const metaById = new Map<
+    string,
+    { specificRequirement: string | null; clauseNo: string | null; unitValue: string | null; isCodeLabel: string | null }
+  >()
   if (tpIds.length > 0) {
     const { data: tpRows } = await supabase
       .from('test_parameters')
-      .select('id, specific_requirement, clause_no')
+      .select('id, specific_requirement, clause_no, unit_value, is_code_label')
       .in('id', tpIds)
     for (const row of Array.isArray(tpRows) ? tpRows : []) {
       const r = row as {
         id: string
         specific_requirement?: string | null
         clause_no?: string | null
+        unit_value?: string | null
+        is_code_label?: string | null
       }
       metaById.set(r.id, {
         specificRequirement: (r.specific_requirement ?? '').trim() || null,
         clauseNo: (r.clause_no ?? '').trim() || null,
+        unitValue: (r.unit_value ?? '').trim() || null,
+        isCodeLabel: (r.is_code_label ?? '').trim() || null,
       })
     }
   }
@@ -143,6 +150,8 @@ export async function fetchSectionParameterRows(
       testParameterId: tpId,
       testLabel: r.test_label,
       clauseNo: master?.clauseNo ?? null,
+      unitValue: master?.unitValue ?? null,
+      isCodeLabel: master?.isCodeLabel ?? null,
       sectionSpecOverride: r.specific_requirement ?? null,
       specificRequirement: resolveSectionSpecificRequirement(
         r.specific_requirement,

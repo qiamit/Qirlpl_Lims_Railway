@@ -30,14 +30,17 @@ import {
   type AllocatedTestOption,
   type SectionTestSelectionChange,
 } from './allocatedTestsForSection'
-import type { SectionParameterEntry } from './sectionParameterRows'
+import { formatTestParamClauseLine } from '../shared/formatTestParamClauseLine'
+import { toProperRequirementText } from '../shared/toProperRequirementText'
 
 const TEST_GRID_COLS =
-  'grid grid-cols-[2.25rem_minmax(9rem,1.5fr)_minmax(5rem,0.7fr)_minmax(10rem,2fr)_minmax(5rem,0.8fr)_minmax(7rem,1.1fr)]'
+  'grid grid-cols-[2.25rem_minmax(9rem,1.5fr)_minmax(4.5rem,0.55fr)_minmax(10rem,2fr)_minmax(5rem,0.8fr)_minmax(7rem,1.1fr)]'
 
 const thClass = cn(limsTableHeadClass, 'border-b border-r border-stone-700 !p-2 last:border-r-0')
+const thCenterClass = cn(thClass, 'flex items-center justify-center')
 const tdClass =
   'border-b border-r border-[#e7e0d4] px-2 py-2 text-xs text-[#292524] last:border-r-0'
+const tdCenterClass = cn(tdClass, 'flex items-center justify-center text-center')
 const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
 const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
 const rowSelectedClass = 'bg-[#fde68a]/70 hover:bg-[#fde68a]/80'
@@ -160,8 +163,17 @@ export function AddSectionTestDialog({
       const label = o.testLabel.toLowerCase()
       const spec = (o.specificRequirement ?? '').toLowerCase()
       const clause = (o.clauseNo ?? '').toLowerCase()
+      const unit = (o.unitValue ?? '').toLowerCase()
+      const isCode = (o.isCodeLabel ?? '').toLowerCase()
       const accr = (o.underAccreditation ?? '').toLowerCase()
-      return label.includes(q) || spec.includes(q) || clause.includes(q) || accr.includes(q)
+      return (
+        label.includes(q) ||
+        spec.includes(q) ||
+        clause.includes(q) ||
+        unit.includes(q) ||
+        isCode.includes(q) ||
+        accr.includes(q)
+      )
     })
   }, [options, search])
 
@@ -211,20 +223,22 @@ export function AddSectionTestDialog({
 
   const displaySpecificRequirement = (opt: AllocatedTestOption): string => {
     const override = specOverrides[opt.testParameterId]
-    if (override !== undefined) return override.trim() || '—'
-    return opt.specificRequirement?.trim() || '—'
+    const raw = override !== undefined ? override.trim() || '—' : opt.specificRequirement?.trim() || '—'
+    if (raw === '—') return raw
+    return toProperRequirementText(raw)
   }
 
   const openEditSpec = (opt: AllocatedTestOption, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditSpecTestId(opt.testParameterId)
-    setEditSpecValue(specOverrides[opt.testParameterId] ?? opt.specificRequirement ?? '')
+    const raw = specOverrides[opt.testParameterId] ?? opt.specificRequirement ?? ''
+    setEditSpecValue(toProperRequirementText(raw))
     setEditSpecOpen(true)
   }
 
   const saveEditSpec = () => {
     if (!editSpecTestId) return
-    const nextValue = editSpecValue.trim()
+    const nextValue = toProperRequirementText(editSpecValue).trim()
     setSpecOverrides((prev) => ({
       ...prev,
       [editSpecTestId]: nextValue,
@@ -305,7 +319,7 @@ export function AddSectionTestDialog({
                 aria-hidden
               />
               <Input
-                placeholder="Search test name, clause, requirement…"
+                placeholder="Search Test Name | Method | Clause"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className={cn(limsDarkBarSearchClass, 'h-8 pl-9')}
@@ -346,11 +360,11 @@ export function AddSectionTestDialog({
                     onChange={toggleAll}
                   />
                 </div>
-                <div className={cn(thClass, 'text-left')}>Test Name</div>
-                <div className={thClass}>Clause Number</div>
-                <div className={thClass}>Specified Requirement</div>
-                <div className={thClass}>Uncertainty</div>
-                <div className={thClass}>Under Accreditation</div>
+                <div className={cn(thClass, 'flex items-center text-left')}>Test Name</div>
+                <div className={thCenterClass}>Unit</div>
+                <div className={thCenterClass}>Specified Requirement</div>
+                <div className={thCenterClass}>Uncertainty</div>
+                <div className={thCenterClass}>Under Accreditation</div>
               </div>
 
               {loading ? (
@@ -368,6 +382,7 @@ export function AddSectionTestDialog({
                   const inSection = Boolean(opt.alreadyInSection)
                   const checked = selectedIds.has(opt.testParameterId)
                   const willRemove = inSection && !checked
+                  const clauseLine = formatTestParamClauseLine(opt, row?.isCodeLabel)
                   return (
                     <div
                       key={opt.testParameterId}
@@ -422,12 +437,17 @@ export function AddSectionTestDialog({
                             </span>
                           ) : null}
                         </div>
+                        {clauseLine ? (
+                          <span className="mt-0.5 block text-[11px] font-normal text-[#57534e]">
+                            {clauseLine}
+                          </span>
+                        ) : null}
                       </div>
-                      <div className={cn(tdClass, 'break-words text-center text-[#57534e]')}>
-                        {opt.clauseNo?.trim() || '—'}
+                      <div className={cn(tdCenterClass, 'break-words text-[#57534e]')}>
+                        {opt.unitValue?.trim() || '—'}
                       </div>
-                      <div className={cn(tdClass, 'break-words text-[#57534e]')}>
-                        <div className="flex w-full items-start gap-1">
+                      <div className={cn(tdCenterClass, 'text-[#57534e]')}>
+                        <div className="flex w-full items-center justify-center gap-1">
                           <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-center">
                             {displaySpecificRequirement(opt)}
                           </span>
@@ -435,7 +455,7 @@ export function AddSectionTestDialog({
                             type="button"
                             size="icon"
                             variant="ghost"
-                            className={cn(pencilBtnClass, 'ml-auto')}
+                            className={cn(pencilBtnClass, 'shrink-0')}
                             aria-label="Edit specified requirement"
                             onClick={(e) => openEditSpec(opt, e)}
                           >
@@ -443,10 +463,10 @@ export function AddSectionTestDialog({
                           </Button>
                         </div>
                       </div>
-                      <div className={cn(tdClass, 'break-words text-center text-[#57534e]')}>
+                      <div className={cn(tdCenterClass, 'break-words text-[#57534e]')}>
                         {opt.uncertaintyMu?.trim() || '—'}
                       </div>
-                      <div className={cn(tdClass, 'break-words text-center text-[#57534e]')}>
+                      <div className={cn(tdCenterClass, 'break-words text-[#57534e]')}>
                         {opt.underAccreditation || '—'}
                       </div>
                     </div>
@@ -485,7 +505,13 @@ export function AddSectionTestDialog({
 
       <Dialog open={editSpecOpen} onOpenChange={setEditSpecOpen}>
         <DialogContent
-          className={cn(limsDialogClass, '!max-w-md !gap-0 !p-0')}
+          className={cn(
+            limsDialogClass,
+            '!max-w-md !gap-0 !p-0',
+            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          )}
+          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          portalClassName="md:left-[268px]"
           layer="stacked"
           aria-describedby={undefined}
         >
@@ -499,10 +525,6 @@ export function AddSectionTestDialog({
             </DialogHeader>
           </div>
           <div className="space-y-4 bg-[#f7f3eb] px-4 py-4">
-            <p className="text-xs text-[#57534e]">
-              Applies only to this section code. Test Parameter master and other sections are not
-              changed.
-            </p>
             {editSpecTestLabel ? (
               <p className="text-sm font-medium text-[#1c1917]">{editSpecTestLabel}</p>
             ) : null}

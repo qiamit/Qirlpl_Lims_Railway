@@ -85,7 +85,7 @@ export function MeasurementUnitSelect({
 
   const totalOptions = filteredUnits.length + (showAddUnitAction ? 1 : 0)
   const resolvedPlaceholder =
-    placeholder ?? (units.length > 0 ? 'Select unit' : 'Add units to use them here')
+    placeholder ?? (units.length > 0 ? 'Select Unit' : 'Add units to use them here')
   const unitInputId = `${id ?? 'unit'}-new`
 
   useEffect(() => {

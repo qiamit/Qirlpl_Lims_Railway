@@ -89,17 +89,24 @@ export default function TestAllocationMasterPage() {
   }
 
   const loadTestParams = async () => {
-    const [{ data, error }, { data: abData }] = await Promise.all([
+    const [{ data, error }, { data: abData }, { data: isData }] = await Promise.all([
       supabase
         .from('test_parameters')
         .select(
-          'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, clause_no, unit_value, uncertainty_mu',
+          'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, is_code_label, clause_no, unit_value, uncertainty_mu',
         )
         .order('item_name', { ascending: true }),
       supabase.from('accreditation_bodies').select('id, name').order('name', { ascending: true }),
+      supabase.from('is_codes').select('id, is_number, revision_year'),
     ])
     if (error || !Array.isArray(data)) return
     const accreditationBodies = (Array.isArray(abData) ? abData : []) as Array<{ id: string; name: string }>
+    const isById = new Map(
+      (Array.isArray(isData) ? isData : []).map((c: { id: string; is_number: string | null; revision_year: string | null }) => [
+        c.id,
+        c,
+      ]),
+    )
     const rows = data as Array<{
       id: string
       item_name: string | null
@@ -108,6 +115,7 @@ export default function TestAllocationMasterPage() {
       department: string | null
       designation: string | null
       is_code_id: string | null
+      is_code_label: string | null
       clause_no: string | null
       unit_value: string | null
       uncertainty_mu: string | null
@@ -129,6 +137,13 @@ export default function TestAllocationMasterPage() {
         unitValue: r.unit_value ?? null,
         uncertaintyMu: r.uncertainty_mu ?? null,
         isCodeId: r.is_code_id ?? null,
+        isCodeLabel:
+          formatIsCodeLabelFromParts(
+            r.is_code_id ? isById.get(r.is_code_id)?.is_number : null,
+            r.is_code_id ? isById.get(r.is_code_id)?.revision_year : null,
+          ) ||
+          r.is_code_label ||
+          null,
         department: r.department ?? null,
       })),
     )
@@ -884,6 +899,7 @@ export default function TestAllocationMasterPage() {
                           unitValue: param.unitValue,
                           uncertaintyMu: param.uncertaintyMu,
                           isCodeId: param.isCodeId,
+                          isCodeLabel: param.isCodeLabel,
                           department: param.department,
                         },
                       ].sort((a, b) => a.label.localeCompare(b.label))
