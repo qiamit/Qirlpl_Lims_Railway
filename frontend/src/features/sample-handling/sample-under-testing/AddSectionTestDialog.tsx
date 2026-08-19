@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Plus, Search } from 'lucide-react'
+import { FileText, Pencil, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  limsDarkBarBtnClass,
   limsDarkBarGlowStyle,
   limsDarkBarSearchClass,
   limsDialogClass,
@@ -32,6 +33,7 @@ import {
 } from './allocatedTestsForSection'
 import { formatTestParamClauseLine } from '../shared/formatTestParamClauseLine'
 import { toProperRequirementText } from '../shared/toProperRequirementText'
+import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
 
 const TEST_GRID_COLS =
   'grid grid-cols-[2.25rem_minmax(9rem,1.5fr)_minmax(4.5rem,0.55fr)_minmax(10rem,2fr)_minmax(5rem,0.8fr)_minmax(7rem,1.1fr)]'
@@ -76,6 +78,7 @@ export function AddSectionTestDialog({
   const [editSpecTestId, setEditSpecTestId] = useState<string | null>(null)
   const [editSpecValue, setEditSpecValue] = useState('')
   const [addTestParameterOpen, setAddTestParameterOpen] = useState(false)
+  const [sampleDetailsOpen, setSampleDetailsOpen] = useState(false)
   const selectAllRef = useRef<HTMLInputElement>(null)
 
   const applyLoadedOptions = (list: AllocatedTestOption[], resetSelection: boolean) => {
@@ -301,7 +304,7 @@ export function AddSectionTestDialog({
         )}
         overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
         layer="nested"
-        showCloseButton={!editSpecOpen && !addTestParameterOpen}
+        showCloseButton={!editSpecOpen && !addTestParameterOpen && !sampleDetailsOpen}
         aria-describedby={undefined}
       >
         <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5">
@@ -325,6 +328,19 @@ export function AddSectionTestDialog({
                 className={cn(limsDarkBarSearchClass, 'h-8 pl-9')}
               />
             </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={cn(limsDarkBarBtnClass, 'h-8 shrink-0 gap-1.5')}
+              disabled={!row}
+              aria-label="View sample description and sample declaration"
+              title="Sample Description & Sample Declaration"
+              onClick={() => setSampleDetailsOpen(true)}
+            >
+              <FileText size={14} />
+              Sample Details
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -557,6 +573,13 @@ export function AddSectionTestDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SectionSampleDescViewDialog
+        row={row}
+        open={sampleDetailsOpen}
+        onOpenChange={setSampleDetailsOpen}
+        layer="stacked"
+      />
     </Dialog>
   )
 }

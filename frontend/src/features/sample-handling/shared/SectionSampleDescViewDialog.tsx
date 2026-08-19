@@ -129,10 +129,12 @@ export function SectionSampleDescViewDialog({
   row,
   open,
   onOpenChange,
+  layer = 'nested',
 }: {
   row: TestAllocationRow | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  layer?: 'default' | 'nested' | 'stacked' | 'top'
 }) {
   const [isCodeLoading, setIsCodeLoading] = useState(false)
   const [isCodeDetails, setIsCodeDetails] = useState<IsCodeDetails | null>(null)
@@ -218,7 +220,8 @@ export function SectionSampleDescViewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        layer="nested"
+        persistOnFocusLoss
+        layer={layer}
         className={cn(
           limsDialogClass,
           'max-h-[88vh] max-w-3xl overflow-hidden p-0',
@@ -250,7 +253,7 @@ export function SectionSampleDescViewDialog({
               <SectionBlock icon={FileText} title="Sample Description">
                 <ProsePanel>{fmt(row.sampleDescription)}</ProsePanel>
               </SectionBlock>
-              <SectionBlock icon={ScrollText} title="Declared Value">
+              <SectionBlock icon={ScrollText} title="Sample Declaration">
                 <ProsePanel>{fmt(row.declaredValue)}</ProsePanel>
               </SectionBlock>
             </div>
