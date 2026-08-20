@@ -34,6 +34,12 @@ export function isProtectedDepartmentLabel(label: string): boolean {
   return label.trim().toLowerCase() === PROTECTED_DEPARTMENT_LABEL.toLowerCase()
 }
 
+export const PROTECTED_DIVISION_LABEL = 'Management'
+
+export function isProtectedDivisionLabel(label: string): boolean {
+  return label.trim().toLowerCase() === PROTECTED_DIVISION_LABEL.toLowerCase()
+}
+
 export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionItem[]> = {
   laboratory_type: [
     { value: 'testing', label: 'Testing Laboratory' },
@@ -61,6 +67,7 @@ export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionI
     { value: 'quality-assurance', label: 'Quality Assurance' },
   ],
   division: [
+    { value: 'management', label: PROTECTED_DIVISION_LABEL },
     { value: 'calibration-division', label: 'Calibration Division' },
     { value: 'testing-division', label: 'Testing Division' },
     { value: 'pt-division', label: 'PT Division' },

@@ -6,6 +6,7 @@ import {
   ensureLabMasterOptionByLabel,
   insertLabMasterOption,
   isProtectedDepartmentLabel,
+  isProtectedDivisionLabel,
   LAB_MASTER_OPTION_DEFAULTS,
   slugifyLabOptionValue,
   updateLabMasterOption,
@@ -201,6 +202,10 @@ export function UserManagementForm(props: UserManagementFormProps) {
       setError('Administration department cannot be edited')
       return
     }
+    if (category === 'division' && previousLabel && isProtectedDivisionLabel(previousLabel)) {
+      setError('Management division cannot be edited')
+      return
+    }
     void (async () => {
       try {
         await updateLabMasterOption(category, oldValue, formatted)
@@ -235,6 +240,10 @@ export function UserManagementForm(props: UserManagementFormProps) {
     const removed = options.find((o) => o.value === value)
     if (category === 'department' && removed && isProtectedDepartmentLabel(removed.label)) {
       setError('Administration department cannot be deleted')
+      return
+    }
+    if (category === 'division' && removed && isProtectedDivisionLabel(removed.label)) {
+      setError('Management division cannot be deleted')
       return
     }
     void (async () => {
@@ -667,7 +676,9 @@ export function UserManagementForm(props: UserManagementFormProps) {
                   onSave: handleAddDivision,
                   onUpdate: handleUpdateDivision,
                   onDelete: handleDeleteDivision,
-                  canDelete: () => divisionOptions.length > 1,
+                  canEdit: (item) => !isProtectedDivisionLabel(item.label),
+                  canDelete: (item) =>
+                    divisionOptions.length > 1 && !isProtectedDivisionLabel(item.label),
                   addAriaLabel: 'Add division',
                   children: (
                     <Select
