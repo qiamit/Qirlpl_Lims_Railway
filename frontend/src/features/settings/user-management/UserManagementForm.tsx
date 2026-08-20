@@ -6,6 +6,7 @@ import {
   ensureLabMasterOptionByLabel,
   insertLabMasterOption,
   isProtectedDepartmentLabel,
+  isProtectedDesignationLabel,
   isProtectedDivisionLabel,
   LAB_MASTER_OPTION_DEFAULTS,
   slugifyLabOptionValue,
@@ -206,6 +207,10 @@ export function UserManagementForm(props: UserManagementFormProps) {
       setError('Management division cannot be edited')
       return
     }
+    if (category === 'designation' && previousLabel && isProtectedDesignationLabel(previousLabel)) {
+      setError('Laboratory Director designation cannot be edited')
+      return
+    }
     void (async () => {
       try {
         await updateLabMasterOption(category, oldValue, formatted)
@@ -244,6 +249,10 @@ export function UserManagementForm(props: UserManagementFormProps) {
     }
     if (category === 'division' && removed && isProtectedDivisionLabel(removed.label)) {
       setError('Management division cannot be deleted')
+      return
+    }
+    if (category === 'designation' && removed && isProtectedDesignationLabel(removed.label)) {
+      setError('Laboratory Director designation cannot be deleted')
       return
     }
     void (async () => {
@@ -766,8 +775,9 @@ export function UserManagementForm(props: UserManagementFormProps) {
                   onSave: handleAddDesignation,
                   onUpdate: handleUpdateDesignation,
                   onDelete: handleDeleteDesignation,
+                  canEdit: (item) => !isProtectedDesignationLabel(item.label),
                   canDelete: (item) =>
-                    designationOptions.length > 1 && item.label !== 'Administrator',
+                    designationOptions.length > 1 && !isProtectedDesignationLabel(item.label),
                   addAriaLabel: 'Add designation',
                   children: (
                     <Select

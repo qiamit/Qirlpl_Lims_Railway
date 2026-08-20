@@ -40,6 +40,12 @@ export function isProtectedDivisionLabel(label: string): boolean {
   return label.trim().toLowerCase() === PROTECTED_DIVISION_LABEL.toLowerCase()
 }
 
+export const PROTECTED_DESIGNATION_LABEL = 'Laboratory Director'
+
+export function isProtectedDesignationLabel(label: string): boolean {
+  return label.trim().toLowerCase() === PROTECTED_DESIGNATION_LABEL.toLowerCase()
+}
+
 export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionItem[]> = {
   laboratory_type: [
     { value: 'testing', label: 'Testing Laboratory' },
@@ -54,7 +60,7 @@ export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionI
     { value: 'enterprise', label: 'Enterprise / Multi-location' },
   ],
   designation: [
-    { value: 'lab-director', label: 'Laboratory Director' },
+    { value: 'lab-director', label: PROTECTED_DESIGNATION_LABEL },
     { value: 'quality-manager', label: 'Quality Manager' },
     { value: 'technical-manager', label: 'Technical Manager' },
     { value: 'testing-engineer', label: 'Testing Engineer' },
