@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
       .upsert(
         {
           id: userId,
+          email: body.email,
           full_name: body.full_name ?? '',
           mobile: mobileRaw,
           designation: body.designation ?? '',

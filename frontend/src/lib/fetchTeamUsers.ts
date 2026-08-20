@@ -27,8 +27,15 @@ function mapRow(row: Record<string, unknown>): TeamUserRecord | null {
   }
 }
 
-/** Team directory from Railway Postgres (RPC with email, else user_profiles). */
+/** Team directory from Railway Postgres (RPC joins auth email, else user_profiles). */
 export async function fetchTeamUsers(): Promise<TeamUserRecord[]> {
+  const rpc = await supabase.rpc('list_team_users')
+  if (!rpc.error && Array.isArray(rpc.data)) {
+    return (rpc.data as Array<Record<string, unknown>>)
+      .map((row) => mapRow(row))
+      .filter((row): row is TeamUserRecord => Boolean(row))
+  }
+
   const { data, error } = await supabase
     .from('user_profiles')
     .select('id, email, full_name, mobile, designation, department_name, division, status')
@@ -40,13 +47,7 @@ export async function fetchTeamUsers(): Promise<TeamUserRecord[]> {
       .filter((row): row is TeamUserRecord => Boolean(row))
   }
 
-  const rpc = await supabase.rpc('list_team_users')
-  if (!rpc.error && Array.isArray(rpc.data)) {
-    return (rpc.data as Array<Record<string, unknown>>)
-      .map((row) => mapRow(row))
-      .filter((row): row is TeamUserRecord => Boolean(row))
-  }
-
+  if (rpc.error) throw rpc.error
   if (error) throw error
-  throw rpc.error ?? new Error('Unable to load users')
+  throw new Error('Unable to load users')
 }

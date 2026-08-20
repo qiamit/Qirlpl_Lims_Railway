@@ -406,6 +406,7 @@ async function handleCreateUser(req, res) {
         headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
         body: JSON.stringify({
           id: userId,
+          email,
           full_name: fullName,
           mobile: mobileRaw,
           designation,
