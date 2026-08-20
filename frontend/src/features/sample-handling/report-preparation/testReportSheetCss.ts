@@ -8,14 +8,7 @@ import {
 
 /** Sheet layout shared by live preview measurement and Print/PDF export. */
 export function buildTestReportSheetLayoutCss(settings: TestReportPrintSettings): string {
-  const {
-    bodyPaddingTopMm,
-    bodyPaddingBottomMm,
-    bodyPaddingLeftMm,
-    bodyPaddingRightMm,
-    pageBorderType,
-    pageBorderAlignment,
-  } = settings
+  const { pageBorderType, pageBorderAlignment } = settings
 
   const borderInsets = resolvePageBorderInsets(settings)
   const sheetBorderCss =
@@ -54,13 +47,29 @@ export function buildTestReportSheetLayoutCss(settings: TestReportPrintSettings)
   .preview-sheet .print-header { top: 0 !important; }
   .preview-sheet .print-footer { bottom: 0 !important; }
   .preview-sheet .print-body {
-    padding: ${bodyPaddingTopMm}mm ${bodyPaddingRightMm}mm ${bodyPaddingBottomMm}mm ${bodyPaddingLeftMm}mm !important;
+    /* Height + padding are set inline by paginateTestReportPreview (px, !important). */
     box-sizing: border-box;
     overflow: hidden;
-    height: 100%;
     position: relative;
     z-index: 1;
   }
+  .preview-page-number {
+    position: absolute;
+    z-index: 30;
+    font-size: 9pt;
+    line-height: 1.2;
+    color: #475569;
+    pointer-events: none;
+    white-space: nowrap;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .preview-page-number--top-left { top: 3mm; left: 8mm; }
+  .preview-page-number--top-center { top: 3mm; left: 50%; transform: translateX(-50%); }
+  .preview-page-number--top-right { top: 3mm; right: 8mm; }
+  .preview-page-number--bottom-left { bottom: 3mm; left: 8mm; }
+  .preview-page-number--bottom-center { bottom: 3mm; left: 50%; transform: translateX(-50%); }
+  .preview-page-number--bottom-right { bottom: 3mm; right: 8mm; }
   body > .print-page-border,
   body::after {
     display: none !important;
@@ -146,6 +155,12 @@ html, body {
 .print-header,
 .print-footer {
   position: absolute !important;
+}
+.preview-page-number {
+  position: absolute !important;
+  z-index: 30 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 `
 }

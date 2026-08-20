@@ -44,7 +44,7 @@ export function CalibrationScheduleHeaderBar({
         />
         <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
         <div className="relative flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap sm:gap-3">
             <div className="shrink-0">
               <h1 className="text-base font-semibold tracking-tight text-white sm:text-lg">
                 Calibration Schedule

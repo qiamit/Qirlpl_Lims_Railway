@@ -982,12 +982,12 @@ export function ColumnCalculationDialog({
         persistOnFocusLoss
         layer={layer}
         aria-describedby={undefined}
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           'flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-xl flex-col',
-          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
-          'md:w-[min(36rem,calc(100vw-268px-2rem))] md:max-w-[min(36rem,calc(100vw-268px-2rem))]',
+          'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
+          'lg:w-[min(36rem,calc(100vw-268px-2rem))] lg:max-w-[min(36rem,calc(100vw-268px-2rem))]',
           'md:!-translate-x-1/2 md:!-translate-y-1/2',
         )}
       >
@@ -1079,12 +1079,12 @@ export function ColumnCalculationDialog({
           persistOnFocusLoss
           layer={layer === 'default' ? 'nested' : layer}
           aria-describedby={undefined}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             limsDialogClass,
             '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col',
             'left-0 top-0',
-            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
           )}
         >
           <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
@@ -1380,12 +1380,12 @@ function EnvironmentConditionEditor({
       <DialogContent
         persistOnFocusLoss
         layer="stacked"
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
           'left-0 top-0',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
           '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
         )}
         aria-describedby={undefined}
@@ -1972,12 +1972,12 @@ export function RawDataSheetTemplateEditor({
         <DialogContent
           persistOnFocusLoss
           layer="stacked"
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             limsDialogClass,
             '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
             'left-0 top-0',
-            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
             '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
           )}
           aria-describedby={undefined}

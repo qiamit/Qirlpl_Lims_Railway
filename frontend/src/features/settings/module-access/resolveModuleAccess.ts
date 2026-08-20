@@ -8,6 +8,7 @@ import {
 import {
   MODULE_CATALOG,
   normalizeAccessKey,
+  resolveLevelFromSubjectRules,
   type ModuleAccessLevel,
   type ModuleAccessSubjectType,
 } from './moduleCatalog'
@@ -82,8 +83,11 @@ export function resolveConfiguredAccessLevel(
     )
     if (subjectRules.length === 0) continue
 
-    const match = subjectRules.find((r) => r.module_key === moduleKey)
-    return match?.access_level ?? 'none'
+    const matched = resolveLevelFromSubjectRules(pathname, subjectRules)
+    if (matched !== undefined) return matched
+    // Dashboard stays reachable when a matrix exists but `/` was not saved.
+    if ((pathname.replace(/\/+$/, '') || '/') === '/') return 'view'
+    return 'none'
   }
 
   return null

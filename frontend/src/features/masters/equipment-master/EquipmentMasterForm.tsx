@@ -389,12 +389,12 @@ export function EquipmentMasterForm({
       <DialogContent
         persistOnFocusLoss
         layer="nested"
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
           'left-0 top-0',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
         )}
         aria-describedby={undefined}
       >
@@ -483,7 +483,7 @@ export function EquipmentMasterForm({
           <Label htmlFor={`eq-cal-cert-${idSuffix}`}>Certificate Number</Label>
           <Input
             id={`eq-cal-cert-${idSuffix}`}
-            placeholder="Cert No"
+            placeholder="Certificate No"
             value={form.calibrationCertificateNumber}
             onChange={(e) => onChange({ ...form, calibrationCertificateNumber: e.target.value })}
           />
@@ -494,11 +494,17 @@ export function EquipmentMasterForm({
         <div className="space-y-0.5">
           <Label htmlFor={`eq-cal-uncertainty-${idSuffix}`}>UOM of Calibration</Label>
           <div className={limsFieldWithAddShellClass}>
+            <span
+              className="flex h-full shrink-0 items-center px-2 text-sm font-semibold text-stone-700"
+              aria-hidden
+            >
+              ±
+            </span>
             <Input
               id={`eq-cal-uncertainty-${idSuffix}`}
               inputMode="decimal"
               placeholder="Value"
-              aria-label="UOM of calibration value"
+              aria-label="UOM of calibration value, plus or minus"
               value={form.calibrationCertificateUncertainty}
               onChange={(e) =>
                 onChange({
@@ -506,7 +512,7 @@ export function EquipmentMasterForm({
                   calibrationCertificateUncertainty: e.target.value.replace(/[^0-9.]/g, ''),
                 })
               }
-              className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
+              className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 pl-0 shadow-none focus-visible:ring-0"
             />
             <div className="min-w-0 flex-1 border-l border-stone-500">
               <MeasurementUnitSelect
@@ -558,7 +564,7 @@ export function EquipmentMasterForm({
               value={form.externalCalibrationAgency}
               onValueChange={(v) => onChange({ ...form, externalCalibrationAgency: v })}
               options={clients}
-              placeholder="Type to search agency…"
+              placeholder="Type to Search Agency"
             />
           </LimsFieldWithAdd>
         </div>
@@ -682,12 +688,12 @@ export function EquipmentMasterForm({
       <DialogContent
         persistOnFocusLoss
         layer="nested"
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
           'left-0 top-0',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
         )}
         aria-describedby={undefined}
       >
@@ -1273,12 +1279,12 @@ export function EquipmentMasterForm({
       <DialogContent
         persistOnFocusLoss
         layer="nested"
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
           'left-0 top-0',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
         )}
         aria-describedby={undefined}
       >

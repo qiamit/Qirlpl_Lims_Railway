@@ -357,8 +357,8 @@ export default function CrmListMasterPage() {
         <DialogContent
           persistOnFocusLoss
           aria-describedby={undefined}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
-          portalClassName="md:pl-[268px]"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
+          portalClassName="lg:pl-[268px]"
           className={cn(
             limsDialogClass,
             'flex w-[min(100%-1.5rem,64rem)] max-w-none max-h-[min(92dvh,52rem)] flex-col',

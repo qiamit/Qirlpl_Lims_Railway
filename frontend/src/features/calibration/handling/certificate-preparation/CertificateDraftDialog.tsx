@@ -54,13 +54,13 @@ import {
   limsPrimaryBtnClass,
 } from '@/lib/limsThemeUi'
 
-const CERT_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const CERT_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const CERT_FULLSCREEN_DIALOG_CLASS = cn(
   limsDialogClass,
   'certificate-draft-dialog !flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
 import type { CalibrationJobRow } from '../types'

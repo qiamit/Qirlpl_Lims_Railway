@@ -1226,12 +1226,12 @@ export function IqcMasterForm({
       <DialogContent
         persistOnFocusLoss
         layer="nested"
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
           'left-0 top-0',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
         )}
         aria-describedby={undefined}
       >
@@ -1886,12 +1886,12 @@ export function IqcMasterForm({
         <DialogContent
           persistOnFocusLoss
           layer="nested"
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             limsDialogClass,
             '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
             'left-0 top-0',
-            'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+            'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
           )}
           aria-describedby={undefined}
         >

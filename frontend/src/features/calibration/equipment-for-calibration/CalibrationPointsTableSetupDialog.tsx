@@ -42,8 +42,14 @@ import {
   calibrationColumnToRaw,
   equipmentFormulaRefColumns,
 } from './calibrationPointsFormula'
+import {
+  calPointsPanelClass,
+  calPointsRowToneClass,
+  calPointsTableClass,
+  calPointsThClass,
+} from './calibrationPointsTableUi'
 
-const MAX_SETUP_COLUMNS = 12
+const MAX_SETUP_COLUMNS = 40
 
 type Props = {
   open: boolean
@@ -195,12 +201,12 @@ export function CalibrationPointsTableSetupDialog({
           persistOnFocusLoss
           layer={layer}
           aria-describedby={undefined}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             limsDialogClass,
             'flex max-h-[min(90dvh,44rem)] w-[calc(100vw-1.5rem)] max-w-3xl flex-col',
-            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
-            'md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))]',
+            'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
+            'lg:w-[min(48rem,calc(100vw-268px-2rem))] lg:max-w-[min(48rem,calc(100vw-268px-2rem))]',
             'md:!-translate-x-1/2 md:!-translate-y-1/2',
           )}
         >
@@ -220,15 +226,15 @@ export function CalibrationPointsTableSetupDialog({
               labRegistryFormClass,
             )}
           >
-            <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
-                <thead className="bg-stone-800 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
-                  <tr>
-                    <th className="border border-stone-700 px-2 py-2 w-10">#</th>
-                    <th className="border border-stone-700 px-2 py-2 text-left">Column Name</th>
-                    <th className="border border-stone-700 px-2 py-2 w-[120px]">Type</th>
-                    <th className="border border-stone-700 px-2 py-2 w-24">Required</th>
-                    <th className="border border-stone-700 px-2 py-2 w-20">Actions</th>
+            <div className={cn(calPointsPanelClass, 'overflow-x-auto')}>
+              <table className={calPointsTableClass}>
+                <thead>
+                  <tr className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+                    <th className={cn(calPointsThClass, 'w-10')}>#</th>
+                    <th className={cn(calPointsThClass, 'text-left')}>Column Name</th>
+                    <th className={cn(calPointsThClass, 'w-[120px]')}>Type</th>
+                    <th className={cn(calPointsThClass, 'w-24')}>Required</th>
+                    <th className={cn(calPointsThClass, 'w-20')}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -236,10 +242,10 @@ export function CalibrationPointsTableSetupDialog({
                     const isFormula = col.type === 'formula'
                     return (
                       <Fragment key={col.id}>
-                        <tr className="align-middle">
-                          <td className="border border-stone-300 px-1 py-2 text-center">
+                        <tr className={cn('align-middle', calPointsRowToneClass(index, false))}>
+                          <td className="border-[#e7e0d4] px-1 py-2 text-center">
                             <div className="flex flex-col items-center gap-0.5">
-                              <span className="text-[11px] text-slate-500">{index + 1}</span>
+                              <span className="text-[11px] text-[#78716c]">{index + 1}</span>
                               <div className="flex gap-0.5">
                                 <Button
                                   type="button"
@@ -266,7 +272,7 @@ export function CalibrationPointsTableSetupDialog({
                               </div>
                             </div>
                           </td>
-                          <td className="border border-stone-300 px-2 py-2">
+                          <td className=" px-2 py-2">
                             <div className="flex items-center gap-2">
                               <Input
                                 value={col.header}
@@ -292,7 +298,7 @@ export function CalibrationPointsTableSetupDialog({
                               ) : null}
                             </div>
                           </td>
-                          <td className="border border-stone-300 px-2 py-2 text-center">
+                          <td className=" px-2 py-2 text-center">
                             <Select
                               value={col.type || 'number'}
                               onValueChange={(v) =>
@@ -319,7 +325,7 @@ export function CalibrationPointsTableSetupDialog({
                               </SelectContent>
                             </Select>
                           </td>
-                          <td className="border border-stone-300 px-2 py-2 text-center">
+                          <td className=" px-2 py-2 text-center">
                             {isFormula ? (
                               <span className="text-[11px] text-muted-foreground">Auto</span>
                             ) : (
@@ -335,7 +341,7 @@ export function CalibrationPointsTableSetupDialog({
                               />
                             )}
                           </td>
-                          <td className="border border-stone-300 px-2 py-2 text-center">
+                          <td className=" px-2 py-2 text-center">
                             <div className="flex items-center justify-center gap-1">
                               {index === draft.length - 1 ? (
                                 <Button

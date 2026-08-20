@@ -126,7 +126,8 @@
 
 @layer components {
   .app-shell-main {
-    @apply flex-1 overflow-auto bg-gradient-to-b from-stone-100/90 via-background to-stone-50;
+    @apply min-h-0 min-w-0 flex-1 overflow-auto bg-gradient-to-b from-stone-100/90 via-background to-stone-50;
+    -webkit-overflow-scrolling: touch;
   }
 
   .app-card {

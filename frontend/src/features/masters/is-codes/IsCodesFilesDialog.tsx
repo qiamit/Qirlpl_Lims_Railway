@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Eye, Trash2, Upload } from 'lucide-react'
+import { Download, Eye, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -15,6 +15,11 @@ export type IsCodeViewFile = {
   id: string
   file_name: string
   storage_path: string
+  /** Inline/view URL (no download disposition). Prefer over `url`. */
+  viewUrl?: string
+  /** Forced download URL (`Content-Disposition: attachment`). */
+  downloadUrl?: string
+  /** @deprecated Prefer `viewUrl`; kept for older callers. */
   url?: string
   error?: string
 }
@@ -48,11 +53,11 @@ export function IsCodesFilesDialog({
         persistOnFocusLoss
         layer="stacked"
         aria-describedby={undefined}
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           'max-h-[85vh] w-[calc(100%-1.5rem)] max-w-xl overflow-hidden p-0 sm:w-full',
-          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
         )}
       >
         <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
@@ -110,15 +115,16 @@ export function IsCodesFilesDialog({
                     {file.file_name}
                   </p>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {file.url ? (
+                    {file.viewUrl || file.url ? (
                       <a
-                        href={file.url}
+                        href={file.viewUrl || file.url}
                         target="_blank"
                         rel="noreferrer"
                         className={cn(
                           limsOutlineBtnClass,
                           'inline-flex h-8 items-center gap-1 px-2.5 text-xs',
                         )}
+                        aria-label={`View ${file.file_name}`}
                       >
                         <Eye size={14} aria-hidden />
                         View
@@ -128,6 +134,20 @@ export function IsCodesFilesDialog({
                         {file.error || 'Unavailable'}
                       </span>
                     )}
+                    {file.downloadUrl ? (
+                      <a
+                        href={file.downloadUrl}
+                        download={file.file_name}
+                        className={cn(
+                          limsOutlineBtnClass,
+                          'inline-flex h-8 items-center gap-1 px-2.5 text-xs',
+                        )}
+                        aria-label={`Download ${file.file_name}`}
+                      >
+                        <Download size={14} aria-hidden />
+                        Download
+                      </a>
+                    ) : null}
                     <Button
                       type="button"
                       size="sm"

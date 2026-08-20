@@ -98,7 +98,7 @@ function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
   const body = (
     <div
       className={cn(
-        'group flex h-full min-h-[7.5rem] flex-col justify-between border-2 p-4 transition-colors',
+        'group flex h-full min-h-[7.5rem] min-w-0 flex-col justify-between border-2 p-3 sm:p-4 transition-colors',
         heroToneClass[tone],
         href && 'hover:ring-2 hover:ring-amber-600/30',
       )}
@@ -113,7 +113,7 @@ function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
           <Icon size={18} aria-hidden />
         </div>
         <div className="flex min-w-0 items-center gap-1">
-          <p className="text-3xl font-bold tabular-nums tracking-tight sm:text-4xl">{value}</p>
+          <p className="truncate text-2xl font-bold tabular-nums tracking-tight sm:text-3xl lg:text-4xl">{value}</p>
           {href ? (
             <ArrowRight
               size={16}
@@ -122,7 +122,7 @@ function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
           ) : null}
         </div>
       </div>
-      <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-stone-700">{label}</p>
+      <p className="mt-3 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-stone-700 sm:text-xs sm:tracking-[0.14em]">{label}</p>
     </div>
   )
 

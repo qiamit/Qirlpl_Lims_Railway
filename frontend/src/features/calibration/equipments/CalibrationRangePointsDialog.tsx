@@ -5,6 +5,7 @@ import {
   ArrowUpDown,
   Eye,
   Plus,
+  RefreshCw,
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -33,6 +34,7 @@ import {
   emptyCalibrationPointRow,
   newCalibrationPointId,
   type CalibrationPointRow,
+  type CalibrationPointsColumn,
 } from '@/features/calibration/equipment-for-calibration/types'
 import { computeCalibrationPointRowValuesFromMaster } from '@/features/calibration/equipment-for-calibration/calibrationPointsFormula'
 import type { MasterFormulaRefSource } from '@/features/calibration/masterEquipmentFormulaRefs'
@@ -59,7 +61,7 @@ export type CalibrationPointsDialogSection =
   | 'generateReport'
   | 'modeOfCalibration'
 
-const FULLSCREEN_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const FULLSCREEN_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const mastersThClass =
   'border border-stone-700 bg-stone-800 px-1.5 py-2 text-center text-[10px] font-bold uppercase leading-tight tracking-[0.08em] text-amber-200'
@@ -69,7 +71,7 @@ const FULLSCREEN_DIALOG_CLASS = cn(
   limsDialogClass,
   '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
 
@@ -504,11 +506,14 @@ function CalibrationPointsTableEditor({
   table,
   onChange,
   masterRef = null,
+  inputIdPrefix = 'view-pt',
 }: {
   table: CalibrationPointsStored
   onChange: (next: CalibrationPointsStored) => void
   /** Master equipment fields for Calculated column formulas. */
   masterRef?: MasterFormulaRefSource | null
+  /** Unique prefix when multiple editors mount on the same page. */
+  inputIdPrefix?: string
 }) {
   const ensureColumns = (t: CalibrationPointsStored): CalibrationPointsStored =>
     t.columns.length > 0 ? t : singleColumnPointsTable()
@@ -666,12 +671,12 @@ function CalibrationPointsTableEditor({
                     const isFormula = col.type === 'formula'
                     return (
                       <td key={col.id} className="border border-[#e7e0d4] px-2 py-2 align-middle">
-                        <Label htmlFor={`view-pt-${row.id}-${col.id}`} className="sr-only">
+                        <Label htmlFor={`${inputIdPrefix}-${row.id}-${col.id}`} className="sr-only">
                           {col.header} row {index + 1}
                           {isFormula ? ' (calculated)' : ''}
                         </Label>
                         <Input
-                          id={`view-pt-${row.id}-${col.id}`}
+                          id={`${inputIdPrefix}-${row.id}-${col.id}`}
                           value={
                             isFormula
                               ? (displayValues[col.id] ?? '')
@@ -715,6 +720,454 @@ function CalibrationPointsTableEditor({
                         <Trash2 size={16} />
                       </Button>
                     )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function normalizePointsHeaderKey(header: string): string {
+  return header.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function findAppliedForceColumnKey(
+  cols: Array<{ key: string; header: string }>,
+): string | null {
+  const exact = cols.find((c) => normalizePointsHeaderKey(c.header) === 'applied force')
+  if (exact) return exact.key
+  const fuzzy = cols.find((c) => {
+    const h = normalizePointsHeaderKey(c.header)
+    return h.includes('applied force') || h === 'force' || h.endsWith(' force')
+  })
+  return fuzzy?.key ?? cols[0]?.key ?? null
+}
+
+function comparePointCellValues(avRaw: string, bvRaw: string): number {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+  const av = avRaw.trim()
+  const bv = bvRaw.trim()
+  const an = Number(av.replace(/^[±+\s]+/, ''))
+  const bn = Number(bv.replace(/^[±+\s]+/, ''))
+  if (av !== '' && bv !== '' && Number.isFinite(an) && Number.isFinite(bn)) {
+    return an - bn
+  }
+  if (av === '' && bv !== '') return 1
+  if (av !== '' && bv === '') return -1
+  return collator.compare(av, bv)
+}
+
+type CombinedSelectedPointRow = {
+  key: string
+  tabId: string
+  rowId: string
+  masterLabel: string
+  /** Master certificate uncertainty (read-only). */
+  uncertainty: string
+  sourceColumns: CalibrationPointsColumn[]
+  values: Record<string, string>
+  masterRef: MasterFormulaRefSource | null
+}
+
+/** One grid for every selected master's calibration points (rows stacked). */
+function CombinedSelectedMastersPointsTable({
+  selectedTabs,
+  tabs,
+  masterEquipmentOptions,
+  masterMetadata,
+  loadingPointsTabId,
+  refreshing = false,
+  onUpdateTabTable,
+  onRefreshFromMasters,
+}: {
+  selectedTabs: MasterPointsTab[]
+  tabs: MasterPointsTab[]
+  masterEquipmentOptions: FilterComboboxOption[]
+  masterMetadata: Map<string, MasterEquipmentMeta>
+  loadingPointsTabId: string | null
+  refreshing?: boolean
+  onUpdateTabTable: (tabId: string, table: CalibrationPointsStored) => void
+  /** Reload calibration points from master equipment (restores deleted rows). */
+  onRefreshFromMasters: () => void
+}) {
+  const [sortColKey, setSortColKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const loadingAny = selectedTabs.some((t) => loadingPointsTabId === t.id)
+  const readyTabs = selectedTabs.filter(
+    (t) =>
+      t.masterEquipmentId.trim() &&
+      (t.calibrationPointsTable.columns?.length ?? 0) > 0 &&
+      loadingPointsTabId !== t.id,
+  )
+  const waitingMaster = selectedTabs.some((t) => !t.masterEquipmentId.trim())
+  const waitingPoints = selectedTabs.some(
+    (t) =>
+      t.masterEquipmentId.trim() &&
+      (t.calibrationPointsTable.columns?.length ?? 0) === 0 &&
+      loadingPointsTabId !== t.id,
+  )
+
+  const displayColumns = useMemo(() => {
+    const seen = new Set<string>()
+    const cols: Array<{ key: string; header: string; isFormula: boolean }> = []
+    for (const tab of readyTabs) {
+      for (const col of tab.calibrationPointsTable.columns) {
+        const key = normalizePointsHeaderKey(col.header) || col.id
+        if (seen.has(key)) {
+          if (col.type === 'formula') {
+            const existing = cols.find((c) => c.key === key)
+            if (existing) existing.isFormula = true
+          }
+          continue
+        }
+        seen.add(key)
+        cols.push({
+          key,
+          header: col.header.trim() || 'Column',
+          isFormula: col.type === 'formula',
+        })
+      }
+    }
+    return cols
+  }, [readyTabs])
+
+  const appliedForceKey = useMemo(
+    () => findAppliedForceColumnKey(displayColumns),
+    [displayColumns],
+  )
+  /** Default: Applied Force ascending (lowest → highest). */
+  const effectiveSortKey = sortColKey ?? appliedForceKey
+  const effectiveSortDir = sortColKey == null ? 'asc' : sortDir
+
+  const combinedRows = useMemo((): CombinedSelectedPointRow[] => {
+    const rows: CombinedSelectedPointRow[] = []
+    for (const tab of readyTabs) {
+      const tabIndex = tabs.findIndex((t) => t.id === tab.id)
+      const masterLabel = masterLabelForTab(
+        tab,
+        tabIndex >= 0 ? tabIndex : 0,
+        masterEquipmentOptions,
+      )
+      const masterMeta = tab.masterEquipmentId.trim()
+        ? masterMetadata.get(tab.masterEquipmentId)
+        : undefined
+      const masterRef = masterMeta?.formulaRef ?? null
+      const uncertainty = masterMeta?.uncertainty?.trim() || '—'
+      const sourceColumns = tab.calibrationPointsTable.columns
+      const sourceRows =
+        tab.calibrationPointsTable.rows.length > 0
+          ? tab.calibrationPointsTable.rows
+          : [emptyCalibrationPointRow(sourceColumns)]
+      const hasFormula = sourceColumns.some((c) => c.type === 'formula')
+
+      for (const row of sourceRows) {
+        const computed = hasFormula
+          ? computeCalibrationPointRowValuesFromMaster(sourceColumns, row.values, masterRef)
+          : row.values
+        const values: Record<string, string> = {}
+        for (const col of sourceColumns) {
+          const key = normalizePointsHeaderKey(col.header) || col.id
+          values[key] =
+            col.type === 'formula'
+              ? String(computed[col.id] ?? '')
+              : String(row.values[col.id] ?? '')
+        }
+        rows.push({
+          key: `${tab.id}:${row.id}`,
+          tabId: tab.id,
+          rowId: row.id,
+          masterLabel,
+          uncertainty,
+          sourceColumns,
+          values,
+          masterRef,
+        })
+      }
+    }
+    return rows
+  }, [readyTabs, tabs, masterEquipmentOptions, masterMetadata])
+
+  const displayRows = useMemo(() => {
+    if (!effectiveSortKey && combinedRows.length === 0) return combinedRows
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+    const primaryKey = effectiveSortKey
+    const sorted = [...combinedRows].sort((a, b) => {
+      let cmp = 0
+      if (primaryKey === '__master') {
+        cmp = collator.compare(a.masterLabel, b.masterLabel)
+      } else if (primaryKey === '__uncertainty') {
+        cmp = comparePointCellValues(a.uncertainty, b.uncertainty)
+      } else if (primaryKey) {
+        cmp = comparePointCellValues(
+          String(a.values[primaryKey] ?? ''),
+          String(b.values[primaryKey] ?? ''),
+        )
+      }
+      if (cmp !== 0) return effectiveSortDir === 'asc' ? cmp : -cmp
+
+      // Tie-break: Master (A→Z). If already sorting by Master, use Applied Force.
+      if (primaryKey !== '__master') {
+        const byMaster = collator.compare(a.masterLabel, b.masterLabel)
+        if (byMaster !== 0) return byMaster
+        if (appliedForceKey && primaryKey !== appliedForceKey) {
+          return comparePointCellValues(
+            String(a.values[appliedForceKey] ?? ''),
+            String(b.values[appliedForceKey] ?? ''),
+          )
+        }
+        return 0
+      }
+      if (appliedForceKey) {
+        return comparePointCellValues(
+          String(a.values[appliedForceKey] ?? ''),
+          String(b.values[appliedForceKey] ?? ''),
+        )
+      }
+      return 0
+    })
+    return sorted
+  }, [combinedRows, effectiveSortKey, effectiveSortDir, appliedForceKey])
+
+  const toggleSort = (columnKey: string) => {
+    const currentKey = sortColKey ?? appliedForceKey
+    if (currentKey === columnKey) {
+      setSortColKey(columnKey)
+      setSortDir((prev) => {
+        if (sortColKey == null) return 'desc'
+        return prev === 'asc' ? 'desc' : 'asc'
+      })
+      return
+    }
+    setSortColKey(columnKey)
+    setSortDir('asc')
+  }
+
+  const updateCell = (row: CombinedSelectedPointRow, headerKey: string, value: string) => {
+    const tab = readyTabs.find((t) => t.id === row.tabId)
+    if (!tab) return
+    const sourceCol = row.sourceColumns.find(
+      (c) => (normalizePointsHeaderKey(c.header) || c.id) === headerKey,
+    )
+    if (!sourceCol || sourceCol.type === 'formula') return
+
+    const table = tab.calibrationPointsTable
+    const hasFormula = table.columns.some((c) => c.type === 'formula')
+    const nextRows = table.rows.map((r) => {
+      if (r.id !== row.rowId) return r
+      const nextValues = { ...r.values, [sourceCol.id]: value }
+      if (!hasFormula) return { ...r, values: nextValues }
+      return {
+        ...r,
+        values: {
+          ...nextValues,
+          ...computeCalibrationPointRowValuesFromMaster(
+            table.columns,
+            nextValues,
+            row.masterRef,
+          ),
+        },
+      }
+    })
+    onUpdateTabTable(tab.id, { ...table, rows: nextRows })
+  }
+
+  const removeRow = (row: CombinedSelectedPointRow) => {
+    const tab = readyTabs.find((t) => t.id === row.tabId)
+    if (!tab) return
+    const table = tab.calibrationPointsTable
+    const nextRows = table.rows.filter((r) => r.id !== row.rowId)
+    onUpdateTabTable(tab.id, {
+      ...table,
+      rows:
+        nextRows.length > 0
+          ? nextRows
+          : [emptyCalibrationPointRow(table.columns)],
+    })
+  }
+
+  if (loadingAny && readyTabs.length === 0) {
+    return (
+      <div className="rounded-none border-2 border-stone-400 bg-white px-3 py-6 text-center text-xs text-stone-500">
+        Loading calibration points…
+      </div>
+    )
+  }
+
+  if (readyTabs.length === 0) {
+    return (
+      <div className="rounded-none border-2 border-stone-400 bg-white px-3 py-6 text-center text-xs text-stone-500">
+        {waitingMaster
+          ? 'Select a master equipment for the checked row(s) first.'
+          : waitingPoints
+            ? 'No calibration points for the selected master(s) yet.'
+            : 'No calibration points to show.'}
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="w-12 border border-stone-700 bg-stone-800 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                #
+              </th>
+              <th className="min-w-[160px] border border-stone-700 bg-stone-800 px-2 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                <button
+                  type="button"
+                  className="inline-flex max-w-full items-center gap-1 text-left text-amber-200 hover:text-amber-100"
+                  onClick={() => toggleSort('__master')}
+                >
+                  <span className="truncate">Master</span>
+                  {effectiveSortKey === '__master' && effectiveSortDir === 'asc' ? (
+                    <ArrowUp size={12} className="shrink-0 text-amber-300" aria-hidden />
+                  ) : effectiveSortKey === '__master' && effectiveSortDir === 'desc' ? (
+                    <ArrowDown size={12} className="shrink-0 text-amber-300" aria-hidden />
+                  ) : (
+                    <ArrowUpDown size={12} className="shrink-0 text-stone-400" aria-hidden />
+                  )}
+                </button>
+              </th>
+              <th className="min-w-[110px] border border-stone-700 bg-stone-800 px-2 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                <button
+                  type="button"
+                  className="inline-flex max-w-full items-center gap-1 text-left text-amber-200 hover:text-amber-100"
+                  onClick={() => toggleSort('__uncertainty')}
+                >
+                  <span className="truncate">Uncertainty</span>
+                  {effectiveSortKey === '__uncertainty' && effectiveSortDir === 'asc' ? (
+                    <ArrowUp size={12} className="shrink-0 text-amber-300" aria-hidden />
+                  ) : effectiveSortKey === '__uncertainty' && effectiveSortDir === 'desc' ? (
+                    <ArrowDown size={12} className="shrink-0 text-amber-300" aria-hidden />
+                  ) : (
+                    <ArrowUpDown size={12} className="shrink-0 text-stone-400" aria-hidden />
+                  )}
+                </button>
+              </th>
+              {displayColumns.map((col) => {
+                const active = effectiveSortKey === col.key
+                return (
+                  <th
+                    key={col.key}
+                    className="min-w-[140px] border border-stone-700 bg-stone-800 px-2 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200"
+                  >
+                    <button
+                      type="button"
+                      className="inline-flex max-w-full items-center gap-1 text-left text-amber-200 hover:text-amber-100"
+                      onClick={() => toggleSort(col.key)}
+                    >
+                      <span className="truncate">{col.header}</span>
+                      {col.isFormula ? (
+                        <span className="rounded bg-indigo-50 px-1 text-[9px] font-semibold normal-case tracking-wide text-indigo-700">
+                          Calc
+                        </span>
+                      ) : null}
+                      {active && effectiveSortDir === 'asc' ? (
+                        <ArrowUp size={12} className="shrink-0 text-amber-300" aria-hidden />
+                      ) : active && effectiveSortDir === 'desc' ? (
+                        <ArrowDown size={12} className="shrink-0 text-amber-300" aria-hidden />
+                      ) : (
+                        <ArrowUpDown size={12} className="shrink-0 text-stone-400" aria-hidden />
+                      )}
+                    </button>
+                  </th>
+                )
+              })}
+              <th className="w-14 border border-stone-700 bg-stone-800 px-1 py-1 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mx-auto h-8 w-8 px-0 text-amber-200 hover:bg-amber-500/15 hover:text-amber-50"
+                  disabled={refreshing || loadingAny || selectedTabs.length === 0}
+                  onClick={onRefreshFromMasters}
+                  title="Refresh: restore deleted points from selected masters"
+                  aria-label="Refresh calibration points from selected masters"
+                >
+                  <RefreshCw
+                    size={14}
+                    className={cn(refreshing && 'animate-spin')}
+                    aria-hidden
+                  />
+                </Button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((row, index) => {
+              return (
+                <tr
+                  key={row.key}
+                  className={index % 2 === 0 ? 'bg-[#f7f3eb]' : 'bg-[#fffcf7]'}
+                >
+                  <td className="border border-[#e7e0d4] px-2 py-2 text-center align-middle text-stone-500">
+                    {index + 1}
+                  </td>
+                  <td
+                    className="border border-[#e7e0d4] px-2 py-2 text-left align-middle text-xs font-medium text-stone-800"
+                    title={row.masterLabel}
+                  >
+                    <span className="line-clamp-2">{row.masterLabel}</span>
+                  </td>
+                  <td
+                    className="border border-[#e7e0d4] px-2 py-2 text-center align-middle text-xs text-stone-700"
+                    title={row.uncertainty}
+                  >
+                    {row.uncertainty}
+                  </td>
+                  {displayColumns.map((col) => {
+                    const sourceCol = row.sourceColumns.find(
+                      (c) => (normalizePointsHeaderKey(c.header) || c.id) === col.key,
+                    )
+                    const isFormula = sourceCol?.type === 'formula' || (!sourceCol && col.isFormula)
+                    const missing = !sourceCol
+                    return (
+                      <td key={col.key} className="border border-[#e7e0d4] px-2 py-2 align-middle">
+                        {missing ? (
+                          <span className="block text-center text-xs text-stone-400">—</span>
+                        ) : (
+                          <>
+                            <Label
+                              htmlFor={`combined-pt-${row.key}-${col.key}`}
+                              className="sr-only"
+                            >
+                              {row.masterLabel} {col.header} row {index + 1}
+                            </Label>
+                            <Input
+                              id={`combined-pt-${row.key}-${col.key}`}
+                              value={row.values[col.key] ?? ''}
+                              onChange={(e) => updateCell(row, col.key, e.target.value)}
+                              readOnly={isFormula}
+                              tabIndex={isFormula ? -1 : undefined}
+                              placeholder={isFormula ? 'Auto' : col.header}
+                              className={cn(
+                                'h-9 text-center',
+                                isFormula && 'bg-stone-100 text-stone-700',
+                              )}
+                            />
+                          </>
+                        )}
+                      </td>
+                    )
+                  })}
+                  <td className="border border-[#e7e0d4] px-2 py-2 text-center align-middle">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 w-9 px-0 text-destructive hover:bg-destructive/10"
+                      onClick={() => removeRow(row)}
+                      aria-label={`Remove point ${index + 1}`}
+                    >
+                      <Trash2 size={16} />
+                    </Button>
                   </td>
                 </tr>
               )
@@ -996,6 +1449,7 @@ export function CalibrationRangePointsDialog({
   const [viewTabId, setViewTabId] = useState<string | null>(null)
   const [statusViewMasterId, setStatusViewMasterId] = useState<string | null>(null)
   const [loadingPointsTabId, setLoadingPointsTabId] = useState<string | null>(null)
+  const [refreshingSelectedPoints, setRefreshingSelectedPoints] = useState(false)
   const [viewLoadHint, setViewLoadHint] = useState<string | null>(null)
   const [masterMetadata, setMasterMetadata] = useState<Map<string, MasterEquipmentMeta>>(
     () => new Map(),
@@ -1118,6 +1572,61 @@ export function CalibrationRangePointsDialog({
 
   const allTabsSelected =
     tabs.length > 0 && tabs.every((tab) => selectedTabIds.has(tab.id))
+
+  const selectedTabs = useMemo(
+    () => tabs.filter((tab) => selectedTabIds.has(tab.id)),
+    [tabs, selectedTabIds],
+  )
+
+  const refreshSelectedMasterPoints = useCallback(async () => {
+    const targets = selectedTabs.filter((t) => t.masterEquipmentId.trim())
+    if (targets.length === 0) return
+    setRefreshingSelectedPoints(true)
+    setViewLoadHint(null)
+    try {
+      let loaded = 0
+      for (const tab of targets) {
+        setLoadingPointsTabId(tab.id)
+        try {
+          const table = await fetchSingleMasterTable(tab.masterEquipmentId)
+          if (table) {
+            replaceTabTable(tab.id, table)
+            loaded += table.rows.length
+          } else {
+            replaceTabTable(tab.id, singleColumnPointsTable())
+          }
+        } catch {
+          // Continue other masters; hint set after loop.
+        }
+      }
+      setViewLoadHint(
+        `Refreshed ${targets.length} master(s) — restored ${loaded} check point(s) from master equipment.`,
+      )
+    } finally {
+      setLoadingPointsTabId(null)
+      setRefreshingSelectedPoints(false)
+    }
+  }, [selectedTabs, replaceTabTable])
+
+  const ensurePointsLoadedForTab = useCallback(
+    (tab: MasterPointsTab) => {
+      if (
+        tab.masterEquipmentId.trim() &&
+        (tab.calibrationPointsTable.columns?.length ?? 0) === 0 &&
+        loadingPointsTabId !== tab.id
+      ) {
+        void loadPointsForTab(tab.masterEquipmentId, tab.id)
+      }
+    },
+    [loadPointsForTab, loadingPointsTabId],
+  )
+
+  useEffect(() => {
+    if (!open || activeSection !== 'masters') return
+    for (const tab of selectedTabs) {
+      ensurePointsLoadedForTab(tab)
+    }
+  }, [open, activeSection, selectedTabs, ensurePointsLoadedForTab])
 
   const toggleAllTabs = (checked: boolean) => {
     setSelectedTabIds(checked ? new Set(tabs.map((t) => t.id)) : new Set())
@@ -1420,6 +1929,35 @@ export function CalibrationRangePointsDialog({
                     </table>
                   </div>
                 </div>
+
+                {selectedTabs.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="border-b border-stone-300 pb-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                      Selected Masters — Calibration Points
+                      <span className="ml-2 font-semibold normal-case tracking-normal text-amber-800">
+                        ({selectedTabs.length})
+                      </span>
+                    </div>
+                    <CombinedSelectedMastersPointsTable
+                      selectedTabs={selectedTabs}
+                      tabs={tabs}
+                      masterEquipmentOptions={masterEquipmentOptions ?? []}
+                      masterMetadata={masterMetadata}
+                      loadingPointsTabId={loadingPointsTabId}
+                      refreshing={refreshingSelectedPoints}
+                      onUpdateTabTable={replaceTabTable}
+                      onRefreshFromMasters={() => {
+                        void refreshSelectedMasterPoints()
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-stone-500">
+                    Select one or more master rows (checkbox) to show their calibration point
+                    tables below.
+                  </p>
+                )}
+
                 {(masterEquipmentOptions ?? []).length === 0 ? (
                   <p className="text-xs text-stone-500">
                     No master equipment found. Add standards under Equipment for Calibration.

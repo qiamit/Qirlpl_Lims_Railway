@@ -671,10 +671,10 @@ export function TestAllocationForm({
           className={cn(
             limsDialogClass,
             '!max-w-md !gap-0 !p-0',
-            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+            'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
           )}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
-          portalClassName="md:left-[268px]"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
+          portalClassName="lg:left-[268px]"
         >
           <div className="relative bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3 text-white">
             <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />

@@ -407,12 +407,12 @@ export function DucEquipmentDetailsDialog({
       <DialogContent
         layer="stacked"
         persistOnFocusLoss
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           'max-h-[min(92vh,820px)] max-w-3xl gap-0 overflow-hidden p-0',
           'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
-          'md:left-[calc(268px+(100vw-268px)/2)]',
+          'lg:left-[calc(268px+(100vw-268px)/2)]',
           '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
         )}
         aria-describedby={undefined}
@@ -968,12 +968,12 @@ function DucAllocationDialog({
       <DialogContent
         layer="nested"
         persistOnFocusLoss
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden p-0',
           'left-0 top-0',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
           '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
         )}
         aria-describedby={undefined}
@@ -1247,12 +1247,12 @@ function SrfCertificatesListDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         persistOnFocusLoss
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden p-0',
           'left-0 top-0',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
           '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
         )}
         layer="nested"

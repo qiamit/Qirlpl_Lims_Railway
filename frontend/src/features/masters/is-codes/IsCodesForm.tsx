@@ -284,6 +284,7 @@ export function IsCodesForm({
                   const input = document.createElement('input')
                   input.type = 'file'
                   input.multiple = true
+                  input.accept = '.pdf,.png,.jpg,.jpeg,.doc,.docx,application/pdf,image/png,image/jpeg'
                   input.onchange = () => {
                     const list = Array.from(input.files ?? [])
                     onPickFiles(list)

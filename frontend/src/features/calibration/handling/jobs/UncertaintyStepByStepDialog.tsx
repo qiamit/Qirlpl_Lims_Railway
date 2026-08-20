@@ -15,13 +15,13 @@ import {
   limsTableHeadClass,
 } from '@/lib/limsThemeUi'
 
-const MU_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const MU_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const MU_FULLSCREEN_DIALOG_CLASS = cn(
   limsDialogClass,
   '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
 
@@ -29,7 +29,7 @@ const MU_CENTERED_DIALOG_CLASS = cn(
   limsDialogClass,
   '!absolute left-auto top-auto !flex translate-x-0 translate-y-0 flex-col',
   'max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl',
-  'md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))]',
+  'lg:w-[min(48rem,calc(100vw-268px-2rem))] lg:max-w-[min(48rem,calc(100vw-268px-2rem))]',
   '[&>button]:text-white [&>button]:hover:bg-white/10',
 )
 import type {

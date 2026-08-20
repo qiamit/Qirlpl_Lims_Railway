@@ -1213,12 +1213,12 @@ export function SelectCalibrationEquipmentDialog({
         <DialogContent
           layer="nested"
           persistOnFocusLoss
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             limsDialogClass,
             'max-h-[min(92vh,820px)] max-w-4xl gap-0 overflow-hidden p-0',
             'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
-            'md:left-[calc(268px+(100vw-268px)/2)]',
+            'lg:left-[calc(268px+(100vw-268px)/2)]',
             '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-red-700',
           )}
           aria-describedby={undefined}

@@ -540,11 +540,11 @@ export default function ProductServicesMasterPage() {
         <DialogContent
           persistOnFocusLoss
           aria-describedby={undefined}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             'max-h-[92vh] w-[calc(100vw-1rem)] max-w-4xl gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none',
             '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
-            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(56rem,calc(100vw-268px-2rem))] md:max-w-[min(56rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+            'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 lg:w-[min(56rem,calc(100vw-268px-2rem))] lg:max-w-[min(56rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
           )}
         >
           <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">

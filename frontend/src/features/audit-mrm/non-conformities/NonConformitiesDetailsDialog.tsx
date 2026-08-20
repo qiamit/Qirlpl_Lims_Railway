@@ -32,8 +32,8 @@ export function NonConformitiesDetailsDialog({
       <DialogContent
         persistOnFocusLoss
         aria-describedby={undefined}
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
-        portalClassName="md:pl-[268px]"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
+        portalClassName="lg:pl-[268px]"
         className={cn(
           limsDialogClass,
           'flex w-[min(100%-1.5rem,42rem)] max-h-[min(90dvh,40rem)] flex-col',

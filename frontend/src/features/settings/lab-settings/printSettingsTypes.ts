@@ -274,6 +274,28 @@ export function pageNumberPreviewSample(type: PageNumberType): string {
   return PAGE_NUMBER_TYPE_LABELS[type] ?? PAGE_NUMBER_TYPE_LABELS.page_of
 }
 
+/** Visible label for paginated preview/print sheets (CSS counters do not run on-screen). */
+export function formatSheetPageNumber(
+  type: PageNumberType,
+  pageIndex: number,
+  totalPages: number,
+): string {
+  if (type === 'none' || totalPages < 1 || pageIndex < 1) return ''
+  const n = String(pageIndex).padStart(2, '0')
+  const t = String(totalPages).padStart(2, '0')
+  switch (type) {
+    case 'of':
+      return `${n} of ${t}`
+    case 'slash':
+      return `${n}/${t}`
+    case 'number':
+      return n
+    case 'page_of':
+    default:
+      return `Page ${n} of ${t}`
+  }
+}
+
 /** Page content border style */
 export const PAGE_BORDER_TYPES = [
   'none',

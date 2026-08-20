@@ -363,10 +363,10 @@ export function QiAssistant({
       </DialogTrigger>
       <DialogContent
         aria-describedby={undefined}
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           'flex max-h-[88vh] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden border-slate-300 bg-white p-0 shadow-2xl sm:max-w-xl sm:rounded-lg',
-          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+          'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
           '[&>button]:text-white [&>button]:opacity-80 [&>button]:hover:bg-white/10 [&>button]:hover:opacity-100',
         )}
       >

@@ -103,13 +103,13 @@ function nablAccreditationBodyId(
   return bodies.find((body) => body.name.trim().toLowerCase() === 'nabl')?.id ?? ''
 }
 
-const VIEW_FACTOR_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const VIEW_FACTOR_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const VIEW_FACTOR_FULLSCREEN_DIALOG_CLASS = cn(
   limsDialogClass,
   '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
 
@@ -186,10 +186,6 @@ export function CalibrationEquipmentsForm({
     useState<CalibrationPointsDialogSection>('masters')
   const [randomnessEditorRowId, setRandomnessEditorRowId] = useState<string | null>(null)
   const [randomnessDraft, setRandomnessDraft] = useState<GenerateReportPointRandomness[]>([])
-  const [randomnessFormatDraft, setRandomnessFormatDraft] = useState<{
-    roundOff: string
-    decimalPlaces: number
-  }>({ roundOff: '', decimalPlaces: 2 })
   const [selectedRangeIds, setSelectedRangeIds] = useState<Set<string>>(() => new Set())
   const [certificateFormatOpen, setCertificateFormatOpen] = useState(false)
   const [checklistKind, setChecklistKind] = useState<ConductOutsideChecklistKind | null>(null)
@@ -515,6 +511,29 @@ export function CalibrationEquipmentsForm({
     )
   }, [randomnessEditorRow, form.ranges, generateReportInputColumns, templateRange])
 
+  /** View Factor table: default sort Reference Value lowest → highest. */
+  const sortedRandomnessDraft = useMemo(() => {
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+    return [...randomnessDraft].sort((a, b) => {
+      const av = String(a.referenceValue ?? '').trim()
+      const bv = String(b.referenceValue ?? '').trim()
+      const an = Number(av.replace(/^[±+\s]+/, ''))
+      const bn = Number(bv.replace(/^[±+\s]+/, ''))
+      let cmp = 0
+      if (av !== '' && bv !== '' && Number.isFinite(an) && Number.isFinite(bn)) {
+        cmp = an - bn
+      } else if (av === '' && bv !== '') {
+        cmp = 1
+      } else if (av !== '' && bv === '') {
+        cmp = -1
+      } else {
+        cmp = collator.compare(av, bv)
+      }
+      if (cmp !== 0) return cmp
+      return collator.compare(String(a.point ?? '').trim(), String(b.point ?? '').trim())
+    })
+  }, [randomnessDraft])
+
   const openRandomnessEditor = (row: GenerateReportConfigRow) => {
     if (!templateRange) return
     const entries = buildViewFactorPointEntriesForGenerateReportRow(
@@ -524,19 +543,12 @@ export function CalibrationEquipmentsForm({
       templateRange,
     )
     setRandomnessDraft(buildGenerateReportRandomnessEditorRows(row, entries))
-    setRandomnessFormatDraft({
-      roundOff: row.roundOff,
-      decimalPlaces: Number.isFinite(row.decimalPlaces)
-        ? Math.max(0, Math.min(6, Math.round(row.decimalPlaces)))
-        : 2,
-    })
     setRandomnessEditorRowId(row.id)
   }
 
   const closeRandomnessEditor = () => {
     setRandomnessEditorRowId(null)
     setRandomnessDraft([])
-    setRandomnessFormatDraft({ roundOff: '', decimalPlaces: 2 })
   }
 
   const updateRandomnessDraftRow = (
@@ -554,6 +566,11 @@ export function CalibrationEquipmentsForm({
     const randomnessByPoint: GenerateReportPointRandomness[] = pointRows.map((p) => {
       const referenceValue = String(p.referenceValue ?? '').trim()
       const rangeId = String(p.rangeId ?? '').trim()
+      const roundOff = String(p.roundOff ?? '').trim()
+      const decimalPlaces =
+        typeof p.decimalPlaces === 'number' && Number.isFinite(p.decimalPlaces)
+          ? Math.max(0, Math.min(6, Math.round(p.decimalPlaces)))
+          : 2
       return {
         ...p,
         point: p.point.trim(),
@@ -561,8 +578,11 @@ export function CalibrationEquipmentsForm({
         ...(rangeId ? { rangeId } : {}),
         isDefault: false,
         randomnessMode: parseGenerateReportRandomnessMode(p.randomnessMode),
+        roundOff,
+        decimalPlaces,
       }
     })
+    const firstPoint = randomnessByPoint[0]
     updateGenerateReportRow(randomnessEditorRowId, {
       // Top-level unused for Apply — clear so UI never shows legacy "Percent 0".
       randomnessMode: 'percent',
@@ -570,16 +590,16 @@ export function CalibrationEquipmentsForm({
       randomnessFloor: '',
       randomnessCap: '',
       randomnessByPoint,
-      roundOff: randomnessFormatDraft.roundOff,
-      decimalPlaces: randomnessFormatDraft.decimalPlaces,
+      // Row-level kept as fallback for legacy Apply / new points.
+      roundOff: firstPoint ? String(firstPoint.roundOff ?? '').trim() : '',
+      decimalPlaces:
+        firstPoint &&
+        typeof firstPoint.decimalPlaces === 'number' &&
+        Number.isFinite(firstPoint.decimalPlaces)
+          ? Math.max(0, Math.min(6, Math.round(firstPoint.decimalPlaces)))
+          : 2,
     })
     closeRandomnessEditor()
-  }
-
-  const updateRandomnessFormatDraft = (
-    patch: Partial<{ roundOff: string; decimalPlaces: number }>,
-  ) => {
-    setRandomnessFormatDraft((prev) => ({ ...prev, ...patch }))
   }
 
   const randomnessEditorInputLabel = useMemo(() => {
@@ -612,13 +632,12 @@ export function CalibrationEquipmentsForm({
       generateReportInputColumns,
       templateRange,
     )
-    const { pointRows, roundOff, decimalPlaces } = copyGenerateReportRandomnessDraftFromRow(
+    const { pointRows } = copyGenerateReportRandomnessDraftFromRow(
       randomnessDraft,
       sourceRow,
       sourceEntries,
     )
     setRandomnessDraft(pointRows)
-    setRandomnessFormatDraft({ roundOff, decimalPlaces })
   }
 
   const allRangesSelected =
@@ -1597,7 +1616,7 @@ export function CalibrationEquipmentsForm({
                   </tr>
                 </thead>
                 <tbody>
-                  {randomnessDraft.length === 0 ? (
+                  {                    randomnessDraft.length === 0 ? (
                     <tr>
                       <td
                         colSpan={10}
@@ -1607,17 +1626,23 @@ export function CalibrationEquipmentsForm({
                       </td>
                     </tr>
                   ) : (
-                    randomnessDraft.map((entry, index) => {
+                    sortedRandomnessDraft.map((entry, index) => {
                       const mode = parseGenerateReportRandomnessMode(entry.randomnessMode)
                       const referenceValue = String(entry.referenceValue ?? '').trim()
+                      const roundOff = String(entry.roundOff ?? '').trim()
+                      const decimalPlaces =
+                        typeof entry.decimalPlaces === 'number' &&
+                        Number.isFinite(entry.decimalPlaces)
+                          ? Math.max(0, Math.min(6, Math.round(entry.decimalPlaces)))
+                          : 2
                       const { outputMin, outputMax } = computeGenerateReportOutputMinMaxPreview({
                         referenceRaw: referenceValue,
                         mode,
                         randomnessFactor: entry.randomnessFactor,
                         randomnessFloor: entry.randomnessFloor,
                         randomnessCap: entry.randomnessCap,
-                        roundOff: randomnessFormatDraft.roundOff,
-                        decimalPlaces: randomnessFormatDraft.decimalPlaces,
+                        roundOff,
+                        decimalPlaces,
                         pointValue: entry.point,
                         ranges: form.ranges,
                         rangeId: entry.rangeId,
@@ -1724,9 +1749,11 @@ export function CalibrationEquipmentsForm({
                               step="any"
                               inputMode="decimal"
                               placeholder="e.g. 0.01"
-                              value={randomnessFormatDraft.roundOff}
+                              value={roundOff}
                               onChange={(e) =>
-                                updateRandomnessFormatDraft({ roundOff: e.target.value })
+                                updateRandomnessDraftRow(entry.id, {
+                                  roundOff: e.target.value,
+                                })
                               }
                               className="h-9 text-center"
                               aria-label={`Round Off for point ${entry.point}`}
@@ -1741,10 +1768,10 @@ export function CalibrationEquipmentsForm({
                               step={1}
                               inputMode="numeric"
                               placeholder="0–6"
-                              value={randomnessFormatDraft.decimalPlaces}
+                              value={decimalPlaces}
                               onChange={(e) => {
                                 const n = Number(e.target.value)
-                                updateRandomnessFormatDraft({
+                                updateRandomnessDraftRow(entry.id, {
                                   decimalPlaces:
                                     !e.target.value.trim() || !Number.isFinite(n)
                                       ? 0

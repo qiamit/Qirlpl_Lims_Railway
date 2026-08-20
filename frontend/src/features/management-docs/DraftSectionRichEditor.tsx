@@ -1378,12 +1378,12 @@ export function DraftSectionRichEditor({
         <DialogContent
           layer="stacked"
           aria-describedby={undefined}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             limsDialogClass,
             'w-[min(520px,96vw)] max-w-none',
             '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
-            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:!-translate-x-1/2 md:!-translate-y-1/2',
+            'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:!-translate-x-1/2 md:!-translate-y-1/2',
           )}
         >
           <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">

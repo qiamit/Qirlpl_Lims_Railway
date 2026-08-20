@@ -300,9 +300,9 @@ export function AddSectionTestDialog({
         className={cn(
           limsDialogClass,
           'left-0 top-0 z-[60] flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:rounded-none',
-          'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+          'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
         )}
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         layer="nested"
         showCloseButton={!editSpecOpen && !addTestParameterOpen && !sampleDetailsOpen}
         aria-describedby={undefined}
@@ -524,10 +524,10 @@ export function AddSectionTestDialog({
           className={cn(
             limsDialogClass,
             '!max-w-md !gap-0 !p-0',
-            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+            'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
           )}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
-          portalClassName="md:left-[268px]"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
+          portalClassName="lg:left-[268px]"
           layer="stacked"
           aria-describedby={undefined}
         >

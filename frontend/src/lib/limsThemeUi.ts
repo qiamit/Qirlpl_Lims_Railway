@@ -3,10 +3,10 @@ import { cn } from '@/lib/utils'
 /** App-wide Client Master theme — visual only; do not encode business logic here. */
 
 export const limsPageShellClass =
-  'mx-auto w-full max-w-[1600px] space-y-4 bg-gradient-to-b from-stone-100/90 to-stone-50 p-[1%] sm:space-y-5'
+  'mx-auto w-full min-w-0 max-w-[1600px] space-y-3 bg-gradient-to-b from-stone-100/90 to-stone-50 p-2 sm:space-y-4 sm:p-3 lg:space-y-5 lg:p-[1%]'
 
 export const limsPanelClass =
-  'overflow-hidden rounded-none border-2 border-stone-500 bg-card text-card-foreground shadow-sm ring-1 ring-amber-700/20'
+  'min-w-0 overflow-hidden rounded-none border-2 border-stone-500 bg-card text-card-foreground shadow-sm ring-1 ring-amber-700/20'
 
 export const limsDarkBarClass =
   'relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 text-white'
@@ -57,7 +57,7 @@ export const limsTableHeadClass =
 export const limsTableBodyToneClass = 'bg-lims-paper text-foreground'
 
 export const limsDialogClass = cn(
-  'gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-card text-card-foreground p-0 shadow-2xl',
+  'gap-0 max-h-[92dvh] overflow-hidden rounded-none border-4 border-stone-700 bg-card text-card-foreground p-0 shadow-2xl',
   'ring-2 ring-amber-700/40 sm:rounded-none',
   '[&>button]:!rounded-none [&>button]:opacity-100',
 )

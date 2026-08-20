@@ -83,13 +83,13 @@ import type { ManagementDocumentRow } from './types'
 import { MANAGEMENT_DOC_STATUSES } from './types'
 
 /** Fullscreen preview — main content area only (sidebar 268px stays visible). */
-const MGMT_A4_PREVIEW_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const MGMT_A4_PREVIEW_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const MGMT_A4_PREVIEW_DIALOG_CLASS = cn(
   limsDialogClass,
   '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden border-0 bg-white p-0 shadow-none ring-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   'data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 sm:rounded-none',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
@@ -98,7 +98,7 @@ const MGMT_A4_SECTION_EDIT_DIALOG_CLASS = cn(
   limsDialogClass,
   '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden border-0 p-0 shadow-none ring-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   'data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:rounded-none',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
@@ -106,7 +106,7 @@ const MGMT_A4_SECTION_EDIT_DIALOG_CLASS = cn(
 const MGMT_A4_NESTED_DIALOG_CLASS = cn(
   limsDialogClass,
   'max-w-2xl !gap-0 overflow-hidden p-0',
-  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+  'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
   '[&>button]:text-white [&>button]:hover:bg-white/10',
 )
 

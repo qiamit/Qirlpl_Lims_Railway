@@ -39,7 +39,7 @@ export function ResultsUnderReviewHeaderBar({
           <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
           <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
 
-          <div className="relative flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+          <div className="relative flex flex-wrap items-center gap-2 lg:flex-nowrap sm:gap-3">
             <h1 className="shrink-0 text-base font-semibold tracking-tight text-white sm:text-lg">
               Results Under Review
             </h1>

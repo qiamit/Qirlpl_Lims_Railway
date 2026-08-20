@@ -39,9 +39,9 @@ import { cn } from '@/lib/utils'
 import type { UserAccount, UserForm } from './types'
 import { emptyUserForm } from './types'
 
-const sidebarCenteredOverlayClass = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const sidebarCenteredOverlayClass = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 const sidebarCenteredDialogPositionClass =
-  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2'
+  'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2'
 
 type UserManagementFormProps = {
   mode: 'create' | 'edit' | 'delete'
@@ -669,7 +669,7 @@ export function UserManagementForm(props: UserManagementFormProps) {
           </FormSection>
 
           <FormSection step="02" title="Lab Assignment">
-            <div className="grid grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
               <Field>
                 <FieldLabel htmlFor="user-division">Division</FieldLabel>
                 {renderOptionManager({

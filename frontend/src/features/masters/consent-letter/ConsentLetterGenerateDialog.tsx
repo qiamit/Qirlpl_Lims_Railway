@@ -32,12 +32,12 @@ import { ConsentLetterTestParameterPickerDialog } from './ConsentLetterTestParam
 import { generateNextConsentLetterNumber, insertConsentLetter, updateConsentLetter } from './consentLetterDb'
 import type { ConsentLetterListRow } from './types'
 
-const dialogOverlayClass = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const dialogOverlayClass = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const dialogShellClass = cn(
   'max-h-[92vh] w-[calc(100vw-1rem)] max-w-3xl gap-0 overflow-hidden rounded-none border-4 border-stone-700 bg-white p-0 shadow-2xl ring-2 ring-amber-700/40 sm:w-full sm:rounded-none',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
-  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+  'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 lg:w-[min(48rem,calc(100vw-268px-2rem))] lg:max-w-[min(48rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
 )
 
 async function parametersFromSavedRow(

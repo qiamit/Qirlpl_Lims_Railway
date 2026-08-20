@@ -13,6 +13,43 @@ import { buildIsCodesListAssistantContext, formatIsCodeLabel } from './buildIsCo
 import { emptyIsCodeForm, normalizeText, toProperTitleCase, type IsCodeFileRow, type IsCodeForm, type IsCodeRow } from './types'
 
 const BUCKET = 'is-code-files'
+/** Must stay within storage.buckets.file_size_limit for is-code-files. */
+const IS_CODE_MAX_FILE_BYTES = 50 * 1024 * 1024
+const IS_CODE_ALLOWED_EXT = new Set(['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'])
+
+function isCodeFileContentType(file: File): string {
+  if (file.type && file.type !== 'application/octet-stream') return file.type
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  switch (ext) {
+    case 'pdf':
+      return 'application/pdf'
+    case 'png':
+      return 'image/png'
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'doc':
+      return 'application/msword'
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    default:
+      return 'application/pdf'
+  }
+}
+
+function assertIsCodeUploadable(file: File): void {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  if (!IS_CODE_ALLOWED_EXT.has(ext)) {
+    throw new Error(
+      `Unsupported file type ".${ext || '?'}". Allowed: PDF, PNG, JPG, DOC, DOCX.`,
+    )
+  }
+  if (file.size > IS_CODE_MAX_FILE_BYTES) {
+    throw new Error(
+      `File "${file.name}" is too large (${Math.ceil(file.size / (1024 * 1024))} MB). Max 50 MB.`,
+    )
+  }
+}
 
 const formatSupabaseError = (err: unknown) => {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -430,11 +467,29 @@ export default function IsCodesMasterPage() {
   }
 
   const uploadFiles = async (isCodeId: string, files: File[]) => {
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession()
+    if (sessionErr) throw sessionErr
+    if (!sessionData.session?.access_token) {
+      throw new Error('Your session expired. Please sign in again, then retry the file upload.')
+    }
+
     for (const file of files) {
+      assertIsCodeUploadable(file)
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const path = `${isCodeId}/${crypto.randomUUID()}_${safeName}`
-      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false })
-      if (upErr) throw upErr
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
+        upsert: false,
+        contentType: isCodeFileContentType(file),
+      })
+      if (upErr) {
+        const msg = upErr.message || 'Upload failed'
+        if (/failed to fetch/i.test(msg)) {
+          throw new Error(
+            'File upload blocked by network/CORS. Refresh the page and try again. If it persists, the API gateway may still be redeploying.',
+          )
+        }
+        throw upErr
+      }
 
       const { error: metaErr } = await supabase.from('is_code_files').insert({
         is_code_id: isCodeId,
@@ -445,9 +500,18 @@ export default function IsCodesMasterPage() {
     }
   }
 
-  const getSignedUrl = async (storagePath: string): Promise<string | undefined> => {
+  const getSignedUrl = async (
+    storagePath: string,
+    opts?: { download?: string | boolean },
+  ): Promise<string | undefined> => {
     try {
-      const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, 60 * 10)
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(
+          storagePath,
+          60 * 10,
+          opts?.download != null ? { download: opts.download } : undefined,
+        )
       if (error) throw error
       return data.signedUrl
     } catch {
@@ -469,12 +533,18 @@ export default function IsCodesMasterPage() {
     if (dbList.length > 0) {
       const withUrls: PopupFile[] = []
       for (const f of dbList) {
-        const url = await getSignedUrl(f.storage_path)
+        const [viewUrl, downloadUrl] = await Promise.all([
+          getSignedUrl(f.storage_path),
+          getSignedUrl(f.storage_path, { download: f.file_name || true }),
+        ])
         withUrls.push({
           id: f.id,
           file_name: f.file_name,
           storage_path: f.storage_path,
-          ...(url ? { url } : { error: 'Signed URL blocked by storage policy' }),
+          ...(viewUrl
+            ? { viewUrl, url: viewUrl }
+            : { error: 'Signed URL blocked by storage policy' }),
+          ...(downloadUrl ? { downloadUrl } : {}),
         })
       }
       return withUrls
@@ -488,15 +558,21 @@ export default function IsCodesMasterPage() {
     const objList = Array.isArray(objects) ? objects : []
     const fromStorage: PopupFile[] = []
     for (const obj of objList) {
-      const name = (obj as any)?.name as string | undefined
+      const name = (obj as { name?: string })?.name
       if (!name) continue
       const storagePath = `${row.id}/${name}`
-      const url = await getSignedUrl(storagePath)
+      const [viewUrl, downloadUrl] = await Promise.all([
+        getSignedUrl(storagePath),
+        getSignedUrl(storagePath, { download: name }),
+      ])
       fromStorage.push({
         id: `storage:${storagePath}`,
         file_name: name,
         storage_path: storagePath,
-        ...(url ? { url } : { error: 'Signed URL blocked by storage policy' }),
+        ...(viewUrl
+          ? { viewUrl, url: viewUrl }
+          : { error: 'Signed URL blocked by storage policy' }),
+        ...(downloadUrl ? { downloadUrl } : {}),
       })
     }
     return fromStorage
@@ -603,8 +679,7 @@ export default function IsCodesMasterPage() {
       setSaveMessage(null)
       setSaveLoading(true)
       try {
-        const payload = {
-          ...(editingId ? { id: editingId } : null),
+        const basePayload = {
           is_number: normalizeText(form.isNumber),
           revision_year: normalizeText(form.revisionYear) || null,
           reaffirmation_year: normalizeText(form.reaffirmationYear) || null,
@@ -615,11 +690,16 @@ export default function IsCodesMasterPage() {
           remarks: normalizeText(form.remarks) || null,
         }
 
-        const { data, error } = await supabase
-          .from('is_codes')
-          .upsert(payload, { onConflict: editingId ? 'id' : 'is_number,revision_year' })
-          .select('id')
-          .single()
+        // Prefer insert/update over upsert — avoids 42P10 when the unique index
+        // on (is_number, revision_year) is missing or not visible to PostgREST.
+        const { data, error } = editingId
+          ? await supabase
+              .from('is_codes')
+              .update(basePayload)
+              .eq('id', editingId)
+              .select('id')
+              .single()
+          : await supabase.from('is_codes').insert(basePayload).select('id').single()
         if (error) throw error
 
         const id = (data as { id: string } | null)?.id ?? editingId
@@ -767,8 +847,19 @@ export default function IsCodesMasterPage() {
           return
         }
 
-        const { error } = await supabase.from('is_codes').upsert(cleanPayloads, { onConflict: 'is_number,revision_year' })
-        if (error) throw error
+        // Upsert by natural key when unique index exists; otherwise insert-or-update per row.
+        const { error } = await supabase
+          .from('is_codes')
+          .upsert(cleanPayloads, { onConflict: 'is_number,revision_year' })
+        if (error) {
+          // 42P10 = missing unique constraint for ON CONFLICT — fall back to insert.
+          if (String(error.code) === '42P10' || /ON CONFLICT/i.test(error.message ?? '')) {
+            const { error: insertErr } = await supabase.from('is_codes').insert(cleanPayloads)
+            if (insertErr) throw insertErr
+          } else {
+            throw error
+          }
+        }
 
         setSaveMessage(`Imported ${cleanPayloads.length} record(s).`)
         await loadIsCodes()
@@ -857,12 +948,12 @@ export default function IsCodesMasterPage() {
         <DialogContent
           persistOnFocusLoss
           aria-describedby={undefined}
-          overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+          overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
           className={cn(
             limsDialogClass,
             'max-h-[92vh] w-[calc(100%-1.5rem)] max-w-3xl sm:w-full',
             // Center in main content area (sidebar 268px stays clear)
-            'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+            'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
           )}
         >
           <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">

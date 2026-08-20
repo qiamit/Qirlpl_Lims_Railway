@@ -83,6 +83,10 @@ export function TestReportTemplateLivePreview({
     const doc = iframe?.contentDocument
     if (!doc) return
     try {
+      // Fonts/images must settle before measuring page breaks — otherwise rows
+      // grow after pagination and hide under the letterhead footer.
+      const fonts = doc.fonts?.ready
+      if (fonts) await fonts
       await paginateTestReportPreview(doc, printSettings)
     } catch {
       // keep unpaginated document if measurement fails
@@ -177,15 +181,13 @@ export function TestReportTemplateLivePreview({
 
   useEffect(() => {
     if (!html) return
-    const t1 = window.setTimeout(() => {
+    // Single delayed pass after layout — early 50ms pass used to lock bad breaks
+    // via `.preview-sheets` early-return before fonts finished loading.
+    const t = window.setTimeout(() => {
       void paginateAndMeasure()
-    }, 50)
-    const t2 = window.setTimeout(() => {
-      void paginateAndMeasure()
-    }, 400)
+    }, 120)
     return () => {
-      window.clearTimeout(t1)
-      window.clearTimeout(t2)
+      window.clearTimeout(t)
     }
   }, [html, paginateAndMeasure])
 

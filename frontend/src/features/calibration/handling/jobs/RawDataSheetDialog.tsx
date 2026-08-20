@@ -150,13 +150,13 @@ import {
   MU_LEAST_COUNT_FIELD_KEY,
 } from '@/features/calibration/equipments/muCalculationTypes'
 
-const RDS_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const RDS_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const RDS_FULLSCREEN_DIALOG_CLASS = cn(
   limsDialogClass,
   '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
 
@@ -165,7 +165,7 @@ const RDS_CENTERED_DIALOG_CLASS = cn(
   limsDialogClass,
   '!absolute left-auto top-auto translate-x-0 translate-y-0',
   'max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl',
-  'md:w-[min(48rem,calc(100vw-268px-2rem))] md:max-w-[min(48rem,calc(100vw-268px-2rem))]',
+  'lg:w-[min(48rem,calc(100vw-268px-2rem))] lg:max-w-[min(48rem,calc(100vw-268px-2rem))]',
   '[&>button]:text-white [&>button]:hover:bg-white/10',
 )
 
@@ -738,17 +738,24 @@ function readingWithRandomnessDeviation(
     rangeMax?: number
     rangeMinBound?: number | null
     rangeMaxBound?: number | null
+    /** Sheet calibration point (load) — avoids clamping indicator-scale refs to Range Min. */
+    pointValue?: number | null
   },
 ): string {
   const scaled = reference * (Number.isFinite(multiple) && multiple !== 0 ? multiple : 1)
   const signedRandom = unitSignedFromSalt(salt)
   const factor = Number.isFinite(randomnessFactor) ? randomnessFactor : 0
+  const pointForClamp =
+    options?.pointValue != null && Number.isFinite(options.pointValue)
+      ? options.pointValue
+      : null
   const finishReading = (raw: number): string => {
     const clamped = clampGenerateReportReadingToEquipmentRange(
       raw,
       scaled,
       options?.rangeMinBound ?? null,
       options?.rangeMaxBound ?? null,
+      pointForClamp,
     )
     const snapped =
       Number.isFinite(leastCount) && leastCount > 0
@@ -759,6 +766,7 @@ function readingWithRandomnessDeviation(
       scaled,
       options?.rangeMinBound ?? null,
       options?.rangeMaxBound ?? null,
+      pointForClamp,
     )
     return formatNumberInput(String(snappedClamped), decimalPlaces)
   }
@@ -3187,9 +3195,19 @@ export function RawDataSheetDialog({
         const floor = parseOptionalAbsoluteBand(resolved.randomnessFloor)
         const cap = parseOptionalAbsoluteBand(resolved.randomnessCap)
 
-        const colDp = decimals[key] ?? dp
+        const pointRoundOff = String(resolved.roundOff ?? '').trim()
+        const pointRoundN = Number(pointRoundOff)
+        const colDp =
+          typeof resolved.decimalPlaces === 'number' && Number.isFinite(resolved.decimalPlaces)
+            ? Math.max(0, Math.min(6, Math.round(resolved.decimalPlaces)))
+            : (decimals[key] ?? dp)
         const multiple = multiples[key] ?? 1
-        const leastCount = resolveReportLeastCount(leastCounts[key], reportLeastCountOptions)
+        const leastCount = resolveReportLeastCount(
+          pointRoundOff && Number.isFinite(pointRoundN) && pointRoundN > 0
+            ? pointRoundOff
+            : leastCounts[key],
+          reportLeastCountOptions,
+        )
         // Factor 0 / empty → write exact reference (e.g. point 0 → reading 0).
         // Positive factor → Ref ± band (with optional Min/Max clamps).
         const effectiveFactor =
@@ -3218,6 +3236,10 @@ export function RawDataSheetDialog({
             rangeMax: rowRangeBounds.rangeMax ?? defaultRangeBounds.rangeMax ?? 0,
             rangeMinBound: rowRangeBounds.rangeMin ?? defaultRangeBounds.rangeMin,
             rangeMaxBound: rowRangeBounds.rangeMax ?? defaultRangeBounds.rangeMax,
+            pointValue: (() => {
+              const n = Number(String(row.pointValue ?? '').trim())
+              return Number.isFinite(n) ? n : null
+            })(),
           },
         )
         values[key] = generated

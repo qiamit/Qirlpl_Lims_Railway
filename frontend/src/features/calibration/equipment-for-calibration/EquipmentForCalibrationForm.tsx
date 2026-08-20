@@ -107,13 +107,22 @@ import { ThermalExpansionCoeffField } from './ThermalExpansionCoeffField'
 import { CalibrationPointsTableSetupDialog } from './CalibrationPointsTableSetupDialog'
 import { IqcMasterSelectionDialog } from './IqcMasterSelectionDialog'
 import { computeCalibrationPointRowValues } from './calibrationPointsFormula'
+import {
+  calPointsCellInputClass,
+  calPointsCellReadonlyClass,
+  calPointsCheckboxClass,
+  calPointsPanelClass,
+  calPointsRowToneClass,
+  calPointsTableClass,
+  calPointsThClass,
+} from './calibrationPointsTableUi'
 
-const NESTED_FULLSCREEN_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const NESTED_FULLSCREEN_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
 const NESTED_FULLSCREEN_DIALOG_CLASS = cn(
   '!flex z-[60] h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none sm:rounded-none',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
   'border-stone-600 ring-1 ring-amber-700/20',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
 )
@@ -937,7 +946,6 @@ export function EquipmentForCalibrationForm({
   }
 
   const tableColumns = visibleCalibrationPointsColumns(form.calibrationPointsColumns)
-  const pointsGridTemplate = `2rem repeat(${Math.max(tableColumns.length, 1)}, minmax(120px, 1fr)) 4.5rem 5.5rem`
 
   const openFormulaDialog = () => {
     const cols = visibleCalibrationPointsColumns(form.calibrationPointsColumns)
@@ -1337,13 +1345,24 @@ export function EquipmentForCalibrationForm({
                   <ScheduleFieldTile span="auto">
                     <Label htmlFor="efc-unc">Uncertainty</Label>
                     <div className={limsFieldWithAddShellClass}>
+                      <span
+                        className="flex h-full shrink-0 items-center px-2 text-sm font-semibold text-stone-700"
+                        aria-hidden
+                      >
+                        ±
+                      </span>
                       <Input
                         id="efc-unc"
                         value={form.calibrationCertificateUncertainty}
-                        onChange={(e) => set('calibrationCertificateUncertainty', e.target.value)}
+                        onChange={(e) =>
+                          set(
+                            'calibrationCertificateUncertainty',
+                            e.target.value.replace(/[^0-9.]/g, ''),
+                          )
+                        }
                         placeholder="Value"
                         aria-label="Uncertainty value"
-                        className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
+                        className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 pl-0 shadow-none focus-visible:ring-0"
                       />
                       <div className="min-w-0 flex-1 border-l border-stone-500">
                         <MeasurementUnitSelect
@@ -1491,182 +1510,185 @@ export function EquipmentForCalibrationForm({
                       tick <span className="font-medium">Required</span> to show a column here.
                     </p>
                   ) : (
-                    <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-sm ring-1 ring-amber-700/20">
+                    <div className={calPointsPanelClass}>
                       <div className="overflow-x-auto">
-                        <div
-                          className="grid min-w-[560px] items-center gap-x-2 border-b border-stone-700 bg-stone-800 px-2 py-2"
-                          style={{ gridTemplateColumns: pointsGridTemplate }}
-                        >
-                          <label className="flex items-center justify-center">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded-none border-stone-500 accent-amber-600"
-                              checked={
-                                form.calibrationPoints.length > 0 &&
-                                selectedPointIds.size === form.calibrationPoints.length
-                              }
-                              onChange={(e) => toggleAllPointsSelected(e.target.checked)}
-                              aria-label="Select all calibration points"
-                            />
-                          </label>
-                          {tableColumns.map((col) => {
-                            const active = pointsSortColId === col.id
-                            const isFormula = col.type === 'formula'
-                            return (
-                              <button
-                                key={col.id}
-                                type="button"
-                                className="flex min-w-0 items-center justify-center gap-1 truncate text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200 hover:text-amber-100"
-                                title={
-                                  isFormula
-                                    ? `${col.header} (Calculated)`
-                                    : `Sort by ${col.header}`
-                                }
-                                onClick={() => sortPointsByColumn(col.id)}
-                              >
-                                <span className="truncate">{col.header}</span>
-                                {isFormula ? (
-                                  <span className="shrink-0 rounded-none border border-amber-500/40 bg-amber-500/15 px-1 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
-                                    Calc
-                                  </span>
-                                ) : null}
-                                {active && pointsSortDir === 'asc' ? (
-                                  <ArrowUp size={12} className="shrink-0 text-amber-300" />
-                                ) : active && pointsSortDir === 'desc' ? (
-                                  <ArrowDown size={12} className="shrink-0 text-amber-300" />
-                                ) : (
-                                  <ArrowUpDown size={12} className="shrink-0 text-amber-200/50" />
-                                )}
-                              </button>
-                            )
-                          })}
-                          <span className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
-                            Move
-                          </span>
-                          <span className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
-                            Actions
-                          </span>
-                        </div>
-
-                        <div className="divide-y divide-[#e7e0d4]">
-                          {form.calibrationPoints.map((pt, index) => {
-                            const isLast = index === form.calibrationPoints.length - 1
-                            const isFirst = index === 0
-                            const displayValues = computeCalibrationPointRowValues(
-                              form.calibrationPointsColumns,
-                              pt.values,
-                              formRef.current,
-                            )
-                            const rowSelected = selectedPointIds.has(pt.id)
-                            return (
-                              <div
-                                key={pt.id}
-                                className={cn(
-                                  'grid min-w-[560px] items-center gap-x-2 px-2 py-1.5 transition-colors',
-                                  rowSelected
-                                    ? 'bg-[#fde68a]/80 hover:bg-[#fde68a]/80'
-                                    : index % 2 === 0
-                                      ? 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
-                                      : 'bg-[#fffcf7] hover:bg-[#f3e9d8]',
-                                )}
-                                style={{ gridTemplateColumns: pointsGridTemplate }}
-                              >
-                                <label className="flex items-center justify-center">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 rounded-none border-stone-500 accent-amber-600"
-                                    checked={rowSelected}
-                                    onChange={() => togglePointSelected(pt.id)}
-                                    aria-label={`Select point ${index + 1}`}
-                                  />
-                                </label>
-                                {tableColumns.map((col) => {
-                                  const isFormula = col.type === 'formula'
-                                  return isFormula ? (
-                                    <Input
-                                      key={col.id}
-                                      id={`efc-pt-${pt.id}-${col.id}`}
-                                      value={displayValues[col.id] ?? ''}
-                                      readOnly
-                                      tabIndex={-1}
-                                      placeholder="Auto"
-                                      className="border-stone-500 bg-stone-100 text-center text-stone-700"
-                                      aria-label={`${col.header} row ${index + 1} (calculated)`}
-                                      title={col.formula?.expression?.trim() || 'Calculated column'}
-                                    />
-                                  ) : (
-                                    <Input
-                                      key={col.id}
-                                      id={`efc-pt-${pt.id}-${col.id}`}
-                                      value={pt.values[col.id] ?? ''}
-                                      onChange={(e) =>
-                                        updatePointValue(pt.id, col.id, e.target.value)
+                        <table className={calPointsTableClass}>
+                          <thead>
+                            <tr className="border-stone-700 bg-stone-800 hover:bg-stone-800">
+                              <th className={cn(calPointsThClass, 'w-10')}>
+                                <input
+                                  type="checkbox"
+                                  className={calPointsCheckboxClass}
+                                  checked={
+                                    form.calibrationPoints.length > 0 &&
+                                    selectedPointIds.size === form.calibrationPoints.length
+                                  }
+                                  onChange={(e) => toggleAllPointsSelected(e.target.checked)}
+                                  aria-label="Select all calibration points"
+                                />
+                              </th>
+                              {tableColumns.map((col) => {
+                                const active = pointsSortColId === col.id
+                                const isFormula = col.type === 'formula'
+                                return (
+                                  <th key={col.id} className={cn(calPointsThClass, 'min-w-[7rem]')}>
+                                    <button
+                                      type="button"
+                                      className="mx-auto flex max-w-full items-center justify-center gap-1 truncate text-amber-200 hover:text-amber-100"
+                                      title={
+                                        isFormula
+                                          ? `${col.header} (Calculated)`
+                                          : `Sort by ${col.header}`
                                       }
-                                      placeholder="—"
-                                      inputMode={col.type === 'number' ? 'decimal' : undefined}
-                                      className="text-center"
-                                      aria-label={`${col.header} row ${index + 1}`}
+                                      onClick={() => sortPointsByColumn(col.id)}
+                                    >
+                                      <span className="truncate">{col.header}</span>
+                                      {isFormula ? (
+                                        <span className="shrink-0 rounded-none border border-amber-500/40 bg-amber-500/15 px-1 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
+                                          Calc
+                                        </span>
+                                      ) : null}
+                                      {active && pointsSortDir === 'asc' ? (
+                                        <ArrowUp size={12} className="shrink-0 text-amber-300" />
+                                      ) : active && pointsSortDir === 'desc' ? (
+                                        <ArrowDown size={12} className="shrink-0 text-amber-300" />
+                                      ) : (
+                                        <ArrowUpDown
+                                          size={12}
+                                          className="shrink-0 text-amber-200/50"
+                                        />
+                                      )}
+                                    </button>
+                                  </th>
+                                )
+                              })}
+                              <th className={cn(calPointsThClass, 'w-[4.5rem]')}>Move</th>
+                              <th className={cn(calPointsThClass, 'w-[5.5rem]')}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {form.calibrationPoints.map((pt, index) => {
+                              const isLast = index === form.calibrationPoints.length - 1
+                              const isFirst = index === 0
+                              const displayValues = computeCalibrationPointRowValues(
+                                form.calibrationPointsColumns,
+                                pt.values,
+                                formRef.current,
+                              )
+                              const rowSelected = selectedPointIds.has(pt.id)
+                              return (
+                                <tr
+                                  key={pt.id}
+                                  className={cn(
+                                    'border-[#e7e0d4] transition-colors',
+                                    calPointsRowToneClass(index, rowSelected),
+                                  )}
+                                >
+                                  <td className="text-center align-middle">
+                                    <input
+                                      type="checkbox"
+                                      className={calPointsCheckboxClass}
+                                      checked={rowSelected}
+                                      onChange={() => togglePointSelected(pt.id)}
+                                      aria-label={`Select point ${index + 1}`}
                                     />
-                                  )
-                                })}
-                                <div className="flex items-center justify-center gap-0.5">
-                                  {isLast ? (
-                                    <span className="inline-block h-8 w-[4.5rem]" aria-hidden />
-                                  ) : (
-                                    <>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 px-0 text-stone-700 hover:bg-amber-500/15 hover:text-amber-950"
-                                        disabled={isFirst}
-                                        onClick={() => movePoint(pt.id, -1)}
-                                        aria-label={`Move point ${index + 1} up`}
-                                      >
-                                        <ChevronUp size={16} />
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 px-0 text-stone-700 hover:bg-amber-500/15 hover:text-amber-950"
-                                        onClick={() => movePoint(pt.id, 1)}
-                                        aria-label={`Move point ${index + 1} down`}
-                                      >
-                                        <ChevronDown size={16} />
-                                      </Button>
-                                    </>
-                                  )}
-                                </div>
-                                <div className="flex justify-center gap-1">
-                                  {isLast ? (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className={cn('h-8 w-8 px-0', limsOutlineBtnClass)}
-                                      onClick={addPoint}
-                                      aria-label="Add calibration point"
-                                    >
-                                      <Plus size={16} />
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
-                                      onClick={() => removePoint(pt.id)}
-                                      aria-label={`Remove point ${index + 1}`}
-                                    >
-                                      <Trash2 size={16} />
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
+                                  </td>
+                                  {tableColumns.map((col) => {
+                                    const isFormula = col.type === 'formula'
+                                    return (
+                                      <td key={col.id} className="align-middle">
+                                        {isFormula ? (
+                                          <Input
+                                            id={`efc-pt-${pt.id}-${col.id}`}
+                                            value={displayValues[col.id] ?? ''}
+                                            readOnly
+                                            tabIndex={-1}
+                                            placeholder="Auto"
+                                            className={calPointsCellReadonlyClass}
+                                            aria-label={`${col.header} row ${index + 1} (calculated)`}
+                                            title={
+                                              col.formula?.expression?.trim() || 'Calculated column'
+                                            }
+                                          />
+                                        ) : (
+                                          <Input
+                                            id={`efc-pt-${pt.id}-${col.id}`}
+                                            value={pt.values[col.id] ?? ''}
+                                            onChange={(e) =>
+                                              updatePointValue(pt.id, col.id, e.target.value)
+                                            }
+                                            placeholder="—"
+                                            inputMode={col.type === 'number' ? 'decimal' : undefined}
+                                            className={calPointsCellInputClass}
+                                            aria-label={`${col.header} row ${index + 1}`}
+                                          />
+                                        )}
+                                      </td>
+                                    )
+                                  })}
+                                  <td className="text-center align-middle">
+                                    <div className="flex items-center justify-center gap-0.5">
+                                      {isLast ? (
+                                        <span className="inline-block h-8 w-[4.5rem]" aria-hidden />
+                                      ) : (
+                                        <>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 px-0 text-stone-700 hover:bg-amber-500/15 hover:text-amber-950"
+                                            disabled={isFirst}
+                                            onClick={() => movePoint(pt.id, -1)}
+                                            aria-label={`Move point ${index + 1} up`}
+                                          >
+                                            <ChevronUp size={16} />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 px-0 text-stone-700 hover:bg-amber-500/15 hover:text-amber-950"
+                                            onClick={() => movePoint(pt.id, 1)}
+                                            aria-label={`Move point ${index + 1} down`}
+                                          >
+                                            <ChevronDown size={16} />
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="text-center align-middle">
+                                    <div className="flex justify-center gap-1">
+                                      {isLast ? (
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className={cn('h-8 w-8 px-0', limsOutlineBtnClass)}
+                                          onClick={addPoint}
+                                          aria-label="Add calibration point"
+                                        >
+                                          <Plus size={16} />
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 w-8 px-0 text-destructive hover:bg-destructive/10"
+                                          onClick={() => removePoint(pt.id)}
+                                          aria-label={`Remove point ${index + 1}`}
+                                        >
+                                          <Trash2 size={16} />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )}
@@ -1713,12 +1735,12 @@ export function EquipmentForCalibrationForm({
           <DialogContent
             persistOnFocusLoss
             layer="stacked"
-            overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+            overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
             className={cn(
               limsDialogClass,
               'flex max-h-[min(90dvh,44rem)] w-[calc(100vw-1.5rem)] max-w-2xl flex-col',
-              'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
-              'md:w-[min(42rem,calc(100vw-268px-2rem))] md:max-w-[min(42rem,calc(100vw-268px-2rem))]',
+              'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2',
+              'lg:w-[min(42rem,calc(100vw-268px-2rem))] lg:max-w-[min(42rem,calc(100vw-268px-2rem))]',
               'md:!-translate-x-1/2 md:!-translate-y-1/2',
             )}
             aria-describedby={undefined}

@@ -231,6 +231,10 @@ export type GenerateReportPointRandomness = {
   randomnessFactor: string
   randomnessFloor: string
   randomnessCap: string
+  /** Per-point Round Off step (falls back to row.roundOff when omitted). */
+  roundOff?: string
+  /** Per-point decimal places 0–6 (falls back to row.decimalPlaces when omitted). */
+  decimalPlaces?: number
 }
 
 /** One Generate Report Format mapping row (Input ↔ Reference + rounding). */
@@ -299,6 +303,12 @@ export function emptyGenerateReportPointRandomness(
 ): GenerateReportPointRandomness {
   const referenceValue = String(overrides?.referenceValue ?? '').trim()
   const rangeId = String(overrides?.rangeId ?? '').trim()
+  const roundOff =
+    overrides?.roundOff != null ? String(overrides.roundOff).trim() : undefined
+  const decimalPlaces =
+    typeof overrides?.decimalPlaces === 'number' && Number.isFinite(overrides.decimalPlaces)
+      ? Math.max(0, Math.min(6, Math.round(overrides.decimalPlaces)))
+      : undefined
   return {
     id: overrides?.id ?? newGenerateReportPointRandomnessId(),
     point: overrides?.point ?? '',
@@ -311,6 +321,8 @@ export function emptyGenerateReportPointRandomness(
     randomnessFactor: overrides?.randomnessFactor ?? '',
     randomnessFloor: overrides?.randomnessFloor ?? '',
     randomnessCap: overrides?.randomnessCap ?? '',
+    ...(roundOff != null ? { roundOff } : {}),
+    ...(decimalPlaces != null ? { decimalPlaces } : {}),
   }
 }
 
@@ -338,6 +350,14 @@ function parseGenerateReportPointRandomnessList(
         randomnessFactor: String(o.randomnessFactor ?? o.randomness_factor ?? '').trim(),
         randomnessFloor: String(o.randomnessFloor ?? o.randomness_floor ?? '').trim(),
         randomnessCap: String(o.randomnessCap ?? o.randomness_cap ?? '').trim(),
+        ...(o.roundOff != null || o.round_off != null
+          ? { roundOff: String(o.roundOff ?? o.round_off ?? '').trim() }
+          : {}),
+        ...(o.decimalPlaces != null || o.decimal_places != null
+          ? {
+              decimalPlaces: clampDecimalPlaces(o.decimalPlaces ?? o.decimal_places, 2),
+            }
+          : {}),
       })
     })
     .filter((x): x is GenerateReportPointRandomness => x != null)
@@ -562,7 +582,12 @@ export function resolveGenerateReportRandomnessForPoint(
   referenceRaw?: string | null | undefined,
 ): Pick<
   GenerateReportPointRandomness,
-  'randomnessMode' | 'randomnessFactor' | 'randomnessFloor' | 'randomnessCap'
+  | 'randomnessMode'
+  | 'randomnessFactor'
+  | 'randomnessFloor'
+  | 'randomnessCap'
+  | 'roundOff'
+  | 'decimalPlaces'
 > | null {
   const point = String(pointValue ?? '').trim()
   if (!point) return null
@@ -594,11 +619,21 @@ export function resolveGenerateReportRandomnessForPoint(
   if (!match) return null
   const factor = match.randomnessFactor.trim()
   if (!factor) return null
+  const roundOff =
+    match.roundOff != null
+      ? String(match.roundOff).trim()
+      : String(row.roundOff ?? '').trim()
+  const decimalPlaces =
+    typeof match.decimalPlaces === 'number' && Number.isFinite(match.decimalPlaces)
+      ? Math.max(0, Math.min(6, Math.round(match.decimalPlaces)))
+      : clampDecimalPlaces(row.decimalPlaces, 2)
   return {
     randomnessMode: parseGenerateReportRandomnessMode(match.randomnessMode),
     randomnessFactor: factor,
     randomnessFloor: match.randomnessFloor,
     randomnessCap: match.randomnessCap,
+    roundOff,
+    decimalPlaces,
   }
 }
 
@@ -650,6 +685,14 @@ export function buildGenerateReportRandomnessEditorRows(
         randomnessFactor: found.randomnessFactor,
         randomnessFloor: found.randomnessFloor,
         randomnessCap: found.randomnessCap,
+        roundOff:
+          found.roundOff != null
+            ? String(found.roundOff).trim()
+            : String(row.roundOff ?? '').trim(),
+        decimalPlaces:
+          typeof found.decimalPlaces === 'number' && Number.isFinite(found.decimalPlaces)
+            ? Math.max(0, Math.min(6, Math.round(found.decimalPlaces)))
+            : clampDecimalPlaces(row.decimalPlaces, 2),
       })
     }
     return emptyGenerateReportPointRandomness({
@@ -661,6 +704,8 @@ export function buildGenerateReportRandomnessEditorRows(
       randomnessFactor: '',
       randomnessFloor: '',
       randomnessCap: '',
+      roundOff: String(row.roundOff ?? '').trim(),
+      decimalPlaces: clampDecimalPlaces(row.decimalPlaces, 2),
     })
   })
 }
@@ -751,6 +796,14 @@ export function copyGenerateReportRandomnessDraftFromRow(
       randomnessFactor: source.randomnessFactor,
       randomnessFloor: source.randomnessFloor,
       randomnessCap: source.randomnessCap,
+      roundOff:
+        source.roundOff != null
+          ? String(source.roundOff).trim()
+          : String(sourceRow.roundOff ?? '').trim(),
+      decimalPlaces:
+        typeof source.decimalPlaces === 'number' && Number.isFinite(source.decimalPlaces)
+          ? Math.max(0, Math.min(6, Math.round(source.decimalPlaces)))
+          : clampDecimalPlaces(sourceRow.decimalPlaces, 2),
     })
   })
 
@@ -1261,6 +1314,8 @@ export function clampGenerateReportReadingToEquipmentRange(
   reference: number,
   rangeMin: number | null,
   rangeMax: number | null,
+  /** Sheet / calibration point (load). Used to detect indicator-scale refs. */
+  pointValue?: number | null,
 ): number {
   if (!Number.isFinite(value)) return value
   if (rangeMin == null || rangeMax == null) return value
@@ -1270,6 +1325,18 @@ export function clampGenerateReportReadingToEquipmentRange(
   if (hi === lo) return value
   // Only clamp load/point-like values (same domain as the range), never indicator counts.
   if (reference < lo || reference > hi) return value
+
+  // Tiny refs (e.g. 0.05) can numerically sit inside [0, Range Max] but must not be
+  // floored at Range Min — that wrongly blocks negative Output Min for % of Ref.
+  const span = hi - lo
+  if (span > 0 && Math.abs(reference) <= span * 0.01) return value
+
+  if (pointValue != null && Number.isFinite(pointValue)) {
+    const scale = Math.max(Math.abs(pointValue), Math.abs(reference), span * 0.01, 1e-9)
+    // Reference far from the load/point → different domain (indicator vs force).
+    if (Math.abs(reference - pointValue) / scale > 0.5) return value
+  }
+
   return Math.min(hi, Math.max(lo, value))
 }
 
@@ -1413,17 +1480,21 @@ export function computeGenerateReportOutputMinMaxPreview(params: {
       ? params.multiple
       : 1
   const scaled = ref * multiple
+  const pointN = Number(String(params.pointValue ?? '').trim())
+  const pointForClamp = Number.isFinite(pointN) ? pointN : null
   const minRaw = clampGenerateReportReadingToEquipmentRange(
     scaled - band,
     scaled,
     rangeBounds.rangeMin,
     rangeBounds.rangeMax,
+    pointForClamp,
   )
   const maxRaw = clampGenerateReportReadingToEquipmentRange(
     scaled + band,
     scaled,
     rangeBounds.rangeMin,
     rangeBounds.rangeMax,
+    pointForClamp,
   )
   return {
     outputMin: formatGenerateReportOutputNumber(
@@ -1936,6 +2007,12 @@ export function serializeEquipmentGenerateReportConfig(
             randomnessFactor: String(p.randomnessFactor ?? '').trim(),
             randomnessFloor: String(p.randomnessFloor ?? '').trim(),
             randomnessCap: String(p.randomnessCap ?? '').trim(),
+            ...(p.roundOff != null ? { roundOff: String(p.roundOff).trim() } : {}),
+            ...(typeof p.decimalPlaces === 'number' && Number.isFinite(p.decimalPlaces)
+              ? {
+                  decimalPlaces: Math.max(0, Math.min(6, Math.round(p.decimalPlaces))),
+                }
+              : {}),
           }),
         )
         .filter((p) => p.point.length > 0 && !p.isDefault)

@@ -46,12 +46,12 @@ const GRID_TABLE =
 const checkboxClass =
   'h-4 w-4 rounded border-muted-foreground/30 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-const AI_MODEL_DIALOG_OVERLAY = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const AI_MODEL_DIALOG_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 const AI_MODEL_DIALOG_CLASS = cn(
   limsDialogClass,
   'max-h-[92vh] w-[calc(100vw-1rem)] max-w-2xl',
   '[&>button]:!rounded-none [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-white/10',
-  'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:w-[min(42rem,calc(100vw-268px-2rem))] md:max-w-[min(42rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
+  'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 lg:w-[min(42rem,calc(100vw-268px-2rem))] lg:max-w-[min(42rem,calc(100vw-268px-2rem))] md:!-translate-x-1/2 md:!-translate-y-1/2',
 )
 
 export type AiModelsPanelHandle = {

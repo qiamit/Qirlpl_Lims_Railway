@@ -37,6 +37,7 @@ import { fetchTeamUsers } from '@/lib/fetchTeamUsers'
 import {
   MODULE_CATALOG,
   moduleSections,
+  resolveLevelFromSubjectRules,
   type ModuleAccessLevel,
   type ModuleAccessSubjectType,
 } from './moduleCatalog'
@@ -159,12 +160,12 @@ function SortableHead({
   )
 }
 
-const sidebarFullscreenOverlayClass = 'md:inset-y-0 md:left-[268px] md:right-0 md:w-auto'
+const sidebarFullscreenOverlayClass = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 const sidebarFullscreenDialogClass = cn(
   limsDialogClass,
   '!flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0',
   'left-0 top-0',
-  'md:left-[268px] md:w-[calc(100vw-268px)] md:max-w-[calc(100vw-268px)]',
+  'lg:left-[268px] lg:w-[calc(100vw-268px)] lg:max-w-[calc(100vw-268px)]',
 )
 
 const ACCESS_ACTION_COLUMNS = [
@@ -197,7 +198,8 @@ function nextAccessLevel(
     case 'none':
       return 'none'
     case 'view':
-      if (flags.view) return 'none'
+      if (current === 'edit') return 'view'
+      if (current === 'view') return 'none'
       return 'view'
     case 'edit':
       if (flags.edit) return 'view'
@@ -481,8 +483,9 @@ export default function ModuleAccessMasterPage() {
         )
         if (canceled) return
         const next = defaultLevels()
-        for (const row of loaded) {
-          if (row.module_key in next) next[row.module_key] = row.access_level
+        for (const m of MODULE_CATALOG) {
+          const inherited = resolveLevelFromSubjectRules(m.key, loaded)
+          if (inherited) next[m.key] = inherited
         }
         setLevels(next)
       } catch (err) {
@@ -527,7 +530,7 @@ export default function ModuleAccessMasterPage() {
         <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-1.5 text-white sm:px-5 sm:py-2">
           <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
           <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <div className="relative flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
+          <div className="relative flex flex-wrap items-center gap-1.5 lg:flex-nowrap sm:gap-2">
             <div className="flex shrink-0 items-center gap-1.5">
               <Shield size={16} className="shrink-0 text-amber-300" aria-hidden />
               <h1 className="shrink-0 text-sm font-semibold tracking-tight text-white sm:text-base">

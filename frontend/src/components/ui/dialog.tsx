@@ -141,7 +141,7 @@ const DialogContent = React.forwardRef<
           onInteractOutside?.(e)
         }}
         className={cn(
-          'fixed grid w-full max-w-lg gap-4 rounded-none border-2 border-stone-600 bg-background p-6 shadow-lg ring-1 ring-amber-700/20 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:rounded-none',
+          'fixed left-0 right-0 mx-auto grid w-[calc(100vw-1rem)] max-w-lg max-h-[92dvh] gap-4 overflow-y-auto rounded-none border-2 border-stone-600 bg-background p-6 shadow-lg ring-1 ring-amber-700/20 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:w-full sm:rounded-none',
           dialogLayerZClass(layer),
           className,
         )}

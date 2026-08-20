@@ -198,11 +198,11 @@ export function PostRepairCalibrationDialog({
       <DialogContent
         persistOnFocusLoss
         layer="nested"
-        overlayClassName="md:inset-y-0 md:left-[268px] md:right-0 md:w-auto"
+        overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(
           limsDialogClass,
           '!flex max-h-[min(92dvh,40rem)] w-[calc(100vw-1.5rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0',
-          'md:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:!-translate-x-1/2 md:!-translate-y-1/2',
+          'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:!-translate-x-1/2 md:!-translate-y-1/2',
         )}
         aria-describedby={undefined}
       >
