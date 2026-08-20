@@ -30,6 +30,7 @@ export function LabManageDialogContent({
   saveDisabled,
   items,
   canDelete,
+  canEdit = () => true,
   onDelete,
   getEditValue,
   layer,
@@ -49,6 +50,7 @@ export function LabManageDialogContent({
   saveDisabled: boolean
   items: ManageItem[]
   canDelete: (item: ManageItem) => boolean
+  canEdit?: (item: ManageItem) => boolean
   onDelete: (id: string) => void
   getEditValue?: (item: ManageItem) => string
   layer?: 'default' | 'nested' | 'stacked' | 'top'
@@ -106,20 +108,22 @@ export function LabManageDialogContent({
               <div key={item.id} className={manageListItemClass}>
                 <span className="min-w-0 truncate">{item.label}</span>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(item.id)
-                      onValueChange(getEditValue ? getEditValue(item) : item.label)
-                      window.requestAnimationFrame(() => {
-                        document.getElementById(inputId)?.focus()
-                      })
-                    }}
-                    className="text-amber-800 hover:text-amber-950"
-                    aria-label={`Edit ${item.label}`}
-                  >
-                    <Pencil size={14} />
-                  </button>
+                  {canEdit(item) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(item.id)
+                        onValueChange(getEditValue ? getEditValue(item) : item.label)
+                        window.requestAnimationFrame(() => {
+                          document.getElementById(inputId)?.focus()
+                        })
+                      }}
+                      className="text-amber-800 hover:text-amber-950"
+                      aria-label={`Edit ${item.label}`}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  ) : null}
                   {canDelete(item) ? (
                     <button
                       type="button"

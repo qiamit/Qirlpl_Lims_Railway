@@ -28,6 +28,12 @@ export const LAB_MASTER_OPTION_CATEGORIES: LabMasterOptionCategory[] = [
   'time_format',
 ]
 
+export const PROTECTED_DEPARTMENT_LABEL = 'Administration'
+
+export function isProtectedDepartmentLabel(label: string): boolean {
+  return label.trim().toLowerCase() === PROTECTED_DEPARTMENT_LABEL.toLowerCase()
+}
+
 export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionItem[]> = {
   laboratory_type: [
     { value: 'testing', label: 'Testing Laboratory' },
@@ -48,6 +54,7 @@ export const LAB_MASTER_OPTION_DEFAULTS: Record<LabMasterOptionCategory, OptionI
     { value: 'testing-engineer', label: 'Testing Engineer' },
   ],
   department: [
+    { value: 'administration', label: PROTECTED_DEPARTMENT_LABEL },
     { value: 'mechanical', label: 'Mechanical' },
     { value: 'chemical', label: 'Chemical' },
     { value: 'sample-cell', label: 'Sample Cell' },

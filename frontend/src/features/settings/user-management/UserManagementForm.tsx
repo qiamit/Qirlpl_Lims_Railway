@@ -5,6 +5,7 @@ import {
   deleteLabMasterOption,
   ensureLabMasterOptionByLabel,
   insertLabMasterOption,
+  isProtectedDepartmentLabel,
   LAB_MASTER_OPTION_DEFAULTS,
   slugifyLabOptionValue,
   updateLabMasterOption,
@@ -196,6 +197,10 @@ export function UserManagementForm(props: UserManagementFormProps) {
     const formatted = rawLabel.trim()
     if (!formatted || !oldValue) return
     const previousLabel = options.find((o) => o.value === oldValue)?.label
+    if (category === 'department' && previousLabel && isProtectedDepartmentLabel(previousLabel)) {
+      setError('Administration department cannot be edited')
+      return
+    }
     void (async () => {
       try {
         await updateLabMasterOption(category, oldValue, formatted)
@@ -227,6 +232,11 @@ export function UserManagementForm(props: UserManagementFormProps) {
     storageKey: 'userManagement.designations' | 'userManagement.departments' | 'userManagement.divisions',
     formField: 'designation' | 'department' | 'division',
   ) => {
+    const removed = options.find((o) => o.value === value)
+    if (category === 'department' && removed && isProtectedDepartmentLabel(removed.label)) {
+      setError('Administration department cannot be deleted')
+      return
+    }
     void (async () => {
       try {
         await deleteLabMasterOption(category, value)
@@ -432,6 +442,7 @@ export function UserManagementForm(props: UserManagementFormProps) {
     onUpdate,
     onDelete,
     canDelete,
+    canEdit,
     addAriaLabel,
     children,
   }: {
@@ -448,6 +459,7 @@ export function UserManagementForm(props: UserManagementFormProps) {
     onUpdate: (value: string) => void
     onDelete: (value: string) => void
     canDelete: (item: { id: string; label: string }) => boolean
+    canEdit?: (item: { id: string; label: string }) => boolean
     addAriaLabel: string
     children: ReactNode
   }) => (
@@ -477,6 +489,7 @@ export function UserManagementForm(props: UserManagementFormProps) {
         saveDisabled={!value.trim()}
         items={toManageItems(options)}
         canDelete={canDelete}
+        canEdit={canEdit}
         onDelete={onDelete}
       />
     </Dialog>
@@ -697,7 +710,9 @@ export function UserManagementForm(props: UserManagementFormProps) {
                   onSave: handleAddDepartment,
                   onUpdate: handleUpdateDepartment,
                   onDelete: handleDeleteDepartment,
-                  canDelete: () => departmentOptions.length > 1,
+                  canEdit: (item) => !isProtectedDepartmentLabel(item.label),
+                  canDelete: (item) =>
+                    departmentOptions.length > 1 && !isProtectedDepartmentLabel(item.label),
                   addAriaLabel: 'Add department',
                   children: (
                     <Select
