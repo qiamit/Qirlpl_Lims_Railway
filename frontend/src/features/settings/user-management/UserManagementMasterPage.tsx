@@ -5,8 +5,9 @@ import { supabase } from '@/lib/supabaseClient'
 import { fetchTeamUsers, type TeamUserRecord } from '@/lib/fetchTeamUsers'
 import {
   ensureLabMasterOptionByLabel,
-  fetchDesignationAndDepartmentLabels,
+  fetchLabMasterOptionsGrouped,
 } from '@/features/settings/lab-settings/labMasterOptions'
+import type { OptionItem } from '@/features/settings/lab-settings/types'
 import { UserManagementHeaderBar } from './UserManagementHeaderBar'
 import { UserManagementTable } from './UserManagementTable'
 import { UserManagementFooterBar } from './UserManagementFooterBar'
@@ -67,20 +68,28 @@ export default function UserManagementMasterPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [printMessage, setPrintMessage] = useState<string | null>(null)
 
-  const [designations, setDesignations] = useState<string[]>([])
-  const [departments, setDepartments] = useState<string[]>([])
-  const [divisions, setDivisions] = useState<string[]>([])
+  const [designations, setDesignations] = useState<OptionItem[]>([])
+  const [departments, setDepartments] = useState<OptionItem[]>([])
+  const [divisions, setDivisions] = useState<OptionItem[]>([])
 
   const refreshLabOptions = useCallback(async () => {
-    const { designations: des, departments: dept, divisions: divs } =
-      await fetchDesignationAndDepartmentLabels()
-    setDesignations(des)
-    setDepartments(dept)
-    setDivisions(divs)
+    const grouped = await fetchLabMasterOptionsGrouped()
+    setDesignations(grouped.designation)
+    setDepartments(grouped.department)
+    setDivisions(grouped.division)
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem('userManagement.designations', JSON.stringify(des))
-      window.localStorage.setItem('userManagement.departments', JSON.stringify(dept))
-      window.localStorage.setItem('userManagement.divisions', JSON.stringify(divs))
+      window.localStorage.setItem(
+        'userManagement.designations',
+        JSON.stringify(grouped.designation.map((o) => o.label)),
+      )
+      window.localStorage.setItem(
+        'userManagement.departments',
+        JSON.stringify(grouped.department.map((o) => o.label)),
+      )
+      window.localStorage.setItem(
+        'userManagement.divisions',
+        JSON.stringify(grouped.division.map((o) => o.label)),
+      )
     }
   }, [])
 

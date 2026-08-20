@@ -32,6 +32,9 @@ export function LabManageDialogContent({
   canDelete,
   onDelete,
   getEditValue,
+  layer,
+  overlayClassName,
+  className,
 }: {
   open: boolean
   title: string
@@ -48,6 +51,9 @@ export function LabManageDialogContent({
   canDelete: (item: ManageItem) => boolean
   onDelete: (id: string) => void
   getEditValue?: (item: ManageItem) => string
+  layer?: 'default' | 'nested' | 'stacked' | 'top'
+  overlayClassName?: string
+  className?: string
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -60,7 +66,9 @@ export function LabManageDialogContent({
   return (
     <DialogContent
       persistOnFocusLoss
-      className={cn(limsDialogClass, 'max-w-lg')}
+      layer={layer}
+      overlayClassName={overlayClassName}
+      className={cn(limsDialogClass, 'max-w-lg', className)}
       aria-describedby={undefined}
     >
       <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">

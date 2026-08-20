@@ -1,7 +1,16 @@
 import { useState, useEffect, type ReactNode } from 'react'
-import { Trash2 } from 'lucide-react'
 import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
-import { ensureLabMasterOptionByLabel, LAB_MASTER_OPTION_DEFAULTS } from '@/features/settings/lab-settings/labMasterOptions'
+import { LabManageDialogContent } from '@/features/settings/lab-settings/LabManageDialogContent'
+import {
+  deleteLabMasterOption,
+  ensureLabMasterOptionByLabel,
+  insertLabMasterOption,
+  LAB_MASTER_OPTION_DEFAULTS,
+  slugifyLabOptionValue,
+  updateLabMasterOption,
+  type LabMasterOptionCategory,
+} from '@/features/settings/lab-settings/labMasterOptions'
+import type { OptionItem } from '@/features/settings/lab-settings/types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -36,12 +45,12 @@ type UserManagementFormProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialData?: UserAccount | null
-  designations: string[]
-  setDesignations: React.Dispatch<React.SetStateAction<string[]>>
-  departments: string[]
-  setDepartments: React.Dispatch<React.SetStateAction<string[]>>
-  divisions: string[]
-  setDivisions: React.Dispatch<React.SetStateAction<string[]>>
+  designations: OptionItem[]
+  setDesignations: React.Dispatch<React.SetStateAction<OptionItem[]>>
+  departments: OptionItem[]
+  setDepartments: React.Dispatch<React.SetStateAction<OptionItem[]>>
+  divisions: OptionItem[]
+  setDivisions: React.Dispatch<React.SetStateAction<OptionItem[]>>
   onSave: (formData: UserForm, countryCode?: string) => Promise<void>
   onOptionsChanged?: () => Promise<void>
   loading?: boolean
@@ -80,6 +89,14 @@ function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: ReactNo
   )
 }
 
+function sortOptions(items: OptionItem[]): OptionItem[] {
+  return [...items].sort((a, b) => a.label.localeCompare(b.label))
+}
+
+function toManageItems(items: OptionItem[]) {
+  return items.map((o) => ({ id: o.value, label: o.label }))
+}
+
 export function UserManagementForm(props: UserManagementFormProps) {
   const [formData, setFormData] = useState<UserForm>(() => {
     if (props.initialData && props.mode === 'edit') {
@@ -113,17 +130,233 @@ export function UserManagementForm(props: UserManagementFormProps) {
   const [error, setError] = useState<string | null>(null)
 
   const designationOptions =
-    props.designations.length > 0
-      ? props.designations
-      : LAB_MASTER_OPTION_DEFAULTS.designation.map((o) => o.label)
+    props.designations.length > 0 ? props.designations : LAB_MASTER_OPTION_DEFAULTS.designation
   const departmentOptions =
-    props.departments.length > 0
-      ? props.departments
-      : LAB_MASTER_OPTION_DEFAULTS.department.map((o) => o.label)
+    props.departments.length > 0 ? props.departments : LAB_MASTER_OPTION_DEFAULTS.department
   const divisionOptions =
-    props.divisions.length > 0
-      ? props.divisions
-      : LAB_MASTER_OPTION_DEFAULTS.division.map((o) => o.label)
+    props.divisions.length > 0 ? props.divisions : LAB_MASTER_OPTION_DEFAULTS.division
+
+  const persistLabelsToStorage = (
+    key: 'userManagement.designations' | 'userManagement.departments' | 'userManagement.divisions',
+    items: OptionItem[],
+  ) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(key, JSON.stringify(items.map((o) => o.label)))
+  }
+
+  const handleAddOption = (
+    category: LabMasterOptionCategory,
+    rawLabel: string,
+    options: OptionItem[],
+    setOptions: React.Dispatch<React.SetStateAction<OptionItem[]>>,
+    storageKey: 'userManagement.designations' | 'userManagement.departments' | 'userManagement.divisions',
+    formField: 'designation' | 'department' | 'division',
+    clearInput: () => void,
+    closeDialog: () => void,
+  ) => {
+    const formatted = rawLabel.trim()
+    if (!formatted) return
+    if (options.some((item) => item.label.toLowerCase() === formatted.toLowerCase())) {
+      clearInput()
+      closeDialog()
+      return
+    }
+    void (async () => {
+      try {
+        const value = slugifyLabOptionValue(formatted, category)
+        await insertLabMasterOption(category, formatted, value)
+        const item = { value, label: formatted }
+        setOptions((prev) => {
+          const next = sortOptions([...prev, item])
+          persistLabelsToStorage(storageKey, next)
+          return next
+        })
+        setFormData((prev) => ({ ...prev, [formField]: formatted }))
+        await props.onOptionsChanged?.()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : `Unable to save ${category}`)
+      } finally {
+        clearInput()
+        closeDialog()
+      }
+    })()
+  }
+
+  const handleUpdateOption = (
+    category: LabMasterOptionCategory,
+    oldValue: string,
+    rawLabel: string,
+    options: OptionItem[],
+    setOptions: React.Dispatch<React.SetStateAction<OptionItem[]>>,
+    storageKey: 'userManagement.designations' | 'userManagement.departments' | 'userManagement.divisions',
+    formField: 'designation' | 'department' | 'division',
+    clearInput: () => void,
+    closeDialog: () => void,
+  ) => {
+    const formatted = rawLabel.trim()
+    if (!formatted || !oldValue) return
+    const previousLabel = options.find((o) => o.value === oldValue)?.label
+    void (async () => {
+      try {
+        await updateLabMasterOption(category, oldValue, formatted)
+        setOptions((prev) => {
+          const next = sortOptions(
+            prev.map((o) => (o.value === oldValue ? { ...o, label: formatted } : o)),
+          )
+          persistLabelsToStorage(storageKey, next)
+          return next
+        })
+        if (previousLabel && formData[formField] === previousLabel) {
+          setFormData((prev) => ({ ...prev, [formField]: formatted }))
+        }
+        await props.onOptionsChanged?.()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : `Unable to update ${category}`)
+      } finally {
+        clearInput()
+        closeDialog()
+      }
+    })()
+  }
+
+  const handleDeleteOption = (
+    category: LabMasterOptionCategory,
+    value: string,
+    options: OptionItem[],
+    setOptions: React.Dispatch<React.SetStateAction<OptionItem[]>>,
+    storageKey: 'userManagement.designations' | 'userManagement.departments' | 'userManagement.divisions',
+    formField: 'designation' | 'department' | 'division',
+  ) => {
+    void (async () => {
+      try {
+        await deleteLabMasterOption(category, value)
+        const removed = options.find((o) => o.value === value)
+        const next = options.filter((o) => o.value !== value)
+        setOptions(next)
+        persistLabelsToStorage(storageKey, next)
+        if (removed && formData[formField] === removed.label) {
+          setFormData((prev) => ({ ...prev, [formField]: next[0]?.label ?? '' }))
+        }
+        await props.onOptionsChanged?.()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : `Unable to delete ${category}`)
+      }
+    })()
+  }
+
+  const handleAddDesignation = () => {
+    handleAddOption(
+      'designation',
+      newDesignationName,
+      designationOptions,
+      props.setDesignations,
+      'userManagement.designations',
+      'designation',
+      () => setNewDesignationName(''),
+      () => setDesignationDialogOpen(false),
+    )
+  }
+
+  const handleUpdateDesignation = (value: string) => {
+    handleUpdateOption(
+      'designation',
+      value,
+      newDesignationName,
+      designationOptions,
+      props.setDesignations,
+      'userManagement.designations',
+      'designation',
+      () => setNewDesignationName(''),
+      () => setDesignationDialogOpen(false),
+    )
+  }
+
+  const handleDeleteDesignation = (value: string) => {
+    handleDeleteOption(
+      'designation',
+      value,
+      designationOptions,
+      props.setDesignations,
+      'userManagement.designations',
+      'designation',
+    )
+  }
+
+  const handleAddDepartment = () => {
+    handleAddOption(
+      'department',
+      newDepartmentName,
+      departmentOptions,
+      props.setDepartments,
+      'userManagement.departments',
+      'department',
+      () => setNewDepartmentName(''),
+      () => setDepartmentDialogOpen(false),
+    )
+  }
+
+  const handleUpdateDepartment = (value: string) => {
+    handleUpdateOption(
+      'department',
+      value,
+      newDepartmentName,
+      departmentOptions,
+      props.setDepartments,
+      'userManagement.departments',
+      'department',
+      () => setNewDepartmentName(''),
+      () => setDepartmentDialogOpen(false),
+    )
+  }
+
+  const handleDeleteDepartment = (value: string) => {
+    handleDeleteOption(
+      'department',
+      value,
+      departmentOptions,
+      props.setDepartments,
+      'userManagement.departments',
+      'department',
+    )
+  }
+
+  const handleAddDivision = () => {
+    handleAddOption(
+      'division',
+      newDivisionName,
+      divisionOptions,
+      props.setDivisions,
+      'userManagement.divisions',
+      'division',
+      () => setNewDivisionName(''),
+      () => setDivisionDialogOpen(false),
+    )
+  }
+
+  const handleUpdateDivision = (value: string) => {
+    handleUpdateOption(
+      'division',
+      value,
+      newDivisionName,
+      divisionOptions,
+      props.setDivisions,
+      'userManagement.divisions',
+      'division',
+      () => setNewDivisionName(''),
+      () => setDivisionDialogOpen(false),
+    )
+  }
+
+  const handleDeleteDivision = (value: string) => {
+    handleDeleteOption(
+      'division',
+      value,
+      divisionOptions,
+      props.setDivisions,
+      'userManagement.divisions',
+      'division',
+    )
+  }
 
   useEffect(() => {
     if (props.mode === 'edit' && props.initialData) {
@@ -155,117 +388,6 @@ export function UserManagementForm(props: UserManagementFormProps) {
       setSelectedCountryCode('+91')
     }
   }, [props.initialData, props.mode])
-
-  const handleAddDesignation = () => {
-    const formatted = newDesignationName.trim()
-    if (!formatted) return
-    if (props.designations.some((item) => item.toLowerCase() === formatted.toLowerCase())) {
-      setNewDesignationName('')
-      setDesignationDialogOpen(false)
-      return
-    }
-    void (async () => {
-      try {
-        await ensureLabMasterOptionByLabel('designation', formatted)
-        props.setDesignations((prev) => [...prev, formatted].sort((a, b) => a.localeCompare(b)))
-        setFormData((prev) => ({ ...prev, designation: formatted }))
-        await props.onOptionsChanged?.()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to save designation')
-      } finally {
-        setNewDesignationName('')
-        setDesignationDialogOpen(false)
-      }
-    })()
-  }
-
-  const handleDeleteDesignation = (label: string) => {
-    const next = props.designations.filter((item) => item !== label)
-    props.setDesignations(next)
-    if (formData.designation === label) {
-      setFormData((prev) => ({ ...prev, designation: next[0] ?? '' }))
-    }
-  }
-
-  const handleAddDepartment = () => {
-    const formatted = newDepartmentName.trim()
-    if (!formatted) return
-    if (props.departments.some((item) => item.toLowerCase() === formatted.toLowerCase())) {
-      setNewDepartmentName('')
-      setDepartmentDialogOpen(false)
-      return
-    }
-    void (async () => {
-      try {
-        await ensureLabMasterOptionByLabel('department', formatted)
-        props.setDepartments((prev) => {
-          const next = [...prev, formatted].sort((a, b) => a.localeCompare(b))
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
-          }
-          return next
-        })
-        setFormData((prev) => ({ ...prev, department: formatted }))
-        await props.onOptionsChanged?.()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to save department')
-      } finally {
-        setNewDepartmentName('')
-        setDepartmentDialogOpen(false)
-      }
-    })()
-  }
-
-  const handleDeleteDepartment = (label: string) => {
-    const next = props.departments.filter((item) => item !== label)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('userManagement.departments', JSON.stringify(next))
-    }
-    props.setDepartments(next)
-    if (formData.department === label) {
-      setFormData((prev) => ({ ...prev, department: next[0] ?? '' }))
-    }
-  }
-
-  const handleAddDivision = () => {
-    const formatted = newDivisionName.trim()
-    if (!formatted) return
-    if (props.divisions.some((item) => item.toLowerCase() === formatted.toLowerCase())) {
-      setNewDivisionName('')
-      setDivisionDialogOpen(false)
-      return
-    }
-    void (async () => {
-      try {
-        await ensureLabMasterOptionByLabel('division', formatted)
-        props.setDivisions((prev) => {
-          const next = [...prev, formatted].sort((a, b) => a.localeCompare(b))
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('userManagement.divisions', JSON.stringify(next))
-          }
-          return next
-        })
-        setFormData((prev) => ({ ...prev, division: formatted }))
-        await props.onOptionsChanged?.()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to save division')
-      } finally {
-        setNewDivisionName('')
-        setDivisionDialogOpen(false)
-      }
-    })()
-  }
-
-  const handleDeleteDivision = (label: string) => {
-    const next = props.divisions.filter((item) => item !== label)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('userManagement.divisions', JSON.stringify(next))
-    }
-    props.setDivisions(next)
-    if (formData.division === label) {
-      setFormData((prev) => ({ ...prev, division: next[0] ?? '' }))
-    }
-  }
 
   const handleSave = async () => {
     setError(null)
@@ -300,12 +422,14 @@ export function UserManagementForm(props: UserManagementFormProps) {
     open,
     onOpenChange,
     title,
+    addLabel,
     fieldId,
     placeholder,
     value,
     onChange,
     options,
     onSave,
+    onUpdate,
     onDelete,
     canDelete,
     addAriaLabel,
@@ -314,14 +438,16 @@ export function UserManagementForm(props: UserManagementFormProps) {
     open: boolean
     onOpenChange: (open: boolean) => void
     title: string
+    addLabel: string
     fieldId: string
     placeholder: string
     value: string
     onChange: (value: string) => void
-    options: string[]
+    options: OptionItem[]
     onSave: () => void
-    onDelete: (label: string) => void
-    canDelete: (label: string) => boolean
+    onUpdate: (value: string) => void
+    onDelete: (value: string) => void
+    canDelete: (item: { id: string; label: string }) => boolean
     addAriaLabel: string
     children: ReactNode
   }) => (
@@ -335,60 +461,24 @@ export function UserManagementForm(props: UserManagementFormProps) {
       >
         {children}
       </LimsFieldWithAdd>
-      <DialogContent
+      <LabManageDialogContent
+        open={open}
         layer="nested"
         overlayClassName={sidebarCenteredOverlayClass}
-        className={cn(limsDialogClass, 'max-w-md', sidebarCenteredDialogPositionClass)}
-        aria-describedby={undefined}
-      >
-        <div className="relative overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white">
-          <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
-          <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          <DialogHeader className="relative pr-10 text-left">
-            <DialogTitle className="text-base font-semibold tracking-tight text-white">{title}</DialogTitle>
-          </DialogHeader>
-        </div>
-        <div className={cn('space-y-4 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4', limsRegistryFormClass)}>
-          <Field>
-            <FieldLabel htmlFor={fieldId}>Name</FieldLabel>
-            <Input
-              id={fieldId}
-              className={limsFieldClass}
-              placeholder={placeholder}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-            />
-          </Field>
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-stone-600">Existing</p>
-            <div className="max-h-40 space-y-1 overflow-auto">
-              {options.map((label) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between rounded-none border border-stone-500 bg-stone-50 px-3 py-1.5 text-sm text-stone-900"
-                >
-                  <span>{label}</span>
-                  {canDelete(label) && (
-                    <button
-                      type="button"
-                      onClick={() => onDelete(label)}
-                      className="text-red-600 hover:text-red-800"
-                      aria-label={`Remove ${label}`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <DialogFooter className="gap-2 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
-          <Button type="button" className={limsPrimaryBtnClass} onClick={onSave} disabled={!value.trim()}>
-            Save & Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+        className={cn('max-w-md', sidebarCenteredDialogPositionClass)}
+        title={title}
+        addLabel={addLabel}
+        inputId={fieldId}
+        placeholder={placeholder}
+        value={value}
+        onValueChange={onChange}
+        onSave={onSave}
+        onUpdate={onUpdate}
+        saveDisabled={!value.trim()}
+        items={toManageItems(options)}
+        canDelete={canDelete}
+        onDelete={onDelete}
+      />
     </Dialog>
   )
 
@@ -554,13 +644,15 @@ export function UserManagementForm(props: UserManagementFormProps) {
                 {renderOptionManager({
                   open: divisionDialogOpen,
                   onOpenChange: setDivisionDialogOpen,
-                  title: 'Add New Division',
+                  title: 'Manage Divisions',
+                  addLabel: 'Add Division',
                   fieldId: 'new-division',
                   placeholder: 'e.g., Calibration Division',
                   value: newDivisionName,
                   onChange: setNewDivisionName,
                   options: divisionOptions,
                   onSave: handleAddDivision,
+                  onUpdate: handleUpdateDivision,
                   onDelete: handleDeleteDivision,
                   canDelete: () => divisionOptions.length > 1,
                   addAriaLabel: 'Add division',
@@ -579,9 +671,9 @@ export function UserManagementForm(props: UserManagementFormProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Select Division</SelectItem>
-                        {divisionOptions.map((label) => (
-                          <SelectItem key={label} value={label}>
-                            {label}
+                        {divisionOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.label}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -595,13 +687,15 @@ export function UserManagementForm(props: UserManagementFormProps) {
                 {renderOptionManager({
                   open: departmentDialogOpen,
                   onOpenChange: setDepartmentDialogOpen,
-                  title: 'Add New Department',
+                  title: 'Manage Departments',
+                  addLabel: 'Add Department',
                   fieldId: 'new-department',
                   placeholder: 'e.g., Chemistry',
                   value: newDepartmentName,
                   onChange: setNewDepartmentName,
                   options: departmentOptions,
                   onSave: handleAddDepartment,
+                  onUpdate: handleUpdateDepartment,
                   onDelete: handleDeleteDepartment,
                   canDelete: () => departmentOptions.length > 1,
                   addAriaLabel: 'Add department',
@@ -620,9 +714,9 @@ export function UserManagementForm(props: UserManagementFormProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Select Department</SelectItem>
-                        {departmentOptions.map((label) => (
-                          <SelectItem key={label} value={label}>
-                            {label}
+                        {departmentOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.label}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -636,15 +730,18 @@ export function UserManagementForm(props: UserManagementFormProps) {
                 {renderOptionManager({
                   open: designationDialogOpen,
                   onOpenChange: setDesignationDialogOpen,
-                  title: 'Add New Designation',
+                  title: 'Manage Designations',
+                  addLabel: 'Add Designation',
                   fieldId: 'new-designation',
                   placeholder: 'e.g., Compliance Officer',
                   value: newDesignationName,
                   onChange: setNewDesignationName,
                   options: designationOptions,
                   onSave: handleAddDesignation,
+                  onUpdate: handleUpdateDesignation,
                   onDelete: handleDeleteDesignation,
-                  canDelete: (label) => designationOptions.length > 1 && label !== 'Administrator',
+                  canDelete: (item) =>
+                    designationOptions.length > 1 && item.label !== 'Administrator',
                   addAriaLabel: 'Add designation',
                   children: (
                     <Select
@@ -661,9 +758,9 @@ export function UserManagementForm(props: UserManagementFormProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Select Designation</SelectItem>
-                        {designationOptions.map((label) => (
-                          <SelectItem key={label} value={label}>
-                            {label}
+                        {designationOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.label}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
