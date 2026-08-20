@@ -88,19 +88,31 @@ export async function saveModuleAccessMatrix(params: {
 
   if (granted.length === 0) return
 
-  const rows = granted.map(([moduleKey, accessLevel]) => ({
-    subject_type: params.subjectType,
-    subject_key: params.subjectKey,
-    subject_label: params.subjectLabel,
-    module_key: moduleKey,
-    access_level: accessLevel,
-    updated_by: params.updatedBy,
-    updated_at: now,
-  }))
+  const existing = await fetchModuleAccessRulesForSubject(params.subjectType, params.subjectKey)
+  const existingIdByModule = new Map(existing.map((row) => [row.module_key, row.id]))
 
-  const { error } = await supabase.from('module_access_rules').upsert(rows, {
-    onConflict: 'subject_type,subject_key,module_key',
-  })
+  for (const [moduleKey, accessLevel] of granted) {
+    const payload = {
+      subject_type: params.subjectType,
+      subject_key: params.subjectKey,
+      subject_label: params.subjectLabel,
+      module_key: moduleKey,
+      access_level: accessLevel,
+      updated_by: params.updatedBy,
+      updated_at: now,
+    }
 
-  if (error) throw new Error(error.message)
+    const existingId = existingIdByModule.get(moduleKey)
+    if (existingId) {
+      const { error: updateError } = await supabase
+        .from('module_access_rules')
+        .update(payload)
+        .eq('id', existingId)
+      if (updateError) throw new Error(updateError.message)
+      continue
+    }
+
+    const { error: insertError } = await supabase.from('module_access_rules').insert(payload)
+    if (insertError) throw new Error(insertError.message)
+  }
 }
