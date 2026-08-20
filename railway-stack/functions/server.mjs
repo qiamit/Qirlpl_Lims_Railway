@@ -34,10 +34,12 @@ function readBody(req) {
   })
 }
 
-function bearer(req) {
+function callerJwt(req) {
+  const userJwt = String(req.headers['x-user-jwt'] || '').trim()
+  if (userJwt) return userJwt
   const auth = String(req.headers.authorization || '')
   if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim()
-  return String(req.headers['x-user-jwt'] || '').trim()
+  return ''
 }
 
 async function rest(path, init = {}) {
@@ -69,7 +71,7 @@ async function rest(path, init = {}) {
 }
 
 async function requireUser(req) {
-  const token = bearer(req)
+  const token = callerJwt(req)
   if (!token) {
     const err = new Error('Missing caller session')
     err.statusCode = 401
@@ -84,6 +86,38 @@ async function requireUser(req) {
     throw err
   }
   return res.json()
+}
+
+async function authAdmin(path, init = {}) {
+  const res = await fetch(`${AUTH_URL}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      apikey: SERVICE_ROLE_KEY,
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  })
+  const text = await res.text()
+  let data = null
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    data = text
+  }
+  return { ok: res.ok, status: res.status, data }
+}
+
+function authErrorMessage(payload, fallback) {
+  if (payload && typeof payload === 'object') {
+    if ('msg' in payload && payload.msg) return String(payload.msg)
+    if ('message' in payload && payload.message) return String(payload.message)
+    if ('error_description' in payload && payload.error_description) {
+      return String(payload.error_description)
+    }
+    if ('error' in payload && payload.error) return String(payload.error)
+  }
+  return fallback
 }
 
 function esc(value) {
@@ -319,6 +353,129 @@ async function handleSendMrmAgenda(req, res) {
   json(res, 200, { sent, failed, recipients: results })
 }
 
+async function handleCreateUser(req, res) {
+  const caller = await requireUser(req)
+  const body = await readBody(req)
+
+  const email = String(body.email ?? '').trim()
+  const password = String(body.password ?? '').trim()
+  if (!email || !password) {
+    json(res, 400, { error: 'email and password are required' })
+    return
+  }
+
+  const mobileRaw = String(body.mobile ?? '')
+  const fullName = String(body.full_name ?? '')
+  const designation = String(body.designation ?? '')
+  const departmentName = String(body.department_name ?? '')
+  const division = String(body.division ?? '')
+  const status = String(body.status ?? 'Active')
+  const callerId = String(caller?.id ?? '')
+
+  const createResult = await authAdmin('/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        mobile: mobileRaw,
+        designation,
+        department_name: departmentName,
+        division,
+        status,
+        created_by: callerId,
+      },
+    }),
+  })
+
+  if (!createResult.ok) {
+    json(res, 400, {
+      error: authErrorMessage(createResult.data, `Auth ${createResult.status}`),
+    })
+    return
+  }
+
+  const createdUser = createResult.data?.user ?? createResult.data
+  const userId = String(createdUser?.id ?? '')
+  if (userId) {
+    try {
+      await rest('/user_profiles?on_conflict=id', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify({
+          id: userId,
+          full_name: fullName,
+          mobile: mobileRaw,
+          designation,
+          department_name: departmentName,
+          division,
+          status,
+        }),
+      })
+    } catch (err) {
+      json(res, 400, { error: err instanceof Error ? err.message : 'Profile upsert failed' })
+      return
+    }
+  }
+
+  json(res, 200, { user: createdUser })
+}
+
+async function handleDeleteUser(req, res) {
+  const caller = await requireUser(req)
+  const body = await readBody(req)
+  const userId = String(body.user_id ?? '').trim()
+
+  if (!userId) {
+    json(res, 400, { error: 'user_id is required' })
+    return
+  }
+
+  const callerId = String(caller?.id ?? '')
+  if (userId === callerId) {
+    json(res, 400, { error: 'You cannot delete your own account.' })
+    return
+  }
+
+  let callerDesignation = ''
+  try {
+    const profiles = await rest(
+      `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation`,
+    )
+    callerDesignation = String(profiles?.[0]?.designation ?? '').trim()
+  } catch {
+    /* ignore */
+  }
+  if (!callerDesignation) {
+    callerDesignation = String(caller?.user_metadata?.designation ?? '').trim()
+  }
+  if (callerDesignation.toLowerCase() !== 'laboratory director') {
+    json(res, 403, { error: 'Forbidden' })
+    return
+  }
+
+  try {
+    await rest(`/user_profiles?id=eq.${encodeURIComponent(userId)}`, { method: 'DELETE' })
+  } catch (err) {
+    json(res, 400, { error: err instanceof Error ? err.message : 'Profile delete failed' })
+    return
+  }
+
+  const deleteResult = await authAdmin(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  })
+  if (!deleteResult.ok) {
+    json(res, 400, {
+      error: authErrorMessage(deleteResult.data, `Auth ${deleteResult.status}`),
+    })
+    return
+  }
+
+  json(res, 200, { ok: true })
+}
+
 const routes = {
   'GET /health': async (_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' })
@@ -326,6 +483,8 @@ const routes = {
   },
   'POST /send-mrm-agenda': handleSendMrmAgenda,
   'POST /send-email': handleSendEmail,
+  'POST /create-user': handleCreateUser,
+  'POST /delete-user': handleDeleteUser,
 }
 
 const server = http.createServer(async (req, res) => {
