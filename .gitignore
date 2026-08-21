@@ -97,6 +97,8 @@ $RECYCLE.BIN/
 .cursor/*
 !.cursor/mcp.json
 !.cursor/rules/
+!.cursor/environment.json
+!.cursor/install.sh
 !.cursorrules
 
 # Cursor / agent one-off deploy & scratch files
