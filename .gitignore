@@ -56,14 +56,18 @@ credentials.json
 *.pfx
 *.secret
 
-# ── Supabase local / CLI ──────────────────────────────────────────────
+# ── Hosted Supabase CLI (this repo is Railway-only) ───────────────────
+**/.supabase/
 backend/supabase/.temp/
 backend/supabase/.branches/
-**/.supabase/
+backend/supabase/config.toml
 
-# ── Vercel / Netlify ──────────────────────────────────────────────────
+# ── Vercel / Netlify leftovers (do not deploy this repo there) ────────
 .vercel/
-frontend/.vercel/
+**/.vercel/
+vercel.json
+**/vercel.json
+.vercelignore
 .netlify/
 
 # ── Python (scripts/) ─────────────────────────────────────────────────
@@ -127,5 +131,3 @@ backend/supabase/baseline_from_*.sql
 *.tmp
 *.temp
 *.orig
-)
-.vercel

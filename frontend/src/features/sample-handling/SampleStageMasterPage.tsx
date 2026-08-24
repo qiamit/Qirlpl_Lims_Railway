@@ -46,7 +46,9 @@ export default function SampleStageMasterPage({ stage, title, nextStage }: Props
     try {
       const { data, error } = await supabase
         .from('samples')
-        .select('*, clients(company_name)')
+        .select(
+          'id, sample_code, client_id, description, matrix, received_at, received_by, collection_date, collection_location, storage_conditions, storage_location, status, stage, quantity, quantity_unit, condition_on_receipt, condition_notes, test_request_ids, created_at, updated_at, clients(company_name)',
+        )
         .eq('stage', stage)
         .order('created_at', { ascending: false })
       if (error) throw error

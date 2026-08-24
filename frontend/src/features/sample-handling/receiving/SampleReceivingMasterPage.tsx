@@ -42,9 +42,68 @@ import {
   type SampleReceivingSortKey,
 } from './sortSampleReceivingRows'
 import { getSampleWorkflowStatusLabel } from '../sampleWorkflowStatus'
+import { fetchAllByRange } from '../shared/fetchByIdChunks'
 
 const STAGE = 'receiving' as const
 const BUCKET = 'sample-client-references'
+const SAMPLE_RECEIVING_LIST_SELECT = [
+  'id',
+  'srf_number',
+  'referenced_srf_number',
+  'date_of_sample_receiving',
+  'sample_code',
+  'sample_qr_code',
+  'client_id',
+  'client_reference',
+  'test_report_is_code_id',
+  'description',
+  'sample_description',
+  'matrix',
+  'received_at',
+  'received_by',
+  'sample_quantity',
+  'shelf_life',
+  'test_required',
+  'batch_number',
+  'date_of_manufacturing',
+  'bis_seal',
+  'io_signature',
+  'sample_declaration',
+  'any_other_information',
+  'mode_of_disposal',
+  'nature_of_sample',
+  'statement_conformity_required',
+  'witness_test_required',
+  'competent_person_available',
+  'equipment_available',
+  'can_complete_within_time',
+  'deviation_from_methods',
+  'supporting_docs_required',
+  'decision_rule_applied',
+  'testing_method_available',
+  'sampling_procedure_ref',
+  'tentative_date_required',
+  'tentative_date_by_lab',
+  'sample_receiving_status',
+  'receiving_report_type',
+  'client_references_path',
+  'collection_date',
+  'collection_location',
+  'storage_conditions',
+  'storage_location',
+  'status',
+  'stage',
+  'quantity',
+  'quantity_unit',
+  'condition_on_receipt',
+  'condition_notes',
+  'test_request_ids',
+  'referback_from_allocation',
+  'sample_receiving_edit_unlocked',
+  'created_at',
+  'updated_at',
+  'clients(company_name)',
+].join(', ')
 
 const formatSupabaseError = (err: unknown) => {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -184,21 +243,27 @@ export default function SampleReceivingMasterPage() {
     setListError(null)
     setListLoading(true)
     try {
-      const [samplesResult, allocationResult] = await Promise.all([
-        supabase
-          .from('samples')
-          .select('*, clients(company_name)')
-          .order('date_of_sample_receiving', { ascending: false, nullsFirst: false })
-          .order('srf_number', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false })
-          .limit(5000),
-        supabase.from('sample_allocations').select('sample_id'),
+      const [samples, allocRows] = await Promise.all([
+        fetchAllByRange(async (from, to) => {
+          const { data, error } = await supabase
+            .from('samples')
+            .select(SAMPLE_RECEIVING_LIST_SELECT)
+            .order('id', { ascending: true })
+            .range(from, to)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        }),
+        fetchAllByRange(async (from, to) => {
+          const { data, error } = await supabase
+            .from('sample_allocations')
+            .select('sample_id')
+            .order('id', { ascending: true })
+            .range(from, to)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        }),
       ])
 
-      const { data, error } = samplesResult
-      if (error) throw error
-
-      const allocRows = Array.isArray(allocationResult.data) ? allocationResult.data : []
       setSampleIdsInAllocation(
         new Set(
           allocRows
@@ -207,7 +272,7 @@ export default function SampleReceivingMasterPage() {
         ),
       )
 
-      const list = (Array.isArray(data) ? data : []).map((r: Record<string, unknown>) => {
+      const list = samples.map((r: Record<string, unknown>) => {
         const clients = r.clients as { company_name?: string } | null
         return {
           id: r.id as string,

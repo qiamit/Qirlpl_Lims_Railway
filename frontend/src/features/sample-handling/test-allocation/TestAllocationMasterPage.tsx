@@ -28,6 +28,7 @@ import {
   confirmDestructiveDelete,
   deleteTestAllocationsForSections,
 } from '@/features/sample-handling/shared/deleteSampleRecords'
+import { fetchAllByRange, fetchByIdChunks } from '../shared/fetchByIdChunks'
 
 type UserFromApi = { id: string; name: string; designation: string; departmentName: string }
 
@@ -153,32 +154,41 @@ export default function TestAllocationMasterPage() {
     setListError(null)
     setListLoading(true)
     try {
-      const [{ data: testAllocData, error: taErr }, { data: allAllocData, error: allocListErr }] =
-        await Promise.all([
-          supabase
+      const [testAllocs, allAllocations] = await Promise.all([
+        fetchAllByRange(async (from, to) => {
+          const { data, error } = await supabase
             .from('test_allocations')
             .select(
               'id, sample_allocation_id, assigned_employee_id, assigned_employee_name, test_parameter_summary, sent_for_testing',
             )
-            .order('created_at', { ascending: false }),
-          supabase
+            .order('id', { ascending: true })
+            .range(from, to)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        }),
+        fetchAllByRange(async (from, to) => {
+          const { data, error } = await supabase
             .from('sample_allocations')
             .select('id, sample_id, section_code, allocation_date, department, designation')
-            .order('allocation_date', { ascending: false }),
-        ])
-      if (taErr) throw taErr
-      if (allocListErr) throw allocListErr
+            .order('id', { ascending: true })
+            .range(from, to)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        }),
+      ])
 
-      const testAllocs = Array.isArray(testAllocData) ? testAllocData : []
-      const allAllocations = Array.isArray(allAllocData) ? allAllocData : []
       const testAllocationIds = testAllocs.map((t: { id: string }) => t.id)
       const paramIdsByAllocation = new Map<string, string[]>()
       if (testAllocationIds.length > 0) {
-        const { data: paramData } = await supabase
-          .from('test_allocation_parameters')
-          .select('test_allocation_id, test_parameter_id')
-          .in('test_allocation_id', testAllocationIds)
-        for (const p of Array.isArray(paramData) ? paramData : []) {
+        const paramData = await fetchByIdChunks(testAllocationIds, 60, async (chunkIds) => {
+          const { data, error } = await supabase
+            .from('test_allocation_parameters')
+            .select('test_allocation_id, test_parameter_id')
+            .in('test_allocation_id', chunkIds)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        })
+        for (const p of paramData) {
           const taId = (p as { test_allocation_id: string }).test_allocation_id
           const tpId = (p as { test_parameter_id: string | null }).test_parameter_id
           if (!taId || !tpId) continue
@@ -197,13 +207,16 @@ export default function TestAllocationMasterPage() {
       const sampleIds = [
         ...new Set(allAllocations.map((a: { sample_id: string }) => a.sample_id)),
       ]
-      const { data: sampleData, error: sampleErr } = sampleIds.length
-        ? await supabase
-            .from('samples')
-            .select('id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, stage')
-            .in('id', sampleIds)
-        : { data: [], error: null }
-      if (sampleErr) throw sampleErr
+      const sampleData = sampleIds.length
+        ? await fetchByIdChunks(sampleIds, 100, async (chunkIds) => {
+            const { data, error } = await supabase
+              .from('samples')
+              .select('id, srf_number, date_of_sample_receiving, test_report_is_code_id, referback_from_allocation, stage')
+              .in('id', chunkIds)
+            if (error) throw error
+            return Array.isArray(data) ? data : []
+          })
+        : []
 
       const isCodeIds = [
         ...new Set(
