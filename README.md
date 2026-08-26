@@ -35,7 +35,7 @@ The browser uses `supabase-js` against the Railway API URL (Supabase-compatible 
 2. Copy `frontend/.env.example` to `frontend/.env`
 3. Keep Railway values:
 
-   - `VITE_SUPABASE_URL` = Railway API gateway (`https://api-production-284ab.up.railway.app`)
+   - `VITE_SUPABASE_URL` = Railway API gateway (`https://api.qirlpl.com`)
    - `VITE_SUPABASE_ANON_KEY` = Railway anon JWT
    - `VITE_PDF_SERVICE_URL` = Railway PDF service
 

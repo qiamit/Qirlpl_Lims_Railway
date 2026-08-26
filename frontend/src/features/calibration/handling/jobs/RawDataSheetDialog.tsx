@@ -2107,6 +2107,7 @@ export function RawDataSheetDialog({
   const [freqSaving, setFreqSaving] = useState(false)
   const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
   const [locationDraft, setLocationDraft] = useState('')
+  const [formulaRefreshSpinning, setFormulaRefreshSpinning] = useState(false)
   const { user, profileName, designation } = useAuth()
 
   useEffect(() => {
@@ -2562,14 +2563,43 @@ export function RawDataSheetDialog({
     setError(null)
     try {
       await persistLocationOfCalibration()
+
+      const columns = allRawDataSheetColumns(payload.template)
+      const dp = parseTableSettings(payload.tableSettings).decimalPlaces
+      const env = payload.environmentConditions
+      // Formula columns show computed values in the UI but may be empty in storage.
+      // Materialize them before required-column checks and persist.
+      const rowsWithFormulas = payload.rows.map((row, index) => {
+        const values = { ...row.values }
+        for (const col of columns) {
+          if (col.type === 'formula') values[col.key] = ''
+        }
+        return {
+          ...row,
+          values: applySheetRowFormulas(
+            columns,
+            values,
+            dp,
+            env,
+            resolveMasterForSheetRow(row, masterEquipments),
+            matchedEquipmentRange,
+            {
+              pointValue: row.pointValue,
+              masterEquipmentId: row.masterEquipmentId,
+              rowIndexInMaster: rowIndexInMasterGroup(payload.rows, index),
+            },
+          ),
+        }
+      })
+
       if (asComplete) {
         for (const item of payload.template.verification.items) {
           if (item.required && !payload.verificationAnswers[item.id]) {
             throw new Error(`Complete required verification: ${item.label}`)
           }
         }
-        for (const row of payload.rows) {
-          for (const col of allRawDataSheetColumns(payload.template)) {
+        for (const row of rowsWithFormulas) {
+          for (const col of columns) {
             if (col.required && !(row.values[col.key] ?? '').trim()) {
               throw new Error(`Fill required column "${col.label}" on all rows`)
             }
@@ -2587,6 +2617,7 @@ export function RawDataSheetDialog({
 
       const nextPayload: RawDataSheetPayload = {
         ...payload,
+        rows: rowsWithFormulas,
         ...(entryBy ? { entryBy } : {}),
       }
       setPayload(nextPayload)
@@ -2771,6 +2802,8 @@ export function RawDataSheetDialog({
   /**
    * Pull latest formulas from Calibration Equipment Raw Data Sheet Format,
    * then recompute all calculated columns from current inputs + Environment.
+   * Must match grid display (`liveRowCalculationValues` + all columns including extra tables)
+   * so Generate Report reading cells stay intact and formula results persist on save.
    */
   const refreshTable = () => {
     if (!payload || readOnly || !job) return
@@ -2780,45 +2813,45 @@ export function RawDataSheetDialog({
       payload.template,
       equipmentTemplate,
     )
+    const evalColumns = allRawDataSheetColumns(mergedTemplate)
 
     const syncedEnv = formatEnvironmentNumberValues(
       syncEnvironmentFromEquipmentTemplate(mergedTemplate, payload.environmentConditions),
       ENV_DECIMAL_PLACES,
     )
     const dp = tableSettings.decimalPlaces
+    const reportSettings = payload.reportGenerationSettings
 
-    const strippedRows = stripCopiedPointValuesFromAngleColumns(
-      payload.rows,
-      allRawDataSheetColumns(mergedTemplate),
-      matchedEquipmentRange,
-    )
+    const recomputeRow = (
+      r: RawDataSheetPayloadRow,
+      rows: RawDataSheetPayloadRow[],
+      index: number,
+      columns: RawDataSheetColumn[],
+    ): RawDataSheetPayloadRow => ({
+      ...r,
+      values: liveRowCalculationValues(
+        columns,
+        r.values,
+        dp,
+        syncedEnv,
+        reportSettings,
+        resolveMasterForSheetRow(r, masterEquipments),
+        matchedEquipmentRange,
+        {
+          pointValue: r.pointValue,
+          masterEquipmentId: r.masterEquipmentId,
+          rowIndexInMaster: rowIndexInMasterGroup(rows, index),
+        },
+      ),
+    })
+
     let nextPayload: RawDataSheetPayload = {
       ...payload,
       template: mergedTemplate,
       environmentConditions: syncedEnv,
-      rows: strippedRows.map((r, index) => {
-        // Keep input cells; clear stale formula cell values before recompute.
-        const values = { ...r.values }
-        for (const col of mergedTemplate.columns) {
-          if (col.type === 'formula') values[col.key] = ''
-        }
-        return {
-          ...r,
-          values: applySheetRowFormulas(
-            mergedTemplate.columns,
-            values,
-            dp,
-            syncedEnv,
-            resolveMasterForSheetRow(r, masterEquipments),
-            matchedEquipmentRange,
-            {
-              pointValue: r.pointValue,
-              masterEquipmentId: r.masterEquipmentId,
-              rowIndexInMaster: rowIndexInMasterGroup(payload.rows, index),
-            },
-          ),
-        }
-      }),
+      rows: payload.rows.map((r, index) =>
+        recomputeRow(r, payload.rows, index, evalColumns),
+      ),
     }
 
     if (equipmentMaster) {
@@ -2836,29 +2869,19 @@ export function RawDataSheetDialog({
         ]),
       )
       nextPayload = ensureAllMasterRowGroups(nextPayload, masterTabs, masterNameById, dp)
+      const columnsAfter = allRawDataSheetColumns(nextPayload.template)
       nextPayload = {
         ...nextPayload,
-        rows: nextPayload.rows.map((r, index) => ({
-          ...r,
-          values: applySheetRowFormulas(
-            allRawDataSheetColumns(nextPayload.template),
-            r.values,
-            dp,
-            syncedEnv,
-            resolveMasterForSheetRow(r, masterEquipments),
-            matchedEquipmentRange,
-            {
-              pointValue: r.pointValue,
-              masterEquipmentId: r.masterEquipmentId,
-              rowIndexInMaster: rowIndexInMasterGroup(nextPayload.rows, index),
-            },
-          ),
-        })),
+        rows: nextPayload.rows.map((r, index) =>
+          recomputeRow(r, nextPayload.rows, index, columnsAfter),
+        ),
       }
     }
 
     setPayload(nextPayload)
     setError(null)
+    setFormulaRefreshSpinning(true)
+    window.setTimeout(() => setFormulaRefreshSpinning(false), 450)
   }
 
   const selectedEnvParams = resolveEnvParameterColumns(environment)
@@ -3999,18 +4022,6 @@ export function RawDataSheetDialog({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className={cn('w-8 px-0', limsDarkBarBtnClass)}
-                      disabled={readOnly || !payload}
-                      onClick={refreshTable}
-                      aria-label="Refresh table formulas"
-                      title="Recalculate all formula columns from inputs and Environment Condition"
-                    >
-                      <RefreshCw size={14} aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
                       className={cn(
                         'px-3 text-xs',
                         limsDarkBarBtnClass,
@@ -4116,8 +4127,29 @@ export function RawDataSheetDialog({
                           </th>
                         ) : null}
                         {!readOnly ? (
-                          <th className={cn(limsTableHeadClass, 'w-20 px-2 py-2')}>
-                            Action
+                          <th className={cn(limsTableHeadClass, 'w-24 px-1 py-2')}>
+                            <div className="flex flex-col items-center justify-center gap-1.5">
+                              <span>Action</span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className={cn(
+                                  'h-7 w-7 px-0',
+                                  limsDarkBarBtnClass,
+                                )}
+                                disabled={!payload}
+                                onClick={refreshTable}
+                                aria-label="Refresh table formulas"
+                                title="Recalculate all formula columns from inputs and Environment Condition"
+                              >
+                                <RefreshCw
+                                  size={13}
+                                  aria-hidden
+                                  className={cn(formulaRefreshSpinning && 'animate-spin')}
+                                />
+                              </Button>
+                            </div>
                           </th>
                         ) : null}
                       </tr>

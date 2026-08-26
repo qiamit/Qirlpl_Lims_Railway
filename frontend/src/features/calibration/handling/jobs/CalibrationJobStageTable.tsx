@@ -547,7 +547,9 @@ export function groupCalibrationJobsBySrf(rows: CalibrationJobRow[]): Calibratio
 }
 
 function engineerLabel(eng: CalibrationEngineerOption): string {
-  return eng.name
+  const name = eng.name.trim() || '—'
+  const department = eng.department.trim()
+  return department ? `${name} - ${department}` : name
 }
 
 function isCalibrationDivision(division: string): boolean {

@@ -283,6 +283,12 @@ export function ServiceRequestFormView({
     return match?.label ?? form.clientName
   }, [clientOptions, form.clientId, form.clientName])
 
+  const filteredClientOptions = useMemo(() => {
+    const q = clientQuery.trim().toLowerCase()
+    if (!q) return clientOptions
+    return clientOptions.filter((opt) => opt.label.toLowerCase().includes(q))
+  }, [clientOptions, clientQuery])
+
   const reviewDoneCount = useMemo(() => {
     const capDone = CAPABILITY_EVALUATION_ROWS.filter(
       (r) => form.capabilityEvaluation[r.key]?.ok != null,
@@ -399,7 +405,7 @@ export function ServiceRequestFormView({
                   setClientQuery(v)
                   if (!clientOpen) setClientOpen(true)
                 }}
-                options={clientOptions}
+                options={filteredClientOptions}
                 onSelectOption={(opt) => {
                   const contact = clientContactById?.[opt.id]
                   onChange({
@@ -415,7 +421,11 @@ export function ServiceRequestFormView({
                 open={clientOpen}
                 onOpenChange={(open) => {
                   setClientOpen(open)
-                  if (open) setClientQuery(selectedClientLabel)
+                  if (!open) setClientQuery(selectedClientLabel)
+                }}
+                onInputFocus={() => {
+                  setClientOpen(true)
+                  setClientQuery('')
                 }}
                 placeholder="Search & Select Client"
                 listId="srf-client-list"

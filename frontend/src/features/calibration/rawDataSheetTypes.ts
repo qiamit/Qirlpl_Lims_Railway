@@ -1378,13 +1378,46 @@ export function parseTableSettings(raw: unknown): RawDataSheetTableSettings {
   }
 }
 
+/**
+ * Parse a sheet / master / env cell into a finite number for formulas.
+ * Accepts plain numbers and common lab suffixes: `0.05%`, `±0.25 %`, `55 %RH`, `0.01 kN`.
+ * For `mean±U` pairs, uses the left (mean) side — same as prior expression eval.
+ * Does NOT treat a trailing `%` on a cell as Excel “divide by 100”; labs store the
+ * percent magnitude (Expanded Uncertainty ± (%) → `0.05` meaning 0.05%).
+ */
+export function parseSheetNumericValue(raw: string | null | undefined): number | null {
+  const t = String(raw ?? '')
+    .trim()
+    .replace(/,/g, '')
+  if (!t) return null
+
+  const direct = Number(t)
+  if (Number.isFinite(direct)) return direct
+
+  const display = formatPlusMinusPairDisplay(t).trim()
+  const pm =
+    /^(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*±\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(
+      display,
+    )
+  if (pm) {
+    const mean = Number(pm[1])
+    return Number.isFinite(mean) ? mean : null
+  }
+
+  const cleaned = t.replace(/^[±+\s]+/, '').trim()
+  const m = cleaned.match(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)
+  if (!m) return null
+  const n = Number(m[0])
+  return Number.isFinite(n) ? n : null
+}
+
 function toFiniteNumbers(values: RawDataSheetRowValues, sources: string[]): number[] | null {
   const nums: number[] = []
   for (const key of sources) {
     const raw = (values[key] ?? '').trim()
     if (!raw) return null
-    const n = Number(raw)
-    if (!Number.isFinite(n)) return null
+    const n = parseSheetNumericValue(raw)
+    if (n == null) return null
     nums.push(n)
   }
   return nums
@@ -1509,15 +1542,60 @@ const EXPRESSION_FN_NAMES = new Set([
   'tempcorrect',
 ])
 
-/** Normalize Excel-ish operators / leading equals. */
+/** Rewrite Excel `N%` → `(N/100)` outside of `"…"` string literals. */
+function rewritePercentLiteralsOutsideQuotes(expr: string): string {
+  let out = ''
+  let i = 0
+  while (i < expr.length) {
+    const ch = expr[i]!
+    if (ch === '"') {
+      out += ch
+      i += 1
+      while (i < expr.length) {
+        if (expr[i] === '\\' && i + 1 < expr.length) {
+          out += expr[i]! + expr[i + 1]!
+          i += 2
+          continue
+        }
+        out += expr[i]!
+        if (expr[i] === '"') {
+          i += 1
+          break
+        }
+        i += 1
+      }
+      continue
+    }
+    const rest = expr.slice(i)
+    const m = /^(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*%/.exec(rest)
+    if (m) {
+      out += `(${m[1]}/100)`
+      i += m[0].length
+      continue
+    }
+    out += ch
+    i += 1
+  }
+  return out
+}
+
+/** Normalize Excel-ish operators / leading equals / trailing percent literals. */
 export function normalizeColumnFormulaExpression(expr: string): string {
-  return expr
+  const base = expr
     .trim()
     .replace(/^\s*=\s*/, '')
     .replace(/×/g, '*')
     .replace(/÷/g, '/')
     .replace(/−/g, '-')
     .replace(/\^/g, '**')
+  return rewritePercentLiteralsOutsideQuotes(base)
+}
+
+/** After [column] refs become `(n)`, rewrite leftover Excel percent tokens. */
+function rewriteTrailingPercentLiterals(body: string): string {
+  return rewritePercentLiteralsOutsideQuotes(
+    body.replace(/\(\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*\)\s*%/g, '(($1)/100)'),
+  )
 }
 
 function normalizeRefToken(value: string): string {
@@ -2120,11 +2198,8 @@ export function evaluateColumnFormulaExpression(
       if (!col) throw new Error(`Unknown column "${rawRef.trim()}"`)
       const raw = (values[col.key] ?? '').trim()
       if (!raw) throw new Error('incomplete')
-      const n = Number(raw)
-      if (Number.isFinite(n)) return `(${n})`
-      const extracted = raw.match(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)
-      const parsed = extracted ? Number(extracted[0]) : NaN
-      if (!Number.isFinite(parsed)) throw new Error('incomplete')
+      const parsed = parseSheetNumericValue(raw)
+      if (parsed == null) throw new Error('incomplete')
       return `(${parsed})`
     })
 
@@ -2137,7 +2212,7 @@ export function evaluateColumnFormulaExpression(
         parts.push(normalizeUncertaintyJoinText(seg.value))
         continue
       }
-      const mathBody = replaceRefs(seg.value)
+      const mathBody = rewriteTrailingPercentLiterals(replaceRefs(seg.value))
       const n = runValidatedMathExpression(mathBody)
       if (n == null) throw new Error('incomplete')
       parts.push(String(n))
@@ -2145,7 +2220,7 @@ export function evaluateColumnFormulaExpression(
     return formatPlusMinusPairDisplay(parts.join(''))
   }
 
-  body = replaceRefs(body)
+  body = rewriteTrailingPercentLiterals(replaceRefs(body))
   return runValidatedMathExpression(body)
 }
 
@@ -2167,12 +2242,12 @@ export function evaluateEnvParameterFormula(
     if (!row) throw new Error(`Unknown field "${String(rawRef ?? '').trim()}"`)
     const raw = (row.values[parameterColumnId] ?? '').trim()
     if (!raw) throw new Error('incomplete')
-    const n = Number(raw)
-    if (!Number.isFinite(n)) throw new Error('incomplete')
+    const n = parseSheetNumericValue(raw)
+    if (n == null) throw new Error('incomplete')
     return `(${n})`
   })
 
-  return runValidatedMathExpression(body)
+  return runValidatedMathExpression(rewriteTrailingPercentLiterals(body))
 }
 
 /** Prefix used for virtual formula columns that map to Environment Condition params. */
@@ -2253,8 +2328,8 @@ export function envFormulaRefValues(
     for (const row of dataRows) {
       const raw = (row.values[col.id] ?? '').trim()
       if (!raw) continue
-      const n = Number(raw)
-      if (Number.isFinite(n)) nums.push(n)
+      const n = parseSheetNumericValue(raw)
+      if (n != null) nums.push(n)
     }
     if (nums.length > 0) {
       values[`${ENV_FORMULA_REF_PREFIX}${col.id}`] = String(meanOf(nums))
@@ -2280,8 +2355,8 @@ export function envFormulaRefValues(
       }
 
       if (!raw) continue
-      const n = Number(raw)
-      if (Number.isFinite(n)) values[key] = String(n)
+      const n = parseSheetNumericValue(raw)
+      if (n != null) values[key] = String(n)
     }
   }
   return values
@@ -2798,9 +2873,8 @@ export function explainFormulaCalculation(
         seen.add(col.key)
         inputs.push({ label, value: formatStepDisplayValue(raw) })
       }
-      return raw && Number.isFinite(Number(raw))
-        ? formatStepNumber(Number(raw), dp)
-        : `[${label}?]`
+      const n = parseSheetNumericValue(raw)
+      return n != null ? formatStepNumber(n, dp) : `[${label}?]`
     })
 
     const steps: string[] = [
@@ -2814,7 +2888,15 @@ export function explainFormulaCalculation(
       const resultDisplay = formatStepDisplayValue(result)
       steps.push(`Result = ${resultDisplay}`)
     } else {
-      steps.push('Result incomplete — one or more input values are missing.')
+      const hasAnyInput = inputs.some((i) => String(i.value ?? '').trim() !== '')
+      const hasUnparsed = /\[\S.*\?\]/.test(substituted)
+      steps.push(
+        hasUnparsed
+          ? 'Result incomplete — a referenced value could not be read as a number (check blank cells or units like % / kN).'
+          : hasAnyInput
+            ? 'Result incomplete — check formula references and that all inputs are numeric.'
+            : 'Result incomplete — one or more input values are missing.',
+      )
     }
 
     return {
