@@ -42,7 +42,7 @@ export function CompletedResultsHeaderBar({
           <div className="order-3 w-full min-w-0 sm:order-none sm:mx-1 sm:w-[40%] sm:max-w-[19.5rem] sm:flex-none">
             <Input
               type="search"
-              placeholder="Search SRF, client, IS, report no…"
+              placeholder="Search SRF | Client | IS Number | Report No"
               aria-label="Search"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}

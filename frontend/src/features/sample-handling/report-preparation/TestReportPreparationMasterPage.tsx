@@ -59,7 +59,11 @@ import {
   isValidNablUlrFormat,
   sanitizeNablUlrInput,
 } from './nablUlrNumber'
-import { fetchNextTestReportNumber, toCanonicalReportNumber } from './formattedTestReportNumber'
+import {
+  fetchNextTestReportNumber,
+  toCanonicalReportNumber,
+  withReceivingReportTypeSuffix,
+} from './formattedTestReportNumber'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 import { buildSampleRetentionIssuePayload } from '@/features/sample-handling/retain-disposed/sampleRetention'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
@@ -265,6 +269,9 @@ export default function TestReportPreparationMasterPage() {
       .then((coverData) => {
         setCoverDetails(coverData)
         setPartBDetails((prev) => prev ?? coverData.partB)
+        setReportNumber((prev) =>
+          prev ? withReceivingReportTypeSuffix(prev, coverData.reportType) : prev,
+        )
       })
       .catch(() => {
         setCoverDetails(null)

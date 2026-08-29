@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
+import { stripReceivingReportTypeFromCode } from '@/features/sample-handling/receiving/receivingSrfFromReference'
 
 export const IS_CODE_FILES_BUCKET = 'is-code-files'
 export const CLIENT_REFERENCES_BUCKET = 'sample-client-references'
@@ -196,8 +197,14 @@ export async function fetchSampleSrfViewDetails(
     clientPhone: clients?.mobile ?? null,
     clientAddress: clients?.address ?? null,
     isCodeLabel,
-    sampleCode: (row.sample_code as string) ?? null,
-    sampleQrCode: (row.sample_qr_code as string) ?? null,
+    sampleCode: stripReceivingReportTypeFromCode(
+      (row.sample_code as string) ?? null,
+      (row.receiving_report_type as string) ?? null,
+    ),
+    sampleQrCode: stripReceivingReportTypeFromCode(
+      (row.sample_qr_code as string) ?? null,
+      (row.receiving_report_type as string) ?? null,
+    ),
     batchNumber: (row.batch_number as string) ?? null,
     dateOfManufacturing: (row.date_of_manufacturing as string) ?? null,
     sampleQuantity: (row.sample_quantity as string) ?? null,

@@ -35,6 +35,7 @@ import { generateNextSrfNumber } from './generateNextSrfNumber'
 import { buildSrfPrintHtml } from './buildSrfPrintHtml'
 import { outputSrfDocument } from './outputSrfDocument'
 import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
+import { fetchSampleRowById, applyReferencedSrfToReceivingForm } from './sampleReceivingRecord'
 import { fetchSrfPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
 import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/report-preparation/reportScopeConfig'
 import {
@@ -433,34 +434,31 @@ export default function SampleReceivingMasterPage() {
           referencedSrfNumber: '',
           srfNumber: srf,
         }))
-      } else {
-        setForm((prev) => {
-          const base =
-            stripReceivingReportSuffix(prev.referencedSrfNumber) ||
-            stripReceivingReportSuffix(prev.srfNumber)
-          return {
-            ...prev,
-            receivingReportType: reportType,
-            referencedSrfNumber: base,
-            srfNumber: base ? buildReceivingSrfFromReference(base, reportType) : '',
-          }
-        })
+        return
       }
+      setForm((prev) => {
+        const base = stripReceivingReportSuffix(prev.referencedSrfNumber)
+        return {
+          ...prev,
+          receivingReportType: reportType,
+          referencedSrfNumber: base,
+          srfNumber: base ? buildReceivingSrfFromReference(base, reportType) : '',
+        }
+      })
     })()
   }
 
   const handleSelectReferencedSrf = (sampleId: string) => {
-    const row = rows.find((r) => r.id === sampleId)
-    if (!row) return
-    const base = stripReceivingReportSuffix(row.srf_number ?? '')
-    const filled = rowToForm(row)
-    filled.receivingReportType = form.receivingReportType
-    filled.referencedSrfNumber = base
-    filled.sampleCode = ''
-    filled.clientReferencesPath = ''
-    filled.srfNumber = buildReceivingSrfFromReference(base, form.receivingReportType)
-    setForm(filled)
-    setClientReferencesFile(null)
+    void (async () => {
+      try {
+        const row = await fetchSampleRowById(sampleId)
+        setForm((prev) => applyReferencedSrfToReceivingForm(row, prev.receivingReportType))
+        setClientReferencesFile(null)
+        setSaveMessage(null)
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Unable to load the selected SRF.')
+      }
+    })()
   }
 
   const handleCopy = (row: SampleRow) => {

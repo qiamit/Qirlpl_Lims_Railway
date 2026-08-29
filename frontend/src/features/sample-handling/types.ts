@@ -16,6 +16,7 @@ export const RECEIVING_REPORT_TYPES = [
   'New Report',
   'Amendment Report',
   'Supplementary Report',
+  'Revised Report',
 ] as const
 
 export type ReceivingReportType = (typeof RECEIVING_REPORT_TYPES)[number]

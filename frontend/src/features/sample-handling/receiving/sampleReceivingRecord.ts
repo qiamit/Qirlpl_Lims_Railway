@@ -73,6 +73,27 @@ export function mapSupabaseRowToSampleRow(r: Record<string, unknown>): SampleRow
   }
 }
 
+/** Copy every receiving field from a previous SRF, then assign A / S report number. */
+export function applyReferencedSrfToReceivingForm(
+  source: SampleRow,
+  reportType: string,
+): SampleReceivingForm {
+  const filled = sampleRowToReceivingForm(source)
+  const base = stripReceivingReportSuffix(source.srf_number ?? '')
+  filled.receivingReportType = reportType
+  filled.referencedSrfNumber = base
+  filled.srfNumber = buildReceivingSrfFromReference(base, reportType)
+  return filled
+}
+
+export async function loadReferencedSrfReceivingForm(
+  sampleId: string,
+  reportType: string,
+): Promise<SampleReceivingForm> {
+  const row = await fetchSampleRowById(sampleId)
+  return applyReferencedSrfToReceivingForm(row, reportType)
+}
+
 export function sampleRowToReceivingForm(row: SampleRow): SampleReceivingForm {
   return {
     srfNumber: row.srf_number ?? '',

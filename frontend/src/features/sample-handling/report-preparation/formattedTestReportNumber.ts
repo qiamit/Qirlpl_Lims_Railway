@@ -1,12 +1,15 @@
 import { supabase } from '@/lib/supabaseClient'
+import { receivingReportSuffix } from '@/features/sample-handling/receiving/receivingSrfFromReference'
 import { REPORT_SCOPE_SUFFIX, type ReportScopeKind } from './reportScope'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 
-/** Total report number length */
+/** Total report number length (New Report). Amendment / Revised / Supplementary add one type letter. */
 export const TEST_REPORT_TOTAL_LENGTH = 16
+export const TEST_REPORT_WITH_TYPE_LENGTH = 17
 /** Canonical storage / NABL last character */
 export const TEST_REPORT_LAST_CHAR = 'A'
 export const TEST_REPORT_NON_NABL_LAST_CHAR = 'B'
+const SCOPE_AND_TYPE_RE = /[AB][ARS]$/
 
 export function reportNumberLastCharForScope(scope: ReportScopeKind): string {
   return REPORT_SCOPE_SUFFIX[scope]
@@ -21,8 +24,21 @@ export function prefixSegmentForReportNumber(prefix: string): string {
   return normalizeReportNumberChars(prefix.trim())
 }
 
-export function sanitizeTestReportNumberInput(value: string): string {
-  return normalizeReportNumberChars(value).slice(0, TEST_REPORT_TOTAL_LENGTH)
+export function sanitizeTestReportNumberInput(
+  value: string,
+  maxLen: number = TEST_REPORT_WITH_TYPE_LENGTH,
+): string {
+  return normalizeReportNumberChars(value).slice(0, maxLen)
+}
+
+/** Drop Amendment/Revised/Supplementary letter (…AA / …AR / …AS) to the 16-char base. */
+export function stripReceivingReportTypeSuffix(value: string): string {
+  const v = normalizeReportNumberChars(value)
+  if (v.length === TEST_REPORT_WITH_TYPE_LENGTH && SCOPE_AND_TYPE_RE.test(v)) return v.slice(0, TEST_REPORT_TOTAL_LENGTH)
+  if (v.length === TEST_REPORT_TOTAL_LENGTH && /[RS]$/.test(v)) {
+    return `${v.slice(0, -1)}${TEST_REPORT_LAST_CHAR}`
+  }
+  return v
 }
 
 /**
@@ -41,37 +57,65 @@ export function formatTestReportNumber(prefix: string, sequence: number): string
   return `${usePrefix}${serial}${suffix}`
 }
 
-/** Stored value is canonical (ends with A); accepts A or B when reading. */
+/** Amendment → …AA, Revised → …AR, Supplementary → …AS (after the NABL/Non-NABL letter). */
+export function withReceivingReportTypeSuffix(
+  value: string,
+  reportType: string | null | undefined,
+): string {
+  const suffix = receivingReportSuffix(reportType ?? '')
+  const base = toCanonicalReportNumber(stripReceivingReportTypeSuffix(value))
+  if (!suffix) return base
+  if (!base) return ''
+  const sixteen =
+    base.length === TEST_REPORT_TOTAL_LENGTH ? base : sanitizeTestReportNumberInput(base, TEST_REPORT_TOTAL_LENGTH)
+  if (sixteen.length !== TEST_REPORT_TOTAL_LENGTH) return sixteen
+  return `${sixteen}${suffix}`
+}
+
+/** Stored value is 16-char …A, or 17-char …AA / …AR / …AS. */
 export function toCanonicalReportNumber(value: string): string {
-  const v = sanitizeTestReportNumberInput(value)
+  const v = sanitizeTestReportNumberInput(value, TEST_REPORT_WITH_TYPE_LENGTH)
   if (!v) return ''
+  if (v.length === TEST_REPORT_WITH_TYPE_LENGTH && SCOPE_AND_TYPE_RE.test(v)) {
+    return `${v.slice(0, 15)}${TEST_REPORT_LAST_CHAR}${v.at(-1)}`
+  }
+  if (v.length === TEST_REPORT_TOTAL_LENGTH && /[RS]$/.test(v)) {
+    return `${v.slice(0, 15)}${TEST_REPORT_LAST_CHAR}${v.at(-1)}`
+  }
   if (v.length === TEST_REPORT_TOTAL_LENGTH && /[AB]$/.test(v)) {
     return `${v.slice(0, -1)}${TEST_REPORT_LAST_CHAR}`
   }
   return v
 }
 
-/** Display / edit value for a report scope tab (NABL → A, Non-NABL → B). */
+/** Display / edit value for a report scope tab (NABL → A, Non-NABL → B). Type letter stays last. */
 export function toReportNumberForScope(value: string, scope: ReportScopeKind): string {
   const canonical = toCanonicalReportNumber(value)
   if (!canonical) return ''
+  const scopeChar = reportNumberLastCharForScope(scope)
+  if (canonical.length === TEST_REPORT_WITH_TYPE_LENGTH && SCOPE_AND_TYPE_RE.test(canonical)) {
+    return `${canonical.slice(0, 15)}${scopeChar}${canonical.at(-1)}`
+  }
   if (canonical.length !== TEST_REPORT_TOTAL_LENGTH) return canonical
-  return `${canonical.slice(0, -1)}${reportNumberLastCharForScope(scope)}`
+  return `${canonical.slice(0, -1)}${scopeChar}`
 }
 
-/** Persist scoped field input as canonical (…A) in parent state / DB. */
+/** Persist scoped field input as canonical (…A or …AA / …AR / …AS). */
 export function fromScopedReportNumberInput(value: string, scope: ReportScopeKind): string {
-  const v = sanitizeTestReportNumberInput(value)
+  const v = sanitizeTestReportNumberInput(value, TEST_REPORT_WITH_TYPE_LENGTH)
   if (!v) return ''
+  if (v.length === TEST_REPORT_WITH_TYPE_LENGTH && SCOPE_AND_TYPE_RE.test(v)) {
+    return toCanonicalReportNumber(`${v.slice(0, 15)}${reportNumberLastCharForScope(scope)}${v.at(-1)}`)
+  }
   if (v.length === TEST_REPORT_TOTAL_LENGTH) {
     return toCanonicalReportNumber(`${v.slice(0, -1)}${reportNumberLastCharForScope(scope)}`)
   }
   return toCanonicalReportNumber(v)
 }
 
-/** Extract serial if prefix matches and number ends with A or B */
+/** Extract serial if prefix matches; ignores optional Amendment/Revised/Supplementary letter. */
 export function parseTestReportSequence(number: string, prefix: string): number | null {
-  const raw = normalizeReportNumberChars(number)
+  const raw = stripReceivingReportTypeSuffix(number)
   if (raw.length !== TEST_REPORT_TOTAL_LENGTH) return null
   const last = raw.at(-1)
   if (last !== TEST_REPORT_LAST_CHAR && last !== TEST_REPORT_NON_NABL_LAST_CHAR) return null

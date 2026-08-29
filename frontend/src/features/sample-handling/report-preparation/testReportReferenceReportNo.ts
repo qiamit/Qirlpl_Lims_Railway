@@ -9,7 +9,13 @@ export function isAmendmentOrSupplementaryReportType(
   reportType: string | null | undefined,
 ): boolean {
   const t = (reportType ?? '').trim()
-  return t === RECEIVING_REPORT_TYPES[1] || t === RECEIVING_REPORT_TYPES[2]
+  return (
+    t === 'Amendment Report' ||
+    t === 'Supplementary Report' ||
+    t === 'Revised Report' ||
+    t === RECEIVING_REPORT_TYPES[1] ||
+    t === RECEIVING_REPORT_TYPES[2]
+  )
 }
 
 /** Prior sample test report number linked via receiving `referenced_srf_number`. */

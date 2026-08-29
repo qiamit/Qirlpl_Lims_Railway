@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { formatDateDmyMmm } from '@/lib/utils'
 import { RECEIVING_REPORT_TYPES } from '../types'
+import { stripReceivingReportTypeFromCode } from '@/features/sample-handling/receiving/receivingSrfFromReference'
 import type { ReportScopeKind } from './reportScope'
 import { buildTestReportPartBDetails, type TestReportPartBDetails } from './testReportPartB'
 import { resolveReferenceReportNo } from './testReportReferenceReportNo'
@@ -384,12 +385,12 @@ export async function fetchTestReportCoverDetails(
     isDetails: formatIsDetails(isNumber, productTitle),
     isCode: fmt(isNumber),
     productTitle,
-    sampleCode: fmt(row.sample_code as string),
-    sampleQrCode: fmt(row.sample_qr_code as string),
+    sampleCode: stripReceivingReportTypeFromCode(fmt(row.sample_code as string), reportType),
+    sampleQrCode: stripReceivingReportTypeFromCode(fmt(row.sample_qr_code as string), reportType),
     natureOfSample: fmt(row.nature_of_sample as string),
     sampleIdentificationLine: formatSampleIdentificationLine(
-      fmt(row.sample_code as string),
-      fmt(row.sample_qr_code as string),
+      stripReceivingReportTypeFromCode(fmt(row.sample_code as string), reportType),
+      stripReceivingReportTypeFromCode(fmt(row.sample_qr_code as string), reportType),
       fmt(row.nature_of_sample as string),
     ),
     batchNumber: fmt(row.batch_number as string),

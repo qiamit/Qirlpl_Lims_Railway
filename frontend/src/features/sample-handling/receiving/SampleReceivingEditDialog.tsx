@@ -21,6 +21,7 @@ import { isSampleReceivingEditLocked } from './sampleReceivingEditLock'
 import { setSampleReceivingEditUnlocked } from './sampleReceivingEditUnlock'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
+  applyReferencedSrfToReceivingForm,
   fetchSampleRowById,
   sampleRowToReceivingForm,
   saveSampleReceivingEdit,
@@ -253,34 +254,31 @@ export function SampleReceivingEditDialog({
           referencedSrfNumber: '',
           srfNumber: srf,
         }))
-      } else {
-        setForm((prev) => {
-          const base =
-            stripReceivingReportSuffix(prev.referencedSrfNumber) ||
-            stripReceivingReportSuffix(prev.srfNumber)
-          return {
-            ...prev,
-            receivingReportType: reportType,
-            referencedSrfNumber: base,
-            srfNumber: base ? buildReceivingSrfFromReference(base, reportType) : '',
-          }
-        })
+        return
       }
+      setForm((prev) => {
+        const base = stripReceivingReportSuffix(prev.referencedSrfNumber)
+        return {
+          ...prev,
+          receivingReportType: reportType,
+          referencedSrfNumber: base,
+          srfNumber: base ? buildReceivingSrfFromReference(base, reportType) : '',
+        }
+      })
     })()
   }
 
   const handleSelectReferencedSrf = (refSampleId: string) => {
-    const row = srfSearchRows.find((r) => r.id === refSampleId)
-    if (!row) return
-    const base = stripReceivingReportSuffix(row.srf_number ?? '')
-    const filled = sampleRowToReceivingForm(row)
-    filled.receivingReportType = form.receivingReportType
-    filled.referencedSrfNumber = base
-    filled.sampleCode = ''
-    filled.clientReferencesPath = ''
-    filled.srfNumber = buildReceivingSrfFromReference(base, form.receivingReportType)
-    setForm(filled)
-    setClientReferencesFile(null)
+    void (async () => {
+      try {
+        const row = await fetchSampleRowById(refSampleId)
+        setForm((prev) => applyReferencedSrfToReceivingForm(row, prev.receivingReportType))
+        setClientReferencesFile(null)
+        setSaveMessage(null)
+      } catch (err) {
+        setSaveMessage(formatSupabaseError(err))
+      }
+    })()
   }
 
   const handleSave = () => {

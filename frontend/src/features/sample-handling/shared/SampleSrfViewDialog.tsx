@@ -205,10 +205,12 @@ export function SampleSrfViewDialog({
           persistOnFocusLoss
           aria-describedby={undefined}
           overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
+          portalClassName="lg:left-[268px] lg:p-2"
           className={cn(
             limsDialogClass,
-            'flex max-h-[92vh] w-[min(96vw,72rem)] max-w-none flex-col',
-            'lg:left-[calc(268px+(100vw-268px)/2)] md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
+            'flex h-[96vh] w-[calc(100vw-0.75rem)] max-w-none flex-col',
+            'lg:!relative lg:!left-auto lg:!right-auto lg:!top-auto lg:!mx-0 lg:!translate-x-0 lg:!translate-y-0',
+            'lg:h-full lg:w-full lg:max-h-none',
           )}
         >
           <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">

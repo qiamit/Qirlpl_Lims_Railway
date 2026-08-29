@@ -18,7 +18,12 @@ import {
   referbackIssuedTestReportToPreparation,
   referbackIssuedTestReportToResultsReview,
 } from './referbackIssuedTestReport'
-import type { IssuedTestReportListRow } from './types'
+import { issueAndReferbackIssuedReport } from './issueAndReferbackIssuedReport'
+import {
+  IssuedReportAmendmentDialog,
+  type IssuedReportAmendmentSubmitPayload,
+} from './IssuedReportAmendmentDialog'
+import { receivingReportTypeForIssueKind, type IssuedTestReportListRow } from './types'
 
 export default function CompletedResultsMasterPage() {
   const { user, profileName, departmentName, designation } = useAuth()
@@ -36,6 +41,10 @@ export default function CompletedResultsMasterPage() {
 
   const [srfViewOpen, setSrfViewOpen] = useState(false)
   const [srfViewRow, setSrfViewRow] = useState<IssuedTestReportListRow | null>(null)
+  const [amendmentOpen, setAmendmentOpen] = useState(false)
+  const [amendmentRow, setAmendmentRow] = useState<IssuedTestReportListRow | null>(null)
+  const [amendmentError, setAmendmentError] = useState<string | null>(null)
+  const [amendmentLoading, setAmendmentLoading] = useState(false)
 
   const labName = useMemo(() => {
     if (typeof window === 'undefined') return 'Laboratory'
@@ -254,6 +263,57 @@ export default function CompletedResultsMasterPage() {
     })()
   }
 
+  const openAmendmentDialog = (row: IssuedTestReportListRow) => {
+    setAmendmentError(null)
+    setAmendmentRow(row)
+    setAmendmentOpen(true)
+  }
+
+  const submitAmendmentReferback = async (payload: IssuedReportAmendmentSubmitPayload) => {
+    const row = amendmentRow
+    if (!row) return
+    const label = row.srfNumber?.trim() || 'this SRF'
+    setAmendmentLoading(true)
+    setAmendmentError(null)
+    setActionBusyId(row.id)
+    setSaveMessage(null)
+    try {
+      const result = await issueAndReferbackIssuedReport({
+        sampleId: row.id,
+        srfNumber: row.srfNumber,
+        issueKind: payload.issueKind,
+        sections: payload.sections.map((item) => ({
+          sampleAllocationId: item.section.sampleAllocationId,
+          testAllocationId: item.section.testAllocationId,
+          sectionCode: item.section.sectionCode,
+          department: item.department,
+          designation: item.designation,
+          employee: item.employee,
+          targetStage: item.targetStage,
+        })),
+        remark: payload.remark,
+        createdBy: user?.id ?? null,
+      })
+      setAmendmentOpen(false)
+      setAmendmentRow(null)
+      removeRowFromSelection(row.id)
+      await loadList()
+      const sectionLabel =
+        payload.sections.length > 1
+          ? 'Both Section Code'
+          : payload.sections[0]?.section.sectionCode || 'section'
+      const employeeNames = [...new Set(payload.sections.map((item) => item.employee.name))].join(', ')
+      setSaveMessage(
+        `${receivingReportTypeForIssueKind(payload.issueKind)} ${result.newSrfNumber} created from ${label} (${sectionLabel}). Assigned to ${employeeNames} in ${result.targetLabel}. Original issued SRF is unchanged.`,
+      )
+    } catch (e) {
+      setAmendmentError(e instanceof Error ? e.message : 'Referback failed')
+    } finally {
+      setAmendmentLoading(false)
+      setActionBusyId(null)
+    }
+  }
+
   const handleReferbackToPreparation = async (row: IssuedTestReportListRow) => {
     const label = row.srfNumber?.trim() || 'this SRF'
     if (
@@ -337,6 +397,7 @@ export default function CompletedResultsMasterPage() {
         onEmailToClient={(row) => void handleEmailToClient(row)}
         onReferbackToPreparation={(row) => void handleReferbackToPreparation(row)}
         onReferbackToResultsReview={(row) => void handleReferbackToResultsReview(row)}
+        onIssueAmendment={openAmendmentDialog}
         canReferbackToResultsReview={Boolean(user?.id)}
       />
 
@@ -358,6 +419,21 @@ export default function CompletedResultsMasterPage() {
         }}
         showDelete={showDelete}
         onDeleteSelected={handleDeleteSelected}
+      />
+
+      <IssuedReportAmendmentDialog
+        open={amendmentOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAmendmentRow(null)
+            setAmendmentError(null)
+          }
+          setAmendmentOpen(open)
+        }}
+        row={amendmentRow}
+        onSubmit={submitAmendmentReferback}
+        submitLoading={amendmentLoading}
+        submitError={amendmentError}
       />
 
       <SampleSrfViewDialog

@@ -1,4 +1,4 @@
-import { Eye, FileDown, Mail, Printer, Undo2 } from 'lucide-react'
+import { Eye, FileDown, FilePenLine, Mail, Printer, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -25,6 +25,7 @@ export function IssuedTestReportRowActions({
   onEmailToClient,
   onReferbackToPreparation,
   onReferbackToResultsReview,
+  onIssueAmendment,
   canReferbackToResultsReview,
 }: {
   row: IssuedTestReportListRow
@@ -36,6 +37,7 @@ export function IssuedTestReportRowActions({
   onEmailToClient: (row: IssuedTestReportListRow) => void
   onReferbackToPreparation: (row: IssuedTestReportListRow) => void
   onReferbackToResultsReview: (row: IssuedTestReportListRow) => void
+  onIssueAmendment: (row: IssuedTestReportListRow) => void
   /** Logged-in user required to assign review queue */
   canReferbackToResultsReview: boolean
 }) {
@@ -116,6 +118,19 @@ export function IssuedTestReportRowActions({
         onClick={() => onEmailToClient(row)}
       >
         <Mail size={15} />
+      </Button>
+
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={iconBtnClass}
+        disabled={busy}
+        aria-label={`Issue amendment, revised, or supplementary for ${row.srfNumber ?? 'SRF'}`}
+        title="Issue Amendment / Revised / Supplementary"
+        onClick={() => onIssueAmendment(row)}
+      >
+        <FilePenLine size={15} />
       </Button>
 
       <DropdownMenu>

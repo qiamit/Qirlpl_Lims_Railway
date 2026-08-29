@@ -12,7 +12,7 @@ import {
   type SampleReceivingForm as FormType,
   type SampleRow,
 } from '../types'
-import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
+import { stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { FilterCombobox } from './FilterCombobox'
 import { OptionCombobox } from './OptionCombobox'
 
@@ -84,10 +84,11 @@ export function SampleReceivingForm({
   const [isCodeDropdownOpen, setIsCodeDropdownOpen] = useState(false)
   const [srfSearchInput, setSrfSearchInput] = useState('')
   const [srfDropdownOpen, setSrfDropdownOpen] = useState(false)
+  const lastPopulatedSrfIdRef = useRef<string | null>(null)
   const reviewFirstFieldRef = useRef<HTMLInputElement>(null)
 
   const isNewReport = form.receivingReportType === RECEIVING_REPORT_TYPES[0]
-  const useReferencedSrfSearch = !editingSampleId && !isNewReport
+  const useReferencedSrfSearch = !isNewReport
 
   useEffect(() => {
     const current = clientOptions.find((c) => c.id === form.customerId)
@@ -125,16 +126,32 @@ export function SampleReceivingForm({
     : isCodeOptions
 
   const srfQuery = srfSearchInput.trim().toLowerCase()
-  const filteredSrfRows = (srfQuery
-    ? srfSearchRows.filter((r) => {
-        const srf = r.srf_number?.toLowerCase() ?? ''
-        const client = r.client_name?.toLowerCase() ?? ''
-        return srf.includes(srfQuery) || client.includes(srfQuery)
-      })
-    : srfSearchRows
-  )
-    .filter((r) => r.srf_number?.trim())
-    .slice(0, 25)
+  const srfOptions = srfSearchRows
+    .filter((r) => r.srf_number?.trim() && r.id !== editingSampleId)
+    .map((r) => ({
+      id: r.id,
+      label: r.srf_number?.trim() ?? '',
+      secondaryLabel: r.client_name?.trim() || undefined,
+    }))
+  const filteredSrfOptions = (
+    srfQuery
+      ? srfOptions.filter((opt) => {
+          const srf = opt.label.toLowerCase()
+          const client = opt.secondaryLabel?.toLowerCase() ?? ''
+          const base = stripReceivingReportSuffix(opt.label).toLowerCase()
+          return srf.includes(srfQuery) || client.includes(srfQuery) || base.includes(srfQuery)
+        })
+      : srfOptions
+  ).slice(0, 40)
+
+  const selectReferencedSrf = (sampleId: string, label: string) => {
+    const base = stripReceivingReportSuffix(label)
+    setSrfSearchInput(base)
+    setSrfDropdownOpen(false)
+    if (lastPopulatedSrfIdRef.current === sampleId && form.referencedSrfNumber === base) return
+    lastPopulatedSrfIdRef.current = sampleId
+    onSelectReferencedSrf?.(sampleId)
+  }
 
   const goToReviewTab = () => {
     onGoToReview()
@@ -214,71 +231,55 @@ export function SampleReceivingForm({
                 </Select>
               </div>
               <div className="space-y-2 min-w-0">
-                <Label>SRF Number</Label>
+                <Label htmlFor="receiving-srf-number">SRF Number</Label>
                 {useReferencedSrfSearch ? (
                   <>
-                    <div className="relative">
-                      <Input
-                        value={srfSearchInput}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setSrfSearchInput(val)
-                          const base = stripReceivingReportSuffix(val)
+                    <FilterCombobox
+                      inputId="receiving-srf-number"
+                      value={srfSearchInput}
+                      onValueChange={(val) => {
+                        setSrfSearchInput(val)
+                        const typed = val.trim()
+                        if (!typed) {
+                          lastPopulatedSrfIdRef.current = null
                           onChange({
                             ...form,
-                            referencedSrfNumber: base,
-                            srfNumber: buildReceivingSrfFromReference(base, form.receivingReportType),
+                            referencedSrfNumber: '',
+                            srfNumber: '',
                           })
-                        }}
-                        onFocus={() => setSrfDropdownOpen(true)}
-                        onBlur={() => setTimeout(() => setSrfDropdownOpen(false), 150)}
-                        placeholder="Search previous SRF…"
-                        autoComplete="off"
-                        className="w-full"
-                      />
-                      {srfDropdownOpen && filteredSrfRows.length > 0 && (
-                        <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-popover shadow-lg">
-                          <ul className="max-h-48 overflow-auto text-sm">
-                            {filteredSrfRows.map((row) => (
-                              <li key={row.id}>
-                                <button
-                                  type="button"
-                                  className="w-full px-3 py-2 text-left hover:bg-muted"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onPointerDown={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    const label = stripReceivingReportSuffix(row.srf_number ?? '')
-                                    setSrfSearchInput(label)
-                                    setSrfDropdownOpen(false)
-                                    onSelectReferencedSrf?.(row.id)
-                                  }}
-                                  onClick={() => {
-                                    const label = stripReceivingReportSuffix(row.srf_number ?? '')
-                                    setSrfSearchInput(label)
-                                    setSrfDropdownOpen(false)
-                                    onSelectReferencedSrf?.(row.id)
-                                  }}
-                                >
-                                  <span className="font-medium">{row.srf_number}</span>
-                                  {row.client_name ? (
-                                    <span className="text-muted-foreground"> — {row.client_name}</span>
-                                  ) : null}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+                          return
+                        }
+                        const exact = srfOptions.find((opt) => {
+                          const label = opt.label.toLowerCase()
+                          const base = stripReceivingReportSuffix(opt.label).toLowerCase()
+                          const q = typed.toLowerCase()
+                          return label === q || base === q
+                        })
+                        if (exact) selectReferencedSrf(exact.id, exact.label)
+                      }}
+                      options={filteredSrfOptions}
+                      onSelectOption={(opt) => selectReferencedSrf(opt.id, opt.label)}
+                      open={srfDropdownOpen}
+                      onOpenChange={setSrfDropdownOpen}
+                      placeholder="Search previous SRF…"
+                      listId="receiving-srf-combobox"
+                      inputClassName="w-full"
+                    />
                     {form.srfNumber ? (
                       <p className="text-xs text-muted-foreground">
-                        Assigned SRF: <span className="font-medium text-foreground">{form.srfNumber}</span>
+                        Assigned SRF:{' '}
+                        <span className="font-medium text-foreground">{form.srfNumber}</span>
+                        {' — '}details loaded and editable
                       </p>
-                    ) : null}
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Select an existing SRF to load all details. Fields stay editable.
+                      </p>
+                    )}
                   </>
                 ) : (
                   <Input
+                    id="receiving-srf-number"
                     value={form.srfNumber}
                     onChange={(e) => onChange({ ...form, srfNumber: e.target.value })}
                     className="w-full"

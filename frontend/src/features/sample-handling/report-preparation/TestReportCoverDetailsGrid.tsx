@@ -1,12 +1,15 @@
 import { Input } from '@/components/ui/input'
 import type { ReactNode } from 'react'
 import type { TestReportCoverDetails } from './fetchTestReportCoverDetails'
+import { receivingReportSuffix } from '@/features/sample-handling/receiving/receivingSrfFromReference'
 import {
   formatTestReportNumber,
   fromScopedReportNumberInput,
   reportNumberLastCharForScope,
   TEST_REPORT_TOTAL_LENGTH,
+  TEST_REPORT_WITH_TYPE_LENGTH,
   toReportNumberForScope,
+  withReceivingReportTypeSuffix,
 } from './formattedTestReportNumber'
 import {
   NABL_ULR_CHAR_LENGTH,
@@ -86,10 +89,23 @@ export function TestReportCoverDetailsGrid({
   disabled?: boolean
 }) {
   const showUlr = activeScope === 'nabl'
+  const typeSuffix = receivingReportSuffix(details.reportType ?? '')
+  const typedNumber = typeSuffix
+    ? withReceivingReportTypeSuffix(reportNumber, details.reportType)
+    : reportNumber
+  const displayReportNumber = toReportNumberForScope(typedNumber, activeScope)
+  const reportLastChars = typeSuffix
+    ? `${reportNumberLastCharForScope(activeScope)}${typeSuffix}`
+    : reportNumberLastCharForScope(activeScope)
+  const reportMaxLength = typeSuffix ? TEST_REPORT_WITH_TYPE_LENGTH : TEST_REPORT_TOTAL_LENGTH
   const reportPlaceholder = testReportPrefix
-    ? toReportNumberForScope(formatTestReportNumber(testReportPrefix, 1), activeScope)
-    : '0'.repeat(Math.max(1, TEST_REPORT_TOTAL_LENGTH - 1)) +
-      reportNumberLastCharForScope(activeScope)
+    ? toReportNumberForScope(
+        typeSuffix
+          ? withReceivingReportTypeSuffix(formatTestReportNumber(testReportPrefix, 1), details.reportType)
+          : formatTestReportNumber(testReportPrefix, 1),
+        activeScope,
+      )
+    : '0'.repeat(Math.max(1, TEST_REPORT_TOTAL_LENGTH - 1)) + reportLastChars
   const ulrPlaceholder = nablUlrPlaceholder(ulrPrefix)
 
   const customerName = details.customerName ?? details.customerDetails
@@ -164,14 +180,18 @@ export function TestReportCoverDetailsGrid({
                 <Input
                   id="part-a-report-number"
                   className={CELL_INPUT}
-                  value={toReportNumberForScope(reportNumber, activeScope)}
+                  value={displayReportNumber}
                   onChange={(e) =>
-                    onReportNumberChange(fromScopedReportNumberInput(e.target.value, activeScope))
+                    onReportNumberChange(
+                      typeSuffix
+                        ? withReceivingReportTypeSuffix(e.target.value, details.reportType)
+                        : fromScopedReportNumberInput(e.target.value, activeScope),
+                    )
                   }
                   placeholder={reportPlaceholder}
-                  maxLength={TEST_REPORT_TOTAL_LENGTH}
+                  maxLength={reportMaxLength}
                   disabled={disabled || reportNumberLoading}
-                  title={`Part A · ends with ${reportNumberLastCharForScope(activeScope)}`}
+                  title={`Part A · ends with ${reportLastChars}`}
                   aria-label="Report Number"
                 />
               </KvCells>
@@ -194,14 +214,18 @@ export function TestReportCoverDetailsGrid({
               <Input
                 id="part-a-report-number"
                 className={CELL_INPUT}
-                value={toReportNumberForScope(reportNumber, activeScope)}
+                value={displayReportNumber}
                 onChange={(e) =>
-                  onReportNumberChange(fromScopedReportNumberInput(e.target.value, activeScope))
+                  onReportNumberChange(
+                    typeSuffix
+                      ? withReceivingReportTypeSuffix(e.target.value, details.reportType)
+                      : fromScopedReportNumberInput(e.target.value, activeScope),
+                  )
                 }
                 placeholder={reportPlaceholder}
-                maxLength={TEST_REPORT_TOTAL_LENGTH}
+                maxLength={reportMaxLength}
                 disabled={disabled || reportNumberLoading}
-                title={`Part A · ends with ${reportNumberLastCharForScope(activeScope)}`}
+                title={`Part A · ends with ${reportLastChars}`}
                 aria-label="Report Number"
               />
             </FullRow>

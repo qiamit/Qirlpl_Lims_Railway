@@ -11,27 +11,26 @@ export function splitPartDRemarks(
   isCodeLabel?: string | null,
 ): { line1: string; line2: string } {
   const line1 = formatPartDRemarksLine1(isCodeLabel)
-  const trimmed = stored.trim()
-  if (!trimmed) return { line1, line2: '' }
+  if (!stored.trim()) return { line1, line2: '' }
 
-  if (trimmed.startsWith(LINE1_PREFIX)) {
-    if (trimmed === line1) return { line1, line2: '' }
-    if (trimmed.startsWith(`${line1}\n`)) {
-      return { line1, line2: trimmed.slice(line1.length + 1).trim() }
+  if (stored.startsWith(LINE1_PREFIX) || stored.trimStart().startsWith(LINE1_PREFIX)) {
+    const body = stored.startsWith(LINE1_PREFIX) ? stored : stored.trimStart()
+    if (body === line1 || body === `${line1}\n`) return { line1, line2: '' }
+    if (body.startsWith(`${line1}\n`)) {
+      return { line1, line2: body.slice(line1.length + 1) }
     }
-    const newlineIdx = trimmed.indexOf('\n')
+    const newlineIdx = body.indexOf('\n')
     if (newlineIdx > 0) {
-      return { line1, line2: trimmed.slice(newlineIdx + 1).trim() }
+      return { line1, line2: body.slice(newlineIdx + 1) }
     }
   }
 
-  return { line1, line2: trimmed }
+  return { line1, line2: stored }
 }
 
 export function joinPartDRemarks(line1: string, line2: string): string {
-  const second = line2.trim()
-  if (!second) return line1.trim()
-  return `${line1.trim()}\n${second}`
+  if (!line2.trim()) return line1.trim()
+  return `${line1.trim()}\n${line2}`
 }
 
 /** @deprecated Use formatPartDRemarksLine1 */

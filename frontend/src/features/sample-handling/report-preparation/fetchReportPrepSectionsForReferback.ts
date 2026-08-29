@@ -6,6 +6,8 @@ export type ReportPrepSectionOption = {
   sectionCode: string
   department: string | null
   designation: string | null
+  assignedEmployeeId: string | null
+  assignedEmployeeName: string | null
 }
 
 /**
@@ -37,27 +39,37 @@ export async function fetchReportPrepSectionsForReferback(
 
   const { data: taRows, error: taErr } = await supabase
     .from('test_allocations')
-    .select('id, sample_allocation_id')
+    .select('id, sample_allocation_id, assigned_employee_id, assigned_employee_name')
     .in('sample_allocation_id', allocIds)
   if (taErr) throw taErr
 
   const testAllocs = Array.isArray(taRows) ? taRows : []
-  const taByAllocId = new Map<string, string>()
+  const taByAllocId = new Map<
+    string,
+    { id: string; assignedEmployeeId: string | null; assignedEmployeeName: string | null }
+  >()
   for (const t of testAllocs) {
     const allocId = String((t as { sample_allocation_id: string }).sample_allocation_id)
-    taByAllocId.set(allocId, String((t as { id: string }).id))
+    taByAllocId.set(allocId, {
+      id: String((t as { id: string }).id),
+      assignedEmployeeId: String((t as { assigned_employee_id?: string | null }).assigned_employee_id ?? '').trim() || null,
+      assignedEmployeeName:
+        String((t as { assigned_employee_name?: string | null }).assigned_employee_name ?? '').trim() || null,
+    })
   }
 
   const out: ReportPrepSectionOption[] = []
 
   for (const [allocId, alloc] of allocById) {
-    const taId = taByAllocId.get(allocId)
+    const ta = taByAllocId.get(allocId)
     out.push({
-      testAllocationId: taId ?? '',
+      testAllocationId: ta?.id ?? '',
       sampleAllocationId: allocId,
       sectionCode: String(alloc.section_code ?? '').trim() || '—',
       department: alloc.department ?? null,
       designation: alloc.designation ?? null,
+      assignedEmployeeId: ta?.assignedEmployeeId ?? null,
+      assignedEmployeeName: ta?.assignedEmployeeName ?? null,
     })
   }
 

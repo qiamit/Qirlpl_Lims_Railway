@@ -32,6 +32,7 @@ export function CompletedResultsTable({
   onEmailToClient,
   onReferbackToPreparation,
   onReferbackToResultsReview,
+  onIssueAmendment,
   canReferbackToResultsReview,
 }: {
   rows: IssuedTestReportListRow[]
@@ -48,6 +49,7 @@ export function CompletedResultsTable({
   onEmailToClient: (row: IssuedTestReportListRow) => void
   onReferbackToPreparation: (row: IssuedTestReportListRow) => void
   onReferbackToResultsReview: (row: IssuedTestReportListRow) => void
+  onIssueAmendment: (row: IssuedTestReportListRow) => void
   canReferbackToResultsReview: boolean
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
@@ -151,7 +153,7 @@ export function CompletedResultsTable({
                   >
                     {formatDate(r.issuedAt ?? '')}
                   </TableCell>
-                  <TableCell className={cn(tdClass, 'min-w-[220px] whitespace-nowrap text-center')}>
+                  <TableCell className={cn(tdClass, 'min-w-[252px] whitespace-nowrap text-center')}>
                     <IssuedTestReportRowActions
                       row={r}
                       busy={busy}
@@ -162,6 +164,7 @@ export function CompletedResultsTable({
                       onEmailToClient={onEmailToClient}
                       onReferbackToPreparation={onReferbackToPreparation}
                       onReferbackToResultsReview={onReferbackToResultsReview}
+                      onIssueAmendment={onIssueAmendment}
                       canReferbackToResultsReview={canReferbackToResultsReview}
                     />
                   </TableCell>

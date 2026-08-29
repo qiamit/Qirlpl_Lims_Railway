@@ -54,12 +54,17 @@ export function resolveReportScopeFromAccreditationIds(
  */
 export function stripReportScopeSuffix(value: string): string {
   const v = value.trim()
+  if (v.length === 17 && /[AB][ARS]$/.test(v)) return `${v.slice(0, 15)}${v.slice(16)}`
   if (/[AB]$/.test(v)) return v.slice(0, -1)
   return v
 }
 
 export function appendReportScopeSuffix(baseNumber: string, scope: ReportScopeKind): string {
-  const base = stripReportScopeSuffix(baseNumber.trim())
+  const raw = baseNumber.trim()
+  if (raw.length === 17 && /[AB][ARS]$/.test(raw)) {
+    return `${raw.slice(0, 15)}${REPORT_SCOPE_SUFFIX[scope]}${raw.at(-1)}`
+  }
+  const base = stripReportScopeSuffix(raw)
   if (!base) return ''
   return `${base}${REPORT_SCOPE_SUFFIX[scope]}`
 }
