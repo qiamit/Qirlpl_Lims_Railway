@@ -1,6 +1,17 @@
 export const NABL_TYPE_OF_TEST_OPTIONS = ['Quantitative', 'Qualitative'] as const
 export type NablTypeOfTest = (typeof NABL_TYPE_OF_TEST_OPTIONS)[number]
 
+export const NABL_SCOPE_STATUS_OPTIONS = ['Accredited', 'Draft Scope'] as const
+export type NablScopeStatus = (typeof NABL_SCOPE_STATUS_OPTIONS)[number]
+
+export const DEFAULT_NABL_SCOPE_STATUS: NablScopeStatus = 'Draft Scope'
+
+export function normalizeNablScopeStatus(value: string | null | undefined): NablScopeStatus {
+  const v = String(value ?? '').trim()
+  if (v === 'Accredited' || v === 'Draft Scope') return v
+  return DEFAULT_NABL_SCOPE_STATUS
+}
+
 export type NablScopeRow = {
   id: string
   s_no: number
@@ -9,6 +20,7 @@ export type NablScopeRow = {
   component_parameter: string
   test_method_specification: string
   permanent_testing: string
+  scope_status: string
   type_of_test: string | null
   range_minimum: number | null
   range_maximum: number | null
@@ -24,6 +36,7 @@ export type NablScopeForm = {
   componentParameter: string
   testMethodSpecification: string
   permanentTesting: string
+  scopeStatus: NablScopeStatus
   typeOfTest: string
   rangeMinimum: string
   rangeMaximum: string
@@ -38,6 +51,7 @@ export const emptyNablScopeForm = (): NablScopeForm => ({
   componentParameter: '',
   testMethodSpecification: '',
   permanentTesting: 'Permanent Testing',
+  scopeStatus: DEFAULT_NABL_SCOPE_STATUS,
   typeOfTest: '',
   rangeMinimum: '',
   rangeMaximum: '',

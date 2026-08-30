@@ -14,6 +14,7 @@ import { NablTestMethodSelect } from './NablTestMethodSelect'
 import {
   isValidNumberOrEmpty,
   joinUncertaintyParts,
+  NABL_SCOPE_STATUS_OPTIONS,
   NABL_TYPE_OF_TEST_OPTIONS,
   splitUncertaintyParts,
   type NablScopeForm,
@@ -94,7 +95,7 @@ export function ProductServicesForm({
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <NablLookupSelect
           kind="materials_products"
           id="nabl-materials"
@@ -114,6 +115,30 @@ export function ProductServicesForm({
             rows={1}
             className="!min-h-8 resize-y"
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Status of Scope</Label>
+          <Select
+            value={form.scopeStatus}
+            onValueChange={(v) =>
+              onChange({
+                ...form,
+                scopeStatus: v === 'Accredited' ? 'Accredited' : 'Draft Scope',
+              })
+            }
+          >
+            <SelectTrigger aria-label="Status of Scope">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {NABL_SCOPE_STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt} value={opt}>
+                  {opt}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

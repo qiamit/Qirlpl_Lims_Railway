@@ -46,6 +46,7 @@ export function buildNablScopePrintHtml(options: NablScopePrintOptions): string 
   <td class="col-component">${cell(r.component_parameter)}</td>
   <td class="col-method">${cell(r.test_method_specification)}</td>
   <td class="col-permanent">${cell(r.permanent_testing)}</td>
+  <td class="col-status">${cell(r.scope_status)}</td>
   <td class="col-type">${cell(r.type_of_test)}</td>
   <td class="col-range">${cell(formatScopeNumber(r.range_minimum))}</td>
   <td class="col-range">${cell(formatScopeNumber(r.range_maximum))}</td>
@@ -166,17 +167,19 @@ export function buildNablScopePrintHtml(options: NablScopePrintOptions): string 
   table.scope-table td.col-sno,
   table.scope-table td.col-range,
   table.scope-table td.col-type,
-  table.scope-table td.col-permanent {
+  table.scope-table td.col-permanent,
+  table.scope-table td.col-status {
     text-align: center;
   }
 
   .col-sno { width: 4%; }
-  .col-discipline { width: 11%; }
-  .col-materials { width: 11%; }
-  .col-component { width: 16%; }
-  .col-method { width: 12%; }
-  .col-permanent { width: 9%; }
-  .col-type { width: 8%; }
+  .col-discipline { width: 10%; }
+  .col-materials { width: 10%; }
+  .col-component { width: 14%; }
+  .col-method { width: 11%; }
+  .col-permanent { width: 8%; }
+  .col-status { width: 8%; }
+  .col-type { width: 7%; }
   .col-range { width: 6%; }
   .col-unit { width: 5%; }
   .col-uncertainty { width: 9%; }
@@ -223,6 +226,7 @@ export function buildNablScopePrintHtml(options: NablScopePrintOptions): string 
           <th class="col-component">Component / Parameter / Test Performed</th>
           <th class="col-method">Test Method Specification</th>
           <th class="col-permanent">Permanent Testing</th>
+          <th class="col-status">Status of Scope</th>
           <th class="col-type">Type of Test</th>
           <th class="col-range">Range Minimum</th>
           <th class="col-range">Range Maximum</th>
@@ -231,7 +235,7 @@ export function buildNablScopePrintHtml(options: NablScopePrintOptions): string 
         </tr>
       </thead>
       <tbody>
-        ${rowsHtml || '<tr><td colspan="11" style="text-align:center;padding:12px;">No entries</td></tr>'}
+        ${rowsHtml || '<tr><td colspan="12" style="text-align:center;padding:12px;">No entries</td></tr>'}
       </tbody>
     </table>
 

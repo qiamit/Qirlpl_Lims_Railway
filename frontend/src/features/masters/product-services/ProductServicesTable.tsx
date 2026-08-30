@@ -111,6 +111,9 @@ export function ProductServicesTable({
                 const selected = selectedIds.has(r.id)
                 const even = index % 2 === 0
                 const rowTone = selected ? rowSelectedClass : even ? rowEvenClass : rowOddClass
+                const typeOfTest = r.type_of_test?.trim() || ''
+                const scopeStatus = r.scope_status?.trim() || 'Draft Scope'
+                const typeAndStatus = [typeOfTest || '—', scopeStatus].join(' · ')
 
                 return (
                   <TableRow
@@ -138,7 +141,7 @@ export function ProductServicesTable({
                     <TableCell className="w-[20%] align-middle text-center">
                       <div className={cn(cellInnerClass, 'text-center')}>
                         <p className={primaryLineClass}>{r.component_parameter?.trim() || '—'}</p>
-                        <p className={secondaryLineClass}>{r.type_of_test?.trim() || '—'}</p>
+                        <p className={secondaryLineClass}>{typeAndStatus}</p>
                       </div>
                     </TableCell>
 
