@@ -92,8 +92,10 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
     }))
   }
   const labels = parseSummaryLabels(row.testParameterSummary)
-  const ids = row.testParameterIds ?? []
-  if (labels.length === 0) {
+  const ids = (row.testParameterIds ?? [])
+    .map((id) => String(id).trim())
+    .filter(Boolean)
+  if (labels.length === 0 && ids.length === 0) {
     return [
       {
         paramRowId: null,
@@ -110,9 +112,26 @@ export function getSectionParametersForEntry(row: TestAllocationRow): SectionPar
       },
     ]
   }
-  return labels.map((label, i) => ({
+  // Prefer ids as source of truth. Never zip summary labels with ids by index —
+  // those arrays can be in different orders (clause vs alphabetical).
+  if (ids.length > 0) {
+    return ids.map((id) => ({
+      paramRowId: null,
+      testParameterId: id,
+      testLabel: id,
+      clauseNo: null,
+      isCodeLabel: null,
+      unitValue: null,
+      sectionSpecOverride: null,
+      specificRequirement: null,
+      testStartDate: row.testStartDate ?? null,
+      testEndDate: row.testEndDate ?? null,
+      results: row.results ?? null,
+    }))
+  }
+  return labels.map((label) => ({
     paramRowId: null,
-    testParameterId: ids[i] ?? null,
+    testParameterId: null,
     testLabel: label,
     clauseNo: null,
     isCodeLabel: null,

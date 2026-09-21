@@ -55,6 +55,7 @@ import {
   RESULTS_REVIEW_STATUS_UNDER_REVIEW,
 } from '../results-under-review/resultsUnderReviewPartitions'
 import { pickTestAllocationPerSection } from '../shared/pickTestAllocationPerSection'
+import { uniqueParameterIds } from '../shared/parameterIdLabelPairs'
 import { fetchByIdChunks, fetchAllByRange } from '../shared/fetchByIdChunks'
 import {
   buildLoadDiagnostics,
@@ -520,39 +521,31 @@ export default function SampleUnderTestingMasterPage() {
               resultsReviewStatus: p.results_review_status,
             }))
             if (parameterRows.length === 0 && allocationId) {
-              const summaryStr = (t.test_parameter_summary ?? '').trim()
-              const ids = Array.isArray(t.test_parameter_ids)
-                ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-                : []
-              let labels = summaryStr
-                ? summaryStr.split(',').map((x) => x.trim()).filter(Boolean)
-                : []
-              if (labels.length === 0 && ids.length > 0) {
-                labels = ids.map((id) => testParamMetaById.get(id)?.name ?? id)
-              } else {
-                for (let i = labels.length; i < ids.length; i += 1) {
-                  const id = ids[i]!
-                  labels.push(testParamMetaById.get(id)?.name ?? id)
-                }
-              }
-              if (labels.length > 0) {
-                parameterRows = labels.map((label, i) => {
-                  const tpId = ids[i] ?? null
+              // Resolve labels from master by id — never zip summary labels with ids by index.
+              const ids = uniqueParameterIds(
+                Array.isArray(t.test_parameter_ids)
+                  ? (t.test_parameter_ids as Array<string | null | undefined>)
+                  : [],
+              )
+              if (ids.length > 0) {
+                parameterRows = ids.map((tpId) => {
+                  const meta = testParamMetaById.get(tpId)
                   return {
                     id: '',
                     testAllocationId: allocationId,
                     testParameterId: tpId,
-                    testLabel: label,
-                    clauseNo: tpId ? (testParamMetaById.get(tpId)?.clauseNo ?? null) : null,
-                    unitValue: tpId ? (testParamMetaById.get(tpId)?.unitValue ?? null) : null,
-                    isCodeLabel: tpId ? (testParamMetaById.get(tpId)?.isCodeLabel ?? null) : null,
+                    testLabel: meta?.name ?? tpId,
+                    clauseNo: meta?.clauseNo ?? null,
+                    unitValue: meta?.unitValue ?? null,
+                    isCodeLabel: meta?.isCodeLabel ?? null,
                     sectionSpecOverride: null,
-                    specificRequirement: tpId
-                      ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
-                      : null,
+                    specificRequirement: meta?.specificRequirement ?? null,
                     testStartDate: null,
                     testEndDate: null,
                     results: null,
+                    resultsReviewerId: null,
+                    resultsReviewerName: null,
+                    resultsReviewStatus: null,
                   }
                 })
               }
@@ -597,17 +590,20 @@ export default function SampleUnderTestingMasterPage() {
               allocationDate: a.allocation_date ?? sample?.date_of_sample_receiving ?? null,
               department: a.department ?? null,
               designation: a.designation ?? null,
-              testParameterSummary: t.test_parameter_summary ?? null,
-              testParameterIds: [
-                ...new Set([
-                  ...parameterRows
-                    .map((p) => p.testParameterId)
-                    .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
-                  ...(Array.isArray(t.test_parameter_ids)
-                    ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-                    : []),
-                ]),
-              ],
+              // Keep summary + ids from the same clause-sorted list so they never desync.
+              testParameterIds: uniqueParameterIds(
+                parameterRows.map((p) => p.testParameterId),
+                Array.isArray(t.test_parameter_ids)
+                  ? (t.test_parameter_ids as Array<string | null | undefined>)
+                  : [],
+              ),
+              testParameterSummary:
+                parameterRows
+                  .map((p) => p.testLabel?.trim())
+                  .filter(Boolean)
+                  .join(', ') ||
+                t.test_parameter_summary ||
+                null,
               assignedEmployeeId: t.assigned_employee_id ?? null,
               assignedEmployeeName: t.assigned_employee_name ?? null,
               referbackFromAllocation: sample?.referbackFromAllocation ?? false,
@@ -1080,20 +1076,25 @@ export default function SampleUnderTestingMasterPage() {
       setRows((prev) =>
         prev.map((r) => {
           if (r.testAllocationId !== allocationId) return r
-          const nextParams = draft.map((p, i) => ({
-            id: p.paramRowId ?? r.parameters?.[i]?.id ?? `local-${p.testLabel}`,
-            testAllocationId: allocationId,
-            testParameterId: p.testParameterId,
-            testLabel: p.testLabel,
-            clauseNo: p.clauseNo ?? r.parameters?.find((x) => x.testLabel === p.testLabel)?.clauseNo ?? null,
-            unitValue: p.unitValue ?? r.parameters?.find((x) => x.testLabel === p.testLabel)?.unitValue ?? null,
-            isCodeLabel:
-              p.isCodeLabel ?? r.parameters?.find((x) => x.testLabel === p.testLabel)?.isCodeLabel ?? null,
-            specificRequirement: p.specificRequirement,
-            testStartDate: p.testStartDate,
-            testEndDate: p.testEndDate,
-            results: p.results,
-          }))
+          const nextParams = draft.map((p) => {
+            const byTpId = p.testParameterId
+              ? r.parameters?.find((x) => x.testParameterId === p.testParameterId)
+              : undefined
+            const byLabel = r.parameters?.find((x) => x.testLabel === p.testLabel)
+            return {
+              id: p.paramRowId ?? byTpId?.id ?? byLabel?.id ?? `local-${p.testLabel}`,
+              testAllocationId: allocationId,
+              testParameterId: p.testParameterId,
+              testLabel: p.testLabel,
+              clauseNo: p.clauseNo ?? byLabel?.clauseNo ?? null,
+              unitValue: p.unitValue ?? byLabel?.unitValue ?? null,
+              isCodeLabel: p.isCodeLabel ?? byLabel?.isCodeLabel ?? null,
+              specificRequirement: p.specificRequirement,
+              testStartDate: p.testStartDate,
+              testEndDate: p.testEndDate,
+              results: p.results,
+            }
+          })
           return {
             ...r,
             parameters: sortParametersByClause(nextParams),
@@ -1261,12 +1262,33 @@ export default function SampleUnderTestingMasterPage() {
 
     const summary = row.testParameterSummary?.trim() ?? ''
     const labels = summary ? summary.split(',').map((s) => s.trim()).filter(Boolean) : []
-    const ids = row.testParameterIds ?? []
-    for (let i = 0; i < labels.length; i += 1) {
+    const ids = uniqueParameterIds(row.testParameterIds)
+    // Prefer ids + master names; never zip summary labels with ids by index.
+    if (ids.length > 0) {
+      const { data: tpRows } = await supabase
+        .from('test_parameters')
+        .select('id, item_name')
+        .in('id', ids)
+      const nameById = new Map<string, string>()
+      for (const rowTp of Array.isArray(tpRows) ? tpRows : []) {
+        const r = rowTp as { id: string; item_name?: string | null }
+        nameById.set(r.id, (r.item_name ?? '').trim() || r.id)
+      }
+      for (const tpId of ids) {
+        const { error: insErr } = await supabase.from('test_allocation_parameters').insert({
+          test_allocation_id: testAllocationId,
+          test_parameter_id: tpId,
+          test_label: nameById.get(tpId) ?? tpId,
+        })
+        if (insErr) throw insErr
+      }
+      return
+    }
+    for (const label of labels) {
       const { error: insErr } = await supabase.from('test_allocation_parameters').insert({
         test_allocation_id: testAllocationId,
-        test_parameter_id: ids[i] ?? null,
-        test_label: labels[i]!,
+        test_parameter_id: null,
+        test_label: label,
       })
       if (insErr) throw insErr
     }
@@ -1401,15 +1423,8 @@ export default function SampleUnderTestingMasterPage() {
     })
     const label = testLabel.trim()
     try {
-      const summaryLabels = (row.testParameterSummary ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-      const ids = row.testParameterIds ?? []
-      const index = summaryLabels.findIndex((l) => l.toLowerCase() === label.toLowerCase())
       const paramFromRow = row.parameters?.find((p) => p.testLabel.toLowerCase() === label.toLowerCase())
-      const allocationTestParamId =
-        paramFromRow?.testParameterId ?? (index >= 0 && ids[index] ? ids[index] : null)
+      const allocationTestParamId = paramFromRow?.testParameterId?.trim() || null
 
       const tpPromise = allocationTestParamId
         ? supabase.from('test_parameters').select('*').eq('id', allocationTestParamId).maybeSingle()

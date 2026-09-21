@@ -2,24 +2,52 @@ import { supabase } from '@/lib/supabaseClient'
 import { resolveSectionSpecificRequirement } from '../shared/resolveSectionSpecificRequirement'
 import type { TestAllocationParameterRow } from '../types'
 import type { AllocatedTestOption } from './allocatedTestsForSection'
+import { sortParametersByClause } from './sectionParameterRows'
 
 async function syncTestAllocationParameterSummary(testAllocationId: string): Promise<void> {
   const { data: paramRows, error: listErr } = await supabase
     .from('test_allocation_parameters')
     .select('test_parameter_id, test_label')
     .eq('test_allocation_id', testAllocationId)
-    .order('test_label', { ascending: true })
 
   if (listErr) throw listErr
 
+  const rows = (Array.isArray(paramRows) ? paramRows : []).map((row) => {
+    const r = row as { test_parameter_id?: string | null; test_label?: string | null }
+    return {
+      testParameterId: r.test_parameter_id?.trim() || null,
+      testLabel: r.test_label?.trim() || '',
+      clauseNo: null as string | null,
+    }
+  })
+
+  const tpIds = rows
+    .map((r) => r.testParameterId)
+    .filter((id): id is string => Boolean(id))
+  if (tpIds.length > 0) {
+    const { data: tpRows } = await supabase
+      .from('test_parameters')
+      .select('id, clause_no')
+      .in('id', tpIds)
+    const clauseById = new Map<string, string | null>()
+    for (const row of Array.isArray(tpRows) ? tpRows : []) {
+      const r = row as { id: string; clause_no?: string | null }
+      clauseById.set(r.id, (r.clause_no ?? '').trim() || null)
+    }
+    for (const row of rows) {
+      if (row.testParameterId) {
+        row.clauseNo = clauseById.get(row.testParameterId) ?? null
+      }
+    }
+  }
+
+  // Same order as under-testing / report UI (clause), never alphabetical-only.
+  const sorted = sortParametersByClause(rows)
   const ids: string[] = []
   const labels: string[] = []
-  for (const row of Array.isArray(paramRows) ? paramRows : []) {
-    const r = row as { test_parameter_id?: string | null; test_label?: string | null }
-    const id = r.test_parameter_id?.trim()
-    const label = r.test_label?.trim()
-    if (id) ids.push(id)
-    if (label) labels.push(label)
+  for (const row of sorted) {
+    if (row.testParameterId) ids.push(row.testParameterId)
+    if (row.testLabel) labels.push(row.testLabel)
   }
 
   const { error: syncErr } = await supabase
@@ -96,7 +124,6 @@ export async function fetchSectionParameterRows(
       'id, test_allocation_id, test_parameter_id, test_label, test_start_date, test_end_date, results, specific_requirement',
     )
     .eq('test_allocation_id', taId)
-    .order('test_label', { ascending: true })
 
   if (error) throw error
 
@@ -131,35 +158,37 @@ export async function fetchSectionParameterRows(
     }
   }
 
-  return rows.map((row) => {
-    const r = row as {
-      id: string
-      test_allocation_id: string
-      test_parameter_id: string | null
-      test_label: string
-      test_start_date: string | null
-      test_end_date: string | null
-      results: string | null
-      specific_requirement: string | null
-    }
-    const tpId = r.test_parameter_id
-    const master = tpId ? metaById.get(tpId) : undefined
-    return {
-      id: r.id,
-      testAllocationId: r.test_allocation_id,
-      testParameterId: tpId,
-      testLabel: r.test_label,
-      clauseNo: master?.clauseNo ?? null,
-      unitValue: master?.unitValue ?? null,
-      isCodeLabel: master?.isCodeLabel ?? null,
-      sectionSpecOverride: r.specific_requirement ?? null,
-      specificRequirement: resolveSectionSpecificRequirement(
-        r.specific_requirement,
-        master?.specificRequirement,
-      ),
-      testStartDate: r.test_start_date,
-      testEndDate: r.test_end_date,
-      results: r.results,
-    }
-  })
+  return sortParametersByClause(
+    rows.map((row) => {
+      const r = row as {
+        id: string
+        test_allocation_id: string
+        test_parameter_id: string | null
+        test_label: string
+        test_start_date: string | null
+        test_end_date: string | null
+        results: string | null
+        specific_requirement: string | null
+      }
+      const tpId = r.test_parameter_id
+      const master = tpId ? metaById.get(tpId) : undefined
+      return {
+        id: r.id,
+        testAllocationId: r.test_allocation_id,
+        testParameterId: tpId,
+        testLabel: r.test_label,
+        clauseNo: master?.clauseNo ?? null,
+        unitValue: master?.unitValue ?? null,
+        isCodeLabel: master?.isCodeLabel ?? null,
+        sectionSpecOverride: r.specific_requirement ?? null,
+        specificRequirement: resolveSectionSpecificRequirement(
+          r.specific_requirement,
+          master?.specificRequirement,
+        ),
+        testStartDate: r.test_start_date,
+        testEndDate: r.test_end_date,
+        results: r.results,
+      }
+    }),
+  )
 }

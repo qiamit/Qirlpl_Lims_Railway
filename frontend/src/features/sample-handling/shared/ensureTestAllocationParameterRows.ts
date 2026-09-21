@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabaseClient'
 import { departmentsMatch } from './departmentMatch'
+import { labelsForParameterIds, uniqueParameterIds } from './parameterIdLabelPairs'
 
-/** Creates test_allocation_parameters rows from test_allocations summary when missing. */
+/** Creates test_allocation_parameters rows from test_parameter_ids when missing. */
 export async function ensureTestAllocationParameterRows(testAllocationId: string): Promise<void> {
   const taId = testAllocationId.trim()
   if (!taId) return
@@ -16,30 +17,36 @@ export async function ensureTestAllocationParameterRows(testAllocationId: string
 
   const { data: ta, error: taErr } = await supabase
     .from('test_allocations')
-    .select('test_parameter_summary, test_parameter_ids')
+    .select('test_parameter_ids')
     .eq('id', taId)
     .maybeSingle()
   if (taErr) throw taErr
   if (!ta) return
 
-  const summary = String(
-    (ta as { test_parameter_summary?: string | null }).test_parameter_summary ?? '',
-  ).trim()
   const rawIds = (ta as { test_parameter_ids?: unknown }).test_parameter_ids
-  const ids = Array.isArray(rawIds)
-    ? rawIds.map((x) => String(x).trim()).filter(Boolean)
-    : []
-  const labels = summary ? summary.split(',').map((s) => s.trim()).filter(Boolean) : []
+  const ids = uniqueParameterIds(
+    Array.isArray(rawIds) ? (rawIds as Array<string | null | undefined>) : [],
+  )
+  if (ids.length === 0) return
 
-  if (labels.length === 0 && ids.length === 0) return
+  const { data: tpRows, error: tpErr } = await supabase
+    .from('test_parameters')
+    .select('id, item_name')
+    .in('id', ids)
+  if (tpErr) throw tpErr
 
-  const count = Math.max(labels.length, ids.length)
-  for (let i = 0; i < count; i += 1) {
-    const label = labels[i] ?? `Parameter ${i + 1}`
+  const nameById = new Map<string, string>()
+  for (const row of Array.isArray(tpRows) ? tpRows : []) {
+    const r = row as { id: string; item_name?: string | null }
+    nameById.set(r.id, (r.item_name ?? '').trim() || r.id)
+  }
+
+  const labels = labelsForParameterIds(ids, nameById)
+  for (let i = 0; i < ids.length; i += 1) {
     const { error: insErr } = await supabase.from('test_allocation_parameters').insert({
       test_allocation_id: taId,
-      test_parameter_id: ids[i] ?? null,
-      test_label: label,
+      test_parameter_id: ids[i]!,
+      test_label: labels[i]!,
     })
     if (insErr) throw insErr
   }

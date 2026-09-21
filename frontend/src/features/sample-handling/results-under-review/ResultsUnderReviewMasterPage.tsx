@@ -293,12 +293,6 @@ export default function ResultsUnderReviewMasterPage() {
         const match = row.parameters.find((p) => p.testLabel.trim().toLowerCase() === label.toLowerCase())
         allocationTestParamId = match?.testParameterId ?? null
       }
-      if (!allocationTestParamId) {
-        const summaryLabels = (row.testParameterSummary ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-        const ids = row.testParameterIds ?? []
-        const index = summaryLabels.findIndex((l) => l.toLowerCase() === label.toLowerCase())
-        allocationTestParamId = index >= 0 && ids[index] ? ids[index] : null
-      }
 
       const tpPromise = allocationTestParamId
         ? supabase.from('test_parameters').select('*').eq('id', allocationTestParamId).maybeSingle()

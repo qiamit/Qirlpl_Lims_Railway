@@ -5,7 +5,9 @@ import {
   departmentsMatch,
 } from '@/features/sample-handling/shared/departmentMatch'
 import { pickTestAllocationPerSection } from '../shared/pickTestAllocationPerSection'
+import { uniqueParameterIds } from '../shared/parameterIdLabelPairs'
 import { fetchByIdChunks } from '../shared/fetchByIdChunks'
+import { sortParametersByClause } from '../sample-under-testing/sectionParameterRows'
 import {
   isActiveReviewerName,
   isResultsReviewStatusApproved,
@@ -345,43 +347,37 @@ function buildRowsFromTestAllocs(input: {
       }))
 
       if (parameterRows.length === 0) {
-        const summaryStr = (t.test_parameter_summary ?? '').trim()
-        const ids = Array.isArray(t.test_parameter_ids)
-          ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-          : []
-        let labels = summaryStr
-          ? summaryStr.split(',').map((x) => x.trim()).filter(Boolean)
-          : []
-        if (labels.length === 0 && ids.length > 0) {
-          labels = ids.map((id) => testParamMetaById.get(id)?.name ?? id)
-        } else {
-          for (let i = labels.length; i < ids.length; i += 1) {
-            const id = ids[i]!
-            labels.push(testParamMetaById.get(id)?.name ?? id)
-          }
-        }
-        if (labels.length > 0) {
-          parameterRows = labels.map((label, i) => {
-            const tpId = ids[i] ?? null
+        // Resolve labels from master by id — never zip summary labels with ids by index.
+        const ids = uniqueParameterIds(
+          Array.isArray(t.test_parameter_ids)
+            ? (t.test_parameter_ids as Array<string | null | undefined>)
+            : [],
+        )
+        if (ids.length > 0) {
+          parameterRows = ids.map((tpId) => {
+            const meta = testParamMetaById.get(tpId)
             return {
               id: '',
               testAllocationId: t.id,
               testParameterId: tpId,
-              testLabel: label,
-              clauseNo: tpId ? (testParamMetaById.get(tpId)?.clauseNo ?? null) : null,
-              unitValue: tpId ? (testParamMetaById.get(tpId)?.unitValue ?? null) : null,
-              isCodeLabel: tpId ? (testParamMetaById.get(tpId)?.isCodeLabel ?? null) : null,
+              testLabel: meta?.name ?? tpId,
+              clauseNo: meta?.clauseNo ?? null,
+              unitValue: meta?.unitValue ?? null,
+              isCodeLabel: meta?.isCodeLabel ?? null,
               sectionSpecOverride: null,
-              specificRequirement: tpId
-                ? (testParamMetaById.get(tpId)?.specificRequirement ?? null)
-                : null,
+              specificRequirement: meta?.specificRequirement ?? null,
               testStartDate: null,
               testEndDate: null,
               results: null,
+              resultsReviewerId: null,
+              resultsReviewerName: null,
+              resultsReviewStatus: null,
             }
           })
         }
       }
+
+      parameterRows = sortParametersByClause(parameterRows)
 
       return {
         testAllocationId: t.id,
@@ -408,17 +404,19 @@ function buildRowsFromTestAllocs(input: {
         allocationDate: a.allocation_date ?? sample.date_of_sample_receiving ?? null,
         department: a.department ?? null,
         designation: a.designation ?? null,
-        testParameterSummary: t.test_parameter_summary ?? null,
-        testParameterIds: [
-          ...new Set([
-            ...parameterRows
-              .map((p) => p.testParameterId)
-              .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
-            ...(Array.isArray(t.test_parameter_ids)
-              ? (t.test_parameter_ids as string[]).map((x) => String(x).trim()).filter(Boolean)
-              : []),
-          ]),
-        ],
+        testParameterIds: uniqueParameterIds(
+          parameterRows.map((p) => p.testParameterId),
+          Array.isArray(t.test_parameter_ids)
+            ? (t.test_parameter_ids as Array<string | null | undefined>)
+            : [],
+        ),
+        testParameterSummary:
+          parameterRows
+            .map((p) => p.testLabel?.trim())
+            .filter(Boolean)
+            .join(', ') ||
+          t.test_parameter_summary ||
+          null,
         assignedEmployeeId: t.assigned_employee_id ?? null,
         assignedEmployeeName: t.assigned_employee_name ?? null,
         referbackFromAllocation: sample.referbackFromAllocation ?? false,
