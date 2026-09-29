@@ -6,6 +6,8 @@ export type AllocatedTestOption = {
   testParameterId: string
   testLabel: string
   specificRequirement: string | null
+  /** Master `test_parameters.test_method` — not IS number. */
+  testMethod: string | null
   clauseNo: string | null
   unitValue: string | null
   isCodeLabel: string | null
@@ -84,7 +86,7 @@ export async function fetchIsCodeTestsForSection(
     supabase
       .from('test_parameters')
       .select(
-        'id, item_name, specific_requirement, clause_no, unit_value, uncertainty_mu, department, is_code_id, is_code_label, under_accreditation_ids',
+        'id, item_name, specific_requirement, test_method, clause_no, unit_value, uncertainty_mu, department, is_code_id, is_code_label, under_accreditation_ids',
       )
       .eq('is_code_id', isCodeId)
       .order('item_name', { ascending: true }),
@@ -108,6 +110,7 @@ export async function fetchIsCodeTestsForSection(
       id: string
       item_name?: string | null
       specific_requirement?: string | null
+      test_method?: string | null
       clause_no?: string | null
       unit_value?: string | null
       is_code_label?: string | null
@@ -132,6 +135,7 @@ export async function fetchIsCodeTestsForSection(
       testParameterId: r.id,
       testLabel: testName,
       specificRequirement: sectionSpec || masterSpec,
+      testMethod: (r.test_method ?? '').trim() || null,
       clauseNo: (r.clause_no ?? '').trim() || null,
       unitValue: (r.unit_value ?? '').trim() || null,
       isCodeLabel: (r.is_code_label ?? '').trim() || null,

@@ -19,6 +19,7 @@ export type AddedTestParameterInfo = {
   label: string
   specificRequirement: string
   underAccreditation: string
+  testMethod: string | null
   clauseNo: string | null
   unitValue: string | null
   uncertaintyMu: string | null
@@ -153,7 +154,7 @@ export function AddTestParameterNestedDialog({
           .from('test_parameters')
           .insert(payload)
           .select(
-            'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, is_code_label, clause_no, unit_value, uncertainty_mu',
+            'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, is_code_label, test_method, clause_no, unit_value, uncertainty_mu',
           )
           .single()
         if (error) throw error
@@ -167,6 +168,7 @@ export function AddTestParameterNestedDialog({
           designation: string | null
           is_code_id: string | null
           is_code_label: string | null
+          test_method: string | null
           clause_no: string | null
           unit_value: string | null
           uncertainty_mu: string | null
@@ -181,6 +183,7 @@ export function AddTestParameterNestedDialog({
           label: row.item_name ?? row.id,
           specificRequirement: row.specific_requirement ?? '',
           underAccreditation: underNames.length > 0 ? underNames.join(', ') : 'Not Accredited',
+          testMethod: row.test_method ?? null,
           clauseNo: row.clause_no ?? null,
           unitValue: row.unit_value ?? null,
           uncertaintyMu: row.uncertainty_mu ?? null,

@@ -94,7 +94,7 @@ export default function TestAllocationMasterPage() {
       supabase
         .from('test_parameters')
         .select(
-          'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, is_code_label, clause_no, unit_value, uncertainty_mu',
+          'id, item_name, specific_requirement, under_accreditation_ids, department, designation, is_code_id, is_code_label, test_method, clause_no, unit_value, uncertainty_mu',
         )
         .order('item_name', { ascending: true }),
       supabase.from('accreditation_bodies').select('id, name').order('name', { ascending: true }),
@@ -117,6 +117,7 @@ export default function TestAllocationMasterPage() {
       designation: string | null
       is_code_id: string | null
       is_code_label: string | null
+      test_method: string | null
       clause_no: string | null
       unit_value: string | null
       uncertainty_mu: string | null
@@ -134,6 +135,7 @@ export default function TestAllocationMasterPage() {
         label: r.item_name ?? r.id,
         specificRequirement: r.specific_requirement ?? '',
         underAccreditation: underAccrLabel(r.under_accreditation_ids ?? null),
+        testMethod: r.test_method ?? null,
         clauseNo: r.clause_no ?? null,
         unitValue: r.unit_value ?? null,
         uncertaintyMu: r.uncertainty_mu ?? null,
@@ -908,6 +910,7 @@ export default function TestAllocationMasterPage() {
                           label: param.label,
                           specificRequirement: param.specificRequirement,
                           underAccreditation: param.underAccreditation,
+                          testMethod: param.testMethod,
                           clauseNo: param.clauseNo,
                           unitValue: param.unitValue,
                           uncertaintyMu: param.uncertaintyMu,

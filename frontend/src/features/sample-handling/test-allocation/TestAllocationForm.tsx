@@ -60,6 +60,8 @@ export type TestParamOption = {
   label: string
   specificRequirement?: string
   underAccreditation?: string
+  /** Master `test_parameters.test_method` — not IS number. */
+  testMethod?: string | null
   clauseNo?: string | null
   unitValue?: string | null
   uncertaintyMu?: string | null
@@ -154,6 +156,7 @@ export function TestAllocationForm({
     ? filteredTestParamOptions.filter((opt) => {
         const q = testParamSearch.trim().toLowerCase()
         const label = (opt.label ?? '').toLowerCase()
+        const method = (opt.testMethod ?? '').toLowerCase()
         const spec = (opt.specificRequirement ?? '').toLowerCase()
         const unit = (opt.unitValue ?? '').toLowerCase()
         const clause = (opt.clauseNo ?? '').toLowerCase()
@@ -161,6 +164,7 @@ export function TestAllocationForm({
         const accr = (opt.underAccreditation ?? '').toLowerCase()
         return (
           label.includes(q) ||
+          method.includes(q) ||
           spec.includes(q) ||
           unit.includes(q) ||
           clause.includes(q) ||
@@ -485,11 +489,12 @@ export function TestAllocationForm({
             <table className={cn(limsTableClass, 'table-fixed')}>
               <colgroup>
                 <col className="w-9" />
-                <col className="w-[26%]" />
-                <col className="w-[10%]" />
-                <col className="w-[24%]" />
-                <col className="w-[14%]" />
                 <col className="w-[18%]" />
+                <col className="w-[18%]" />
+                <col className="w-[9%]" />
+                <col className="w-[22%]" />
+                <col className="w-[12%]" />
+                <col className="w-[15%]" />
               </colgroup>
               <thead>
                 <tr className="border-stone-700 bg-stone-800">
@@ -506,6 +511,7 @@ export function TestAllocationForm({
                     </div>
                   </th>
                   <th className={cn(thClass, 'text-left')}>Test Name</th>
+                  <th className={thClass}>Test Method</th>
                   <th className={thClass}>Unit</th>
                   <th className={thClass}>Specified Requirement</th>
                   <th className={thClass} title="Uncertainty of Measurement">
@@ -518,6 +524,7 @@ export function TestAllocationForm({
                 {pagedOptions.map((opt, index) => {
                   const selected = localSelectedIds.has(opt.id)
                   const clauseLine = formatTestParamClauseLine(opt, row.isCodeLabel)
+                  const methodDisplay = opt.testMethod?.trim() || '-'
                   return (
                   <tr
                     key={opt.id}
@@ -550,6 +557,12 @@ export function TestAllocationForm({
                           {clauseLine}
                         </span>
                       ) : null}
+                    </td>
+                    <td
+                      className={cn(tdClass, 'text-center break-words whitespace-normal text-[#57534e]')}
+                      title={methodDisplay !== '-' ? methodDisplay : undefined}
+                    >
+                      {methodDisplay}
                     </td>
                     <td className={cn(tdClass, 'text-center break-words whitespace-normal text-[#57534e]')}>
                       {opt.unitValue?.trim() || '-'}

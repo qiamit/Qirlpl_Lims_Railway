@@ -27,7 +27,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { IsCodesForm } from '@/features/masters/is-codes/IsCodesForm'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { emptyIsCodeForm, normalizeText as normalizeIsText, type IsCodeForm, type IsAspect } from '@/features/masters/is-codes/types'
-import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
+import { formatIsCodeLabelFromParts, normalizeIsCodeLabel } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   emptyTestParameterForm,
   normalizeText,
@@ -899,21 +899,32 @@ export default function TestParameterMasterPage() {
           return idx >= 0 ? (cells[idx] ?? '') : ''
         }
 
-        const payloads = rowsData.map((cells) => ({
-          is_code_id: null,
-          is_code_label: normalizeText(get(cells, 'is_code_label')) || null,
-          clause_no: normalizeText(get(cells, 'clause_no')) || null,
-          unit_value: normalizeText(get(cells, 'unit_value')) || null,
-          test_method: normalizeText(get(cells, 'test_method')) || null,
-          item_name: normalizeText(get(cells, 'item_name')),
-          specific_requirement: normalizeText(get(cells, 'specific_requirement')) || null,
-          under_accreditation_ids: normalizeText(get(cells, 'under_accreditation_ids'))
-            ? normalizeText(get(cells, 'under_accreditation_ids')).split('|').filter(Boolean)
-            : [],
-          uncertainty_mu: normalizeText(get(cells, 'uncertainty_mu')) || null,
-          department: normalizeText(get(cells, 'department')) || null,
-          designation: normalizeText(get(cells, 'designation')) || null,
-        }))
+        const isCodeByLabel = new Map(
+          isCodes.map((c) => [normalizeIsCodeLabel(c.displayCode).toLowerCase(), c]),
+        )
+
+        const payloads = rowsData.map((cells) => {
+          const isCodeLabel = normalizeIsCodeLabel(normalizeText(get(cells, 'is_code_label')))
+          const matched = isCodeLabel ? isCodeByLabel.get(isCodeLabel.toLowerCase()) : undefined
+          const accrRaw = normalizeText(get(cells, 'under_accreditation_ids'))
+          return {
+            // id + created_at intentionally omitted — DB defaults generate them
+            is_code_id: matched?.id ?? null,
+            is_code_label: isCodeLabel || matched?.displayCode || null,
+            clause_no: normalizeText(get(cells, 'clause_no')) || null,
+            unit_value: normalizeText(get(cells, 'unit_value')) || null,
+            test_method: normalizeText(get(cells, 'test_method')) || matched?.defaultTestMethod || null,
+            item_name: toProperTitleCase(normalizeText(get(cells, 'item_name'))),
+            specific_requirement:
+              toProperTitleCase(normalizeText(get(cells, 'specific_requirement'))) || null,
+            under_accreditation_ids: accrRaw
+              ? accrRaw.split(/[|,]/).map((s) => s.trim()).filter(Boolean)
+              : [],
+            uncertainty_mu: normalizeText(get(cells, 'uncertainty_mu')) || null,
+            department: normalizeText(get(cells, 'department')) || null,
+            designation: normalizeText(get(cells, 'designation')) || null,
+          }
+        })
 
         const clean = payloads.filter((p) => p.item_name.trim().length > 0)
         if (clean.length === 0) {
@@ -921,10 +932,51 @@ export default function TestParameterMasterPage() {
           return
         }
 
-        const { error } = await supabase.from('test_parameters').upsert(clean, { onConflict: 'item_name' })
-        if (error) throw error
+        // Skip rows already present for the same IS code + test name (avoid duplicates on re-import).
+        const labels = Array.from(
+          new Set(clean.map((p) => p.is_code_label).filter((x): x is string => Boolean(x))),
+        )
+        const existingKeys = new Set<string>()
+        if (labels.length > 0) {
+          const { data: existing, error: existingError } = await supabase
+            .from('test_parameters')
+            .select('is_code_label, item_name')
+            .in('is_code_label', labels)
+          if (existingError) throw existingError
+          for (const row of Array.isArray(existing) ? existing : []) {
+            const r = row as { is_code_label?: string | null; item_name?: string | null }
+            const key = `${normalizeIsCodeLabel(r.is_code_label).toLowerCase()}::${normalizeText(r.item_name).toLowerCase()}`
+            existingKeys.add(key)
+          }
+        }
 
-        setSaveMessage(`Imported ${clean.length} record(s).`)
+        const toInsert = clean.filter((p) => {
+          const key = `${normalizeIsCodeLabel(p.is_code_label).toLowerCase()}::${p.item_name.trim().toLowerCase()}`
+          return !existingKeys.has(key)
+        })
+        const skipped = clean.length - toInsert.length
+
+        if (toInsert.length === 0) {
+          setSaveMessage(
+            skipped > 0
+              ? `Nothing new to import — ${skipped} row(s) already exist.`
+              : 'No valid rows to import.',
+          )
+          return
+        }
+
+        const chunkSize = 80
+        for (let i = 0; i < toInsert.length; i += chunkSize) {
+          const chunk = toInsert.slice(i, i + chunkSize)
+          const { error } = await supabase.from('test_parameters').insert(chunk)
+          if (error) throw error
+        }
+
+        setSaveMessage(
+          skipped > 0
+            ? `Imported ${toInsert.length} record(s); skipped ${skipped} duplicate(s).`
+            : `Imported ${toInsert.length} record(s).`,
+        )
         await loadRows()
       } catch (err) {
         setSaveMessage(formatSupabaseError(err))

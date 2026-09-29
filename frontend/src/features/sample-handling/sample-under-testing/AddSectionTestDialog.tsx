@@ -36,7 +36,7 @@ import { toProperRequirementText } from '../shared/toProperRequirementText'
 import { SectionSampleDescViewDialog } from '../shared/SectionSampleDescViewDialog'
 
 const TEST_GRID_COLS =
-  'grid grid-cols-[2.25rem_minmax(9rem,1.5fr)_minmax(4.5rem,0.55fr)_minmax(10rem,2fr)_minmax(5rem,0.8fr)_minmax(7rem,1.1fr)]'
+  'grid grid-cols-[2.25rem_minmax(8rem,1.3fr)_minmax(8rem,1.3fr)_minmax(4.5rem,0.55fr)_minmax(9rem,1.8fr)_minmax(5rem,0.75fr)_minmax(6.5rem,1fr)]'
 
 const thClass = cn(limsTableHeadClass, 'border-b border-r border-stone-700 !p-2 last:border-r-0')
 const thCenterClass = cn(thClass, 'flex items-center justify-center')
@@ -164,6 +164,7 @@ export function AddSectionTestDialog({
     if (!q) return options
     return options.filter((o) => {
       const label = o.testLabel.toLowerCase()
+      const method = (o.testMethod ?? '').toLowerCase()
       const spec = (o.specificRequirement ?? '').toLowerCase()
       const clause = (o.clauseNo ?? '').toLowerCase()
       const unit = (o.unitValue ?? '').toLowerCase()
@@ -171,6 +172,7 @@ export function AddSectionTestDialog({
       const accr = (o.underAccreditation ?? '').toLowerCase()
       return (
         label.includes(q) ||
+        method.includes(q) ||
         spec.includes(q) ||
         clause.includes(q) ||
         unit.includes(q) ||
@@ -377,6 +379,7 @@ export function AddSectionTestDialog({
                   />
                 </div>
                 <div className={cn(thClass, 'flex items-center text-left')}>Test Name</div>
+                <div className={thCenterClass}>Test Method</div>
                 <div className={thCenterClass}>Unit</div>
                 <div className={thCenterClass}>Specified Requirement</div>
                 <div className={thCenterClass}>Uncertainty</div>
@@ -399,6 +402,7 @@ export function AddSectionTestDialog({
                   const checked = selectedIds.has(opt.testParameterId)
                   const willRemove = inSection && !checked
                   const clauseLine = formatTestParamClauseLine(opt, row?.isCodeLabel)
+                  const methodDisplay = opt.testMethod?.trim() || '—'
                   return (
                     <div
                       key={opt.testParameterId}
@@ -458,6 +462,12 @@ export function AddSectionTestDialog({
                             {clauseLine}
                           </span>
                         ) : null}
+                      </div>
+                      <div
+                        className={cn(tdCenterClass, 'break-words whitespace-normal text-[#57534e]')}
+                        title={methodDisplay !== '—' ? methodDisplay : undefined}
+                      >
+                        {methodDisplay}
                       </div>
                       <div className={cn(tdCenterClass, 'break-words text-[#57534e]')}>
                         {opt.unitValue?.trim() || '—'}
