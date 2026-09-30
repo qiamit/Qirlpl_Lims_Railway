@@ -3,11 +3,9 @@
 }
 
 :80 {
-  @local header Origin http://localhost:5173
-  header @local Access-Control-Allow-Origin "http://localhost:5173"
-
-  @loopback header Origin http://127.0.0.1:5173
-  header @loopback Access-Control-Allow-Origin "http://127.0.0.1:5173"
+  # Local Vite origins (multi-app: consultancy may use 5173/3000; LIMS often 5174+)
+  @localDev header_regexp Origin ^https?://(localhost|127\.0\.0\.1):(517[3-9]|518[0-5])$
+  header @localDev Access-Control-Allow-Origin "{http.request.header.Origin}"
 
   @prod header Origin https://frontend-production-f4ec.up.railway.app
   header @prod Access-Control-Allow-Origin "https://frontend-production-f4ec.up.railway.app"
