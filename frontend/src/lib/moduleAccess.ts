@@ -305,7 +305,7 @@ export function canAccessPath(pathname: string, ctx: UserAccessContext): boolean
     return canAccessEquipmentIqcAndResultValidation(ctx)
   }
   const allowed = getAllowedPaths(ctx)
-  if (!allowed) return true
+  if (!allowed) return false
   return pathMatchesAllowlist(pathname, allowed)
 }
 
@@ -318,7 +318,7 @@ export function canAccessNavPath(to: string | undefined, ctx: UserAccessContext)
     return canAccessEquipmentIqcAndResultValidation(ctx)
   }
   const allowed = getAllowedPaths(ctx)
-  if (!allowed) return true
+  if (!allowed) return false
   return pathMatchesAllowlist(to, allowed)
 }
 

@@ -10,11 +10,13 @@ It is **not** connected to hosted Supabase Cloud, Vercel, or `https://github.com
 
 ```
 Qirlpl_Lims_Railway/
-├── frontend/                 # React + TypeScript + Vite
-├── backend/supabase/         # SQL migrations + function source (applied on Railway Postgres)
-├── railway-stack/gateway/    # Caddy API gateway (Auth / REST / Storage)
-├── pdf-service/              # PDF renderer
-└── package.json
+├── frontend/                      # React + TypeScript + Vite
+└── backend/
+    ├── supabase/                  # SQL migrations + function source
+    ├── functions/                 # Railway functions service
+    ├── gateway/                   # Caddy API gateway
+    ├── pdf-service/               # PDF renderer
+    └── storage-service/           # MinIO image helper (production uses the MinIO image directly)
 ```
 
 ## Stack
@@ -28,6 +30,15 @@ Qirlpl_Lims_Railway/
 | PDF | Railway `pdf-service` |
 
 The browser uses `supabase-js` against the Railway API URL (Supabase-compatible protocol). That is **not** `*.supabase.co`.
+
+Railway service root directories after this layout (do not change them until this commit is on `main`, or the next deploy will build the old path):
+
+| Service | Root directory |
+|---|---|
+| `frontend` | `frontend` |
+| `functions` | `backend/functions` |
+| `api` | `backend/gateway` |
+| `pdf-service` | `backend/pdf-service` |
 
 ## Local Setup
 

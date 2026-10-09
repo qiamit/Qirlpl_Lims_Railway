@@ -20,10 +20,13 @@ Yeh project **Qirlpl LIMS** (Laboratory Information Management System) hai, ISO 
   - `frontend/src/features/` – Feature-wise modules (sample-handling, masters, settings, etc.)
   - `frontend/src/components/` – Reusable UI components (shadcn/ui style)
   - `frontend/src/lib/` – Shared libs (supabase-js client pointed at Railway API)
-- **backend/** – SQL migrations and function source applied on Railway Postgres.
+- **backend/** – everything that is not the web app.
   - `backend/supabase/migrations/` – Versioned SQL migrations
   - `backend/supabase/functions/` – Function source (not deployed to hosted Supabase)
-  - `railway-stack/gateway/` – Caddy API gateway
+  - `backend/functions/` – Railway functions service (`server.mjs`)
+  - `backend/gateway/` – Caddy API gateway
+  - `backend/pdf-service/` – PDF renderer
+  - `backend/storage-service/` – MinIO helper image
 
 ---
 

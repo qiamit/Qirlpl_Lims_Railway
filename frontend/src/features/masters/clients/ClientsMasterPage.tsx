@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { getCurrencySymbol } from '@/lib/appCurrency'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
@@ -1095,10 +1096,7 @@ export default function ClientsMasterPage() {
 }
 
 function toCsv(headers: string[], rows: Array<Record<string, string>>) {
-  const escape = (value: string) => {
-    const v = value ?? ''
-    return `"${String(v).replace(/"/g, '""')}"`
-  }
+  const escape = (value: string) => csvCell(value)
 
   const out: string[] = []
   out.push(headers.map(escape).join(','))

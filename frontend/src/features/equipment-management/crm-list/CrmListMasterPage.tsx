@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
+import { escapeHtml } from '@/lib/htmlText'
 import { supabase } from '@/lib/supabaseClient'
 import { cn } from '@/lib/utils'
 import { CrmListFooterBar } from './CrmListFooterBar'
@@ -68,14 +70,14 @@ function buildPrintHtml(rows: CrmRow[]) {
     .map(
       (r) =>
         `<tr>
-          <td>${r.s_no}</td>
-          <td>${r.id_no || ''}</td>
-          <td>${r.crm_type || ''}</td>
-          <td>${r.make || ''}</td>
-          <td>${formatDateDisplay(r.date_of_purchase)}</td>
-          <td>${formatTraceabilityValidity(r.traceability_from, r.valid_upto)}</td>
-          <td>${r.traceability_as_per || ''}</td>
-          <td>${r.uncertainty || ''}</td>
+          <td>${escapeHtml(r.s_no)}</td>
+          <td>${escapeHtml(r.id_no || '')}</td>
+          <td>${escapeHtml(r.crm_type || '')}</td>
+          <td>${escapeHtml(r.make || '')}</td>
+          <td>${escapeHtml(formatDateDisplay(r.date_of_purchase))}</td>
+          <td>${escapeHtml(formatTraceabilityValidity(r.traceability_from, r.valid_upto))}</td>
+          <td>${escapeHtml(r.traceability_as_per || '')}</td>
+          <td>${escapeHtml(r.uncertainty || '')}</td>
         </tr>`,
     )
     .join('')
@@ -303,7 +305,7 @@ export default function CrmListMasterPage() {
       'Traceability As Per',
       'Uncertainty',
     ]
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...list.map((r) =>

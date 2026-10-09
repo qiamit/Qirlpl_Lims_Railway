@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
@@ -777,7 +778,7 @@ export default function IqcMasterPage() {
       }
     })
 
-    const escape = (value: string) => `"${String(value).replace(/"/g, '""')}"`
+    const escape = (value: string) => csvCell(value)
     const out: string[] = []
     out.push(headers.map(escape).join(','))
 

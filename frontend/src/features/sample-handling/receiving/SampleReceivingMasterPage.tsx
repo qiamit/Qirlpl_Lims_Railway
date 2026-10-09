@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
@@ -113,11 +114,7 @@ const formatSupabaseError = (err: unknown) => {
 }
 
 function toCsv(headers: string[], rows: Array<Record<string, string>>) {
-  const esc = (v: string) => {
-    const s = String(v ?? '')
-    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
-    return s
-  }
+  const esc = (v: string) => csvCell(v)
   return [headers.map(esc).join(','), ...rows.map((r) => headers.map((h) => esc(r[h] ?? '')).join(','))].join('\n')
 }
 

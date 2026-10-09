@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { escapeHtml } from '@/lib/htmlText'
 import { cn } from '@/lib/utils'
 import { ComplaintsFooterBar } from '../ComplaintsFooterBar'
 import { ComplaintsHeaderBar } from '../ComplaintsHeaderBar'
@@ -193,7 +195,7 @@ export default function CustomerComplaintsMasterPage() {
       'Status',
       'Outcome',
     ]
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...list.map((r) =>
@@ -225,7 +227,7 @@ export default function CustomerComplaintsMasterPage() {
     const body = list
       .map(
         (r) =>
-          `<tr><td>${r.complaint_id}</td><td>${r.complainant_name}</td><td>${r.description}</td><td>${r.status}</td><td>${r.validated ? 'Yes' : 'No'}</td></tr>`,
+          `<tr><td>${escapeHtml(r.complaint_id)}</td><td>${escapeHtml(r.complainant_name)}</td><td>${escapeHtml(r.description)}</td><td>${escapeHtml(r.status)}</td><td>${r.validated ? 'Yes' : 'No'}</td></tr>`,
       )
       .join('')
     printViaIframe(`<!doctype html><html><head><title>Customer Complaints</title>

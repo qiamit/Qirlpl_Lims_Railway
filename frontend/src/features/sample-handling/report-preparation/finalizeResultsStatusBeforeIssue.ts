@@ -33,14 +33,23 @@ export async function finalizeResultsStatusBeforeIssue(sampleId: string): Promis
     .filter(Boolean)
   if (testAllocationIds.length === 0) return
 
-  // Results review status only — do not clear reviewer identity
-  const { error: paramErr } = await supabase
+  const { data: paramRows, error: paramErr } = await supabase
     .from('test_allocation_parameters')
-    .update({
-      results_review_status: RESULTS_REVIEW_STATUS_APPROVED,
-    })
+    .select('id, results_review_status')
     .in('test_allocation_id', testAllocationIds)
   if (paramErr) throw paramErr
+
+  const pending = (Array.isArray(paramRows) ? paramRows : []).filter((row) => {
+    const status = String((row as { results_review_status?: string }).results_review_status ?? '')
+      .trim()
+      .toLowerCase()
+    return status !== RESULTS_REVIEW_STATUS_APPROVED
+  })
+  if (pending.length > 0) {
+    throw new Error(
+      `Cannot issue this report. ${pending.length} parameter(s) are not approved yet.`,
+    )
+  }
 
   const clearReferback = await supabase
     .from('test_allocations')

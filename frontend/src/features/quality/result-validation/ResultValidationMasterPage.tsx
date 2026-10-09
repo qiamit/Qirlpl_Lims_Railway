@@ -24,7 +24,6 @@ import type { ResultValidationModuleDef } from './resultValidationModules'
 
 export default function ResultValidationMasterPage({ module }: { module: ResultValidationModuleDef }) {
   const fixedCheckType = module.checkType
-  if (!fixedCheckType) return null
   const [rows, setRows] = useState<ResultValidityCheckRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -182,6 +181,8 @@ export default function ResultValidationMasterPage({ module }: { module: ResultV
       setDeleteBusy(false)
     }
   }
+
+  if (!fixedCheckType) return null
 
   return (
     <div className={limsPageShellClass}>

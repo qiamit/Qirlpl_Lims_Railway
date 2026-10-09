@@ -88,6 +88,23 @@ async function requireUser(req) {
   return res.json()
 }
 
+async function requireLaboratoryDirector(req) {
+  const caller = await requireUser(req)
+  const callerId = String(caller?.id ?? '')
+  const profiles = await rest(
+    `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation,status`,
+  )
+  const row = Array.isArray(profiles) ? profiles[0] : null
+  const designation = String(row?.designation ?? '').trim().toLowerCase()
+  const status = String(row?.status ?? '').trim().toLowerCase()
+  if (!callerId || status === 'inactive' || designation !== 'laboratory director') {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  return caller
+}
+
 async function authAdmin(path, init = {}) {
   const res = await fetch(`${AUTH_URL}${path}`, {
     ...init,
@@ -220,7 +237,7 @@ function normalizeAttachments(raw) {
 }
 
 async function handleSendEmail(req, res) {
-  await requireUser(req)
+  await requireLaboratoryDirector(req)
   const body = await readBody(req)
   const to = body.to
   const subject = String(body.subject ?? '').trim()
@@ -235,7 +252,7 @@ async function handleSendEmail(req, res) {
 }
 
 async function handleSendMrmAgenda(req, res) {
-  await requireUser(req)
+  await requireLaboratoryDirector(req)
   const body = await readBody(req)
   const planId = String(body.planId ?? '').trim()
   if (!planId) {
@@ -354,13 +371,17 @@ async function handleSendMrmAgenda(req, res) {
 }
 
 async function handleCreateUser(req, res) {
-  const caller = await requireUser(req)
+  const caller = await requireLaboratoryDirector(req)
   const body = await readBody(req)
 
   const email = String(body.email ?? '').trim()
   const password = String(body.password ?? '').trim()
   if (!email || !password) {
     json(res, 400, { error: 'email and password are required' })
+    return
+  }
+  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    json(res, 400, { error: 'Password must be at least 8 characters and include a letter and a number.' })
     return
   }
 
@@ -425,7 +446,7 @@ async function handleCreateUser(req, res) {
 }
 
 async function handleDeleteUser(req, res) {
-  const caller = await requireUser(req)
+  const caller = await requireLaboratoryDirector(req)
   const body = await readBody(req)
   const userId = String(body.user_id ?? '').trim()
 
@@ -437,23 +458,6 @@ async function handleDeleteUser(req, res) {
   const callerId = String(caller?.id ?? '')
   if (userId === callerId) {
     json(res, 400, { error: 'You cannot delete your own account.' })
-    return
-  }
-
-  let callerDesignation = ''
-  try {
-    const profiles = await rest(
-      `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation`,
-    )
-    callerDesignation = String(profiles?.[0]?.designation ?? '').trim()
-  } catch {
-    /* ignore */
-  }
-  if (!callerDesignation) {
-    callerDesignation = String(caller?.user_metadata?.designation ?? '').trim()
-  }
-  if (callerDesignation.toLowerCase() !== 'laboratory director') {
-    json(res, 403, { error: 'Forbidden' })
     return
   }
 
@@ -477,6 +481,113 @@ async function handleDeleteUser(req, res) {
   json(res, 200, { ok: true })
 }
 
+function resolveAiApiBase(provider, apiBaseUrl) {
+  const custom = String(apiBaseUrl || '').trim().replace(/\/$/, '')
+  if (custom) return custom
+  if (provider === 'openrouter') return 'https://openrouter.ai/api/v1'
+  if (provider === 'google') return 'https://generativelanguage.googleapis.com/v1beta/openai'
+  if (provider === 'deepseek') return 'https://api.deepseek.com/v1'
+  return 'https://api.openai.com/v1'
+}
+
+async function handleQiAssistant(req, res) {
+  await requireUser(req)
+  const body = await readBody(req)
+  const message = String(body.message ?? '').trim()
+  const hasPdf =
+    body.action === 'import_is_code_pdf' ||
+    (Array.isArray(body.importPdfs) && body.importPdfs.length > 0) ||
+    Boolean(body.importPdf?.pdfBase64)
+  if (hasPdf) {
+    json(res, 400, {
+      error: 'PDF import is not available from QI Assistant yet. Add the record on the screen, or ask in text.',
+    })
+    return
+  }
+  if (!message) {
+    json(res, 400, { error: 'message is required' })
+    return
+  }
+
+  const settingsRows = await rest(
+    '/ai_settings?id=eq.00000000-0000-0000-0000-000000000002&select=default_model_id,temperature,max_tokens,system_prompt_prefix',
+  )
+  const settings = Array.isArray(settingsRows) ? settingsRows[0] : null
+  let models = []
+  if (settings?.default_model_id) {
+    models = await rest(
+      `/ai_models?id=eq.${encodeURIComponent(String(settings.default_model_id))}&is_active=eq.true&select=provider,model_id,api_key,api_base_url`,
+    )
+  }
+  if (!Array.isArray(models) || !String(models[0]?.api_key || '').trim()) {
+    models = await rest(
+      '/ai_models?is_active=eq.true&order=created_at.asc&limit=1&select=provider,model_id,api_key,api_base_url',
+    )
+  }
+  const model = Array.isArray(models) ? models[0] : null
+  const apiKey = String(model?.api_key || '').trim()
+  if (!apiKey) {
+    json(res, 400, {
+      error: 'No AI model with API key configured. Go to AI Settings → AI Models and add a default model.',
+    })
+    return
+  }
+  const provider = String(model.provider || 'openai')
+  if (provider === 'anthropic') {
+    json(res, 400, {
+      error: 'Provider "anthropic" is not supported in QI Assistant. Use an OpenAI-compatible model.',
+    })
+    return
+  }
+
+  const history = (Array.isArray(body.history) ? body.history : [])
+    .filter((item) => item && String(item.content || '').trim() && (item.role === 'user' || item.role === 'assistant'))
+    .slice(-10)
+    .map((item) => ({ role: item.role, content: String(item.content).trim() }))
+
+  const system = [
+    settings?.system_prompt_prefix ? String(settings.system_prompt_prefix) : '',
+    'You are QI Assistant, a helpful assistant inside Qirlpl LIMS (ISO 17025 laboratory software). Answer clearly and concisely in English unless the user writes in Hindi.',
+    body.page ? `The user is on the "${String(body.page)}" page.` : '',
+    'You cannot change database records from this chat. Tell the user which screen to use.',
+    body.context ? `Page data:\n${String(body.context).slice(0, 12000)}` : '',
+  ]
+    .filter((part) => String(part).trim().length > 0)
+    .join('\n\n')
+
+  let modelId = String(model.model_id || '').trim()
+  if (provider === 'google' && modelId.startsWith('models/')) modelId = modelId.slice('models/'.length)
+  const temperature = Number(settings?.temperature)
+  const maxTokens = Number(settings?.max_tokens)
+  const aiRes = await fetch(`${resolveAiApiBase(provider, model.api_base_url)}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: message }],
+      temperature: Number.isFinite(temperature) ? temperature : 0.7,
+      max_tokens: Number.isFinite(maxTokens) ? Math.min(maxTokens, 8192) : 1024,
+    }),
+  })
+  const aiPayload = await aiRes.json().catch(() => ({}))
+  if (!aiRes.ok) {
+    const raw = aiPayload && typeof aiPayload === 'object' ? aiPayload.error : null
+    const errMsg =
+      raw && typeof raw === 'object' && raw.message
+        ? String(raw.message)
+        : typeof raw === 'string'
+          ? raw
+          : `AI request failed (${aiRes.status})`
+    json(res, 400, { error: errMsg })
+    return
+  }
+  const reply = String(aiPayload?.choices?.[0]?.message?.content ?? '').trim() || 'No response from model.'
+  json(res, 200, { reply })
+}
+
 const routes = {
   'GET /health': async (_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' })
@@ -486,6 +597,7 @@ const routes = {
   'POST /send-email': handleSendEmail,
   'POST /create-user': handleCreateUser,
   'POST /delete-user': handleDeleteUser,
+  'POST /qi-assistant': handleQiAssistant,
 }
 
 const server = http.createServer(async (req, res) => {

@@ -20,6 +20,11 @@
   header @apex Access-Control-Allow-Origin "https://qirlpl.com"
 
   header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    X-Frame-Options "DENY"
+    Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
     Access-Control-Allow-Credentials "true"
     Access-Control-Expose-Headers "Content-Range, Range, Content-Location, Content-Profile, Preference-Applied, X-Request-Id"
     Vary "Origin"

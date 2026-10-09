@@ -1,4 +1,6 @@
-/** Browser client for the local Playwright PDF service (same Chromium print engine). */
+/** Browser client for the Playwright PDF service (same Chromium print engine). */
+
+import { supabase } from '@/lib/supabaseClient'
 
 export type PlaywrightPdfFormat = 'a4' | 'a5' | 'letter' | 'legal'
 
@@ -14,7 +16,7 @@ export type PlaywrightPdfRequest = {
 function pdfServiceUrl(): string {
   const fromEnv = (import.meta.env.VITE_PDF_SERVICE_URL as string | undefined)?.trim()
   if (fromEnv) return fromEnv.replace(/\/$/, '')
-  // Vite proxies /api/pdf → pdf-service in dev
+  // Vite proxies /api/pdf → backend/pdf-service in dev
   return '/api/pdf'
 }
 
@@ -76,9 +78,14 @@ export async function renderPdfViaPlaywright(
   const endpoint = pdfServiceUrl()
   let res: Response
   try {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
     res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         html: request.html,
         filename: request.filename,

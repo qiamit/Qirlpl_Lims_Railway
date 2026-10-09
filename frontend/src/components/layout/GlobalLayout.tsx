@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ElementType } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState, type ElementType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAppDateFormat } from '@/lib/AppDateFormatProvider'
 import { useAppCurrency } from '@/lib/AppCurrencyProvider'
@@ -922,7 +922,9 @@ export default function GlobalLayout() {
 
         <main className="app-shell-main pb-[env(safe-area-inset-bottom)]">
           <RequireModuleAccess>
-            <Outlet />
+            <Suspense fallback={<p className="p-6 text-sm text-stone-600">Loading…</p>}>
+              <Outlet />
+            </Suspense>
           </RequireModuleAccess>
         </main>
       </div>

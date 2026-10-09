@@ -255,6 +255,17 @@ export function normalizeSectionHtml(html: string): string {
 
   root.replaceChildren(...rebuilt)
 
+  root.querySelectorAll('script, iframe, object, embed, link, meta').forEach((node) => node.remove())
+  root.querySelectorAll('*').forEach((node) => {
+    for (const attr of [...node.attributes]) {
+      const name = attr.name.toLowerCase()
+      if (name.startsWith('on') || name === 'srcdoc') node.removeAttribute(attr.name)
+      if ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(attr.value)) {
+        node.removeAttribute(attr.name)
+      }
+    }
+  })
+
   // Ensure lists use proper tags (TipTap sometimes leaves odd wrappers)
   root.querySelectorAll('ul, ol').forEach((list) => {
     list.querySelectorAll(':scope > li').forEach((li) => {

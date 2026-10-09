@@ -104,7 +104,7 @@ function safePdfFilename(quotationNumber: string): string {
 
 export default function QuotationMasterPage() {
   const [rows, setRows] = useState<QuotationRow[]>([])
-  const [listLoading, setListLoading] = useState(false)
+  const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -370,10 +370,12 @@ export default function QuotationMasterPage() {
 
   const allocateNextQuotationNumber = async () => {
     const prefix = await fetchQuotationPrefix()
-    return nextQuotationNumber(
-      rows.map((r) => r.quotation_number),
-      prefix,
+    const { data, error } = await supabase.from('quotations').select('quotation_number')
+    if (error) throw error
+    const numbers = (Array.isArray(data) ? data : []).map((row) =>
+      String((row as { quotation_number?: string | null }).quotation_number ?? ''),
     )
+    return nextQuotationNumber(numbers, prefix)
   }
 
   const openNew = () => {
@@ -462,6 +464,18 @@ export default function QuotationMasterPage() {
           .eq('quotation_id', editingId)
         if (delErr) throw delErr
       } else {
+        const wanted = payload.quotation_number
+        const { data: clash, error: clashErr } = await supabase
+          .from('quotations')
+          .select('id')
+          .ilike('quotation_number', wanted)
+          .limit(1)
+        if (clashErr) throw clashErr
+        if (Array.isArray(clash) && clash.length > 0) {
+          const next = await allocateNextQuotationNumber()
+          payload.quotation_number = next
+          setForm((prev) => ({ ...prev, quotationNumber: next }))
+        }
         const { data, error } = await supabase
           .from('quotations')
           .insert(payload)

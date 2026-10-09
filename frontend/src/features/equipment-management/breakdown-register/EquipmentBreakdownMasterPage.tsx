@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
@@ -371,7 +372,7 @@ export default function EquipmentBreakdownMasterPage() {
       'Return to Service',
       'Authorized By',
     ]
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...list.map((r) =>

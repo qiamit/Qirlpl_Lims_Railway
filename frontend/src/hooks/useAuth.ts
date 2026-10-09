@@ -149,7 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let canceled = false
 
     const meta = user.user_metadata as Record<string, unknown>
-    const metaDes = typeof meta?.designation === 'string' ? meta.designation.trim() : ''
     const metaDeptRaw =
       typeof meta?.department_name === 'string'
         ? meta.department_name
@@ -173,58 +172,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDivision(profileDivision || metaDivision)
       setProfileName(profileNameVal || metaName || user?.email || '')
       setProfileReady(true)
-      const dept = profileDept || metaDept
-      const div = profileDivision || metaDivision
-      if (profileDes) {
-        try { localStorage.setItem('userDesignation', profileDes) } catch { /* ignore */ }
-      }
-      if (dept) {
-        try { localStorage.setItem('userDepartment', dept) } catch { /* ignore */ }
-      }
-      if (div) {
-        try { localStorage.setItem('userDivision', div) } catch { /* ignore */ }
-      }
+      try {
+        localStorage.removeItem('userDesignation')
+        localStorage.removeItem('userDepartment')
+        localStorage.removeItem('userDivision')
+      } catch { /* ignore */ }
     }
-
-    const cachedDesignation = (() => {
-      try {
-        return localStorage.getItem('userDesignation')
-      } catch {
-        return null
-      }
-    })()
-
-    const cachedDepartment = (() => {
-      try {
-        return localStorage.getItem('userDepartment')
-      } catch {
-        return null
-      }
-    })()
-
-    const cachedDivision = (() => {
-      try {
-        return localStorage.getItem('userDivision')
-      } catch {
-        return null
-      }
-    })()
 
     const fetchProfile = async () => {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('designation, department_name, division, full_name')
+        .select('designation, department_name, division, full_name, status')
         .eq('id', userId)
         .maybeSingle()
 
       if (canceled) return
-      if (error) {
-        applyFromProfile(
-          String(cachedDesignation ?? ''),
-          metaDept || String(cachedDepartment ?? ''),
-          metaDivision || String(cachedDivision ?? ''),
-          metaName || user.email || '',
-        )
+      if (error || !data) {
+        applyFromProfile('', '', '', metaName || user.email || '')
         return
       }
 
@@ -233,19 +197,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         department_name?: unknown
         division?: unknown
         full_name?: unknown
-      } | null
-      const profileDes = typeof row?.designation === 'string' ? row.designation.trim() : ''
+        status?: unknown
+      }
+      const profileStatus = typeof row.status === 'string' ? row.status.trim().toLowerCase() : ''
+      if (profileStatus === 'inactive') {
+        await supabase.auth.signOut()
+        return
+      }
+      const profileDes = typeof row.designation === 'string' ? row.designation.trim() : ''
       const profileDept =
-        typeof row?.department_name === 'string' ? row.department_name.trim() : ''
-      const profileDivision = typeof row?.division === 'string' ? row.division.trim() : ''
-      const profileFullName = typeof row?.full_name === 'string' ? row.full_name.trim() : ''
-      const finalDes = profileDes || String(cachedDesignation ?? '')
-      const finalDept = profileDept || metaDept || String(cachedDepartment ?? '')
-      const finalDivision = profileDivision || metaDivision || String(cachedDivision ?? '')
+        typeof row.department_name === 'string' ? row.department_name.trim() : ''
+      const profileDivision = typeof row.division === 'string' ? row.division.trim() : ''
+      const profileFullName = typeof row.full_name === 'string' ? row.full_name.trim() : ''
       applyFromProfile(
-        finalDes,
-        finalDept,
-        finalDivision,
+        profileDes,
+        profileDept,
+        profileDivision,
         profileFullName || metaName || user.email || '',
       )
     }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -173,7 +174,7 @@ export default function NcWorkRecordsMasterPage({
       'Status',
       'CAPA Required',
     ]
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...list.map((r) =>

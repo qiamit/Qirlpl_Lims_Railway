@@ -4,6 +4,8 @@ import { RoutePersistence } from '@/components/routing/RoutePersistence'
 import AuthPage from '@/features/auth/AuthPage'
 import PublicSiteLayout from '@/features/public-site/PublicSiteLayout'
 import PublicHomePage from '@/features/public-site/PublicHomePage'
+import NotFoundPage from '@/features/public-site/NotFoundPage'
+import ScopeLetterPage from '@/features/public-site/ScopeLetterPage'
 import {
   DEFAULT_RESULT_VALIDATION_MODULE_SLUG,
   resultValidationModulePath,
@@ -107,6 +109,7 @@ export default function App() {
           <Route path="news" element={<Navigate to="/home" replace />} />
           <Route path="contact" element={<Navigate to="/home#contact" replace />} />
           <Route path="auth" element={<AuthPage />} />
+          <Route path="scope-letters/:kind" element={<ScopeLetterPage />} />
         </Route>
 
         <Route element={<AuthenticatedShell />}>
@@ -358,8 +361,9 @@ export default function App() {
           <Route path="help" element={<HelpRoute />} />
           <Route path="contact-us" element={<ContactUsRoute />} />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )

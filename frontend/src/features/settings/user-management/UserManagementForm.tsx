@@ -432,6 +432,11 @@ export function UserManagementForm(props: UserManagementFormProps) {
         setError('All fields are required')
         return
       }
+      const password = formData.password.trim()
+      if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        setError('Password must be at least 8 characters and include a letter and a number.')
+        return
+      }
     }
 
     setLoading(true)

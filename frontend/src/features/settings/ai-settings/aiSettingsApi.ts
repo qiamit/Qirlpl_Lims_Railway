@@ -6,14 +6,24 @@ import {
   type AiSkillRow,
 } from './types'
 
+const AI_MODEL_COLUMNS =
+  'id, provider, model_id, display_name, api_base_url, is_default, is_active, created_at, updated_at'
+
 export async function fetchAiModels(): Promise<AiModelRow[]> {
-  const { data, error } = await supabase
+  const withFlag = await supabase
     .from('ai_models')
-    .select('*')
+    .select(`${AI_MODEL_COLUMNS}, has_api_key`)
     .order('is_default', { ascending: false })
     .order('display_name', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as AiModelRow[]
+  if (!withFlag.error) return (withFlag.data ?? []) as AiModelRow[]
+
+  const plain = await supabase
+    .from('ai_models')
+    .select(AI_MODEL_COLUMNS)
+    .order('is_default', { ascending: false })
+    .order('display_name', { ascending: true })
+  if (plain.error) throw plain.error
+  return (plain.data ?? []) as AiModelRow[]
 }
 
 export async function upsertAiModel(

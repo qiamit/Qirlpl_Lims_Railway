@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { useNavigate } from 'react-router-dom'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
@@ -36,7 +37,7 @@ function esc(value: string) {
 }
 
 function toCsv(headers: string[], rows: Array<Record<string, string>>) {
-  const escape = (value: string) => `"${String(value ?? '').replace(/"/g, '""')}"`
+  const escape = (value: string) => csvCell(value)
   const out: string[] = [headers.map(escape).join(',')]
   for (const r of rows) {
     out.push(headers.map((h) => escape(String(r[h] ?? ''))).join(','))

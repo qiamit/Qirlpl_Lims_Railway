@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Award, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -118,16 +119,14 @@ function AccreditationCard({
       <p className="relative border border-amber-500/40 bg-stone-950/50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-amber-50">
         {item.code}
       </p>
-      <a
-        href={item.href}
-        target="_blank"
-        rel="noopener noreferrer"
+      <Link
+        to={item.href}
         aria-label={item.actionLabel}
         className={cn(limsPrimaryBtnClass, 'relative inline-flex h-8 items-center gap-1.5 px-3')}
       >
         <FileText size={14} />
         {item.actionLabel}
-      </a>
+      </Link>
     </div>
   )
 }

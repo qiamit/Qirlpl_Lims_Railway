@@ -9,6 +9,9 @@ import { chromium } from 'playwright'
 const PORT = Number(process.env.PORT || process.env.PDF_SERVICE_PORT || 3847)
 const HOST = process.env.PDF_SERVICE_HOST || '0.0.0.0'
 const MAX_HTML_BYTES = Number(process.env.PDF_MAX_HTML_BYTES || 12_000_000)
+const AUTH_URL = (process.env.AUTH_URL || '').replace(/\/$/, '')
+const AUTH_ANON_KEY = process.env.AUTH_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+const ON_RAILWAY = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID)
 
 /** @type {import('playwright').Browser | null} */
 let browser = null
@@ -58,12 +61,54 @@ function parseBody(body) {
  * @param {string} html
  * @param {{ format: string; landscape: boolean; margin: Record<string, string> }} opts
  */
+function isAllowedAsset(url) {
+  if (url.startsWith('data:') || url.startsWith('blob:') || url === 'about:blank') return true
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return host === 'qirlpl.com' || host.endsWith('.qirlpl.com')
+  } catch {
+    return false
+  }
+}
+
+async function callerIsSignedIn(req) {
+  if (!ON_RAILWAY && !AUTH_URL) return true
+  if (!AUTH_URL) {
+    const err = new Error('PDF service auth is not configured')
+    err.statusCode = 503
+    throw err
+  }
+  const header = String(req.headers.authorization || '')
+  const token = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : ''
+  if (!token) {
+    const err = new Error('Sign in required')
+    err.statusCode = 401
+    throw err
+  }
+  const res = await fetch(`${AUTH_URL}/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(AUTH_ANON_KEY ? { apikey: AUTH_ANON_KEY } : {}),
+    },
+  })
+  if (!res.ok) {
+    const err = new Error('Sign in required')
+    err.statusCode = 401
+    throw err
+  }
+  return true
+}
+
 async function htmlToPdf(html, opts) {
   const b = await getBrowser()
   const page = await b.newPage()
   try {
+    await page.route('**/*', (route) => {
+      if (isAllowedAsset(route.request().url())) route.continue()
+      else route.abort()
+    })
     await page.setContent(html, {
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
       timeout: 60_000,
     })
     // Extra settle for fonts / late images
@@ -141,7 +186,7 @@ function sendJson(res, status, payload) {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   })
   res.end(body)
 }
@@ -153,7 +198,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     })
     res.end()
     return
@@ -166,6 +211,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && (url.pathname === '/pdf' || url.pathname === '/api/pdf')) {
     try {
+      await callerIsSignedIn(req)
       const json = await readJson(req)
       const opts = parseBody(json)
       const pdf = await htmlToPdf(opts.html, opts)
@@ -181,8 +227,9 @@ const server = http.createServer(async (req, res) => {
       res.end(pdf)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'PDF generation failed'
+      const status = Number(err?.statusCode) || 500
       console.error('[pdf-service]', message)
-      sendJson(res, 500, { error: message })
+      sendJson(res, status, { error: message })
     }
     return
   }

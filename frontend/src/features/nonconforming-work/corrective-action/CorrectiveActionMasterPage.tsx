@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { useSearchParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -12,6 +13,7 @@ import {
   type NonConformityRow,
 } from '@/features/audit-mrm/non-conformities/types'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
+import { escapeHtml } from '@/lib/htmlText'
 import { supabase } from '@/lib/supabaseClient'
 import { limsOutlineBtnClass, limsPageShellClass, limsPanelClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
@@ -216,7 +218,7 @@ export default function CorrectiveActionMasterPage() {
   const handleExport = () => {
     const list = selectedRows.length ? selectedRows : filtered
     const headers = ['Source', 'Reference', 'Audit ID', 'Audit Type', 'Details', 'Meta', 'CAPA Started']
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...list.map((r) =>
@@ -247,7 +249,7 @@ export default function CorrectiveActionMasterPage() {
     const rowsHtml = list
       .map(
         (r) =>
-          `<tr><td>${r.source === 'audit' ? 'Audit' : 'Lab NCW'}</td><td>${r.primary}</td><td>${r.auditId}</td><td>${r.actionStarted ? 'Yes' : 'No'}</td></tr>`,
+          `<tr><td>${r.source === 'audit' ? 'Audit' : 'Lab NCW'}</td><td>${escapeHtml(r.primary)}</td><td>${escapeHtml(r.auditId)}</td><td>${r.actionStarted ? 'Yes' : 'No'}</td></tr>`,
       )
       .join('')
     printViaIframe(`<!doctype html><html><head><title>Corrective Action</title>

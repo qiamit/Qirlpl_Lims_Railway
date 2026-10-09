@@ -33,7 +33,8 @@ export type AiModelRow = {
   provider: string
   model_id: string
   display_name: string
-  api_key: string | null
+  api_key?: string | null
+  has_api_key?: boolean
   api_base_url: string | null
   is_default: boolean
   is_active: boolean

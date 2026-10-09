@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
@@ -72,11 +73,7 @@ const readDesignationByDepartmentFromStorage = (): Record<string, string[]> => {
 const normLabel = (value: string | null | undefined) => (value ?? '').trim().toLowerCase()
 
 function toCsv(headers: string[], rows: Array<Record<string, string>>) {
-  const esc = (v: string) => {
-    const s = String(v ?? '')
-    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
-    return s
-  }
+  const esc = (v: string) => csvCell(v)
 
   const lines = [headers.map(esc).join(',')]
   for (const r of rows) {

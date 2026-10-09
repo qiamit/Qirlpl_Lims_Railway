@@ -105,8 +105,8 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="grid flex-1 lg:grid-cols-[25%_50%_25%]">
-      <aside className={cn(limsDarkBarClass, 'order-2 flex h-full flex-col p-0 lg:order-1')}>
+    <div className="grid flex-1 xl:grid-cols-[25%_50%_25%]">
+      <aside className={cn(limsDarkBarClass, 'order-2 hidden h-full flex-col p-0 xl:order-1 xl:flex')}>
         <div className="pointer-events-none absolute inset-0 opacity-[0.22]" style={limsDarkBarGlowStyle} />
         <div className="pointer-events-none absolute inset-0 opacity-[0.16]" style={publicHeroPatternStyle} />
         <div className={limsDarkBarAccentClass} />
@@ -256,7 +256,7 @@ export default function AuthPage() {
         </div>
       </div>
 
-      <aside className={cn(limsDarkBarClass, 'order-3 flex h-full flex-col p-0')}>
+      <aside className={cn(limsDarkBarClass, 'order-3 hidden h-full flex-col p-0 xl:flex')}>
         <div className="pointer-events-none absolute inset-0 opacity-[0.22]" style={limsDarkBarGlowStyle} />
         <div className="pointer-events-none absolute inset-0 opacity-[0.16]" style={publicHeroPatternStyle} />
         <div className={limsDarkBarAccentClass} />

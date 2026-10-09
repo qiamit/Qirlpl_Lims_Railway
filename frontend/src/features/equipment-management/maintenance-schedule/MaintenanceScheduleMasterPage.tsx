@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
+import { escapeHtml } from '@/lib/htmlText'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { parseMaintenanceChecklistFromDb } from '@/features/masters/equipment-master/maintenanceChecklist'
@@ -284,7 +286,7 @@ export default function MaintenanceScheduleMasterPage() {
       'Next Due',
       'Schedule Status',
     ]
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...exportRows.map((r) =>
@@ -316,13 +318,13 @@ export default function MaintenanceScheduleMasterPage() {
     const rowsHtml = exportRows
       .map(
         (r) => `<tr>
-<td>${r.equipmentName}<br/>${r.assetCode}</td>
-<td>${MAINTENANCE_SOURCE_LABELS[r.source]}</td>
-<td>${r.location || '—'}</td>
-<td>${r.frequency || '—'}</td>
-<td>${formatDateDisplay(r.lastMaintenanceDate)}</td>
-<td>${formatDateDisplay(r.nextMaintenanceDate)}</td>
-<td>${dueLabel(r)}</td>
+<td>${escapeHtml(r.equipmentName)}<br/>${escapeHtml(r.assetCode)}</td>
+<td>${escapeHtml(MAINTENANCE_SOURCE_LABELS[r.source])}</td>
+<td>${escapeHtml(r.location || '—')}</td>
+<td>${escapeHtml(r.frequency || '—')}</td>
+<td>${escapeHtml(formatDateDisplay(r.lastMaintenanceDate))}</td>
+<td>${escapeHtml(formatDateDisplay(r.nextMaintenanceDate))}</td>
+<td>${escapeHtml(dueLabel(r))}</td>
 </tr>`,
       )
       .join('')

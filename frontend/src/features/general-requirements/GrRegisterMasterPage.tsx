@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { csvCell } from '@/lib/csv'
 import { Copy, Loader2, Pencil, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -17,6 +18,7 @@ import {
   limsPrimaryBtnClass,
   limsRegistryFormClass,
 } from '@/lib/limsThemeUi'
+import { escapeHtml } from '@/lib/htmlText'
 import { supabase } from '@/lib/supabaseClient'
 import { cn } from '@/lib/utils'
 import { GrFooterBar } from './GrFooterBar'
@@ -337,7 +339,7 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
 
   const handleExport = () => {
     const list = selectedRows.length ? selectedRows : filtered
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       config.exportHeaders.map(esc).join(','),
       ...list.map((r) =>
@@ -364,22 +366,22 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
 
   const handlePrint = () => {
     const list = selectedRows.length ? selectedRows : filtered
-    const head = config.columns.map((c) => `<th>${c.header}</th>`).join('')
+    const head = config.columns.map((c) => `<th>${escapeHtml(c.header)}</th>`).join('')
     const body = list
       .map((r) => {
         const cells = config.columns
           .map((c) => {
             if (c.lines?.length) {
-              return `<td>${c.lines.map((l) => String(r[l.key] ?? '')).join(' / ')}</td>`
+              return `<td>${c.lines.map((l) => escapeHtml(r[l.key])).join(' / ')}</td>`
             }
             const raw = r[c.key]
-            return `<td>${c.date ? formatDateDisplay(raw == null ? null : String(raw)) : String(raw ?? '')}</td>`
+            return `<td>${c.date ? escapeHtml(formatDateDisplay(raw == null ? null : String(raw))) : escapeHtml(raw)}</td>`
           })
           .join('')
         return `<tr>${cells}</tr>`
       })
       .join('')
-    printViaIframe(`<!doctype html><html><head><title>${config.title}</title>
+    printViaIframe(`<!doctype html><html><head><title>${escapeHtml(config.title)}</title>
 <style>body{font-family:sans-serif;font-size:11px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:4px}th{background:#292524;color:#fde68a}</style>
 </head><body><h1>${config.title}</h1><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`)
   }

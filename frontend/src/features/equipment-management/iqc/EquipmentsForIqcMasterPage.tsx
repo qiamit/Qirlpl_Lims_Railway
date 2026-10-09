@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
+import { escapeHtml } from '@/lib/htmlText'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
@@ -776,7 +778,7 @@ export default function EquipmentsForIqcMasterPage() {
       'Next Intermediate Check',
       'Next Maintenance',
     ]
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...exportRows.map((r) =>
@@ -809,12 +811,12 @@ export default function EquipmentsForIqcMasterPage() {
     const rowsHtml = exportRows
       .map(
         (r) => `<tr>
-<td>${IQC_SOURCE_LABELS[r.source]}</td>
-<td>${r.equipmentName}<br/>${r.assetCode}</td>
-<td>${r.leastCount || '—'}</td>
-<td>${r.range || '—'}</td>
-<td>${r.nextCalibrationDue ? formatDate(r.nextCalibrationDue) : '—'}</td>
-<td>${r.nextMaintenanceDate ? formatDate(r.nextMaintenanceDate) : '—'}</td>
+<td>${escapeHtml(IQC_SOURCE_LABELS[r.source])}</td>
+<td>${escapeHtml(r.equipmentName)}<br/>${escapeHtml(r.assetCode)}</td>
+<td>${escapeHtml(r.leastCount || '—')}</td>
+<td>${escapeHtml(r.range || '—')}</td>
+<td>${escapeHtml(r.nextCalibrationDue ? formatDate(r.nextCalibrationDue) : '—')}</td>
+<td>${escapeHtml(r.nextMaintenanceDate ? formatDate(r.nextMaintenanceDate) : '—')}</td>
 </tr>`,
       )
       .join('')

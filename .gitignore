@@ -70,7 +70,7 @@ vercel.json
 .vercelignore
 .netlify/
 
-# ── Python (scripts/) ─────────────────────────────────────────────────
+# ── Python (backend/scripts/) ─────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class

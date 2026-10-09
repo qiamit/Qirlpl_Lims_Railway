@@ -34,7 +34,6 @@ import {
   DEEPSEEK_API_BASE,
   DEEPSEEK_MODEL_OPTIONS,
   emptyAiModelForm,
-  maskApiKey,
   type AiModelForm,
   type AiModelRow,
   type AiProvider,
@@ -108,7 +107,7 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
 
   const openEdit = (row: AiModelRow) => {
     setEditId(row.id)
-    setHadExistingKey(Boolean(row.api_key?.trim()))
+    setHadExistingKey(Boolean(row.has_api_key))
     setForm({
       provider: row.provider as AiProvider,
       modelId: row.model_id,
@@ -331,7 +330,7 @@ export const AiModelsPanel = forwardRef<AiModelsPanelHandle, AiModelsPanelProps>
                       </TableCell>
                       <TableCell className="text-center text-sm capitalize align-middle">{r.provider}</TableCell>
                       <TableCell className="text-center text-xs text-muted-foreground align-middle">{r.model_id}</TableCell>
-                      <TableCell className="text-center text-xs font-mono align-middle">{maskApiKey(r.api_key)}</TableCell>
+                      <TableCell className="text-center text-xs font-mono align-middle">{r.has_api_key ? '•••• saved' : '—'}</TableCell>
                       <TableCell className="text-center align-middle">
                         <span
                           className={cn(

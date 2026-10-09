@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
@@ -724,7 +725,7 @@ export default function EquipmentMasterPage() {
       }
     })
 
-    const escape = (value: string) => `"${String(value).replace(/"/g, '""')}"`
+    const escape = (value: string) => csvCell(value)
     const out: string[] = []
     out.push(headers.map(escape).join(','))
 

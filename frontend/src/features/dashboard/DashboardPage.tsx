@@ -361,7 +361,7 @@ export default function DashboardPage() {
           const { data, error } = await supabase
             .from('samples')
             .select(
-              'id, stage, tentative_date_by_lab, test_report_nabl_ulr_number, statement_conformity_required, witness_test_required, deviation_from_methods, date_of_sample_receiving',
+              'id, stage, srf_number, sample_code, tentative_date_by_lab, test_report_nabl_ulr_number, statement_conformity_required, witness_test_required, deviation_from_methods, date_of_sample_receiving',
             )
             .order('id', { ascending: true })
             .range(from, to)
@@ -452,10 +452,34 @@ export default function DashboardPage() {
           completed: 0,
         }
 
+        const allocationLinks = await fetchAllByRange(async (from, to) => {
+          const { data, error } = await supabase
+            .from('sample_allocations')
+            .select('sample_id')
+            .order('id', { ascending: true })
+            .range(from, to)
+          if (error) throw error
+          return Array.isArray(data) ? data : []
+        })
+        const allocatedSampleIds = new Set(
+          allocationLinks
+            .map((row) => String((row as { sample_id?: string }).sample_id ?? '').trim())
+            .filter(Boolean),
+        )
+
         if (samples) {
           for (const sample of samples) {
             const stage = sample.stage ?? 'receiving'
-            if (stage in stageCounts) stageCounts[stage]++
+            if (stage === 'allocation') {
+              const sampleId = String((sample as { id?: string }).id ?? '')
+              const hasIdentity = Boolean(
+                String((sample as { srf_number?: string | null }).srf_number ?? '').trim() ||
+                  String((sample as { sample_code?: string | null }).sample_code ?? '').trim(),
+              )
+              if (hasIdentity && !allocatedSampleIds.has(sampleId)) stageCounts.allocation++
+            } else if (stage in stageCounts) {
+              stageCounts[stage]++
+            }
 
             if (sample.date_of_sample_receiving === todayStr) receivedToday++
 
@@ -1177,7 +1201,7 @@ export default function DashboardPage() {
         return {
           stage,
           href,
-          label: stage.replace(/_/g, ' '),
+          label: stage === 'allocation' ? 'Pending allocation' : stage.replace(/_/g, ' '),
           count: stats?.stageCounts[stage] ?? 0,
         }
       })

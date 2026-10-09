@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { csvCell } from '@/lib/csv'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { escapeHtml } from '@/lib/htmlText'
 import { cn } from '@/lib/utils'
 import { ComplaintsFooterBar } from '../ComplaintsFooterBar'
 import { ComplaintsHeaderBar } from '../ComplaintsHeaderBar'
@@ -219,7 +221,7 @@ export default function CustomerFeedbackMasterPage({
       'Significance',
       'Actions Decided',
     ]
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const esc = (v: string) => csvCell(v)
     const lines = [
       headers.map(esc).join(','),
       ...list.map((r) =>
@@ -252,7 +254,7 @@ export default function CustomerFeedbackMasterPage({
     const body = list
       .map(
         (r) =>
-          `<tr><td>${r.feedback_id}</td><td>${r.customer_name}</td><td>${r.feedback_type}</td><td>${r.description}</td><td>${r.evaluation_status}</td></tr>`,
+          `<tr><td>${escapeHtml(r.feedback_id)}</td><td>${escapeHtml(r.customer_name)}</td><td>${escapeHtml(r.feedback_type)}</td><td>${escapeHtml(r.description)}</td><td>${escapeHtml(r.evaluation_status)}</td></tr>`,
       )
       .join('')
     printViaIframe(`<!doctype html><html><head><title>${evaluationMode ? 'Feedback Evaluation' : 'Customer Feedback'}</title>

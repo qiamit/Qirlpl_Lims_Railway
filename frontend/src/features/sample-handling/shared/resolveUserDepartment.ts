@@ -68,7 +68,8 @@ async function inferDepartmentFromReviewAssignments(authUserId: string): Promise
 
 /**
  * Resolves the logged-in user's lab department (Mechanical, Chemical, …).
- * Order: hook/cache → user_profiles → auth metadata → infer from review assignments.
+ * Order: hook value → auth metadata → user_profiles → infer from review assignments.
+ * localStorage is not used, so a shared PC cannot keep the previous person's department.
  */
 export async function resolveUserDepartment(
   authUser: User,
@@ -77,22 +78,8 @@ export async function resolveUserDepartment(
   const fromHook = (hookDepartment ?? '').trim()
   if (fromHook) return fromHook
 
-  try {
-    const cached = localStorage.getItem('userDepartment')?.trim()
-    if (cached) return cached
-  } catch {
-    /* ignore */
-  }
-
   const fromMeta = metaDepartment(authUser)
-  if (fromMeta) {
-    try {
-      localStorage.setItem('userDepartment', fromMeta)
-    } catch {
-      /* ignore */
-    }
-    return fromMeta
-  }
+  if (fromMeta) return fromMeta
 
   const { data: profile, error } = await supabase
     .from('user_profiles')
