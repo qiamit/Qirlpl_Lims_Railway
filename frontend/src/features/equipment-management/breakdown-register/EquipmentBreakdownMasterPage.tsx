@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { csvCell } from '@/lib/csv'
+import { escapeHtml } from '@/lib/htmlText'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
@@ -406,13 +407,13 @@ export default function EquipmentBreakdownMasterPage() {
     const rowsHtml = list
       .map(
         (r) => `<tr>
-<td>${r.register_no}</td>
-<td>${r.asset_code}<br/>${r.equipment_name}</td>
-<td>${formatDateDisplay(r.breakdown_date)}</td>
-<td>${r.nature_of_breakdown}</td>
-<td>${r.status}</td>
-<td>${r.reported_by_name ?? '—'}</td>
-<td>${formatDateTimeDisplay(r.return_to_service_date)}</td>
+<td>${escapeHtml(r.register_no)}</td>
+<td>${escapeHtml(r.asset_code)}<br/>${escapeHtml(r.equipment_name)}</td>
+<td>${escapeHtml(formatDateDisplay(r.breakdown_date))}</td>
+<td>${escapeHtml(r.nature_of_breakdown)}</td>
+<td>${escapeHtml(r.status)}</td>
+<td>${escapeHtml(r.reported_by_name ?? '—')}</td>
+<td>${escapeHtml(formatDateTimeDisplay(r.return_to_service_date))}</td>
 </tr>`,
       )
       .join('')

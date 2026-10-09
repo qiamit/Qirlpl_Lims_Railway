@@ -119,7 +119,7 @@ export function AuditPlanFooterBar({
           <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1 overflow-x-auto overscroll-x-contain sm:gap-1.5 md:gap-2 [-webkit-overflow-scrolling:touch]">
             <Input
               aria-label="Jump to page"
-              placeholder="Page"
+              placeholder="#"
               value={jumpTo}
               onChange={(e) => onJumpToChange(e.target.value.replace(/[^0-9]/g, ''))}
               onKeyDown={(e) => {

@@ -17,10 +17,31 @@ function json(res, status, body) {
   res.end(payload)
 }
 
+const MAX_BODY_BYTES = 15 * 1024 * 1024
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
+    const declared = Number(req.headers['content-length'] || 0)
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+      const err = new Error('Request body is too large')
+      err.statusCode = 413
+      reject(err)
+      req.resume()
+      return
+    }
     const chunks = []
-    req.on('data', (c) => chunks.push(c))
+    let size = 0
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        const err = new Error('Request body is too large')
+        err.statusCode = 413
+        reject(err)
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8')
       if (!raw) return resolve({})
@@ -92,12 +113,39 @@ async function requireLaboratoryDirector(req) {
   const caller = await requireUser(req)
   const callerId = String(caller?.id ?? '')
   const profiles = await rest(
-    `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation,status`,
+    `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation,department_name,status`,
   )
   const row = Array.isArray(profiles) ? profiles[0] : null
   const designation = String(row?.designation ?? '').trim().toLowerCase()
   const status = String(row?.status ?? '').trim().toLowerCase()
   if (!callerId || status === 'inactive' || designation !== 'laboratory director') {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  return caller
+}
+
+function canSendLabEmail(designation, department) {
+  const role = String(designation ?? '').trim().toLowerCase()
+  const dept = String(department ?? '').trim().toLowerCase()
+  if (role === 'laboratory director') return true
+  if (role === 'quality manager' && dept === 'quality assurance') return true
+  if (role === 'receptionist' && dept === 'sample cell') return true
+  if (role === 'sample incharge' && dept === 'sample cell') return true
+  if (role === 'technical manager' && (dept === 'mechanical' || dept === 'chemical')) return true
+  return false
+}
+
+async function requireCanSendLabEmail(req) {
+  const caller = await requireUser(req)
+  const callerId = String(caller?.id ?? '')
+  const profiles = await rest(
+    `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation,department_name,status`,
+  )
+  const row = Array.isArray(profiles) ? profiles[0] : null
+  const status = String(row?.status ?? '').trim().toLowerCase()
+  if (!callerId || status === 'inactive' || !canSendLabEmail(row?.designation, row?.department_name)) {
     const err = new Error('Forbidden')
     err.statusCode = 403
     throw err
@@ -237,7 +285,7 @@ function normalizeAttachments(raw) {
 }
 
 async function handleSendEmail(req, res) {
-  await requireLaboratoryDirector(req)
+  await requireCanSendLabEmail(req)
   const body = await readBody(req)
   const to = body.to
   const subject = String(body.subject ?? '').trim()

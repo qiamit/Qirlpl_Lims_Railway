@@ -44,6 +44,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 import { fetchAllByRange } from '@/features/sample-handling/shared/fetchByIdChunks'
 import { loadDashboardWorkflowCounts } from '@/features/dashboard/loadDashboardWorkflowCounts'
+import { isSampleVisibleInAllocationList } from '@/features/sample-handling/referbackFlow'
 import { loadSaleDocumentRows } from '@/features/finance/sale/shared/clientSaleBalance'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -113,7 +114,7 @@ function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
           <Icon size={18} aria-hidden />
         </div>
         <div className="flex min-w-0 items-center gap-1">
-          <p className="truncate text-2xl font-bold tabular-nums tracking-tight sm:text-3xl lg:text-4xl">{value}</p>
+          <p className="text-2xl font-bold tabular-nums tracking-tight sm:text-3xl xl:text-4xl">{value}</p>
           {href ? (
             <ArrowRight
               size={16}
@@ -122,7 +123,7 @@ function HeroKpiCard({ label, value, icon: Icon, tone, href }: HeroKpi) {
           ) : null}
         </div>
       </div>
-      <p className="mt-3 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-stone-700 sm:text-xs sm:tracking-[0.14em]">{label}</p>
+      <p className="mt-3 line-clamp-2 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-700 sm:text-xs sm:tracking-[0.14em]" title={label}>{label}</p>
     </div>
   )
 
@@ -469,15 +470,20 @@ export default function DashboardPage() {
 
         if (samples) {
           for (const sample of samples) {
-            const stage = sample.stage ?? 'receiving'
-            if (stage === 'allocation') {
-              const sampleId = String((sample as { id?: string }).id ?? '')
-              const hasIdentity = Boolean(
-                String((sample as { srf_number?: string | null }).srf_number ?? '').trim() ||
-                  String((sample as { sample_code?: string | null }).sample_code ?? '').trim(),
-              )
-              if (hasIdentity && !allocatedSampleIds.has(sampleId)) stageCounts.allocation++
-            } else if (stage in stageCounts) {
+            const stage = (sample.stage ?? 'receiving').trim().toLowerCase()
+            const sampleId = String((sample as { id?: string }).id ?? '')
+            const hasIdentity = Boolean(
+              String((sample as { srf_number?: string | null }).srf_number ?? '').trim() ||
+                String((sample as { sample_code?: string | null }).sample_code ?? '').trim(),
+            )
+            if (
+              isSampleVisibleInAllocationList(stage) &&
+              hasIdentity &&
+              !allocatedSampleIds.has(sampleId)
+            ) {
+              stageCounts.allocation++
+            }
+            if (stage !== 'allocation' && stage in stageCounts) {
               stageCounts[stage]++
             }
 

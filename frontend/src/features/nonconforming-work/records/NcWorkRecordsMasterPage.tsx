@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { csvCell } from '@/lib/csv'
+import { escapeHtml } from '@/lib/htmlText'
 import { Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -206,7 +207,7 @@ export default function NcWorkRecordsMasterPage({
     const rowsHtml = list
       .map(
         (r) =>
-          `<tr><td>${r.nc_id}</td><td>${formatDateTimeDisplay(r.detected_at)}</td><td>${r.source_area}</td><td>${r.description}</td><td>${r.status}</td></tr>`,
+          `<tr><td>${escapeHtml(r.nc_id)}</td><td>${escapeHtml(formatDateTimeDisplay(r.detected_at))}</td><td>${escapeHtml(r.source_area)}</td><td>${escapeHtml(r.description)}</td><td>${escapeHtml(r.status)}</td></tr>`,
       )
       .join('')
     printViaIframe(`<!doctype html><html><head><title>Nonconforming Work</title>

@@ -288,7 +288,10 @@ export function formatClientContact(
 export function formatClientContactLines(
   row: Pick<ClientRow, 'contact_person_name' | 'email' | 'country_code' | 'mobile'>,
 ): { name: string; email: string; mobile: string } {
-  const phone = toContinuousText(`${row.country_code || ''} ${row.mobile || ''}`)
+  const mobile = (row.mobile || '').trim()
+  const code = (row.country_code || '').trim()
+  const digits = `${code}${mobile}`.replace(/\D/g, '')
+  const phone = digits.length >= 10 ? toContinuousText(`${code} ${mobile}`.trim()) : ''
   return {
     name: row.contact_person_name?.trim() ? toContinuousText(row.contact_person_name) : '',
     email: row.email?.trim() ? toContinuousText(row.email) : '',

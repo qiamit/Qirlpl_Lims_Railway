@@ -73,7 +73,7 @@ export default function SampleAllocationMasterPage() {
   const { session, designation } = useAuth()
   const showDelete = canDeleteSampleHandlingRecords(designation)
   const [allocationRecords, setAllocationRecords] = useState<AllocationRecord[]>([])
-  const [listLoading, setListLoading] = useState(false)
+  const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')

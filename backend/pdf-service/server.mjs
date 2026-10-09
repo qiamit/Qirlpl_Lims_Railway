@@ -180,13 +180,31 @@ function readJson(req) {
  * @param {number} status
  * @param {unknown} payload
  */
-function sendJson(res, status, payload) {
+function allowedPdfOrigin(req) {
+  const origin = String(req.headers.origin || '').trim()
+  if (!origin) return ''
+  if (origin === 'https://www.qirlpl.com' || origin === 'https://qirlpl.com') return origin
+  if (/^https:\/\/[a-z0-9-]+\.up\.railway\.app$/i.test(origin)) return origin
+  if (/^http:\/\/(localhost|127\.0\.0\.1):51(7[3-9]|8[0-5])$/.test(origin)) return origin
+  return ''
+}
+
+function corsHeaders(req) {
+  const origin = allowedPdfOrigin(req)
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    Vary: 'Origin',
+  }
+  if (origin) headers['Access-Control-Allow-Origin'] = origin
+  return headers
+}
+
+function sendJson(res, status, payload, req) {
   const body = JSON.stringify(payload)
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    ...corsHeaders(req),
   })
   res.end(body)
 }
@@ -195,17 +213,13 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${HOST}:${PORT}`)
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    })
+    res.writeHead(204, corsHeaders(req))
     res.end()
     return
   }
 
   if (req.method === 'GET' && url.pathname === '/health') {
-    sendJson(res, 200, { ok: true, service: 'playwright-pdf' })
+    sendJson(res, 200, { ok: true, service: 'playwright-pdf' }, req)
     return
   }
 
@@ -222,19 +236,19 @@ const server = http.createServer(async (req, res) => {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${outName.replace(/"/g, '')}"`,
         'Content-Length': pdf.length,
-        'Access-Control-Allow-Origin': '*',
+        ...corsHeaders(req),
       })
       res.end(pdf)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'PDF generation failed'
       const status = Number(err?.statusCode) || 500
       console.error('[pdf-service]', message)
-      sendJson(res, status, { error: message })
+      sendJson(res, status, { error: message }, req)
     }
     return
   }
 
-  sendJson(res, 404, { error: 'Not found' })
+  sendJson(res, 404, { error: 'Not found' }, req)
 })
 
 server.listen(PORT, HOST, () => {
