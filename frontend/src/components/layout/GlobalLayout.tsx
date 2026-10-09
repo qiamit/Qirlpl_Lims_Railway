@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useState, type ElementType } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState, type ElementType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAppDateFormat } from '@/lib/AppDateFormatProvider'
 import { useAppCurrency } from '@/lib/AppCurrencyProvider'
@@ -195,7 +195,6 @@ const ROUTE_LABELS: Record<string, string> = {
   '/masters/equipment': 'Equipment Management / Master Equipment Testing',
   '/masters/iqc': 'Equipment Management / Equipments for IQC',
   '/equipment-management/iqc': 'Equipment Management / Equipments for IQC',
-  '/calibration/masters-for-iqc': 'Equipment Management / Equipments for IQC',
   '/calibration/masters-for-iqc': 'Equipment Management / Equipments for IQC',
   '/calibration/handling': 'Calibration LIMS / Calibration Handling',
   '/calibration/handling/service-request': 'Calibration Handling / Service Request',
@@ -643,6 +642,22 @@ export default function GlobalLayout() {
     }
   }, [])
 
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    const mq = window.matchMedia('(min-width: 1280px)')
+    const sync = () => {
+      root.classList.toggle('sidebar-docked', mq.matches && !sidebarCollapsed)
+    }
+    sync()
+    mq.addEventListener('change', sync)
+    window.addEventListener('resize', sync)
+    return () => {
+      mq.removeEventListener('change', sync)
+      window.removeEventListener('resize', sync)
+      root.classList.remove('sidebar-docked')
+    }
+  }, [sidebarCollapsed])
+
   useEffect(() => {
     setMobileNavOpen(false)
   }, [location.pathname])
@@ -772,7 +787,7 @@ export default function GlobalLayout() {
         <aside
           className={cn(
             'hidden w-[268px] min-w-0 max-w-[268px] flex-col overflow-hidden border-r border-stone-700 bg-gradient-to-b from-stone-800 via-stone-900 to-stone-950',
-            'relative z-[55] shadow-lg shadow-stone-950/30 transition-[width] duration-300 ease-in-out xl:flex',
+            'relative z-30 shadow-lg shadow-stone-950/30 transition-[width] duration-300 ease-in-out xl:flex',
           )}
         >
           {renderSidebar(false, { showCollapseToggle: true })}

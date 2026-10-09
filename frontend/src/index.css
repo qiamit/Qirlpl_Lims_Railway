@@ -125,8 +125,10 @@
 }
 
 @layer components {
+  /* Ceiling only. Do not use !important — that was overriding max-w-lg / max-w-5xl
+     and stretching every form to the full viewport, under the sidebar. */
   [role='dialog'] {
-    max-width: calc(100vw - 1rem) !important;
+    max-width: calc(100vw - 1rem);
   }
 
   .app-shell-main {
@@ -170,4 +172,27 @@
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* Forms reserve 268px for the sidebar from the lg breakpoint, but the sidebar
+   only docks at 1280px and can be collapsed. Unless it is actually on screen,
+   use the full viewport so the form is not shifted into the sidebar column. */
+html:not(.sidebar-docked) [class*='left-[268px]'] {
+  left: 0 !important;
+}
+
+html:not(.sidebar-docked) [class*='right-0'][class*='left-[268px]'] {
+  right: 0 !important;
+}
+
+html:not(.sidebar-docked) [role='dialog'][class*='left-[calc(268px'] {
+  left: 50% !important;
+}
+
+html:not(.sidebar-docked) [role='dialog'][class*='w-[calc(100vw-268px)]'],
+html:not(.sidebar-docked) [role='dialog'][class*='max-w-[calc(100vw-268px)]'] {
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
