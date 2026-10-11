@@ -1,0 +1,15 @@
+{
+  "name": "Qirlpl LIMS",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "frontend",
+      "command": "npm run dev -- --host"
+    },
+    {
+      "name": "pdf-service",
+      "command": "PLAYWRIGHT_NO_SANDBOX=1 npm run pdf:dev"
+    }
+  ],
+  "ports": [5173, 3847]
+}
