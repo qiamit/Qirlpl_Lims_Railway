@@ -183,6 +183,7 @@ function readJson(req) {
 function allowedPdfOrigin(req) {
   const origin = String(req.headers.origin || '').trim()
   if (!origin) return ''
+  if (origin === 'https://www.qengineering.in' || origin === 'https://qengineering.in') return origin
   if (origin === 'https://www.qirlpl.com' || origin === 'https://qirlpl.com') return origin
   if (/^https:\/\/[a-z0-9-]+\.up\.railway\.app$/i.test(origin)) return origin
   if (/^http:\/\/(localhost|127\.0\.0\.1):51(7[3-9]|8[0-5])$/.test(origin)) return origin
