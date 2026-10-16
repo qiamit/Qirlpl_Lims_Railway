@@ -3,6 +3,7 @@ import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IsCodesHeaderBar } from './IsCodesHeaderBar'
@@ -39,17 +40,7 @@ function isCodeFileContentType(file: File): string {
 }
 
 function assertIsCodeUploadable(file: File): void {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-  if (!IS_CODE_ALLOWED_EXT.has(ext)) {
-    throw new Error(
-      `Unsupported file type ".${ext || '?'}". Allowed: PDF, PNG, JPG, DOC, DOCX.`,
-    )
-  }
-  if (file.size > IS_CODE_MAX_FILE_BYTES) {
-    throw new Error(
-      `File "${file.name}" is too large (${Math.ceil(file.size / (1024 * 1024))} MB). Max 50 MB.`,
-    )
-  }
+  assertAllowedUpload(file, { extensions: IS_CODE_ALLOWED_EXT, maxBytes: IS_CODE_MAX_FILE_BYTES })
 }
 
 const formatSupabaseError = (err: unknown) => {

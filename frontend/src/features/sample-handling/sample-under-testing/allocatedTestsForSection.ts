@@ -4,6 +4,8 @@ import type { SectionParameterEntry } from './sectionParameterRows'
 
 export type AllocatedTestOption = {
   testParameterId: string
+  /** Existing allocation row id; needed to remove a parameter after its master row is deleted. */
+  allocationParameterId?: string
   testLabel: string
   specificRequirement: string | null
   /** Master `test_parameters.test_method` — not IS number. */
@@ -15,6 +17,10 @@ export type AllocatedTestOption = {
   underAccreditation: string | null
   /** Already present on this section (draft / saved). Pre-checked; engineer may unselect to remove. */
   alreadyInSection?: boolean
+  /** The saved allocation no longer has a matching test-parameter master row. */
+  isUnavailableInMaster?: boolean
+  /** Existing row has a result that will be deleted if removed from this section. */
+  hasResults?: boolean
 }
 
 export type SectionTestSelectionChange = {
@@ -28,9 +34,7 @@ function draftKeys(draft: SectionParameterEntry[]): Set<string> {
   const keys = new Set<string>()
   for (const entry of draft) {
     const id = entry.testParameterId?.trim()
-    const label = entry.testLabel?.trim()
     if (id) keys.add(`id:${id}`)
-    if (label) keys.add(`label:${label.toLowerCase()}`)
   }
   return keys
 }
@@ -38,13 +42,9 @@ function draftKeys(draft: SectionParameterEntry[]): Set<string> {
 function isInDraft(
   keys: Set<string>,
   testParameterId: string | null | undefined,
-  testLabel: string,
 ): boolean {
   const id = testParameterId?.trim()
-  const label = testLabel.trim()
-  if (id && keys.has(`id:${id}`)) return true
-  if (label && keys.has(`label:${label.toLowerCase()}`)) return true
-  return false
+  return Boolean(id && keys.has(`id:${id}`))
 }
 
 function underAccreditationLabel(
@@ -59,16 +59,9 @@ function underAccreditationLabel(
 function findDraftEntry(
   draft: SectionParameterEntry[],
   testParameterId: string,
-  testLabel: string,
 ): SectionParameterEntry | undefined {
   const id = testParameterId.trim()
-  const label = testLabel.trim().toLowerCase()
-  return draft.find((entry) => {
-    const entryId = entry.testParameterId?.trim()
-    if (id && entryId && entryId === id) return true
-    const entryLabel = entry.testLabel?.trim().toLowerCase()
-    return Boolean(label && entryLabel && entryLabel === label)
-  })
+  return draft.find((entry) => entry.testParameterId?.trim() === id)
 }
 
 /**
@@ -123,9 +116,9 @@ export async function fetchIsCodeTestsForSection(
     if (sectionDept && paramDept !== sectionDept) continue
 
     const testName = (r.item_name ?? '').trim() || r.id
-    const alreadyInSection = isInDraft(keys, r.id, testName)
+    const alreadyInSection = isInDraft(keys, r.id)
     const masterSpec = (r.specific_requirement ?? '').trim() || null
-    const draftEntry = alreadyInSection ? findDraftEntry(draft, r.id, testName) : undefined
+    const draftEntry = alreadyInSection ? findDraftEntry(draft, r.id) : undefined
     const sectionSpec =
       draftEntry?.specificRequirement?.trim() ||
       draftEntry?.sectionSpecOverride?.trim() ||
@@ -133,6 +126,7 @@ export async function fetchIsCodeTestsForSection(
 
     options.push({
       testParameterId: r.id,
+      allocationParameterId: draftEntry?.paramRowId ?? undefined,
       testLabel: testName,
       specificRequirement: sectionSpec || masterSpec,
       testMethod: (r.test_method ?? '').trim() || null,
@@ -142,6 +136,35 @@ export async function fetchIsCodeTestsForSection(
       uncertaintyMu: (r.uncertainty_mu ?? '').trim() || null,
       underAccreditation: underAccreditationLabel(r.under_accreditation_ids, bodies),
       alreadyInSection,
+      hasResults: Boolean(
+        draftEntry?.results?.trim() || draftEntry?.testStartDate || draftEntry?.testEndDate,
+      ),
+    })
+  }
+
+  // Keep saved rows visible even when their master parameter was deleted or moved to
+  // another IS code/department. The database's ON DELETE SET NULL preserves the
+  // allocation row and result, so remove it by its allocation row id.
+  const availableIds = new Set(options.map((option) => option.testParameterId))
+  for (const entry of draft) {
+    const parameterId = entry.testParameterId?.trim()
+    if (parameterId && availableIds.has(parameterId)) continue
+    const allocationParameterId = entry.paramRowId?.trim()
+    if (!allocationParameterId) continue
+    options.push({
+      testParameterId: `unavailable:${allocationParameterId}`,
+      allocationParameterId,
+      testLabel: entry.testLabel,
+      specificRequirement: entry.specificRequirement,
+      testMethod: null,
+      clauseNo: entry.clauseNo,
+      unitValue: entry.unitValue,
+      isCodeLabel: entry.isCodeLabel,
+      uncertaintyMu: null,
+      underAccreditation: 'Unavailable — not in current master',
+      alreadyInSection: true,
+      isUnavailableInMaster: true,
+      hasResults: Boolean(entry.results?.trim() || entry.testStartDate || entry.testEndDate),
     })
   }
 

@@ -1,10 +1,14 @@
-import { ExternallyProvidersModulePlaceholder } from '../ExternallyProvidersModulePlaceholder'
+import { ComplianceRegisterPage } from '@/features/compliance/ComplianceRegisterPage'
 
 export default function ExternallySupplierListPage() {
   return (
-    <ExternallyProvidersModulePlaceholder
-      title="Externally Supplier List"
-      description="Maintain the approved list of external suppliers for products and services used in laboratory activities."
+    <ComplianceRegisterPage
+      config={{
+        moduleKey: 'external.supplier-list',
+        title: 'Externally Supplier List',
+        description: 'Maintain the approved list of external suppliers for products and services used in laboratory activities.',
+        personLabel: 'Supplier',
+      }}
     />
   )
 }

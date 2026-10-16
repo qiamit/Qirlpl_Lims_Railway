@@ -1,10 +1,14 @@
-import { TrainingModulePlaceholder } from '../TrainingModulePlaceholder'
+import { ComplianceRegisterPage } from '@/features/compliance/ComplianceRegisterPage'
 
 export default function TrainingPlanPage() {
   return (
-    <TrainingModulePlaceholder
-      title="Training Plan"
-      description="Plan annual / periodic trainings with topics, trainers, targets, and due dates."
+    <ComplianceRegisterPage
+      config={{
+        moduleKey: 'training.plan',
+        title: 'Training Plan',
+        description: 'Plan annual / periodic trainings with topics, trainers, targets, and due dates.',
+        personLabel: 'Trainer',
+      }}
     />
   )
 }

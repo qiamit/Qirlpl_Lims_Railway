@@ -1,10 +1,14 @@
-import { PersonnelModulePlaceholder } from '../PersonnelModulePlaceholder'
+import { ComplianceRegisterPage } from '@/features/compliance/ComplianceRegisterPage'
 
 export default function EmployeeSelectionPage() {
   return (
-    <PersonnelModulePlaceholder
-      title="Selection of Employee"
-      description="Manage employee selection criteria, shortlisting, and appointment records for laboratory roles."
+    <ComplianceRegisterPage
+      config={{
+        moduleKey: 'personnel.selection',
+        title: 'Selection of Employee',
+        description: 'Manage employee selection criteria, shortlisting, and appointment records for laboratory roles.',
+        personLabel: 'Candidate',
+      }}
     />
   )
 }

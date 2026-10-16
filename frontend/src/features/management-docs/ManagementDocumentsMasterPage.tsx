@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass, limsRegistryFormClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useAuth } from '@/hooks/useAuth'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { cn } from '@/lib/utils'
@@ -306,11 +307,12 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
     setUploadBusy(true)
     setMessage(null)
     try {
+      assertAllowedUpload(file, { maxBytes: 50 * 1024 * 1024 })
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-')
       const objectPath = `level-${row.level}/${row.id}/${Date.now()}-${safeName}`
       const { error: uploadError } = await supabase.storage
         .from(MANAGEMENT_DOCS_BUCKET)
-        .upload(objectPath, file, { upsert: false })
+        .upload(objectPath, file, { upsert: false, contentType: uploadContentType(file) })
       if (uploadError) throw uploadError
 
       const { error: updateError } = await supabase

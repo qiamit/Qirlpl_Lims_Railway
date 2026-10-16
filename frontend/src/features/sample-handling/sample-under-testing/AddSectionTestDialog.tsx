@@ -26,6 +26,7 @@ import {
   type AddedTestParameterInfo,
 } from '@/features/masters/test-parameter/AddTestParameterNestedDialog'
 import type { TestAllocationRow } from '../types'
+import type { SectionParameterEntry } from './sectionParameterRows'
 import {
   fetchIsCodeTestsForSection,
   type AllocatedTestOption,
@@ -275,6 +276,14 @@ export function AddSectionTestDialog({
   }
 
   const handleConfirm = async () => {
+    const removedWithResults = selectionChange.toRemove.filter((test) => test.hasResults)
+    if (removedWithResults.length > 0) {
+      const labels = removedWithResults.map((test) => `• ${test.testLabel}`).join('\n')
+      const confirmed = window.confirm(
+        `The following removed tests have saved results or dates:\n\n${labels}\n\nRemoving them deletes those values from this sample. Record the correction in the applicable controlled record before continuing. Continue?`,
+      )
+      if (!confirmed) return
+    }
     if (hasChanges) await onConfirm(selectionChange)
     onOpenChange(false)
   }
@@ -293,6 +302,7 @@ export function AddSectionTestDialog({
   }
 
   const sectionLabel = row?.sectionCode?.trim() || '—'
+  const unavailableCount = options.filter((option) => option.isUnavailableInMaster).length
   const editSpecTestLabel =
     options.find((o) => o.testParameterId === editSpecTestId)?.testLabel ?? ''
 
@@ -366,6 +376,11 @@ export function AddSectionTestDialog({
             </p>
           ) : (
             <div className={cn(limsPanelClass, 'min-h-full bg-[#f7f3eb]')}>
+              {unavailableCount > 0 ? (
+                <div className="border-b border-amber-700/30 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                  {unavailableCount} saved test{unavailableCount === 1 ? '' : 's'} {unavailableCount === 1 ? 'is' : 'are'} no longer available in the current Test Parameter master. Uncheck an entry to remove it from this section. If it has saved results or dates, the next step will warn before those values are deleted.
+                </div>
+              ) : null}
               <div className={cn(TEST_GRID_COLS, 'sticky top-0 z-10 bg-stone-800')}>
                 <div className={cn(thClass, 'flex items-center justify-center')}>
                   <input
@@ -451,6 +466,11 @@ export function AddSectionTestDialog({
                               In section
                             </span>
                           ) : null}
+                          {opt.isUnavailableInMaster ? (
+                            <span className="border border-rose-700/30 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-800">
+                              Unavailable in master
+                            </span>
+                          ) : null}
                           {willRemove ? (
                             <span className="border border-red-500/40 bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-800">
                               Will remove
@@ -477,16 +497,18 @@ export function AddSectionTestDialog({
                           <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-center">
                             {displaySpecificRequirement(opt)}
                           </span>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className={cn(pencilBtnClass, 'shrink-0')}
-                            aria-label="Edit specified requirement"
-                            onClick={(e) => openEditSpec(opt, e)}
-                          >
-                            <Pencil size={14} />
-                          </Button>
+                          {!opt.isUnavailableInMaster ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className={cn(pencilBtnClass, 'shrink-0')}
+                              aria-label="Edit specified requirement"
+                              onClick={(e) => openEditSpec(opt, e)}
+                            >
+                              <Pencil size={14} />
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                       <div className={cn(tdCenterClass, 'break-words text-[#57534e]')}>

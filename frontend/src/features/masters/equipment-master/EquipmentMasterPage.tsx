@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { EquipmentHeaderBar } from './EquipmentHeaderBar'
@@ -247,9 +248,13 @@ export default function EquipmentMasterPage() {
       // ignore bucket exists error
     }
 
+    assertAllowedUpload(file)
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const path = `${equipmentId}/${type}_${crypto.randomUUID()}_${safeName}`
-    const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true })
+    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+      upsert: true,
+      contentType: uploadContentType(file),
+    })
     if (error) throw error
     return path
   }

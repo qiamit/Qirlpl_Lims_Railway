@@ -21,6 +21,7 @@ import {
   limsPrimaryBtnClass,
 } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { cn } from '@/lib/utils'
 import {
   auditTypeLabel,
@@ -380,11 +381,12 @@ export function NonConformitiesDialog({
       try {
         const uploaded: NcEvidenceFile[] = []
         for (const file of Array.from(fileList)) {
+          assertAllowedUpload(file)
           const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
           const path = `${row.checklistItemId}/${key}/${crypto.randomUUID()}_${safeName}`
           const { error: upErr } = await supabase.storage
             .from(NC_EVIDENCE_BUCKET)
-            .upload(path, file, { upsert: false })
+            .upload(path, file, { upsert: false, contentType: uploadContentType(file) })
           if (upErr) throw upErr
           uploaded.push({
             id: crypto.randomUUID(),

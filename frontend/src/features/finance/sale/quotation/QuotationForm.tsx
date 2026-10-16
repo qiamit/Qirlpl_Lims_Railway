@@ -77,7 +77,7 @@ import {
 } from './types'
 import { amountInIndianRupeesWords } from './amountInIndianRupeesWords'
 import { parseLabSettingsRow } from '@/features/settings/lab-settings/labSettingsDb'
-import { computeClientSaleBalance } from '@/features/finance/sale/shared/clientSaleBalance'
+import { computeClientSaleBalance, refreshSaleDocumentCache } from '@/features/finance/sale/shared/clientSaleBalance'
 import { supabase } from '@/lib/supabaseClient'
 
 export type QuotationClientContact = {
@@ -687,7 +687,19 @@ export function QuotationFormView({
     }
   }, [form.clientId, form.clientName, isPaymentReceipt])
 
+  const [saleDocsVersion, setSaleDocsVersion] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    void refreshSaleDocumentCache().then(() => {
+      if (!cancelled) setSaleDocsVersion((version) => version + 1)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [form.clientId, form.clientName])
+
   const selectedClientBalance = useMemo(() => {
+    void saleDocsVersion
     const contact = form.clientId ? clientContactById[form.clientId] : undefined
     if (!form.clientId && !form.clientName.trim()) {
       return { amount: 0, type: 'Dr' as const }
@@ -706,6 +718,7 @@ export function QuotationFormView({
     excludeReceiptId,
     form.clientId,
     form.clientName,
+    saleDocsVersion,
   ])
 
   const paymentAmountValue = parseMoney(form.paymentAmount)

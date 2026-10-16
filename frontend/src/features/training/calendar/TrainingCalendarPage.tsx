@@ -1,10 +1,14 @@
-import { TrainingModulePlaceholder } from '../TrainingModulePlaceholder'
+import { ComplianceRegisterPage } from '@/features/compliance/ComplianceRegisterPage'
 
 export default function TrainingCalendarPage() {
   return (
-    <TrainingModulePlaceholder
-      title="Training Calendar"
-      description="Schedule and track upcoming training events, venues, and attendees."
+    <ComplianceRegisterPage
+      config={{
+        moduleKey: 'training.calendar',
+        title: 'Training Calendar',
+        description: 'Schedule and track upcoming training events, venues, and attendees.',
+        personLabel: 'Trainer',
+      }}
     />
   )
 }

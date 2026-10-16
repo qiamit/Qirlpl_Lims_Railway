@@ -14,6 +14,7 @@ import {
 import { limsDarkBarBtnClass, limsDarkBarGlowStyle, limsDialogClass, limsFieldClass, limsPrimaryBtnClass, limsTableHeadClass } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
 import { Eye, FileText, Plus } from 'lucide-react'
+import { supabase } from '@/lib/supabaseClient'
 import type { TestAllocationRow } from '../types'
 import { AddSectionTestDialog } from './AddSectionTestDialog'
 import type { SectionTestSelectionChange } from './allocatedTestsForSection'
@@ -28,13 +29,14 @@ import {
   type SectionParameterEntry,
 } from './sectionParameterRows'
 import { formatTestResultDisplay, formatTestResultForTable } from './testResultValues'
+import { resolveReportScopeFromAccreditationIds } from '../report-preparation/reportScope'
 
 export type SectionResultsDraft = SectionParameterEntry
 
 type BulkDateField = 'testStartDate' | 'testEndDate'
 
 const RESULTS_GRID_COLS =
-  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(4.5rem,0.5fr)_minmax(10rem,1.5fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.7fr)]'
+  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(4.5rem,0.5fr)_minmax(10rem,1.5fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.7fr)_minmax(8rem,0.9fr)]'
 
 const cellClass =
   'flex h-full min-h-[2.75rem] items-center border-b border-r border-[#e7e0d4] px-2 py-2 text-xs text-[#292524] last:border-r-0'
@@ -123,6 +125,9 @@ export function SectionResultsEntryDialog({
   const [editSpecValue, setEditSpecValue] = useState('')
   const [editSpecSaving, setEditSpecSaving] = useState(false)
   const [editSpecError, setEditSpecError] = useState<string | null>(null)
+  const [nablScopeByParameterId, setNablScopeByParameterId] = useState<Record<string, string>>({})
+  const [nablScopeLoading, setNablScopeLoading] = useState(false)
+  const [nablScopeLoadError, setNablScopeLoadError] = useState(false)
   const openSectionKeyRef = useRef<string | null>(null)
   const nestedDialogOpen =
     addTestOpen ||
@@ -184,6 +189,77 @@ export function SectionResultsEntryDialog({
   const allChecked = draftKeys.length > 0 && draftKeys.every((k) => selectedKeys.has(k))
   const someChecked = draftKeys.some((k) => selectedKeys.has(k))
   const selectedCount = draftKeys.filter((k) => selectedKeys.has(k)).length
+  const parameterIdsKey = useMemo(
+    () => [...new Set(draft.map((entry) => entry.testParameterId?.trim()).filter(Boolean))]
+      .sort()
+      .join('|'),
+    [draft],
+  )
+
+  useEffect(() => {
+    if (!open) {
+      setNablScopeByParameterId({})
+      setNablScopeLoading(false)
+      setNablScopeLoadError(false)
+      return
+    }
+
+    const parameterIds = parameterIdsKey.split('|').filter(Boolean)
+    if (parameterIds.length === 0) {
+      setNablScopeByParameterId({})
+      setNablScopeLoading(false)
+      setNablScopeLoadError(false)
+      return
+    }
+
+    let cancelled = false
+    setNablScopeLoading(true)
+    setNablScopeLoadError(false)
+    void (async () => {
+      try {
+        const [parameterResult, bodyResult] = await Promise.all([
+          supabase
+            .from('test_parameters')
+            .select('id, under_accreditation_ids')
+            .in('id', parameterIds),
+          supabase.from('accreditation_bodies').select('id, name'),
+        ])
+        if (parameterResult.error) throw parameterResult.error
+        if (bodyResult.error) throw bodyResult.error
+
+        const parameterById = new Map<string, string[] | null>()
+        for (const raw of Array.isArray(parameterResult.data) ? parameterResult.data : []) {
+          const parameter = raw as { id: string; under_accreditation_ids?: string[] | null }
+          parameterById.set(parameter.id, parameter.under_accreditation_ids ?? null)
+        }
+        const bodyNameById = new Map<string, string>()
+        for (const raw of Array.isArray(bodyResult.data) ? bodyResult.data : []) {
+          const body = raw as { id: string; name: string }
+          bodyNameById.set(body.id, body.name)
+        }
+
+        const nextStatus: Record<string, string> = {}
+        for (const id of parameterIds) {
+          const accreditationIds = parameterById.get(id)
+          nextStatus[id] = accreditationIds === undefined
+            ? 'Master unavailable'
+            : resolveReportScopeFromAccreditationIds(accreditationIds, bodyNameById)
+        }
+        if (!cancelled) setNablScopeByParameterId(nextStatus)
+      } catch {
+        if (!cancelled) {
+          setNablScopeByParameterId({})
+          setNablScopeLoadError(true)
+        }
+      } finally {
+        if (!cancelled) setNablScopeLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, parameterIdsKey])
 
   const toggleRow = (key: string) => {
     setSelectedKeys((prev) => {
@@ -368,6 +444,7 @@ export function SectionResultsEntryDialog({
               <div className={headCellClass}>Test Start Date</div>
               <div className={headCellClass}>Test End Date</div>
               <div className={headCellClass}>Results</div>
+              <div className={headCellClass}>NABL Scope</div>
             </div>
 
             {draft.length === 0 ? (
@@ -501,6 +578,17 @@ export function SectionResultsEntryDialog({
                           onChange={(next) => updateDraft(index, { results: next })}
                         />
                       )}
+                    </div>
+                    <div className={cn(cellClass, 'justify-center text-center')}>
+                      {(() => {
+                        if (!p.testParameterId) return 'Not linked to master'
+                        const scope = nablScopeByParameterId[p.testParameterId]
+                        if (scope === 'NABL') return 'NABL Accredited'
+                        if (scope === 'Non NABL') return 'Non-NABL'
+                        if (scope) return scope
+                        if (nablScopeLoadError) return 'Unable to determine'
+                        return nablScopeLoading ? 'Loading…' : 'Master unavailable'
+                      })()}
                     </div>
                   </div>
                 )

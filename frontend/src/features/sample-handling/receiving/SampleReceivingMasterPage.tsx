@@ -10,6 +10,7 @@ import {
   deleteSamplesByIds,
 } from '@/features/sample-handling/shared/deleteSampleRecords'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AddClientDialog } from './AddClientDialog'
 import { AddIsCodeDialog } from './AddIsCodeDialog'
@@ -499,9 +500,13 @@ export default function SampleReceivingMasterPage() {
         }
         let clientRefPath: string | null = form.clientReferencesPath || null
         if (clientReferencesFile) {
+          assertAllowedUpload(clientReferencesFile)
           const ext = clientReferencesFile.name.split('.').pop() || 'bin'
           const path = `${editingId || crypto.randomUUID()}/${Date.now()}.${ext}`
-          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, clientReferencesFile, { upsert: true })
+          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, clientReferencesFile, {
+            upsert: true,
+            contentType: uploadContentType(clientReferencesFile),
+          })
           if (upErr) throw upErr
           clientRefPath = path
         }

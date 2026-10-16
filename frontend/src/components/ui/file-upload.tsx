@@ -3,6 +3,7 @@ import { Upload, X, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 
 interface FileUploadProps {
   label: string
@@ -73,12 +74,19 @@ export function FileUpload({
 
     if (bucket && pathPrefix) {
       void (async () => {
+        try {
+          assertAllowedUpload(file)
+        } catch (err) {
+          onChange?.(null, null)
+          window.alert(err instanceof Error ? err.message : 'This file cannot be uploaded.')
+          return
+        }
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-')
         const objectPath = `${pathPrefix}/${Date.now()}-${safeName}`
 
         const { error: uploadError } = await supabase.storage
           .from(bucket)
-          .upload(objectPath, file, { upsert: true, contentType: file.type })
+          .upload(objectPath, file, { upsert: true, contentType: uploadContentType(file) })
 
         if (uploadError) {
           setFileUrl(null)

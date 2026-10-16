@@ -7,6 +7,7 @@ import {
 } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -272,11 +273,15 @@ export default function ServiceRequestMasterPage() {
       let customerDocPath = form.customerDocumentPath || null
       let customerDocName = form.customerDocumentName || null
       if (customerDocumentFile) {
+        assertAllowedUpload(customerDocumentFile)
         const ext = customerDocumentFile.name.split('.').pop() || 'bin'
         const path = `${editingId || crypto.randomUUID()}/${Date.now()}.${ext}`
         const { error: upErr } = await supabase.storage
           .from(CUSTOMER_DOC_BUCKET)
-          .upload(path, customerDocumentFile, { upsert: true })
+          .upload(path, customerDocumentFile, {
+            upsert: true,
+            contentType: uploadContentType(customerDocumentFile),
+          })
         if (upErr) throw upErr
         customerDocPath = path
         customerDocName = customerDocumentFile.name

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import {
   RECEIVING_REPORT_TYPES,
   normalizeText,
@@ -176,11 +177,15 @@ export async function saveSampleReceivingEdit(input: {
 
   let clientRefPath: string | null = form.clientReferencesPath || null
   if (input.clientReferencesFile) {
+    assertAllowedUpload(input.clientReferencesFile)
     const ext = input.clientReferencesFile.name.split('.').pop() || 'bin'
     const path = `${sampleId}/${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage
       .from(BUCKET)
-      .upload(path, input.clientReferencesFile, { upsert: true })
+      .upload(path, input.clientReferencesFile, {
+        upsert: true,
+        contentType: uploadContentType(input.clientReferencesFile),
+      })
     if (upErr) throw upErr
     clientRefPath = path
   }

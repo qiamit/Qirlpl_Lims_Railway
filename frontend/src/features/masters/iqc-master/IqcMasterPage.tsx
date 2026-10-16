@@ -3,6 +3,7 @@ import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IqcHeaderBar } from './IqcHeaderBar'
@@ -382,9 +383,13 @@ export default function IqcMasterPage() {
       // ignore
     }
 
+    assertAllowedUpload(file)
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const path = `iqc-masters/${equipmentId}/${type}_${crypto.randomUUID()}_${safeName}`
-    const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true })
+    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+      upsert: true,
+      contentType: uploadContentType(file),
+    })
     if (error) throw error
     return path
   }

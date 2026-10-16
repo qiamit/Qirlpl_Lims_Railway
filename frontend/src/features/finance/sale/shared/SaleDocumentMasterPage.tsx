@@ -35,6 +35,12 @@ import {
   downloadQuotationPdfWithTemplate,
   printQuotationsWithTemplate,
 } from '../quotation/outputQuotationDocument'
+import {
+  deleteSaleDocuments,
+  fetchSaleDocuments,
+  rememberSaleDocumentRows,
+  saveSaleDocument,
+} from './saleDocumentsApi'
 
 export type SaleDocumentModuleConfig = {
   title: string
@@ -42,10 +48,6 @@ export type SaleDocumentModuleConfig = {
   addLabel: string
   emptyHint: string
   numberColumnLabel: string
-}
-
-function storageKey(kind: DocumentTemplateKind): string {
-  return `lims.saleDocuments.${kind}`
 }
 
 function defaultNumberPrefix(kind: DocumentTemplateKind): string {
@@ -99,25 +101,6 @@ function isAbortOrLockError(err: unknown): boolean {
     lower.includes('request was aborted') ||
     lower.includes('signal is aborted')
   )
-}
-
-function loadStoredRows(kind: DocumentTemplateKind): QuotationRow[] {
-  try {
-    const raw = localStorage.getItem(storageKey(kind))
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? (parsed as QuotationRow[]) : []
-  } catch {
-    return []
-  }
-}
-
-function persistRows(kind: DocumentTemplateKind, rows: QuotationRow[]) {
-  try {
-    localStorage.setItem(storageKey(kind), JSON.stringify(rows))
-  } catch {
-    /* ignore quota / private mode */
-  }
 }
 
 function formToStoredRow(
@@ -189,10 +172,12 @@ function formToStoredRow(
 
 /**
  * Quotation-matching chrome for other Sale modules (same theme, header, table, footer, form).
- * Records persist in localStorage until dedicated DB tables are added.
+ * Records are stored in sale_documents. A browser copy is imported once.
  */
 export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleConfig }) {
-  const [rows, setRows] = useState<QuotationRow[]>(() => loadStoredRows(config.documentKind))
+  const [rows, setRows] = useState<QuotationRow[]>([])
+  const [listLoading, setListLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
@@ -248,14 +233,6 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   const emptySecondary = search.trim()
     ? undefined
     : `Use "${config.addLabel}" to create your first record.`
-
-  const commitRows = useCallback(
-    (next: QuotationRow[]) => {
-      setRows(next)
-      persistRows(config.documentKind, next)
-    },
-    [config.documentKind],
-  )
 
   const loadClients = useCallback(async () => {
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -389,10 +366,27 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   }, [loadClients, loadProducts])
 
   useEffect(() => {
-    setRows(loadStoredRows(config.documentKind))
+    let cancelled = false
+    setListLoading(true)
+    setListError(null)
     setSelectedIds(new Set())
     setPage(1)
     setSearch('')
+    void fetchSaleDocuments(config.documentKind).then(
+      (list) => {
+        if (cancelled) return
+        setRows(list)
+        setListLoading(false)
+      },
+      (err) => {
+        if (cancelled) return
+        setListError(err instanceof Error ? err.message : 'Could not load records.')
+        setListLoading(false)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
   }, [config.documentKind])
 
   const allocateNextNumber = useCallback(() => {
@@ -464,22 +458,28 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     }
     setSaveLoading(true)
     setSaveMessage(null)
-    try {
-      const stored = formToStoredRow(form, editingId, {
-        paymentReceipt: isPaymentReceipt,
-      })
-      const next = editingId
-        ? rows.map((r) => (r.id === editingId ? { ...stored, created_at: r.created_at } : r))
-        : [stored, ...rows]
-      commitRows(next)
-      setMessage(`Saved ${stored.quotation_number}.`)
-      setShowForm(false)
-      setEditingId(null)
-    } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : 'Could not save.')
-    } finally {
-      setSaveLoading(false)
-    }
+    void (async () => {
+      try {
+        const stored = formToStoredRow(form, editingId, {
+          paymentReceipt: isPaymentReceipt,
+        })
+        const previous = editingId ? rows.find((row) => row.id === editingId) : undefined
+        const saved = previous?.created_at ? { ...stored, created_at: previous.created_at } : stored
+        await saveSaleDocument(config.documentKind, saved)
+        const next = editingId
+          ? rows.map((row) => (row.id === editingId ? saved : row))
+          : [saved, ...rows]
+        rememberSaleDocumentRows(config.documentKind, next)
+        setRows(next)
+        setMessage(`Saved ${saved.quotation_number}.`)
+        setShowForm(false)
+        setEditingId(null)
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : 'Could not save.')
+      } finally {
+        setSaveLoading(false)
+      }
+    })()
   }
 
   const toggleRow = (id: string) => {
@@ -504,19 +504,36 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     const ids = [...selectedIds]
     if (ids.length === 0) return
     if (!window.confirm(`Delete ${ids.length} ${config.title.toLowerCase()} record(s)?`)) return
-    commitRows(rows.filter((r) => !selectedIds.has(r.id)))
-    setSelectedIds(new Set())
-    setMessage(`Deleted ${ids.length} record(s).`)
+    void (async () => {
+      try {
+        await deleteSaleDocuments(config.documentKind, ids)
+        const next = rows.filter((row) => !selectedIds.has(row.id))
+        rememberSaleDocumentRows(config.documentKind, next)
+        setRows(next)
+        setSelectedIds(new Set())
+        setMessage(`Deleted ${ids.length} record(s).`)
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : 'Could not delete.')
+      }
+    })()
   }
 
   const handleStatusChange = (row: QuotationRow, status: QuotationStatus) => {
     setStatusUpdatingId(row.id)
-    try {
-      commitRows(rows.map((r) => (r.id === row.id ? { ...r, status } : r)))
-      setMessage(`Status updated to ${status}.`)
-    } finally {
-      setStatusUpdatingId(null)
-    }
+    const nextRow = { ...row, status }
+    void (async () => {
+      try {
+        await saveSaleDocument(config.documentKind, nextRow)
+        const next = rows.map((item) => (item.id === row.id ? nextRow : item))
+        rememberSaleDocumentRows(config.documentKind, next)
+        setRows(next)
+        setMessage(`Status updated to ${status}.`)
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : 'Could not update status.')
+      } finally {
+        setStatusUpdatingId(null)
+      }
+    })()
   }
 
   const handlePrintSelected = () => {
@@ -552,8 +569,8 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
 
       <QuotationTable
         rows={pagedRows}
-        loading={false}
-        error={null}
+        loading={listLoading}
+        error={listError}
         searchActive={Boolean(search.trim())}
         selectedIds={selectedIds}
         statusUpdatingId={statusUpdatingId}
@@ -596,7 +613,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
 
       <QuotationFooterBar
         message={message}
-        loading={false}
+        loading={listLoading}
         selectedCount={selectedIds.size}
         page={safePage}
         pageCount={pageCount}

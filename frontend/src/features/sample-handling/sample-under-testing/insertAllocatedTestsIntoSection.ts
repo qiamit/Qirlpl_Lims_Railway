@@ -98,16 +98,31 @@ export async function removeAllocatedTestsFromSection(
   const taId = testAllocationId.trim()
   if (!taId || tests.length === 0) return
 
-  const ids = tests.map((t) => t.testParameterId.trim()).filter(Boolean)
-  if (ids.length === 0) return
+  const allocationRowIds = tests
+    .map((test) => test.allocationParameterId?.trim())
+    .filter((id): id is string => Boolean(id))
+  const parameterIds = tests
+    .filter((test) => !test.allocationParameterId?.trim())
+    .map((test) => test.testParameterId.trim())
+    .filter(Boolean)
 
-  const { error } = await supabase
-    .from('test_allocation_parameters')
-    .delete()
-    .eq('test_allocation_id', taId)
-    .in('test_parameter_id', ids)
+  if (allocationRowIds.length > 0) {
+    const { error } = await supabase
+      .from('test_allocation_parameters')
+      .delete()
+      .eq('test_allocation_id', taId)
+      .in('id', allocationRowIds)
+    if (error) throw error
+  }
 
-  if (error) throw error
+  if (parameterIds.length > 0) {
+    const { error } = await supabase
+      .from('test_allocation_parameters')
+      .delete()
+      .eq('test_allocation_id', taId)
+      .in('test_parameter_id', parameterIds)
+    if (error) throw error
+  }
 
   await syncTestAllocationParameterSummary(taId)
 }

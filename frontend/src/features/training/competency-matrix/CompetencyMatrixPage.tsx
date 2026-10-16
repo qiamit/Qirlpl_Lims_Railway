@@ -1,10 +1,14 @@
-import { TrainingModulePlaceholder } from '../TrainingModulePlaceholder'
+import { ComplianceRegisterPage } from '@/features/compliance/ComplianceRegisterPage'
 
 export default function CompetencyMatrixPage() {
   return (
-    <TrainingModulePlaceholder
-      title="Competency Matrix"
-      description="Map personnel competencies against tests, methods, and equipment authorizations."
+    <ComplianceRegisterPage
+      config={{
+        moduleKey: 'training.competency-matrix',
+        title: 'Competency Matrix',
+        description: 'Map personnel competencies against tests, methods, and equipment authorizations.',
+        personLabel: 'Employee',
+      }}
     />
   )
 }

@@ -1,20 +1,7 @@
-import type { DocumentTemplateKind } from '@/features/settings/lab-settings/documentTemplateTypes'
 import type { QuotationRow } from '../quotation/types'
+import { loadSaleDocumentRows } from './saleDocumentsApi'
 
-function storageKey(kind: DocumentTemplateKind): string {
-  return `lims.saleDocuments.${kind}`
-}
-
-export function loadSaleDocumentRows(kind: DocumentTemplateKind): QuotationRow[] {
-  try {
-    const raw = localStorage.getItem(storageKey(kind))
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? (parsed as QuotationRow[]) : []
-  } catch {
-    return []
-  }
-}
+export { loadSaleDocumentRows, refreshSaleDocumentCache } from './saleDocumentsApi'
 
 function sameClient(row: QuotationRow, clientId: string, clientName: string): boolean {
   const id = clientId.trim()

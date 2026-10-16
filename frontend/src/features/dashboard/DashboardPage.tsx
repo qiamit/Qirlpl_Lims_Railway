@@ -45,7 +45,7 @@ import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 import { fetchAllByRange } from '@/features/sample-handling/shared/fetchByIdChunks'
 import { loadDashboardWorkflowCounts } from '@/features/dashboard/loadDashboardWorkflowCounts'
 import { isSampleVisibleInAllocationList } from '@/features/sample-handling/referbackFlow'
-import { loadSaleDocumentRows } from '@/features/finance/sale/shared/clientSaleBalance'
+import { loadSaleDocumentRows, refreshSaleDocumentCache } from '@/features/finance/sale/shared/clientSaleBalance'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   limsPageShellClass,
@@ -520,6 +520,7 @@ export default function DashboardPage() {
         const tatComplianceRate =
           totalWithTat > 0 ? Math.round((onTimeSamplesCount / totalWithTat) * 100) : 100
 
+        await refreshSaleDocumentCache().catch(() => undefined)
         if (cancelled) return
         setStats({
           totalSamples: samples?.length ?? 0,

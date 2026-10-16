@@ -3,6 +3,7 @@ import { Download, ImagePlus, Star, Trash2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabaseClient'
+import { assertSignatureImage, uploadContentType } from '@/lib/validateUpload'
 import { cn } from '@/lib/utils'
 import {
   downloadSignatureObject,
@@ -84,8 +85,10 @@ export function QuotationSignatureField({
 
   const handleUpload = async (file: File | null) => {
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setError('Please choose an image file (PNG, JPG, WebP).')
+    try {
+      assertSignatureImage(file)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Please choose a PNG, JPG, or WebP image.')
       return
     }
     setBusy(true)
@@ -95,7 +98,7 @@ export function QuotationSignatureField({
       const objectPath = `draft/${Date.now()}-${safeName}`
       const { error: upErr } = await supabase.storage
         .from(QUOTATION_SIGNATURE_BUCKET)
-        .upload(objectPath, file, { upsert: false, contentType: file.type })
+        .upload(objectPath, file, { upsert: false, contentType: uploadContentType(file) })
       if (upErr) throw upErr
 
       if (imagePath.trim()) {
