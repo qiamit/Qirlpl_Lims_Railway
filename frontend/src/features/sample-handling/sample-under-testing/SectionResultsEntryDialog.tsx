@@ -46,7 +46,10 @@ const rowEvenClass = 'bg-[#f7f3eb]'
 const rowOddClass = 'bg-[#fffcf7]'
 const eyeBtnClass =
   'h-7 w-7 shrink-0 rounded-none text-[#92400e] hover:bg-[#f3e9d8] hover:text-[#78350f]'
-const dateInputClass = cn(limsFieldClass, 'h-8 w-full max-w-[140px] text-xs text-center')
+const dateInputClass = cn(
+  limsFieldClass,
+  'h-9 w-full max-w-[140px] rounded-sm px-2.5 text-left text-xs tabular-nums shadow-sm [&::-webkit-calendar-picker-indicator]:ml-auto [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:hover:opacity-100',
+)
 const checkboxClass =
   'h-4 w-4 rounded-none border-stone-500 text-amber-700 accent-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30'
 
