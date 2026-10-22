@@ -192,12 +192,12 @@ export function ncWorkFormToPayload(form: NcWorkRecordForm) {
   }
 }
 
-export function nextNcId(existing: NcWorkRecordRow[]): string {
+/** `deletedIds`: NC IDs of deleted records (never reused). */
+export function nextNcId(existing: NcWorkRecordRow[], deletedIds: string[] = []): string {
   const year = new Date().getFullYear()
   const prefix = `NCW-${year}-`
   let max = 0
-  for (const r of existing) {
-    const no = r.nc_id ?? ''
+  for (const no of [...existing.map((r) => r.nc_id ?? ''), ...deletedIds]) {
     if (!no.startsWith(prefix)) continue
     const n = Number(no.slice(prefix.length))
     if (Number.isFinite(n)) max = Math.max(max, n)

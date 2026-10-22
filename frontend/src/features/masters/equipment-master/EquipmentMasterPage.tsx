@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,6 +29,7 @@ import { parseMaintenanceHistoryFromDb } from './maintenanceHistory'
 import { parseIntermediateCheckHistoryFromDb } from './intermediateCheckHistory'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 
 const BUCKET = 'equipment-files'
 
@@ -38,7 +40,29 @@ const formatSupabaseError = (err: unknown) => {
   return parts.length ? parts.join(' | ') : 'Unknown error'
 }
 
+/**
+ * Calibration fields that already held a value and are being changed (ISO 17025 7.5.2).
+ * Filling an empty field for the first time is not a change and needs no reason.
+ */
+function changedSavedCalibrationFields(row: EquipmentRow, form: EquipmentForm): string[] {
+  const norm = (v: string | null | undefined) => (v ?? '').trim()
+  const pairs: Array<[string, string | null | undefined, string]> = [
+    ['Calibration frequency', row.calibration_frequency, form.calibrationFrequency],
+    ['Last calibration date', row.last_calibration_date, sanitizeDateStr(form.lastCalibrationDate)],
+    ['Next calibration due', row.next_calibration_due, sanitizeDateStr(form.nextCalibrationDue)],
+    ['Certificate number', row.calibration_certificate_number, form.calibrationCertificateNumber],
+    ['Certificate uncertainty', row.calibration_certificate_uncertainty, form.calibrationCertificateUncertainty],
+    ['Uncertainty unit', row.calibration_uncertainty_unit, form.calibrationUncertaintyUnit],
+    ['Coverage factor', row.calibration_coverage_factor, form.calibrationCoverageFactor],
+    ['Calibration agency', row.external_calibration_agency, form.externalCalibrationAgency],
+  ]
+  const changed = pairs.filter(([, saved, next]) => norm(saved) !== '' && norm(saved) !== norm(next)).map(([l]) => l)
+  if (form.certificateFile && norm(row.upload_certificate_path) !== '') changed.push('Calibration certificate file')
+  return changed
+}
+
 export default function EquipmentMasterPage() {
+  const askReason = useReasonForChange()
   const [searchParams, setSearchParams] = useSearchParams()
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -207,10 +231,11 @@ export default function EquipmentMasterPage() {
       console.warn('Could not load prefix, defaulting to EQ-', err)
     }
 
-    // Parse existing asset codes to find max serial number for that prefix
+    // Parse existing asset codes (and those of deleted records, never reused) to find max serial number for that prefix
+    const deletedCodes = await fetchDeletedKeys('equipment_master', 'asset_code')
+    const codes = [...rows.map((r) => r.asset_code || ''), ...deletedCodes]
     let maxSerial = 0
-    rows.forEach((r) => {
-      const code = r.asset_code || ''
+    codes.forEach((code) => {
       if (code.startsWith(prefix)) {
         const trailing = code.slice(prefix.length).replace(/\D/g, '')
         const num = parseInt(trailing, 10)
@@ -282,6 +307,18 @@ export default function EquipmentMasterPage() {
           return
         }
 
+        const savedRow = editingId ? rows.find((r) => r.id === editingId) : undefined
+        const changedCalFields = savedRow ? changedSavedCalibrationFields(savedRow, form) : []
+        let changeReason: string | null = null
+        if (changedCalFields.length > 0) {
+          changeReason = await askReason({
+            title: 'Reason for changing calibration data',
+            recordLabel: `${code} · ${changedCalFields.join(', ')}`,
+            confirmLabel: 'Save',
+          })
+          if (!changeReason) return
+        }
+
         const eqId = editingId || crypto.randomUUID()
 
         // Upload files if selected
@@ -346,6 +383,7 @@ export default function EquipmentMasterPage() {
 
         const { error } = await supabase.from('equipment_master').upsert(payload)
         if (error) throw error
+        if (changeReason) await recordReason('equipment_master', eqId, changeReason)
 
         setSaveMessage('Saved successfully.')
         setForm(emptyEquipmentForm())

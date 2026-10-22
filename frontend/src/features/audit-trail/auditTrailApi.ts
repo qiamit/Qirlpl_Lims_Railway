@@ -98,17 +98,4 @@ export async function fetchStaffOptions(): Promise<StaffOption[]> {
   }))
 }
 
-/**
- * Attach a "reason for change" to the caller's latest change of a record.
- * Works only for the person who made the change, within 10 minutes of it.
- * Returns the number of audit rows annotated (0 = nothing matched).
- */
-export async function annotateAuditReason(table: string, rowId: string, reason: string): Promise<number> {
-  const { data, error } = await supabase.rpc('app_annotate_audit', {
-    p_table: table,
-    p_row_id: rowId,
-    p_reason: reason,
-  })
-  if (error) throw error
-  return typeof data === 'number' ? data : 0
-}
+export { annotateAuditReason } from '@/lib/auditReason'

@@ -9,6 +9,7 @@ import {
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
@@ -89,8 +90,30 @@ type LoadedTestAlloc = {
   referred_back_from_review?: boolean | null
 }
 
+/** Saved parameter rows whose date/result differs from the draft (ISO 17025 7.5.2 reason needed). */
+function changedSavedParameterIds(row: TestAllocationRow, draft: SectionResultsDraft[]): string[] {
+  const norm = (v: string | null | undefined) => (v ?? '').trim()
+  const day = (v: string | null | undefined) => norm(v).slice(0, 10)
+  const ids: string[] = []
+  for (const d of draft) {
+    const id = d.paramRowId?.trim()
+    if (!id) continue
+    const saved = row.parameters?.find((p) => p.id === id)
+    if (!saved) continue
+    if (
+      norm(saved.results) !== norm(d.results) ||
+      day(saved.testStartDate) !== day(d.testStartDate) ||
+      day(saved.testEndDate) !== day(d.testEndDate)
+    ) {
+      ids.push(id)
+    }
+  }
+  return ids
+}
+
 export default function SampleUnderTestingMasterPage() {
   const { user, profileName, designation, profileReady } = useAuth()
+  const askReason = useReasonForChange()
   const showDelete = canDeleteSampleHandlingRecords(designation)
   const [rows, setRows] = useState<TestAllocationRow[]>([])
   const [listLoading, setListLoading] = useState(false)
@@ -1015,6 +1038,18 @@ export default function SampleUnderTestingMasterPage() {
     const sampleId = row.sampleId?.trim()
     if (!sampleId) return
 
+    // Results were submitted before and referred back: changing them needs a reason (ISO 17025 7.5.2).
+    const changedParamIds = row.referredBackFromReview ? changedSavedParameterIds(row, draft) : []
+    let changeReason: string | null = null
+    if (changedParamIds.length > 0) {
+      changeReason = await askReason({
+        title: 'Reason for changing submitted results',
+        recordLabel: `SRF ${row.srfNumber ?? '—'} · Section ${row.sectionCode} · ${changedParamIds.length} parameter(s)`,
+        confirmLabel: 'Save results',
+      })
+      if (!changeReason) return
+    }
+
     setResultsDialogSaving(true)
     setSaveMessage(null)
     try {
@@ -1072,6 +1107,8 @@ export default function SampleUnderTestingMasterPage() {
           if (error) throw error
         }
       }
+
+      if (changeReason) await recordReason('test_allocation_parameters', changedParamIds, changeReason)
 
       setRows((prev) =>
         prev.map((r) => {

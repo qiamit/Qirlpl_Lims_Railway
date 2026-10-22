@@ -161,9 +161,10 @@ export function formToPayload(form: ComplaintForm) {
   }
 }
 
-export function nextComplaintId(rows: ComplaintRow[]): string {
+/** `deletedIds`: complaint IDs of deleted records (never reused). */
+export function nextComplaintId(rows: ComplaintRow[], deletedIds: string[] = []): string {
   return nextPrefixedId(
-    rows.map((r) => r.complaint_id),
+    [...rows.map((r) => r.complaint_id), ...deletedIds],
     'CMP',
   )
 }

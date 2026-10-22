@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import {
   Briefcase,
   Calculator,
@@ -2108,7 +2109,18 @@ export function RawDataSheetDialog({
   const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
   const [locationDraft, setLocationDraft] = useState('')
   const [formulaRefreshSpinning, setFormulaRefreshSpinning] = useState(false)
+  /** Sheet was submitted for review / reviewed before this edit (ISO 17025 7.5.2 reason needed). */
+  const [sheetSubmitted, setSheetSubmitted] = useState(false)
+  /** JSON of the payload as loaded, to tell whether a submitted sheet was actually changed. */
+  const loadedPayloadJsonRef = useRef<string | null>(null)
   const { user, profileName, designation } = useAuth()
+  const askReason = useReasonForChange()
+
+  useEffect(() => {
+    if (payload && loadedPayloadJsonRef.current === null) {
+      loadedPayloadJsonRef.current = JSON.stringify(payload)
+    }
+  }, [payload])
 
   useEffect(() => {
     if (!open || !job) return
@@ -2131,6 +2143,8 @@ export function RawDataSheetDialog({
     setError(null)
     setPayload(null)
     setSheetId(null)
+    setSheetSubmitted(false)
+    loadedPayloadJsonRef.current = null
     setReadOnly(forceReadOnly)
     setUncertaintyOpen(false)
     setSrf(null)
@@ -2189,6 +2203,7 @@ export function RawDataSheetDialog({
       }
 
       setSheetId(sheet.id)
+      setSheetSubmitted(sheet.sheet_status === 'under_review' || Boolean(sheet.reviewed_at))
       setReadOnly(forceReadOnly || sheet.sheet_status === 'approved')
 
       const existing = parseRawDataSheetPayload(sheet.payload)
@@ -2559,6 +2574,17 @@ export function RawDataSheetDialog({
 
   const handleSave = async (asComplete = false) => {
     if (!sheetId || !payload || readOnly) return
+    let changeReason: string | null = null
+    if (sheetSubmitted && loadedPayloadJsonRef.current !== JSON.stringify(payload)) {
+      changeReason = await askReason({
+        title: 'Reason for changing submitted raw data',
+        recordLabel: [job?.srf_number ? `SRF ${job.srf_number}` : '', job?.equipment_label ?? '']
+          .filter(Boolean)
+          .join(' · '),
+        confirmLabel: 'Save',
+      })
+      if (!changeReason) return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -2627,6 +2653,7 @@ export function RawDataSheetDialog({
         nextPayload as unknown as Record<string, unknown>,
         asComplete ? 'under_review' : 'draft',
       )
+      if (changeReason) await recordReason('calibration_raw_data_sheets', sheetId, changeReason)
       if (asComplete) setReadOnly(false)
       onOpenChange(false)
     } catch (err) {

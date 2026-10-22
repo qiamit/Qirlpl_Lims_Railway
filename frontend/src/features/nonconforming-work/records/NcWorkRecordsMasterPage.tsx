@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import {
   limsDarkBarGlowStyle,
   limsDialogClass,
@@ -54,7 +56,9 @@ export default function NcWorkRecordsMasterPage({
   evaluationMode?: boolean
 }) {
   const { user } = useAuth()
+  const askReason = useReasonForChange()
   const [rows, setRows] = useState<NcWorkRecordRow[]>([])
+  const deletedNcIds = useDeletedKeys('nc_work_records', 'nc_id', rows)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -152,12 +156,20 @@ export default function NcWorkRecordsMasterPage({
   const handleDeleteSelected = async () => {
     const ids = [...selectedIds]
     if (!ids.length) return
-    if (!window.confirm(`Delete ${ids.length} selected record(s)?`)) return
+    const reason = await askReason({
+      title: `Reason for deleting ${ids.length} NC record(s)`,
+      recordLabel: selectedRows.map((r) => r.nc_id).filter(Boolean).slice(0, 5).join(', '),
+      description: 'The deletion is kept in the audit trail together with the reason you give here.',
+      confirmLabel: 'Delete',
+      quickPicks: ['Duplicate record', 'Entered in error', 'Raised against the wrong job'],
+    })
+    if (!reason) return
     const { error: err } = await supabase.from('nc_work_records').delete().in('id', ids)
     if (err) {
       setMessage(formatSupabaseError(err))
       return
     }
+    await recordReason('nc_work_records', ids, reason)
     setSelectedIds(new Set())
     setMessage('Deleted.')
     await load()
@@ -240,7 +252,7 @@ export default function NcWorkRecordsMasterPage({
             ? undefined
             : () => {
                 setEditingId(null)
-                setForm(emptyNcWorkForm(nextNcId(rows)))
+                setForm(emptyNcWorkForm(nextNcId(rows, deletedNcIds)))
                 setMessage(null)
                 setShowForm(true)
               }

@@ -4,8 +4,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { escapeHtml } from '@/lib/htmlText'
 import { cn } from '@/lib/utils'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { ComplaintsFooterBar } from '../ComplaintsFooterBar'
 import { ComplaintsHeaderBar } from '../ComplaintsHeaderBar'
 import {
@@ -26,7 +28,9 @@ import {
 } from './types'
 
 export default function CustomerComplaintsMasterPage() {
+  const askReason = useReasonForChange()
   const [rows, setRows] = useState<ComplaintRow[]>([])
+  const deletedComplaintIds = useDeletedKeys('customer_complaints', 'complaint_id', rows)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [loading, setLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
@@ -108,7 +112,7 @@ export default function CustomerComplaintsMasterPage() {
   const handleNew = () => {
     setMessage(null)
     setEditingId(null)
-    setForm(emptyComplaintForm(nextComplaintId(rows)))
+    setForm(emptyComplaintForm(nextComplaintId(rows, deletedComplaintIds)))
     setShowForm(true)
   }
 
@@ -124,7 +128,7 @@ export default function CustomerComplaintsMasterPage() {
     setEditingId(null)
     setForm({
       ...rowToForm(row),
-      complaintId: nextComplaintId(rows),
+      complaintId: nextComplaintId(rows, deletedComplaintIds),
       status: 'Received',
       closedAt: '',
       formalClosureNoticeSent: false,
@@ -167,11 +171,19 @@ export default function CustomerComplaintsMasterPage() {
     void (async () => {
       const ids = Array.from(selectedIds)
       if (!ids.length) return
-      if (!window.confirm(`Delete ${ids.length} selected complaint(s)?`)) return
+      const reason = await askReason({
+        title: `Reason for deleting ${ids.length} complaint(s)`,
+        recordLabel: selectedRows.map((r) => r.complaint_id).filter(Boolean).slice(0, 5).join(', '),
+        description: 'The deletion is kept in the audit trail together with the reason you give here.',
+        confirmLabel: 'Delete',
+        quickPicks: ['Duplicate record', 'Entered in error', 'Not a complaint (feedback)'],
+      })
+      if (!reason) return
       setSaveLoading(true)
       try {
         const { error: err } = await supabase.from('customer_complaints').delete().in('id', ids)
         if (err) throw err
+        await recordReason('customer_complaints', ids, reason)
         setSelectedIds(new Set())
         setMessage('Deleted successfully.')
         await load()
