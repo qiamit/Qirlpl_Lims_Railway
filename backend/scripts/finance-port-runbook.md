@@ -67,6 +67,12 @@ DROP FUNCTION IF EXISTS public.next_document_number(text), public.peek_document_
 DROP TABLE IF EXISTS public.document_series;
 ```
 
+## Phase 0 result (22 Oct 2026)
+
+The profile was run read-only on production. `sale_documents` is empty and not
+yet granted, so all proformas, invoices, credit notes and receipts are still in
+users' browsers. Findings and the Phase 2 mapping: `finance-phase2-mapping.md`.
+
 ## Next: Phase 2
 
 Typed sale tables (`finance_tax_invoices`, `finance_proforma_invoices`,
