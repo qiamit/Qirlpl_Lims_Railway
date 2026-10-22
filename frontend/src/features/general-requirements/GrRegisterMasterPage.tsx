@@ -52,6 +52,10 @@ export type GrFieldDef = {
   span?: 1 | 2 | 3
   /** Show Sparkles AI Fill next to label (requires config.aiFillField). */
   aiFill?: boolean
+  /** Integer column: '' is saved as null, anything else as a number. */
+  numeric?: boolean
+  /** Shown read-only from the other fields and never saved (e.g. generated columns). */
+  compute?: (form: Record<string, string | boolean>) => string
 }
 
 export type GrColumnDef = {
@@ -60,6 +64,8 @@ export type GrColumnDef = {
   mono?: boolean
   date?: boolean
   lines?: Array<{ key: string; tone?: 'primary' | 'secondary' | 'meta' }>
+  /** Custom cell content; print and CSV still use the raw value. */
+  render?: (row: Record<string, unknown>) => ReactNode
 }
 
 export type GrRegisterConfig = {
@@ -247,8 +253,13 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
   const formToPayload = (f: Record<string, string | boolean>) => {
     const payload: Record<string, unknown> = {}
     for (const field of config.fields) {
+      if (field.compute) continue
       const v = f[field.key]
       if (field.kind === 'checkbox') payload[field.key] = Boolean(v)
+      else if (field.numeric) {
+        const text = String(v ?? '').trim()
+        payload[field.key] = text === '' ? null : Number(text)
+      }
       else if (field.kind === 'date') payload[field.key] = String(v || '').trim() || null
       else payload[field.key] = String(v ?? '').trim()
     }
@@ -387,6 +398,7 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
   }
 
   const renderCell = (row: Record<string, unknown>, col: GrColumnDef): ReactNode => {
+    if (col.render) return col.render(row)
     if (col.lines?.length) {
       return (
         <div className="space-y-0.5">
@@ -508,11 +520,20 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
                         </Button>
                       ) : null}
                     </div>
-                    <FieldControl
-                      field={field}
-                      value={form[field.key]}
-                      onChange={(v) => setForm({ ...form, [field.key]: v })}
-                    />
+                    {field.compute ? (
+                      <Input
+                        id={`gr-${field.key}`}
+                        value={field.compute(form)}
+                        readOnly
+                        className="bg-stone-100"
+                      />
+                    ) : (
+                      <FieldControl
+                        field={field}
+                        value={form[field.key]}
+                        onChange={(v) => setForm({ ...form, [field.key]: v })}
+                      />
+                    )}
                   </div>
                 )
               })}
