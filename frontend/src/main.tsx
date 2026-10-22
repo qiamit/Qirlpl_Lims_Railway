@@ -10,6 +10,9 @@ import { AppCurrencyProvider } from '@/lib/AppCurrencyProvider'
 import './styles/appThemes.css'
 import './index.css'
 import App from './App.tsx'
+import { registerServiceWorker } from './lib/registerServiceWorker'
+
+registerServiceWorker()
 
 const queryClient = new QueryClient({
   defaultOptions: {
