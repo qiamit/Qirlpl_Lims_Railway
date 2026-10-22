@@ -7,6 +7,7 @@ import {
   masterPointsFormulaRefValues,
   type MasterFormulaRefSource,
 } from './masterEquipmentFormulaRefs'
+import { evaluateSafeExpression } from '@/lib/safeExpression'
 
 export type RawDataColumnType = 'text' | 'number' | 'formula'
 
@@ -2156,21 +2157,21 @@ function runValidatedMathExpression(body: string): number | null {
   }
   const safeNames = names.filter((n) => !(n in reservedAlias))
   const aliasNames = Object.keys(reservedAlias).filter((n) => n in impl)
-  const argNames = [
-    ...safeNames.map((n) => n.toUpperCase()),
-    ...safeNames,
-    ...aliasNames.map((n) => reservedAlias[n]!),
-  ]
-  const argValues = [
-    ...safeNames.map((n) => impl[n]!),
-    ...safeNames.map((n) => impl[n]!),
-    ...aliasNames.map((n) => impl[n]!),
-  ]
+  // Identifier bindings: UPPER and lower case names, plus `_if` / `_var` aliases.
+  const bindings: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+  for (const n of safeNames) bindings[n.toUpperCase()] = impl[n]!
+  for (const n of safeNames) bindings[n] = impl[n]!
+  for (const n of aliasNames) bindings[reservedAlias[n]!] = impl[n]!
 
   try {
-    // eslint-disable-next-line no-new-func -- tokens validated; only numbers + allowlisted fns
-    const fn = new Function(...argNames, `"use strict"; return (${safeBody});`)
-    const result = fn(...argValues)
+    // CSP-safe interpreter (no eval / new Function). Wrapping the body in
+    // parentheses (+ strict mode, ASI) mirrors the former
+    // `new Function(...names, '"use strict"; return (' + safeBody + ');')`.
+    const result = evaluateSafeExpression(`(${safeBody})`, {
+      bindings,
+      strict: true,
+      trailingStatements: true,
+    })
     return typeof result === 'number' && Number.isFinite(result) ? result : null
   } catch (err) {
     if (err instanceof Error && err.message === 'incomplete') return null

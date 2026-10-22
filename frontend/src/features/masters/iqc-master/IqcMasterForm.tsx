@@ -40,6 +40,7 @@ import {
 } from '@/features/sample-handling/receiving/FilterCombobox'
 import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
 import { LocationFieldWithAdd } from '@/components/lims/LocationFieldWithAdd'
+import { evaluateArithmeticToString } from '@/lib/safeExpression'
 
 const sectionTitleClass =
   'mb-3 border-b border-amber-700/25 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800'
@@ -54,18 +55,9 @@ function parseAcceptanceLimit(criteria: string | null | undefined): number | nul
   return null
 }
 
+/** Calculator helper: `^[-+*\/.0-9]+$` arithmetic → result string or 'Error' (CSP-safe, no eval). */
 function safeEvaluate(expr: string): string {
-  const sanitized = expr.replace(/\s+/g, '')
-  if (!/^[-+*/.0-9]+$/.test(sanitized)) {
-    return 'Error'
-  }
-  try {
-    const fn = new Function(`return ${sanitized}`)
-    const res = fn()
-    return isFinite(res) ? String(res) : 'Error'
-  } catch {
-    return 'Error'
-  }
+  return evaluateArithmeticToString(expr)
 }
 
 export function IqcMasterForm({

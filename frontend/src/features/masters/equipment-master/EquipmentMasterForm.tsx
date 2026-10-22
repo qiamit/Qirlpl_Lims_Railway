@@ -65,6 +65,7 @@ import {
   parseIntermediateCheckResultPayload,
 } from './intermediateCheckHistory'
 import { IqcMasterSearchSelect } from './IqcMasterSearchSelect'
+import { evaluateArithmeticToString } from '@/lib/safeExpression'
 
 function parseAcceptanceLimit(criteria: string | null | undefined): number | null {
   if (!criteria) return null
@@ -123,18 +124,9 @@ function emptyIntermediateCheckReading(): IntermediateCheckReading {
 const DEFAULT_INTERMEDIATE_TEMPERATURE = '27'
 const DEFAULT_INTERMEDIATE_HUMIDITY = '65'
 
+/** Calculator helper: `^[-+*\/.0-9]+$` arithmetic → result string or 'Error' (CSP-safe, no eval). */
 function safeEvaluate(expr: string): string {
-  const sanitized = expr.replace(/\s+/g, '')
-  if (!/^[-+*/.0-9]+$/.test(sanitized)) {
-    return 'Error'
-  }
-  try {
-    const fn = new Function(`return ${sanitized}`)
-    const res = fn()
-    return isFinite(res) ? String(res) : 'Error'
-  } catch {
-    return 'Error'
-  }
+  return evaluateArithmeticToString(expr)
 }
 
 export function EquipmentMasterForm({
