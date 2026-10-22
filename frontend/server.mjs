@@ -45,6 +45,7 @@ const TYPES = {
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.xml': 'application/xml; charset=utf-8',
   '.pdf': 'application/pdf',
@@ -58,6 +59,7 @@ function securityHeaders() {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'X-Frame-Options': 'DENY',
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
     'Content-Security-Policy': [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
@@ -66,8 +68,11 @@ function securityHeaders() {
       "img-src 'self' data: blob: https:",
       "connect-src 'self' https: wss:",
       "frame-src 'self' https://maps.google.com https://www.google.com",
+      "worker-src 'self'",
+      "manifest-src 'self'",
       "object-src 'none'",
       "base-uri 'self'",
+      "form-action 'self'",
       "frame-ancestors 'none'",
     ].join('; '),
   }
@@ -78,13 +83,20 @@ function isAppPath(pathname) {
   return APP_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 
+// Files whose URL never changes between deploys must be revalidated.
+function cacheControlFor(filePath, ext) {
+  if (ext === '.html' || ext === '.webmanifest') return 'no-cache'
+  if (path.basename(filePath) === 'sw.js') return 'no-cache'
+  return 'public, max-age=31536000, immutable'
+}
+
 function sendFile(res, filePath, status) {
   const ext = path.extname(filePath).toLowerCase()
   const body = fs.readFileSync(filePath)
   res.writeHead(status, {
     'Content-Type': TYPES[ext] || 'application/octet-stream',
     'Content-Length': body.length,
-    'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    'Cache-Control': cacheControlFor(filePath, ext),
     ...securityHeaders(),
   })
   res.end(body)
@@ -96,9 +108,17 @@ if (!fs.existsSync(INDEX)) {
 }
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url || '/', 'http://frontend.local')
-  const pathname = decodeURIComponent(url.pathname)
-  if (pathname.includes('..')) {
+  let pathname
+  try {
+    const url = new URL(req.url || '/', 'http://frontend.local')
+    pathname = decodeURIComponent(url.pathname)
+  } catch {
+    // A malformed %-escape used to throw here and crash the process.
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', ...securityHeaders() })
+    res.end('Bad request')
+    return
+  }
+  if (pathname.includes('..') || pathname.includes('\0')) {
     res.writeHead(400, securityHeaders())
     res.end('Bad request')
     return

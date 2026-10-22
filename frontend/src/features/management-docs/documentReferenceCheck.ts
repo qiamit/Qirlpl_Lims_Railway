@@ -5,6 +5,7 @@ import {
   type DraftSection,
 } from './draftDocumentModel'
 import type { ManagementDocumentRow } from './types'
+import { createInertHtmlContainer } from '@/lib/inertHtml'
 
 export type DocCatalogEntry = {
   id: string
@@ -38,7 +39,7 @@ const DOC_TOKEN_RE =
 
 function stripHtml(html: string): string {
   if (typeof document !== 'undefined') {
-    const el = document.createElement('div')
+    const el = createInertHtmlContainer()
     el.innerHTML = html
     return (el.textContent || '').replace(/\s+/g, ' ').trim()
   }

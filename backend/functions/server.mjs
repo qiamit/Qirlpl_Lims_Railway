@@ -109,6 +109,56 @@ async function requireUser(req) {
   return res.json()
 }
 
+async function loadCallerProfile(callerId) {
+  if (!callerId) return null
+  const profiles = await rest(
+    `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation,department_name,status`,
+  )
+  return Array.isArray(profiles) ? profiles[0] ?? null : null
+}
+
+/**
+ * Signed-in, active, and either a known LIMS role or holding a module grant.
+ * Uses the same public.app_is_known_staff() check as RLS (called with the
+ * caller's own JWT). Falls back to "active profile with a designation" when
+ * that function is not on the database yet.
+ */
+async function requireKnownStaff(req) {
+  const caller = await requireUser(req)
+  const callerId = String(caller?.id ?? '')
+  const row = await loadCallerProfile(callerId)
+  const status = String(row?.status ?? '').trim().toLowerCase()
+  if (!callerId || !row || status === 'inactive') {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  let known = null
+  try {
+    const rpc = await fetch(`${REST_URL}/rpc/app_is_known_staff`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${callerJwt(req)}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    })
+    if (rpc.ok) {
+      const value = await rpc.json().catch(() => null)
+      if (typeof value === 'boolean') known = value
+    }
+  } catch {
+    known = null
+  }
+  if (known === null) known = String(row?.designation ?? '').trim() !== ''
+  if (!known) {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  return caller
+}
+
 async function requireLaboratoryDirector(req) {
   const caller = await requireUser(req)
   const callerId = String(caller?.id ?? '')
@@ -284,13 +334,37 @@ function normalizeAttachments(raw) {
   })
 }
 
+const EMAIL_RE = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]+$/
+const MAX_EMAIL_RECIPIENTS = 10
+
+function normalizeRecipients(raw) {
+  const list = (Array.isArray(raw) ? raw : [raw])
+    .flatMap((item) => String(item ?? '').split(/[,;]/))
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (list.length === 0) return []
+  if (list.length > MAX_EMAIL_RECIPIENTS) {
+    const err = new Error(`At most ${MAX_EMAIL_RECIPIENTS} recipients per email`)
+    err.statusCode = 400
+    throw err
+  }
+  for (const address of list) {
+    if (address.length > 254 || !EMAIL_RE.test(address)) {
+      const err = new Error(`Invalid recipient address: ${address.slice(0, 80)}`)
+      err.statusCode = 400
+      throw err
+    }
+  }
+  return list
+}
+
 async function handleSendEmail(req, res) {
   await requireCanSendLabEmail(req)
   const body = await readBody(req)
-  const to = body.to
-  const subject = String(body.subject ?? '').trim()
+  const to = normalizeRecipients(body.to)
+  const subject = String(body.subject ?? '').trim().slice(0, 300)
   const html = String(body.html ?? body.text ?? '').trim()
-  if (!to || !subject || !html) {
+  if (to.length === 0 || !subject || !html) {
     json(res, 400, { error: 'to, subject, and html are required' })
     return
   }
@@ -428,6 +502,10 @@ async function handleCreateUser(req, res) {
     json(res, 400, { error: 'email and password are required' })
     return
   }
+  if (email.length > 254 || !EMAIL_RE.test(email)) {
+    json(res, 400, { error: 'Enter a valid email address.' })
+    return
+  }
   if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
     json(res, 400, { error: 'Password must be at least 8 characters and include a letter and a number.' })
     return
@@ -438,7 +516,7 @@ async function handleCreateUser(req, res) {
   const designation = String(body.designation ?? '')
   const departmentName = String(body.department_name ?? '')
   const division = String(body.division ?? '')
-  const status = String(body.status ?? 'Active')
+  const status = String(body.status ?? 'Active').trim().toLowerCase() === 'inactive' ? 'Inactive' : 'Active'
   const callerId = String(caller?.id ?? '')
 
   const createResult = await authAdmin('/admin/users', {
@@ -539,7 +617,7 @@ function resolveAiApiBase(provider, apiBaseUrl) {
 }
 
 async function handleQiAssistant(req, res) {
-  await requireUser(req)
+  await requireKnownStaff(req)
   const body = await readBody(req)
   const message = String(body.message ?? '').trim()
   const hasPdf =
@@ -660,7 +738,17 @@ const server = http.createServer(async (req, res) => {
     await handler(req, res)
   } catch (err) {
     const status = Number(err?.statusCode) || 500
-    json(res, status, { error: err instanceof Error ? err.message : 'Internal error' })
+    if (status >= 500) {
+      // Internal REST/auth messages can name tables and columns; log them only.
+      console.error(`[functions] ${key} failed:`, err instanceof Error ? err.message : err)
+    }
+    const message =
+      status >= 500 && !err?.statusCode
+        ? 'Internal error'
+        : err instanceof Error
+          ? err.message
+          : 'Internal error'
+    if (!res.headersSent) json(res, status, { error: message })
   }
 })
 

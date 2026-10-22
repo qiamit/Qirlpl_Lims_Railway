@@ -81,6 +81,7 @@ import {
 } from './fetchManagementDocLetterhead'
 import type { ManagementDocumentRow } from './types'
 import { MANAGEMENT_DOC_STATUSES } from './types'
+import { createInertHtmlContainer } from '@/lib/inertHtml'
 
 /** Fullscreen preview — main content area only (sidebar 268px stays visible). */
 const MGMT_A4_PREVIEW_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
@@ -380,7 +381,7 @@ function splitHtmlIntoChunks(html: string): string[] {
   if (!trimmed) return []
   if (typeof document === 'undefined') return [trimmed]
 
-  const wrap = document.createElement('div')
+  const wrap = createInertHtmlContainer()
   wrap.innerHTML = trimmed
   const chunks: string[] = []
   Array.from(wrap.childNodes).forEach((node) => {
@@ -2458,7 +2459,7 @@ export function ManagementDocumentA4PreviewDialog({
           </div>
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 print:hidden sm:px-6">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t-2 border-stone-500 bg-stone-50 px-4 py-3 print:hidden sm:px-6">
           <Button
             type="button"
             size="sm"

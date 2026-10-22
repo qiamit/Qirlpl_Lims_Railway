@@ -338,11 +338,19 @@ export default function UserManagementMasterPage() {
               throw new Error('Session expired. Please log in again.')
             }
 
-            const { error: statusError } = await supabase
-              .from('user_profiles')
-              .update({ status })
-              .eq('id', user.id)
-            if (statusError) throw statusError
+            // update_team_user also sets auth.users.banned_until, so an
+            // Inactive user can no longer sign in or refresh a session.
+            const { error: rpcError } = await supabase.rpc('update_team_user', {
+              p_user_id: user.id,
+              p_status: status,
+            })
+            if (rpcError) {
+              const { error: statusError } = await supabase
+                .from('user_profiles')
+                .update({ status })
+                .eq('id', user.id)
+              if (statusError) throw statusError
+            }
 
             setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, status } : u)))
           } catch (err) {

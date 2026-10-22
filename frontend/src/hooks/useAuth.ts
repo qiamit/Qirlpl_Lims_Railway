@@ -148,15 +148,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let canceled = false
 
+    // user_metadata is writable by the user (auth.updateUser), so it is used
+    // for the display name only. Role fields come from user_profiles, the
+    // same source RLS uses.
     const meta = user.user_metadata as Record<string, unknown>
-    const metaDeptRaw =
-      typeof meta?.department_name === 'string'
-        ? meta.department_name
-        : typeof meta?.department === 'string'
-          ? meta.department
-          : ''
-    const metaDept = metaDeptRaw.trim()
-    const metaDivision = typeof meta?.division === 'string' ? meta.division.trim() : ''
     const metaName = typeof meta?.full_name === 'string' ? meta.full_name.trim() : ''
 
     const applyFromProfile = (
@@ -168,8 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (canceled) return
       profileUserIdRef.current = userId
       setDesignation(profileDes)
-      setDepartmentName(profileDept || metaDept)
-      setDivision(profileDivision || metaDivision)
+      setDepartmentName(profileDept)
+      setDivision(profileDivision)
       setProfileName(profileNameVal || metaName || user?.email || '')
       setProfileReady(true)
       try {
@@ -253,17 +248,8 @@ export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password })
 }
 
-export async function signUp(
-  email: string,
-  password: string,
-  metadata?: Record<string, unknown>,
-) {
-  return supabase.auth.signUp({
-    email,
-    password,
-    options: metadata ? { data: metadata } : undefined,
-  })
-}
+// No public sign-up: accounts are created by the Laboratory Director through
+// the functions service (User Management).
 
 export async function signOut() {
   return supabase.auth.signOut()

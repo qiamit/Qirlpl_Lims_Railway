@@ -74,6 +74,7 @@ import {
   fetchManagementDocCatalog,
   formatCatalogForPrompt,
 } from './documentReferenceCheck'
+import { createInertHtmlContainer } from '@/lib/inertHtml'
 
 function looksLikeHtml(value: string): boolean {
   return /<\/?[a-z][\s\S]*>/i.test(value.trim())
@@ -92,7 +93,7 @@ function toEditorHtml(value: string): string {
 /** TipTap tables need <tbody> and block content inside each cell. */
 function normalizeTablesForTiptap(html: string): string {
   if (typeof document === 'undefined' || !html.includes('<table')) return html
-  const root = document.createElement('div')
+  const root = createInertHtmlContainer()
   root.innerHTML = html
 
   root.querySelectorAll('table').forEach((table) => {
