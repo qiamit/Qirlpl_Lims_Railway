@@ -90,6 +90,7 @@ const DeclarationsPage = lazy(() => import('@/features/personnel/declarations/De
 const AuditTrailPage = lazy(() => import('@/features/audit-trail/AuditTrailPage'))
 const RecycleBinPage = lazy(() => import('@/features/recycle-bin/RecycleBinPage'))
 const AuditCoveragePage = lazy(() => import('@/features/audit-mrm/audit-coverage/AuditCoveragePage'))
+const ModuleAccessEnforcementPage = lazy(() => import('@/features/settings/module-access-enforcement/ModuleAccessEnforcementPage'))
 const AuthorizationMatrixPage = lazy(() => import('@/features/personnel/competence/AuthorizationMatrixPage'))
 const EmployeeDossierPage = lazy(() => import('@/features/personnel/competence/EmployeeDossierPage'))
 const CompetenceRequirementsPage = lazy(() => import('@/features/personnel/competence/CompetenceRequirementsPage'))
@@ -174,6 +175,14 @@ export function ModuleAccessRoute() {
   return (
     <RequireLaboratoryDirector>
       <ModuleAccessPage />
+    </RequireLaboratoryDirector>
+  )
+}
+
+export function ModuleAccessEnforcementRoute() {
+  return (
+    <RequireLaboratoryDirector>
+      <ModuleAccessEnforcementPage />
     </RequireLaboratoryDirector>
   )
 }

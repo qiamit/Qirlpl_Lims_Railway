@@ -297,6 +297,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/lab-settings': 'Lab Settings',
   '/lab-settings/user-management': 'User Management',
   '/lab-settings/module-access': 'Module Access',
+  '/lab-settings/module-access-enforcement': 'Module Access Enforcement',
   '/lab-settings/ai-settings': 'AI Settings',
   '/help': 'Help',
   '/contact-us': 'Contact Us',
@@ -894,6 +895,12 @@ export default function GlobalLayout() {
                       <NavLink to="/lab-settings/module-access" className="flex items-center gap-2">
                         <Shield size={14} />
                         Module Access
+                      </NavLink>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <NavLink to="/lab-settings/module-access-enforcement" className="flex items-center gap-2">
+                        <Shield size={14} />
+                        Module Access Enforcement
                       </NavLink>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
