@@ -99,6 +99,7 @@ export function ClientsForm({
   onDeletePaymentTerm,
   hideFooter = false,
   compact = false,
+  showAiDataConsent = false,
 }: {
   form: ClientForm
   onChange: (next: ClientForm) => void
@@ -108,6 +109,8 @@ export function ClientsForm({
   hideFooter?: boolean
   /** Tighter spacing for nested dialogs (e.g. Add Client from Quotation). */
   compact?: boolean
+  /** Client Master only: AI processing consent checkbox (ISO 17025 4.2). */
+  showAiDataConsent?: boolean
   states: Array<{ id: string; label: string }>
   countries: Array<{ id: string; label: string }>
   districts: Array<{ id: string; label: string }>
@@ -735,6 +738,32 @@ export function ClientsForm({
                 className="h-10"
               />
             </div>
+
+            {showAiDataConsent ? (
+              <div className="sm:col-span-3">
+                <label
+                  htmlFor="ai-data-consent"
+                  className="flex cursor-pointer items-start gap-2.5 border border-stone-400 bg-[#f7f3eb] px-3 py-2"
+                >
+                  <input
+                    id="ai-data-consent"
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 accent-amber-700"
+                    checked={form.aiDataConsent === true}
+                    onChange={(e) => onChange({ ...form, aiDataConsent: e.target.checked })}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-stone-800">
+                      Client consents to processing by AI assistants
+                    </span>
+                    <span className="block text-xs leading-snug text-stone-600">
+                      Used when AI Settings is set to send client data only for clients who consented. Without consent,
+                      this client&apos;s details are redacted before reaching AI providers.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

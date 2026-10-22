@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Cpu, FlaskConical } from 'lucide-react'
+import { Cpu, FlaskConical, ShieldCheck } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -19,6 +19,14 @@ import {
   limsRegistryFormClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import {
+  AI_CLIENT_DATA_MODE_OPTIONS,
+  DEFAULT_AI_CLIENT_DATA_MODE,
+  fetchAiClientDataModeState,
+  invalidateAiDataGuardCache,
+  saveAiClientDataMode,
+  type AiClientDataMode,
+} from '@/lib/aiDataGuard'
 import { fetchAiModels, fetchAiSettings, upsertAiSettings } from './aiSettingsApi'
 import type { AiModelRow } from './types'
 
@@ -110,6 +118,9 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
   const [systemPromptPrefix, setSystemPromptPrefix] = useState('')
   const [logRequests, setLogRequests] = useState(false)
   const [agentCrudEnabled, setAgentCrudEnabled] = useState(true)
+  const [clientDataMode, setClientDataMode] = useState<AiClientDataMode>(DEFAULT_AI_CLIENT_DATA_MODE)
+  const [savedClientDataMode, setSavedClientDataMode] = useState<AiClientDataMode>(DEFAULT_AI_CLIENT_DATA_MODE)
+  const [clientDataColumnAvailable, setClientDataColumnAvailable] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -118,8 +129,16 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [modelRows, settings] = await Promise.all([fetchAiModels(), fetchAiSettings()])
+      invalidateAiDataGuardCache()
+      const [modelRows, settings, dataMode] = await Promise.all([
+        fetchAiModels(),
+        fetchAiSettings(),
+        fetchAiClientDataModeState(),
+      ])
       setModels(modelRows.filter((m) => m.is_active))
+      setClientDataMode(dataMode.mode)
+      setSavedClientDataMode(dataMode.mode)
+      setClientDataColumnAvailable(dataMode.columnAvailable)
       if (settings) {
         setDefaultModelId(settings.default_model_id ?? '')
         setShowAiAssistant(settings.ai_enabled)
@@ -169,6 +188,19 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
         })
 
         await queryClient.invalidateQueries({ queryKey: AI_ASSISTANT_VISIBLE_QUERY_KEY })
+
+        if (clientDataMode !== savedClientDataMode) {
+          try {
+            await saveAiClientDataMode(clientDataMode)
+            setSavedClientDataMode(clientDataMode)
+          } catch {
+            setClientDataMode(savedClientDataMode)
+            setMessage(
+              'Settings saved, but the client data setting could not be saved: database update 20261025100200 must be applied first. Redact stays in force.',
+            )
+            return
+          }
+        }
         setMessage('Settings saved.')
       } catch (err) {
         setMessage(err instanceof Error ? err.message : 'Unable to save settings')
@@ -178,6 +210,8 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
     })()
   }, [
     agentCrudEnabled,
+    clientDataMode,
+    savedClientDataMode,
     showAiAssistant,
     defaultModelId,
     logRequests,
@@ -310,6 +344,52 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
               placeholder="You are an assistant for an ISO 17025 testing laboratory…"
             />
           </div>
+        </SettingSection>
+
+        <SettingSection
+          step="03"
+          title="Client data sent to AI providers"
+          icon={<ShieldCheck className="h-4 w-4" />}
+        >
+          <p className="text-xs leading-snug text-stone-600">
+            ISO/IEC 17025 clause 4.2 (confidentiality). Applies to every AI assistant before anything leaves the LIMS.
+            E-mails, phone numbers, GSTIN and PAN are also masked by the server in every mode.
+          </p>
+          <div role="radiogroup" aria-label="Client data sent to AI providers" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {AI_CLIENT_DATA_MODE_OPTIONS.map((opt) => {
+              const selected = clientDataMode === opt.value
+              return (
+                <label
+                  key={opt.value}
+                  htmlFor={`ai-client-data-${opt.value}`}
+                  className={cn(
+                    'flex cursor-pointer items-start gap-2.5 rounded-none border px-3 py-2.5 transition-colors',
+                    selected ? 'border-amber-700 bg-amber-50' : 'border-stone-500 bg-[#f7f3eb] hover:bg-stone-100',
+                    !clientDataColumnAvailable && 'cursor-not-allowed opacity-60',
+                  )}
+                >
+                  <input
+                    id={`ai-client-data-${opt.value}`}
+                    type="radio"
+                    name="ai-client-data-mode"
+                    className="mt-0.5 accent-amber-700"
+                    checked={selected}
+                    disabled={!clientDataColumnAvailable}
+                    onChange={() => setClientDataMode(opt.value)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-stone-800">{opt.label}</span>
+                    <span className="block text-[11px] leading-snug text-stone-600">{opt.description}</span>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+          {!clientDataColumnAvailable && (
+            <p className="text-xs text-amber-800">
+              Available after database update 20261025100200 is applied. Until then Redact applies.
+            </p>
+          )}
         </SettingSection>
       </div>
     </div>

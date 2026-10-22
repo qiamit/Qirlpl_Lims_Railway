@@ -31,6 +31,10 @@ export type ClientRow = {
   balance_type: BalanceType
   payment_term: PaymentTerm
   remark: string | null
+  /** ISO 17025 4.2 — absent until migration 20261025100200 is applied. */
+  ai_data_consent?: boolean | null
+  ai_data_consent_at?: string | null
+  ai_data_consent_by?: string | null
   created_at?: string
 }
 
@@ -52,6 +56,8 @@ export type ClientForm = {
   balanceType: BalanceType
   paymentTerm: PaymentTerm
   remark: string
+  /** Client consents to processing by AI assistants (ISO 17025 4.2). */
+  aiDataConsent?: boolean
 }
 
 export const COMPANY_TYPES: CompanyType[] = [
@@ -181,7 +187,20 @@ export const emptyClientForm = (): ClientForm => ({
   balanceType: 'Dr',
   paymentTerm: '100 % Advance',
   remark: '',
+  aiDataConsent: false,
 })
+
+/** Client columns added by migration 20261025100200 (may not exist yet). */
+export const CLIENT_AI_CONSENT_COLUMNS = ['ai_data_consent', 'ai_data_consent_at', 'ai_data_consent_by'] as const
+
+/** True when PostgREST rejected a write because the AI consent columns are missing. */
+export function isMissingClientAiConsentColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string }
+  const msg = String(e.message ?? '')
+  const mentionsColumn = CLIENT_AI_CONSENT_COLUMNS.some((c) => msg.includes(c))
+  return mentionsColumn && (e.code === 'PGRST204' || e.code === '42703' || /column/i.test(msg))
+}
 
 export function toContinuousText(value: string): string {
   return value.replace(/\s+/g, ' ').trim()

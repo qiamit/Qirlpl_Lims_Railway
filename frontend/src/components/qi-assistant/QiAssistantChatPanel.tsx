@@ -60,6 +60,7 @@ export function QiAssistantChatPanel({
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dataNotice, setDataNotice] = useState<string | null>(null)
   const [messages, setMessages] = useState<QiChatMessage[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -131,7 +132,7 @@ export function QiAssistantChatPanel({
           .slice(-10)
           .map((m) => ({ role: m.role, content: m.content }))
 
-        const { reply, actionsExecuted } = await sendQiAssistantMessage({
+        const { reply, actionsExecuted, dataGuardNotice } = await sendQiAssistantMessage({
           page,
           message: apiMessage,
           context: effectiveContext,
@@ -141,6 +142,7 @@ export function QiAssistantChatPanel({
           history,
         })
 
+        setDataNotice(dataGuardNotice ?? null)
         onAssistantReply?.(reply)
         appendAssistantResult(reply, actionsExecuted)
       } catch (err) {
@@ -232,6 +234,7 @@ export function QiAssistantChatPanel({
         </div>
       )}
 
+      {dataNotice && <p className="pb-2 text-xs text-amber-800">{dataNotice}</p>}
       {error && <p className="text-xs text-destructive pb-2">{error}</p>}
 
       <div className="flex gap-2 border-t border-border pt-3">

@@ -616,6 +616,74 @@ function resolveAiApiBase(provider, apiBaseUrl) {
   return 'https://api.openai.com/v1'
 }
 
+// ---------------------------------------------------------------------------
+// AI data guard, server side (ISO/IEC 17025 clause 4.2, gap item P1-10b).
+// The frontend (frontend/src/lib/aiDataGuard.ts) redacts or withholds client
+// data per lab_settings.ai_client_data_mode. This is the defence in depth:
+// e-mails, phone numbers, GSTIN and PAN are always replaced before anything is
+// forwarded to the provider (and mapped back in the reply), and requests that
+// say they carry client data are refused while the lab mode is 'off'.
+// ---------------------------------------------------------------------------
+
+const LAB_SETTINGS_SINGLETON_ID = '00000000-0000-0000-0000-000000000001'
+const AI_CLIENT_DATA_MODES = new Set(['off', 'redact', 'allow_with_consent'])
+
+async function loadAiClientDataMode() {
+  try {
+    let rows = await rest(
+      `/lab_settings?id=eq.${LAB_SETTINGS_SINGLETON_ID}&select=ai_client_data_mode`,
+    )
+    if (!Array.isArray(rows) || rows.length === 0) {
+      rows = await rest('/lab_settings?select=ai_client_data_mode&order=created_at.desc&limit=1')
+    }
+    const mode = String((Array.isArray(rows) && rows[0]?.ai_client_data_mode) || '')
+      .trim()
+      .toLowerCase()
+    return AI_CLIENT_DATA_MODES.has(mode) ? mode : 'redact'
+  } catch {
+    // Column missing (migration 20261025100200 not applied) or REST error.
+    return 'redact'
+  }
+}
+
+const SERVER_REDACTION_PATTERNS = [
+  ['EMAIL', /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g],
+  ['GSTIN', /(?<![A-Za-z0-9_])\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z](?![A-Za-z0-9_])/gi],
+  ['PAN', /(?<![A-Za-z0-9_])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9_])/g],
+  ['PHONE', /(?<![\w.+/-])(?:(?:\+|00)91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?!\w|\.\d)/g],
+  ['PHONE', /(?<![\w.+/-])0\d{2,4}[\s-]\d{6,8}(?!\w|\.\d)/g],
+  ['PHONE', /(?<![\w.])\+\d{1,3}[\s-]?\d(?:[\s-]?\d){8,12}(?!\w|\.\d)/g],
+]
+
+function createServerRedactor() {
+  const byValue = new Map()
+  const byPlaceholder = new Map()
+  const counters = new Map()
+  const redact = (text) => {
+    let out = String(text ?? '')
+    for (const [category, re] of SERVER_REDACTION_PATTERNS) {
+      out = out.replace(re, (match) => {
+        const key = `${category}:${match.toLowerCase()}`
+        let placeholder = byValue.get(key)
+        if (!placeholder) {
+          const n = (counters.get(category) || 0) + 1
+          counters.set(category, n)
+          placeholder = `${category}_S${n}`
+          byValue.set(key, placeholder)
+          byPlaceholder.set(placeholder, match)
+        }
+        return placeholder
+      })
+    }
+    return out
+  }
+  const restore = (text) =>
+    String(text ?? '').replace(/\b(EMAIL|PHONE|GSTIN|PAN)\\?_S(\d+)\b/g, (whole, cat, n) =>
+      byPlaceholder.get(`${cat}_S${n}`) ?? whole,
+    )
+  return { redact, restore, count: () => byPlaceholder.size }
+}
+
 async function handleQiAssistant(req, res) {
   await requireKnownStaff(req)
   const body = await readBody(req)
@@ -634,6 +702,24 @@ async function handleQiAssistant(req, res) {
     json(res, 400, { error: 'message is required' })
     return
   }
+
+  // ISO 17025 4.2: lab policy on client data sent to AI providers.
+  const clientDataMode = await loadAiClientDataMode()
+  const clientData = String(body.clientData ?? '').trim().toLowerCase()
+  if (clientDataMode === 'off' && clientData && clientData !== 'none') {
+    json(res, 403, {
+      error:
+        'Client data sharing with AI providers is turned off in AI Settings. Ask a general question, or ask the Laboratory Director to change the setting.',
+    })
+    return
+  }
+  if (clientDataMode !== 'allow_with_consent' && clientData === 'consented') {
+    json(res, 409, {
+      error: 'AI data settings changed while you were working. Please try again in a minute.',
+    })
+    return
+  }
+  const redactor = createServerRedactor()
 
   const settingsRows = await rest(
     '/ai_settings?id=eq.00000000-0000-0000-0000-000000000002&select=default_model_id,temperature,max_tokens,system_prompt_prefix',
@@ -669,17 +755,18 @@ async function handleQiAssistant(req, res) {
   const history = (Array.isArray(body.history) ? body.history : [])
     .filter((item) => item && String(item.content || '').trim() && (item.role === 'user' || item.role === 'assistant'))
     .slice(-10)
-    .map((item) => ({ role: item.role, content: String(item.content).trim() }))
+    .map((item) => ({ role: item.role, content: redactor.redact(String(item.content).trim()) }))
 
   const system = [
     settings?.system_prompt_prefix ? String(settings.system_prompt_prefix) : '',
     'You are QI Assistant, a helpful assistant inside Qirlpl LIMS (ISO 17025 laboratory software). Answer clearly and concisely in English unless the user writes in Hindi.',
     body.page ? `The user is on the "${String(body.page)}" page.` : '',
     'You cannot change database records from this chat. Tell the user which screen to use.',
-    body.context ? `Page data:\n${String(body.context).slice(0, 12000)}` : '',
+    body.context ? `Page data:\n${redactor.redact(String(body.context)).slice(0, 12000)}` : '',
   ]
     .filter((part) => String(part).trim().length > 0)
     .join('\n\n')
+  const userMessage = redactor.redact(message)
 
   let modelId = String(model.model_id || '').trim()
   if (provider === 'google' && modelId.startsWith('models/')) modelId = modelId.slice('models/'.length)
@@ -693,7 +780,7 @@ async function handleQiAssistant(req, res) {
     },
     body: JSON.stringify({
       model: modelId,
-      messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: message }],
+      messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: userMessage }],
       temperature: Number.isFinite(temperature) ? temperature : 0.7,
       max_tokens: Number.isFinite(maxTokens) ? Math.min(maxTokens, 8192) : 1024,
     }),
@@ -710,8 +797,8 @@ async function handleQiAssistant(req, res) {
     json(res, 400, { error: errMsg })
     return
   }
-  const reply = String(aiPayload?.choices?.[0]?.message?.content ?? '').trim() || 'No response from model.'
-  json(res, 200, { reply })
+  const rawReply = String(aiPayload?.choices?.[0]?.message?.content ?? '').trim() || 'No response from model.'
+  json(res, 200, { reply: redactor.restore(rawReply) })
 }
 
 const routes = {

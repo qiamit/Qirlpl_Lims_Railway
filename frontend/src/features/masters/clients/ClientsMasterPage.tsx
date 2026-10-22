@@ -18,6 +18,7 @@ import {
   isValidEmail,
   isValidGst,
   isValidIndianPin,
+  isMissingClientAiConsentColumnError,
   isValidMobile,
   toContinuousText,
   toProperTitleCase,
@@ -39,6 +40,8 @@ export default function ClientsMasterPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   const [editingId, setEditingId] = useState<string | null>(null)
+  /** AI consent as loaded, so consent_at/by change only when the flag changes. */
+  const [savedAiDataConsent, setSavedAiDataConsent] = useState(false)
 
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -556,12 +559,34 @@ export default function ClientsMasterPage() {
           remark: form.remark.trim() || null,
         }
 
-        const { error } = await supabase
-          .from('clients')
-          .upsert(payload, { onConflict: editingId ? 'id' : 'company_name' })
+        // ISO 17025 4.2: AI processing consent. Sent only when the flag changed,
+        // so saving works before migration 20261025100200 is applied.
+        const consent = form.aiDataConsent === true
+        let consentPayload: Record<string, unknown> = {}
+        if (consent !== savedAiDataConsent) {
+          const { data: authData } = await supabase.auth.getUser()
+          consentPayload = {
+            ai_data_consent: consent,
+            ai_data_consent_at: new Date().toISOString(),
+            ai_data_consent_by: authData.user?.id ?? null,
+          }
+        }
+
+        const onConflict = editingId ? 'id' : 'company_name'
+        let consentNotSaved = false
+        let { error } = await supabase.from('clients').upsert({ ...payload, ...consentPayload }, { onConflict })
+        if (error && Object.keys(consentPayload).length > 0 && isMissingClientAiConsentColumnError(error)) {
+          consentNotSaved = true
+          ;({ error } = await supabase.from('clients').upsert(payload, { onConflict }))
+        }
         if (error) throw error
 
-        setSaveMessage('Saved successfully.')
+        setSaveMessage(
+          consentNotSaved
+            ? 'Saved. AI consent was not stored: database update 20261025100200 must be applied first.'
+            : 'Saved successfully.',
+        )
+        setSavedAiDataConsent(false)
         setForm(emptyClientForm())
         setEditingId(null)
         setShowForm(false)
@@ -578,6 +603,7 @@ export default function ClientsMasterPage() {
     setSaveMessage(null)
     setForm(emptyClientForm())
     setEditingId(null)
+    setSavedAiDataConsent(false)
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -585,6 +611,7 @@ export default function ClientsMasterPage() {
   const handleEdit = (row: ClientRow) => {
     setSaveMessage(null)
     setEditingId(row.id)
+    setSavedAiDataConsent(row.ai_data_consent === true)
     setForm({
       gstNumber: row.gst_number ?? '',
       companyType: row.company_type,
@@ -603,6 +630,7 @@ export default function ClientsMasterPage() {
       balanceType: row.balance_type,
       paymentTerm: row.payment_term,
       remark: row.remark ?? '',
+      aiDataConsent: row.ai_data_consent === true,
     })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -611,6 +639,8 @@ export default function ClientsMasterPage() {
   const handleCopy = (row: ClientRow) => {
     setSaveMessage(null)
     setEditingId(null)
+    // Consent belongs to the original client; a copy starts without it.
+    setSavedAiDataConsent(false)
     setForm({
       gstNumber: row.gst_number ?? '',
       companyType: row.company_type,
@@ -951,6 +981,7 @@ export default function ClientsMasterPage() {
               </p>
             ) : null}
             <ClientsForm
+            showAiDataConsent
             form={form}
             onChange={setForm}
             states={states}
