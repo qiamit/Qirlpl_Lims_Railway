@@ -273,19 +273,24 @@ export function parseAcceptanceLimit(requirement: string): AcceptanceLimit | nul
   return null
 }
 
-/** Simple acceptance (w = 0): the original comparisons, unchanged. */
+/**
+ * Simple acceptance (w = 0). A result on the limit is on the limit even when
+ * floating point says otherwise (5.2 − 5 = 0.20000000000000018), so every
+ * comparison allows a relative epsilon (validation case CF-04).
+ */
 function simpleAccept(observed: number, limit: AcceptanceLimit): boolean {
+  const eps = 1e-9 * limitScale(observed, limit, 0)
   switch (limit.kind) {
     case 'range':
-      return observed >= limit.min && observed <= limit.max
+      return observed >= limit.min - eps && observed <= limit.max + eps
     case 'tolerance':
-      return Math.abs(observed - limit.center) <= limit.tol
+      return Math.abs(observed - limit.center) <= limit.tol + eps
     case 'upper':
-      return limit.inclusive ? observed <= limit.limit : observed < limit.limit
+      return limit.inclusive ? observed <= limit.limit + eps : observed < limit.limit - eps
     case 'lower':
-      return limit.inclusive ? observed >= limit.limit : observed > limit.limit
+      return limit.inclusive ? observed >= limit.limit - eps : observed > limit.limit + eps
     case 'equal':
-      return Math.abs(observed - limit.target) < 1e-9
+      return Math.abs(observed - limit.target) < eps
   }
 }
 
