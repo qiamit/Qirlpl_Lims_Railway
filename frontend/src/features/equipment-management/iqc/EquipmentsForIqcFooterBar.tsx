@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Download, Printer, Trash2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -24,6 +25,7 @@ export function EquipmentsForIqcFooterBar({
   jumpTo,
   onJumpToChange,
   onJumpToGo,
+  labelActions,
 }: {
   message: string | null
   loading: boolean
@@ -38,6 +40,8 @@ export function EquipmentsForIqcFooterBar({
   jumpTo: string
   onJumpToChange: (value: string) => void
   onJumpToGo: () => void
+  /** Status label buttons (6.4.8), shown to every user. */
+  labelActions?: ReactNode
 }) {
   const selectionDisabled = selectedCount === 0
 
@@ -87,6 +91,7 @@ export function EquipmentsForIqcFooterBar({
               Delete
             </Button>
             </LaboratoryDirectorOnly>
+            {labelActions}
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2 md:flex-nowrap">

@@ -733,6 +733,7 @@ export function EquipmentMasterForm({
       equipmentName={form.equipmentName}
       assetCode={form.assetCode}
       history={form.maintenanceHistory}
+      historySource={{ table: 'equipment_master', assetCode: form.assetCode }}
       currentLastDate={form.lastMaintenanceDate}
       currentDoneByName={maintenanceDoneByName}
       currentChecklist={form.maintenanceChecklist}
@@ -1415,6 +1416,7 @@ export function EquipmentMasterForm({
       equipmentName={form.equipmentName}
       assetCode={form.assetCode}
       history={form.intermediateCheckHistory}
+      historySource={{ table: 'equipment_master', assetCode: form.assetCode }}
       currentLastDate={form.lastIntermediateCheckDate}
       currentDoneByName={intermediateDoneByName}
       currentStatus={currentIntermediatePayload.status}

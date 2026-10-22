@@ -31,6 +31,7 @@ import {
 import { cn, formatDate } from '@/lib/utils'
 import { sortMaintenanceHistoryNewestFirst, type MaintenanceHistoryRecord } from './maintenanceHistory'
 import type { MaintenanceChecklistItem } from './types'
+import { useMaintenanceHistoryWithRegister, type EquipmentHistorySource } from './equipmentHistoryRegister'
 
 export type MaintenanceHistoryDirectorChange = {
   history: MaintenanceHistoryRecord[]
@@ -86,6 +87,7 @@ export function MaintenanceHistoryDialog({
   currentChecklist,
   onDirectorChange,
   layer = 'default',
+  historySource,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -97,6 +99,8 @@ export function MaintenanceHistoryDialog({
   currentChecklist?: MaintenanceChecklistItem[]
   onDirectorChange?: (next: MaintenanceHistoryDirectorChange) => void
   layer?: 'default' | 'nested' | 'stacked'
+  /** Equipment the history belongs to: also read from the append-only register (6.4.13). */
+  historySource?: EquipmentHistorySource
 }) {
   const { designation } = useAuth()
   const canManageActions = isLaboratoryDirector(designation)
@@ -110,6 +114,11 @@ export function MaintenanceHistoryDialog({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
+  const {
+    records: shownHistory,
+    readOnlyIds,
+    registerActive,
+  } = useMaintenanceHistoryWithRegister(history, historySource, open)
 
   const rows = useMemo(() => {
     const list: HistoryListRow[] = []
@@ -123,7 +132,7 @@ export function MaintenanceHistoryDialog({
         checklist: currentChecklist ?? [],
       })
     }
-    for (const record of sortMaintenanceHistoryNewestFirst(history)) {
+    for (const record of sortMaintenanceHistoryNewestFirst(shownHistory)) {
       list.push({
         id: record.id,
         equipmentCode: code,
@@ -133,7 +142,7 @@ export function MaintenanceHistoryDialog({
       })
     }
     return list
-  }, [assetCode, currentChecklist, currentDoneByName, currentLastDate, history])
+  }, [assetCode, currentChecklist, currentDoneByName, currentLastDate, shownHistory])
 
   const filteredRows = useMemo(() => {
     const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
@@ -429,7 +438,14 @@ export function MaintenanceHistoryDialog({
                             View
                           </Button>
                         </TableCell>
-                        {canManageActions ? (
+                        {canManageActions && readOnlyIds.has(row.id) ? (
+                          <TableCell
+                            className="px-1 text-center align-middle text-[10px] font-semibold uppercase tracking-wide text-stone-500"
+                            title="Kept in the append-only maintenance register; not in this equipment's current history"
+                          >
+                            Register
+                          </TableCell>
+                        ) : canManageActions ? (
                           <TableCell className="px-1 text-center align-middle">
                             <div className="flex items-center justify-center gap-0.5">
                               <Button
@@ -479,6 +495,7 @@ export function MaintenanceHistoryDialog({
                   ) : (
                     <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-400 sm:inline sm:text-xs">
                       {filteredRows.length} record{filteredRows.length === 1 ? '' : 's'}
+                      {registerActive ? ' · append-only register (ISO 17025 6.4.13)' : ''}
                     </span>
                   )}
                 </div>

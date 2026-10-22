@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { useSearchParams } from 'react-router-dom'
-import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarBtnClass, limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { escapeHtml } from '@/lib/htmlText'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
@@ -59,6 +59,12 @@ import {
 } from '@/features/settings/lab-settings/brandMark'
 import { LAB_SETTINGS_SINGLETON_ID } from '@/features/settings/lab-settings/labSettingsDb'
 import { EquipmentsForIqcFooterBar } from './EquipmentsForIqcFooterBar'
+import { EquipmentLabelButtons } from '@/features/masters/equipment-master/EquipmentLabelButtons'
+import {
+  equipmentLabelStatus,
+  equipmentLabelUrl,
+  type EquipmentLabelItem,
+} from '@/features/masters/equipment-master/equipmentLabels'
 import { EquipmentsForIqcHeaderBar } from './EquipmentsForIqcHeaderBar'
 import { EquipmentsForIqcTable } from './EquipmentsForIqcTable'
 import {
@@ -494,6 +500,42 @@ export default function EquipmentsForIqcMasterPage() {
     setSearchParams(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
   }, [searchParams, listLoading, listRows])
+
+  // ?asset=<code> (QR code on the equipment status label, 6.4.8).
+  useEffect(() => {
+    const asset = searchParams.get('asset')?.trim()
+    if (!asset || listLoading || listRows.length === 0) return
+    const row = listRows.find((r) => r.assetCode.trim().toLowerCase() === asset.toLowerCase())
+    const next = new URLSearchParams(searchParams)
+    next.delete('asset')
+    setSearchParams(next, { replace: true })
+    if (!row) return
+    setSearch(row.assetCode)
+    openEdit(row, 'details')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
+  }, [searchParams, listLoading, listRows])
+
+  const labelItems = (): EquipmentLabelItem[] =>
+    listRows
+      .filter((r) => selectedKeys.has(r.key))
+      .map((r) => {
+        const lastCal =
+          r.source === 'testing'
+            ? testingRows.find((t) => t.id === r.id)?.last_calibration_date
+            : calibrationRows.find((c) => c.id === r.id)?.last_calibration_date
+        return {
+          assetCode: r.assetCode,
+          name: r.equipmentName,
+          calibratedOn: lastCal ?? null,
+          dueOn: r.nextCalibrationDue,
+          status: equipmentLabelStatus({
+            equipmentStatus: r.status,
+            lastCalibrationDate: lastCal,
+            nextCalibrationDue: r.nextCalibrationDue,
+          }),
+          url: equipmentLabelUrl('/equipment-management/iqc', r.assetCode),
+        }
+      })
 
   const openCopy = (row: EquipmentsForIqcListRow) => {
     setSaveMessage(null)
@@ -1049,6 +1091,15 @@ th{background:#1c1917;color:#fde68a}
         onExport={handleExport}
         onPrintSelected={handlePrint}
         onDeleteSelected={() => void handleDeleteSelected()}
+        labelActions={
+          <EquipmentLabelButtons
+            getItems={labelItems}
+            selectedCount={selectedKeys.size}
+            disabled={listLoading || saveLoading}
+            className={limsDarkBarBtnClass}
+            onError={setSaveMessage}
+          />
+        }
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

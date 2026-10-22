@@ -1191,6 +1191,7 @@ export function IqcMasterForm({
           equipmentName={form.equipmentName}
           assetCode={form.assetCode}
           history={form.maintenanceHistory}
+          historySource={{ table: 'iqc_masters', assetCode: form.assetCode }}
           currentLastDate={form.lastMaintenanceDate}
           currentDoneByName={maintenanceDoneByName}
           currentChecklist={form.maintenanceChecklist}
@@ -1956,6 +1957,7 @@ export function IqcMasterForm({
         equipmentName={form.equipmentName}
         assetCode={form.assetCode}
         history={form.maintenanceHistory}
+        historySource={{ table: 'iqc_masters', assetCode: form.assetCode }}
         currentLastDate={form.lastMaintenanceDate}
         currentDoneByName={maintenanceDoneByName}
         currentChecklist={form.maintenanceChecklist}

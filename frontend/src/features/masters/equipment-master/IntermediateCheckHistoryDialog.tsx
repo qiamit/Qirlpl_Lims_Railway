@@ -16,6 +16,10 @@ import {
   type IntermediateCheckMasterSnapshot,
   type IntermediateCheckReadingItem,
 } from './intermediateCheckHistory'
+import {
+  useIntermediateCheckHistoryWithRegister,
+  type EquipmentHistorySource,
+} from './equipmentHistoryRegister'
 
 export function IntermediateCheckHistoryDialog({
   open,
@@ -34,6 +38,7 @@ export function IntermediateCheckHistoryDialog({
   currentNextDueDate,
   acceptanceCriteria,
   layer = 'default',
+  historySource,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -51,15 +56,22 @@ export function IntermediateCheckHistoryDialog({
   currentNextDueDate?: string
   acceptanceCriteria?: string
   layer?: 'default' | 'nested' | 'stacked'
+  /** Equipment the history belongs to: also read from the append-only register (6.4.10, 6.4.13). */
+  historySource?: EquipmentHistorySource
 }) {
+  const {
+    records: shownHistory,
+    readOnlyIds,
+    registerActive,
+  } = useIntermediateCheckHistoryWithRegister(history, historySource, open)
   const visibleCount = useMemo(() => {
     const historyCount = filterIntermediateCheckHistoryLastYears(
-      history,
+      shownHistory,
       INTERMEDIATE_CHECK_HISTORY_YEARS,
     ).length
     const hasCurrent = !!currentLastDate?.trim() && (currentReadings?.length ?? 0) > 0
     return historyCount + (hasCurrent ? 1 : 0)
-  }, [history, currentLastDate, currentReadings])
+  }, [shownHistory, currentLastDate, currentReadings])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,11 +91,13 @@ export function IntermediateCheckHistoryDialog({
             ) : null}
             <p className="mt-1 text-xs text-muted-foreground">
               Showing {visibleCount} record(s) from the last {INTERMEDIATE_CHECK_HISTORY_YEARS} years.
+              {registerActive ? ' Past checks are kept in an append-only register (ISO 17025 6.4.10, 6.4.13).' : ''}
             </p>
           </div>
 
           <IntermediateCheckHistoryPanel
-            history={history}
+            history={shownHistory}
+            registerOnlyIds={readOnlyIds}
             currentLastDate={currentLastDate}
             currentDoneByName={currentDoneByName}
             currentStatus={currentStatus}

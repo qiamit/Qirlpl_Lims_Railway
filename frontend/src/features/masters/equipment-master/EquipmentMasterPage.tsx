@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { useSearchParams } from 'react-router-dom'
-import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarBtnClass, limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { fetchDeletedKeys } from '@/lib/softDelete'
@@ -36,6 +36,8 @@ import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { isMissingColumnError } from '@/features/quality/control-charts/missingColumn'
 import { printHelperScriptTag } from '@/lib/printHelper'
+import { EquipmentLabelButtons } from './EquipmentLabelButtons'
+import { equipmentLabelStatus, equipmentLabelUrl, type EquipmentLabelItem } from './equipmentLabels'
 
 const BUCKET = 'equipment-files'
 
@@ -521,6 +523,24 @@ export default function EquipmentMasterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
   }, [searchParams, listLoading, rows])
 
+  // ?asset=<code> (QR code on the equipment status label, 6.4.8): open that equipment.
+  useEffect(() => {
+    const asset = searchParams.get('asset')?.trim()
+    if (!asset || listLoading || rows.length === 0) return
+    const key = asset.toLowerCase()
+    const row = rows.find((r) => (r.asset_code ?? '').trim().toLowerCase() === key)
+    const next = new URLSearchParams(searchParams)
+    next.delete('asset')
+    setSearchParams(next, { replace: true })
+    if (!row) {
+      setSaveMessage(`No equipment with asset code ${asset}.`)
+      return
+    }
+    setSearch(row.asset_code)
+    handleEdit(row, 'details')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
+  }, [searchParams, listLoading, rows])
+
   const handleCopy = (row: EquipmentRow) => {
     setSaveMessage(null)
     setEditingId(null) // copy resets id
@@ -643,6 +663,25 @@ export default function EquipmentMasterPage() {
   }
 
   const selectedRows = useMemo(() => rows.filter((r) => selectedIds.has(r.id)), [rows, selectedIds])
+
+  const labelItems = (): EquipmentLabelItem[] =>
+    selectedRows.map((r) => {
+      const acc = acceptanceStateMap?.[r.id]
+      return {
+        assetCode: r.asset_code,
+        name: r.equipment_name,
+        calibratedOn: r.last_calibration_date,
+        dueOn: r.next_calibration_due,
+        sealNo: r.seal_no,
+        status: equipmentLabelStatus({
+          equipmentStatus: r.equipment_status,
+          lastCalibrationDate: r.last_calibration_date,
+          nextCalibrationDue: r.next_calibration_due,
+          notAccepted: acc === 'pending' || acc === 'rejected',
+        }),
+        url: equipmentLabelUrl('/masters/equipment', r.asset_code),
+      }
+    })
 
   const handlePrintSelected = () => {
     const exportRows = selectedRows.length > 0 ? selectedRows : filteredRows
@@ -1099,6 +1138,15 @@ export default function EquipmentMasterPage() {
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}
         onDeleteSelected={handleDeleteSelected}
+        labelActions={
+          <EquipmentLabelButtons
+            getItems={labelItems}
+            selectedCount={selectedRows.length}
+            disabled={saveLoading}
+            className={limsDarkBarBtnClass}
+            onError={setSaveMessage}
+          />
+        }
         page={page}
         pageCount={pageCount}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
