@@ -66,6 +66,10 @@ import {
   Grid3x3 as GridIcon,
   Archive,
   BookCheck,
+  UserCog,
+  Contact,
+  Eye,
+  KeyRound,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -283,6 +287,11 @@ export const NAV_SECTIONS: NavSection[] = [
             icon: FileSignature,
             clause: '4.1',
           },
+          { label: 'Authorization Matrix', to: '/personnel/authorization-matrix', icon: KeyRound, clause: '6.2.6' },
+          { label: 'Employee Dossier', to: '/personnel/dossier', icon: Contact, clause: '6.2' },
+          { label: 'Competence Requirements', to: '/personnel/competence-requirements', icon: UserCog, clause: '6.2.2' },
+          { label: 'Competence Monitoring', to: '/personnel/competence-monitoring', icon: Eye, clause: '6.2.5' },
+          { label: 'Training Records', to: '/training/records', icon: GraduationCap, clause: '6.2.5' },
         ],
       },
       {

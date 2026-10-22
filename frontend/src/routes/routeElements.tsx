@@ -90,6 +90,11 @@ const DeclarationsPage = lazy(() => import('@/features/personnel/declarations/De
 const AuditTrailPage = lazy(() => import('@/features/audit-trail/AuditTrailPage'))
 const RecycleBinPage = lazy(() => import('@/features/recycle-bin/RecycleBinPage'))
 const AuditCoveragePage = lazy(() => import('@/features/audit-mrm/audit-coverage/AuditCoveragePage'))
+const AuthorizationMatrixPage = lazy(() => import('@/features/personnel/competence/AuthorizationMatrixPage'))
+const EmployeeDossierPage = lazy(() => import('@/features/personnel/competence/EmployeeDossierPage'))
+const CompetenceRequirementsPage = lazy(() => import('@/features/personnel/competence/CompetenceRequirementsPage'))
+const CompetenceMonitoringPage = lazy(() => import('@/features/personnel/competence/CompetenceMonitoringPage'))
+const TrainingRecordsPage = lazy(() => import('@/features/personnel/competence/TrainingRecordsPage'))
 const RetentionSchedulePage = lazy(() => import('@/features/records-retention/RetentionSchedulePage'))
 const MyDocumentAcknowledgementsPage = lazy(() => import('@/features/management-docs/MyDocumentAcknowledgementsPage'))
 const DecisionRulesPage = lazy(() => import('@/features/masters/decision-rules/DecisionRulesPage'))
@@ -426,6 +431,26 @@ export function RecycleBinRoute() {
 
 export function AuditCoverageRoute() {
   return <AuditCoveragePage />
+}
+
+export function AuthorizationMatrixRoute() {
+  return <AuthorizationMatrixPage />
+}
+
+export function EmployeeDossierRoute() {
+  return <EmployeeDossierPage />
+}
+
+export function CompetenceRequirementsRoute() {
+  return <CompetenceRequirementsPage />
+}
+
+export function CompetenceMonitoringRoute() {
+  return <CompetenceMonitoringPage />
+}
+
+export function TrainingRecordsRoute() {
+  return <TrainingRecordsPage />
 }
 
 export function RetentionScheduleRoute() {

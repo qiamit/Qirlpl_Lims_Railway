@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
+import { useReasonForChange } from '@/hooks/useReasonForChange'
+import { gateAuthorization } from '@/lib/authorizationCheck'
 import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   nextCalibrationJobStage,
@@ -76,6 +78,7 @@ export function CalibrationJobStageMasterPage({
   titleOverride?: string
 }) {
   const { user, designation, profileName, profileReady } = useAuth()
+  const askReason = useReasonForChange()
   const [rows, setRows] = useState<CalibrationJobRow[]>([])
   const [engineers, setEngineers] = useState<CalibrationEngineerOption[]>([])
   const [listLoading, setListLoading] = useState(false)
@@ -285,6 +288,25 @@ export function CalibrationJobStageMasterPage({
       window.alert(blockMsg)
       return
     }
+    // ISO/IEC 17025 6.2.6: the reviewer becomes the certificate's Authorized
+    // Signatory, so they must be authorized to sign certificates.
+    const signGate =
+      isReviewData && user?.id
+        ? await gateAuthorization(askReason, {
+            userId: user.id,
+            personName: profileName.trim() || user.email || null,
+            activity: 'sign_certificate',
+            actorIsDirector: isLaboratoryDirector(designation),
+            recordTable: 'calibration_jobs',
+            recordLabel: [...new Set(rows.filter((r) => idsToMove.includes(r.id)).map((r) => r.srf_number ?? ''))]
+              .filter(Boolean)
+              .join(', '),
+          })
+        : null
+    if (signGate && !signGate.proceed) {
+      if (signGate.message) window.alert(signGate.message)
+      return
+    }
     setActionLoading(true)
     try {
       if (isReviewData && user?.id) {
@@ -305,6 +327,9 @@ export function CalibrationJobStageMasterPage({
         )
       }
       const { moved } = await moveCalibrationJobsToNextStage(idsToMove)
+      if (signGate?.proceed) {
+        for (const id of idsToMove) await signGate.record(id)
+      }
       if (moved > 0) {
         const movedSet = new Set(idsToMove)
         setRows((prev) => prev.filter((r) => !movedSet.has(r.id)))
@@ -461,7 +486,26 @@ export function CalibrationJobStageMasterPage({
     engineerName: string | null,
   ) => {
     try {
+      // ISO/IEC 17025 6.2.6: engineer must be authorized to calibrate.
+      const job = rows.find((r) => r.id === id)
+      const engGate =
+        engineerId && engineerId !== job?.allocated_engineer_id
+          ? await gateAuthorization(askReason, {
+              userId: engineerId,
+              personName: engineerName,
+              activity: 'calibrate',
+              actorIsDirector: isLaboratoryDirector(designation),
+              recordTable: 'calibration_jobs',
+              recordId: id,
+              recordLabel: [job?.srf_number, job?.equipment_label].filter(Boolean).join(' · '),
+            })
+          : null
+      if (engGate && !engGate.proceed) {
+        if (engGate.message) window.alert(engGate.message)
+        return
+      }
       await updateCalibrationJobEngineer(id, { id: engineerId, name: engineerName })
+      await engGate?.record(id)
       setRows((prev) =>
         prev.map((r) =>
           r.id === id

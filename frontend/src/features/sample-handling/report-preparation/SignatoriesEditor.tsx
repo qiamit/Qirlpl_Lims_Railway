@@ -20,6 +20,10 @@ import {
   type TestReportSignatureAfterPart,
 } from '@/features/settings/lab-settings/printSettingsTypes'
 import type { ActiveUserProfileOption } from '@/features/sample-handling/shared/fetchActiveUserProfiles'
+import { useAuth } from '@/hooks/useAuth'
+import { useReasonForChange } from '@/hooks/useReasonForChange'
+import { gateAuthorization, type AuthorizationActivity } from '@/lib/authorizationCheck'
+import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import { limsFieldClass, limsOutlineBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +32,16 @@ export function defaultFirstSignatures(): TestReportSignature[] {
     ...s,
     showAfterParts: [...(s.showAfterParts ?? defaultSignatureShowAfterParts())],
   }))
+}
+
+/** ISO/IEC 17025 6.2.6: which authorization a signature role needs. */
+function signatureActivity(roleLabel: string): AuthorizationActivity | null {
+  const r = roleLabel.trim().toLowerCase()
+  if (!r) return null
+  if (r.includes('authori') || r.includes('approv') || r.includes('sign')) return 'sign_report'
+  if (r.includes('review') || r.includes('check')) return 'review_results'
+  if (r.includes('test')) return 'perform_test'
+  return null
 }
 
 const PART_SHORT: Record<TestReportSignatureAfterPart, string> = {
@@ -61,6 +75,28 @@ export function SignatoriesEditor({
   onRemove: (index: number) => void
 }) {
   const canAdd = signatures.length < MAX_TEST_REPORT_SIGNATURES
+  const { designation } = useAuth()
+  const askReason = useReasonForChange()
+
+  /** Authorization Matrix check for a signatory (warn / block / Director override). */
+  const authorizationAllows = async (userId: string, roleLabel: string): Promise<boolean> => {
+    const activity = signatureActivity(roleLabel)
+    if (!activity || !userId || userId === '__none__') return true
+    const gate = await gateAuthorization(askReason, {
+      userId,
+      personName: users.find((u) => u.id === userId)?.name ?? null,
+      activity,
+      actorIsDirector: isLaboratoryDirector(designation),
+      recordTable: 'test_report_signatories',
+      recordLabel: roleLabel,
+    })
+    if (!gate.proceed) {
+      if (gate.message) window.alert(gate.message)
+      return false
+    }
+    await gate.record(null)
+    return true
+  }
 
   const toggleShowAfterPart = (
     index: number,
@@ -143,7 +179,11 @@ export function SignatoriesEditor({
                   <td className="px-2 py-2">
                     <Select
                       value={sig.roleLabel || undefined}
-                      onValueChange={(roleLabel) => onChange(index, { roleLabel })}
+                      onValueChange={(roleLabel) => {
+                        void (async () => {
+                          if (await authorizationAllows(sig.userId, roleLabel)) onChange(index, { roleLabel })
+                        })()
+                      }}
                       disabled={disabled}
                     >
                       <SelectTrigger id={`${idPrefix}-role-${index}`} className="h-8 min-w-[8rem]">
@@ -161,7 +201,11 @@ export function SignatoriesEditor({
                   <td className="px-2 py-2">
                     <Select
                       value={sig.userId || undefined}
-                      onValueChange={(userId) => onSelectUser(index, userId)}
+                      onValueChange={(userId) => {
+                        void (async () => {
+                          if (await authorizationAllows(userId, sig.roleLabel)) onSelectUser(index, userId)
+                        })()
+                      }}
                       disabled={disabled || usersLoading || users.length === 0}
                     >
                       <SelectTrigger id={`${idPrefix}-user-${index}`} className="h-8 min-w-[10rem]">

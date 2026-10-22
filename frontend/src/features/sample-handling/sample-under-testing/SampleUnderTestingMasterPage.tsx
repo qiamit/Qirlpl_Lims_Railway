@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { isMissingColumnError } from '@/lib/equipmentTraceability'
+import { gateAuthorization } from '@/lib/authorizationCheck'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
@@ -1396,6 +1397,22 @@ export default function SampleUnderTestingMasterPage() {
     const reviewer = reviewUsers.find((u) => u.id === reviewEmployeeId)
     const reviewerName = reviewer?.name?.trim() || null
 
+    // ISO/IEC 17025 6.2.6: reviewer must be authorized to review these parameters.
+    const authGate = await gateAuthorization(askReason, {
+      userId: reviewEmployeeId,
+      personName: reviewerName,
+      activity: 'review_results',
+      testParameterIds: uniqueParameterIds(sendForReviewRow.testParameterIds),
+      actorIsDirector: isLaboratoryDirector(designation),
+      recordTable: 'test_allocations',
+      recordId: testAllocationId,
+      recordLabel: [sendForReviewRow.srfNumber, sendForReviewRow.sectionCode].filter(Boolean).join(' · '),
+    })
+    if (!authGate.proceed) {
+      if (authGate.message) setReviewSubmitError(authGate.message)
+      return
+    }
+
     setReviewSubmitLoading(true)
     setReviewSubmitError(null)
     try {
@@ -1439,6 +1456,7 @@ export default function SampleUnderTestingMasterPage() {
         if (stageErr) throw stageErr
       }
 
+      await authGate.record(testAllocationId)
       setSaveMessage('Sent for review.')
       setSendForReviewOpen(false)
       applySendForReviewRow(null)

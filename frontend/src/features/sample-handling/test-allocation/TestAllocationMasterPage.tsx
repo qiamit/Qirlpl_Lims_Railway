@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { useReasonForChange } from '@/hooks/useReasonForChange'
+import { gateAuthorization } from '@/lib/authorizationCheck'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import type { TestAllocationRow } from '../types'
@@ -36,6 +38,7 @@ const normUserField = (value: string | null | undefined) => (value ?? '').trim()
 
 export default function TestAllocationMasterPage() {
   const { session, departmentName, designation } = useAuth()
+  const askReason = useReasonForChange()
   const showDelete = canDeleteSampleHandlingRecords(designation)
   const [rows, setRows] = useState<TestAllocationRow[]>([])
   const [listLoading, setListLoading] = useState(false)
@@ -550,6 +553,29 @@ export default function TestAllocationMasterPage() {
           return
         }
 
+        // ISO/IEC 17025 6.2.6: analyst must be on the Authorization Matrix for
+        // the parameters (only new analyst / newly added parameters are checked).
+        const sameAnalyst = (formRow.assignedEmployeeId ?? '') === (form.assignedEmployeeId ?? '')
+        const prevParamIds = new Set(sameAnalyst ? formRow.testParameterIds ?? [] : [])
+        const paramsToCheck = (form.testParameterIds ?? []).filter((id) => !prevParamIds.has(id))
+        const authGate =
+          form.assignedEmployeeId && (!sameAnalyst || paramsToCheck.length > 0)
+            ? await gateAuthorization(askReason, {
+                userId: form.assignedEmployeeId,
+                personName: form.assignedEmployeeName,
+                activity: 'perform_test',
+                testParameterIds: paramsToCheck,
+                actorIsDirector: isLaboratoryDirector(designation),
+                targetLabels: Object.fromEntries(testParamOptions.map((o) => [o.id, o.label ?? o.id])),
+                recordTable: 'test_allocations',
+                recordLabel: [formRow.srfNumber, formRow.sectionCode ?? form.sectionCode].filter(Boolean).join(' · '),
+              })
+            : null
+        if (authGate && !authGate.proceed) {
+          if (authGate.message) setSaveMessage(authGate.message)
+          return
+        }
+
         const payload = {
           sample_allocation_id: form.sampleAllocationId,
           sample_id: formRow.sampleId,
@@ -659,6 +685,8 @@ export default function TestAllocationMasterPage() {
             if (stageErr) throw stageErr
           }
         }
+
+        if (authGate?.proceed) await authGate.record(allocationId)
 
         setSaveMessage('Test allocation saved.')
         setFormOpen(false)

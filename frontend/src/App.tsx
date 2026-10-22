@@ -93,6 +93,11 @@ import {
   AuditTrailRoute,
   RecycleBinRoute,
   AuditCoverageRoute,
+  AuthorizationMatrixRoute,
+  EmployeeDossierRoute,
+  CompetenceRequirementsRoute,
+  CompetenceMonitoringRoute,
+  TrainingRecordsRoute,
   RetentionScheduleRoute,
   MyDocumentAcknowledgementsRoute,
   DecisionRulesRoute,
@@ -231,6 +236,11 @@ export default function App() {
           />
           <Route path="personnel/authorities" element={<AuthoritiesRoute />} />
           <Route path="personnel/declarations" element={<DeclarationsRoute />} />
+          <Route path="personnel/authorization-matrix" element={<AuthorizationMatrixRoute />} />
+          <Route path="personnel/dossier" element={<EmployeeDossierRoute />} />
+          <Route path="personnel/competence-requirements" element={<CompetenceRequirementsRoute />} />
+          <Route path="personnel/competence-monitoring" element={<CompetenceMonitoringRoute />} />
+          <Route path="training/records" element={<TrainingRecordsRoute />} />
 
           {/* General Requirements (ISO 17025 related) */}
           <Route
