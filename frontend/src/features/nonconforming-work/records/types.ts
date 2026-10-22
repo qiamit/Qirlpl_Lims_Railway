@@ -64,6 +64,9 @@ export type NcWorkRecordRow = {
   status: NcWorkStatus
   corrective_action_required: boolean
   created_at?: string
+  /** Sample affected (migration 20261029100300): holds its report issue while the NC is open. */
+  sample_id?: string | null
+  srf_number?: string | null
 }
 
 export type NcWorkRecordForm = {
@@ -87,6 +90,9 @@ export type NcWorkRecordForm = {
   resumptionAuthorizedAt: string
   status: NcWorkStatus
   correctiveActionRequired: boolean
+  /** Affected sample (holds its test report issue while this NC is open). */
+  sampleId: string
+  srfNumber: string
 }
 
 function nowLocalDateTimeInput(): string {
@@ -133,6 +139,8 @@ export function emptyNcWorkForm(ncId = ''): NcWorkRecordForm {
     resumptionAuthorizedAt: '',
     status: 'Open',
     correctiveActionRequired: false,
+    sampleId: '',
+    srfNumber: '',
   }
 }
 
@@ -164,6 +172,8 @@ export function rowToNcWorkForm(row: NcWorkRecordRow): NcWorkRecordForm {
     resumptionAuthorizedAt: toLocalDateTimeInput(row.resumption_authorized_at),
     status: (NC_STATUSES.includes(row.status as NcWorkStatus) ? row.status : 'Open') as NcWorkStatus,
     correctiveActionRequired: Boolean(row.corrective_action_required),
+    sampleId: row.sample_id ?? '',
+    srfNumber: row.srf_number ?? '',
   }
 }
 
@@ -189,8 +199,13 @@ export function ncWorkFormToPayload(form: NcWorkRecordForm) {
     resumption_authorized_at: localDateTimeToIso(form.resumptionAuthorizedAt),
     status: form.status,
     corrective_action_required: form.correctiveActionRequired,
+    sample_id: form.sampleId.trim() || null,
+    srf_number: form.srfNumber.trim() || null,
   }
 }
+
+/** Columns added by migration 20261029100300 (left out of saves before it is applied). */
+export const NC_SAMPLE_LINK_COLUMNS = ['sample_id', 'srf_number'] as const
 
 /** `deletedIds`: NC IDs of deleted records (never reused). */
 export function nextNcId(existing: NcWorkRecordRow[], deletedIds: string[] = []): string {

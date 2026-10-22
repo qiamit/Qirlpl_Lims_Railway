@@ -32,6 +32,8 @@ import {
   formatReportEnvironmentLine,
   type ReportEnvironmentLine,
 } from '@/features/environment/resultEnvironmentSnapshot'
+import { OPINIONS_HEADING, type ReportOpinions } from './reportOpinions'
+import { formatDate } from '@/lib/utils'
 
 function escapeHtml(s: string) {
   return s
@@ -243,6 +245,25 @@ function buildEnvironmentConditionsHtml(lines: ReportEnvironmentLine[] | null | 
       <p class="end-notes-body part-c-environment-line" style="text-align:left;margin:0 0 6px;"><strong>Environmental conditions during testing:</strong>${lines.length > 1 ? '<br/>' : ' '}${body}</p>`
 }
 
+/**
+ * "Opinions and interpretations" (ISO 17025 7.8.7), clearly marked as such, with
+ * the basis and who gave them. Empty string when there are none.
+ */
+function buildOpinionsHtml(opinions: ReportOpinions | null | undefined): string {
+  if (!opinions || (!opinions.text.trim() && !opinions.basis.trim())) return ''
+  const p = (inner: string) =>
+    `<p class="end-notes-body part-c-opinions-line" style="text-align:left;margin:0 0 3px;">${inner}</p>`
+  const lines = [p(`<strong>${escapeHtml(OPINIONS_HEADING)}</strong>`)]
+  if (opinions.text.trim()) lines.push(p(escapeHtml(opinions.text.trim()).replace(/\n/g, '<br/>')))
+  if (opinions.basis.trim()) {
+    lines.push(p(`<strong>Basis:</strong> ${escapeHtml(opinions.basis.trim()).replace(/\n/g, '<br/>')}`))
+  }
+  const by = [opinions.byName?.trim(), opinions.at ? formatDate(opinions.at) : ''].filter(Boolean).join(', ')
+  if (by) lines.push(p(`Given by: ${escapeHtml(by)}`))
+  return `
+      <div class="part-c-opinions" style="margin:0 0 6px;">${lines.join('')}</div>`
+}
+
 function buildPartCResultsHtml(
   rows: ReportResultRow[],
   columns: PartCReportColumnVisibility = DEFAULT_PART_C_REPORT_COLUMNS,
@@ -251,11 +272,15 @@ function buildPartCResultsHtml(
     showSectionRows?: boolean
     decisionRuleStatement?: string | null
     environmentConditions?: ReportEnvironmentLine[] | null
+    opinions?: ReportOpinions | null
   },
 ): { tableHtml: string; endNotesBlock: string } {
   const showEndNotes = options?.showEndNotes !== false
   const decisionRuleStatement = options?.decisionRuleStatement?.trim() || ''
   const environmentHtml = buildEnvironmentConditionsHtml(options?.environmentConditions)
+  // Opinions (7.8.7) print before the conditions, inside the same end-notes box.
+  const opinionsHtml = buildOpinionsHtml(options?.opinions)
+  const preNotesHtml = opinionsHtml + environmentHtml
   const showSectionRows = options?.showSectionRows !== false
   const visibleCols = visiblePartCReportColumns(columns)
   const colCount = Math.max(visibleCols.length, 1)
@@ -304,18 +329,18 @@ function buildPartCResultsHtml(
   // same end-notes box (the paginator moves that box as one block).
   const endNotesBlock = showEndNotes
     ? `
-    <div class="part-c-end-notes">${environmentHtml}
+    <div class="part-c-end-notes">${preNotesHtml}
       <p class="end-marker">${escapeHtml(TEST_REPORT_END_MARKER)}</p>
       <p class="end-notes-body">${escapeHtml(formatTestReportEndNotesText(decisionRuleStatement))}</p>
     </div>`
     : decisionRuleStatement
       ? `
-    <div class="part-c-end-notes part-c-decision-rule">${environmentHtml}
+    <div class="part-c-end-notes part-c-decision-rule">${preNotesHtml}
       <p class="end-notes-body">${escapeHtml(decisionRuleStatement)}</p>
     </div>`
-      : environmentHtml
+      : preNotesHtml
         ? `
-    <div class="part-c-end-notes part-c-environment">${environmentHtml}
+    <div class="part-c-end-notes ${environmentHtml ? 'part-c-environment' : 'part-c-opinions-only'}">${preNotesHtml}
     </div>`
         : ''
 
@@ -328,12 +353,14 @@ function buildPartCPrintHtml(
   printSettings?: TestReportPrintSettings,
   decisionRuleStatement?: string | null,
   environmentConditions?: ReportEnvironmentLine[] | null,
+  opinions?: ReportOpinions | null,
 ): string {
   const { tableHtml, endNotesBlock } = buildPartCResultsHtml(rows, columns, {
     showEndNotes: printSettings?.showPartCEndNotes !== false,
     showSectionRows: printSettings?.showPartCSectionRows !== false,
     decisionRuleStatement,
     environmentConditions,
+    opinions,
   })
   return `<section class="report-part part-c">
   ${tableHtml}
@@ -450,6 +477,8 @@ export function buildScopedTestReportPrintHtml(opts: {
   decisionRuleStatement?: string | null
   /** Conditions during testing per lab area (ISO 17025 7.8.3.1 a); printed in Part C when present. */
   environmentConditions?: ReportEnvironmentLine[] | null
+  /** Opinions and interpretations (ISO 17025 7.8.7); printed in Part C when present. */
+  opinions?: ReportOpinions | null
 }): string {
   const printSettings = opts.printSettings ?? DEFAULT_TEST_REPORT_PRINT_SETTINGS
   const signatureIssuedAt =
@@ -511,6 +540,7 @@ export function buildScopedTestReportPrintHtml(opts: {
     printSettings,
     opts.decisionRuleStatement,
     opts.environmentConditions,
+    opts.opinions,
   )
   const partDHtml = buildPartDPrintHtml(opts.notes, isLabel)
   const partAWithSignatures = withSignaturesAfterPart(

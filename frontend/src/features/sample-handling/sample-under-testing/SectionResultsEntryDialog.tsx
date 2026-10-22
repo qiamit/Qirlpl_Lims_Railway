@@ -48,6 +48,13 @@ import {
   type EquipmentUsedEntry,
 } from '@/lib/equipmentTraceability'
 import { EquipmentUsedPickerDialog } from './EquipmentUsedPickerDialog'
+import { ResultObservationMeta } from './ResultObservationMeta'
+import {
+  fetchResultAttachments,
+  fetchResultEntryStamps,
+  type ResultAttachment,
+  type ResultEntryStamp,
+} from './resultObservationRecords'
 import { fetchConditionsFor, type EnvironmentConditions } from '@/features/environment/environmentConditions'
 import {
   fetchResultEnvironmentByParamIds,
@@ -400,6 +407,23 @@ export function SectionResultsEntryDialog({
     () => [...new Set(draft.map((p) => p.paramRowId?.trim()).filter(Boolean))].sort().join('|'),
     [draft],
   )
+
+  // Who entered each result and its raw data files (ISO 17025 7.5.1); null = migration not applied.
+  const [entryStamps, setEntryStamps] = useState<Record<string, ResultEntryStamp> | null>(null)
+  const [resultAttachments, setResultAttachments] = useState<Record<string, ResultAttachment[]> | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    const ids = paramRowIdsKey.split('|').filter(Boolean)
+    void Promise.all([fetchResultEntryStamps(ids), fetchResultAttachments(ids)]).then(([stamps, files]) => {
+      if (cancelled) return
+      setEntryStamps(stamps)
+      setResultAttachments(files)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, paramRowIdsKey])
 
   // Equipment used already saved on these result rows (also probes the column).
   useEffect(() => {
@@ -1212,7 +1236,7 @@ export function SectionResultsEntryDialog({
                         />
                       )}
                     </div>
-                    <div className={cn(cellClass, 'min-w-0 justify-center text-center')}>
+                    <div className={cn(cellClass, 'min-w-0 flex-col items-stretch justify-center text-center')}>
                       {readOnly ? (
                         <span
                           className="w-full break-words whitespace-pre-wrap text-center leading-relaxed"
@@ -1231,6 +1255,20 @@ export function SectionResultsEntryDialog({
                           onChange={(next) => updateDraft(index, { results: next })}
                         />
                       )}
+                      <ResultObservationMeta
+                        sampleId={row?.sampleId ?? null}
+                        paramRowId={p.paramRowId}
+                        testLabel={p.testLabel}
+                        stamp={p.paramRowId ? entryStamps?.[p.paramRowId] : null}
+                        attachments={(p.paramRowId && resultAttachments?.[p.paramRowId]) || []}
+                        attachmentsAvailable={resultAttachments !== null}
+                        canAttach={!readOnly && row?.sampleStage !== 'completed'}
+                        onAttachmentsChange={(next) => {
+                          const id = p.paramRowId
+                          if (!id) return
+                          setResultAttachments((prev) => ({ ...(prev ?? {}), [id]: next }))
+                        }}
+                      />
                     </div>
                     <div className={cn(cellClass, 'min-w-0 flex-col items-stretch justify-center gap-1 text-left')}>
                       {traceability === 'missing' ? (

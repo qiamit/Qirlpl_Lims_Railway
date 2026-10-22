@@ -18,6 +18,7 @@ import {
 } from '../shared'
 import { ComplaintFormFields } from './ComplaintFormFields'
 import { ComplaintsTable } from './ComplaintsTable'
+import { ComplaintRaiseNcDialog } from './ComplaintRaiseNcDialog'
 import {
   emptyComplaintForm,
   formToPayload,
@@ -45,6 +46,8 @@ export default function CustomerComplaintsMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<ComplaintForm>(() => emptyComplaintForm())
+  const [raiseNcFor, setRaiseNcFor] = useState<ComplaintRow | null>(null)
+  const [ncIdsById, setNcIdsById] = useState<Record<string, string>>({})
 
   const canSave =
     !saveLoading &&
@@ -61,7 +64,17 @@ export default function CustomerComplaintsMasterPage() {
         supabase.from('user_profiles').select('id, full_name').order('full_name', { ascending: true }),
       ])
       if (cmpRes.error) throw cmpRes.error
-      setRows((cmpRes.data ?? []) as ComplaintRow[])
+      const list = (cmpRes.data ?? []) as ComplaintRow[]
+      setRows(list)
+      const ncIds = [...new Set(list.map((r) => r.nc_record_id).filter((v): v is string => Boolean(v)))]
+      if (ncIds.length) {
+        const { data: ncs } = await supabase.from('nc_work_records').select('id, nc_id').in('id', ncIds)
+        setNcIdsById(
+          Object.fromEntries(((ncs ?? []) as Array<{ id: string; nc_id: string }>).map((n) => [n.id, n.nc_id])),
+        )
+      } else {
+        setNcIdsById({})
+      }
       if (!empRes.error) {
         setEmployees(
           ((empRes.data ?? []) as Array<{ id: string; full_name: string | null }>).map((e) => ({
@@ -330,6 +343,18 @@ export default function CustomerComplaintsMasterPage() {
         }}
         onEdit={handleEdit}
         onCopy={handleCopy}
+        ncIdsById={ncIdsById}
+        onRaiseNc={(row) => setRaiseNcFor(row)}
+      />
+
+      <ComplaintRaiseNcDialog
+        complaint={raiseNcFor}
+        onClose={() => setRaiseNcFor(null)}
+        onLinked={(complaintId, nc) => {
+          setRows((prev) => prev.map((r) => (r.id === complaintId ? { ...r, nc_record_id: nc.id } : r)))
+          setNcIdsById((prev) => ({ ...prev, [nc.id]: nc.nc_id }))
+          setMessage(`NC ${nc.nc_id} raised for the complaint.`)
+        }}
       />
 
       <ComplaintsFooterBar

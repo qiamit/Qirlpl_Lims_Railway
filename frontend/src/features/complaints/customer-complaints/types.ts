@@ -53,6 +53,8 @@ export type ComplaintRow = {
   reviewer_not_involved: boolean
   status: ComplaintStatus
   created_at?: string
+  /** NC work record raised from this complaint (migration 20261029100300). */
+  nc_record_id?: string | null
 }
 
 export type ComplaintForm = {

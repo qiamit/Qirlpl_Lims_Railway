@@ -25,6 +25,7 @@ export function ConfirmLoginPasswordDialog({
   confirmLabel = 'Confirm',
   statement,
   children,
+  confirmDisabled = false,
   onConfirmed,
 }: {
   open: boolean
@@ -35,6 +36,8 @@ export function ConfirmLoginPasswordDialog({
   statement?: string
   /** Details of what is being signed, shown above the statement. */
   children?: ReactNode
+  /** Keeps the confirm button disabled (e.g. a hold that the signer cannot override). */
+  confirmDisabled?: boolean
   /** Called after the password is verified, with the time it was verified. */
   onConfirmed: (info: { reauthenticatedAt: string }) => void
 }) {
@@ -52,6 +55,7 @@ export function ConfirmLoginPasswordDialog({
   }, [open])
 
   const handleConfirm = async () => {
+    if (confirmDisabled) return
     const email = user?.email?.trim()
     if (!email) {
       setError('No logged-in user email found. Please sign in again.')
@@ -141,7 +145,7 @@ export function ConfirmLoginPasswordDialog({
             type="button"
             className={limsPrimaryBtnClass}
             onClick={() => void handleConfirm()}
-            disabled={verifying}
+            disabled={verifying || confirmDisabled}
           >
             {verifying ? 'Verifying…' : confirmLabel}
           </Button>

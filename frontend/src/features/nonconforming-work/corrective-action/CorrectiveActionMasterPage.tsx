@@ -27,6 +27,15 @@ import {
 import type { NcWorkRecordRow } from '../records/types'
 import { NcWorkCapaDialog } from './NcWorkCapaDialog'
 import { NcWorkDetailsDialog } from './NcWorkDetailsDialog'
+import { useAuth } from '@/hooks/useAuth'
+import type { EmployeeOption } from '../shared'
+import { CapaRegisterPanel } from './CapaRegisterPanel'
+import { CapaTrackingDialog } from './CapaTrackingDialog'
+import { fetchCapaRegister, type CapaRegisterRow } from './capaRegister'
+
+type HubView = 'register' | 'actions'
+
+const CAPA_VERIFIER_DESIGNATIONS = new Set(['laboratory director', 'quality manager', 'technical manager'])
 
 type SourceFilter = 'all' | 'audit' | 'ncw'
 
@@ -84,6 +93,47 @@ export default function CorrectiveActionMasterPage() {
   const handleNcwCapa = useFormDialogOpenChange(setShowNcwCapa)
   const [showNcwDetail, setShowNcwDetail] = useState(false)
   const handleNcwDetail = useFormDialogOpenChange(setShowNcwDetail)
+
+  // Unified CAPA register (migration 20261029100300); undefined = loading, null = not available.
+  const { designation } = useAuth()
+  const canVerify = CAPA_VERIFIER_DESIGNATIONS.has((designation ?? '').trim().toLowerCase())
+  const [registerRows, setRegisterRows] = useState<CapaRegisterRow[] | null | undefined>(undefined)
+  const [registerLoading, setRegisterLoading] = useState(false)
+  const [registerError, setRegisterError] = useState<string | null>(null)
+  const [employees, setEmployees] = useState<EmployeeOption[]>([])
+  const [trackRow, setTrackRow] = useState<CapaRegisterRow | null>(null)
+  // Links that filter by source (e.g. from Audit Non Conformities) keep the original list.
+  const view: HubView =
+    searchParams.get('view') === 'actions' || searchParams.has('source') || registerRows === null ? 'actions' : 'register'
+
+  const loadRegister = useCallback(async () => {
+    setRegisterLoading(true)
+    setRegisterError(null)
+    try {
+      const [list, emp] = await Promise.all([
+        fetchCapaRegister(),
+        supabase.from('user_profiles').select('id, full_name').order('full_name'),
+      ])
+      setRegisterRows(list)
+      if (!emp.error) {
+        setEmployees(
+          ((emp.data ?? []) as Array<{ id: string; full_name: string | null }>).map((e) => ({
+            id: e.id,
+            full_name: e.full_name?.trim() || 'Unnamed',
+          })),
+        )
+      }
+    } catch (err) {
+      setRegisterRows([])
+      setRegisterError(formatSupabaseError(err))
+    } finally {
+      setRegisterLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadRegister()
+  }, [loadRegister])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -170,6 +220,48 @@ export default function CorrectiveActionMasterPage() {
       setLoading(false)
     }
   }, [])
+
+  const reloadAll = useCallback(() => {
+    void load()
+    void loadRegister()
+  }, [load, loadRegister])
+
+  const setView = (next: HubView) => {
+    const params = new URLSearchParams(searchParams)
+    if (next === 'actions') params.set('view', 'actions')
+    else {
+      params.delete('view')
+      params.delete('source')
+      setSource('all')
+    }
+    setSearchParams(params, { replace: true })
+  }
+
+  /** Opens the existing CAPA form for an audit NC / NC work row of the register. */
+  const openRegisterSource = async (row: CapaRegisterRow) => {
+    if (row.source === 'audit') {
+      const match = hubRows.find((h) => h.auditRow?.checklistItemId === row.sourceId)
+      if (match?.auditRow) {
+        setAuditActive(match.auditRow)
+        setShowAuditAction(true)
+      }
+      return
+    }
+    if (row.source !== 'ncw') return
+    let rec = hubRows.find((h) => h.ncwRow?.id === row.sourceId)?.ncwRow ?? null
+    if (!rec) {
+      const { data, error: err } = await supabase.from('nc_work_records').select('*').eq('id', row.sourceId).maybeSingle()
+      if (err) {
+        setMessage(formatSupabaseError(err))
+        return
+      }
+      rec = (data as NcWorkRecordRow | null) ?? null
+    }
+    if (rec) {
+      setNcwActive(rec)
+      setShowNcwCapa(true)
+    }
+  }
 
   useEffect(() => {
     void load()
@@ -273,15 +365,53 @@ export default function CorrectiveActionMasterPage() {
           setPageSize(s)
           setPage(1)
         }}
-        sourceFilter={source}
+        sourceFilter={view === 'actions' ? source : undefined}
         onSourceFilterChange={(v) => {
           const next = v as SourceFilter
           setSource(next)
           setPage(1)
-          setSearchParams(next === 'all' ? {} : { source: next })
+          setSearchParams(next === 'all' ? { view: 'actions' } : { source: next, view: 'actions' })
         }}
       />
 
+      {registerRows !== null ? (
+        <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Corrective action views">
+          {(
+            [
+              ['register', 'CAPA Register (all sources)'],
+              ['actions', 'Audit & NC work CAPA forms'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={view === value}
+              onClick={() => setView(value)}
+              className={cn(
+                'border px-3 py-1.5 text-xs font-semibold',
+                view === value
+                  ? 'border-stone-800 bg-stone-800 text-amber-200'
+                  : 'border-stone-400 bg-white text-stone-700 hover:bg-stone-100',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {view === 'register' && registerRows !== null ? (
+        <CapaRegisterPanel
+          rows={registerRows ?? []}
+          loading={registerLoading || registerRows === undefined}
+          error={registerError}
+          search={search}
+          onTrack={(row) => setTrackRow(row)}
+          onOpenSource={(row) => void openRegisterSource(row)}
+        />
+      ) : (
+      <>
       <div className={cn(limsPanelClass, 'min-h-0 flex-1 overflow-auto bg-[#f7f3eb]')}>
         {error ? <p className="px-3 pt-3 text-sm text-red-600">{error}</p> : null}
         {loading ? (
@@ -451,6 +581,19 @@ export default function CorrectiveActionMasterPage() {
           if (Number.isFinite(n) && n >= 1 && n <= pageCount) setPage(n)
         }}
       />
+      </>
+      )}
+
+      <CapaTrackingDialog
+        row={trackRow}
+        employees={employees}
+        canVerify={canVerify}
+        onClose={() => setTrackRow(null)}
+        onSaved={() => {
+          setMessage('CAPA tracking saved.')
+          void loadRegister()
+        }}
+      />
 
       <NonConformitiesDetailsDialog
         open={showAuditDetail}
@@ -468,7 +611,7 @@ export default function CorrectiveActionMasterPage() {
         row={auditActive}
         onSaved={() => {
           setMessage('Audit CAPA saved.')
-          void load()
+          reloadAll()
         }}
       />
       <NcWorkCapaDialog
@@ -477,7 +620,7 @@ export default function CorrectiveActionMasterPage() {
         record={ncwActive}
         onSaved={() => {
           setMessage('Lab NCW CAPA saved.')
-          void load()
+          reloadAll()
         }}
       />
     </div>

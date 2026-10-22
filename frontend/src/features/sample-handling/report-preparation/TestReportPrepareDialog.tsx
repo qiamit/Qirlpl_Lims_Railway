@@ -16,6 +16,7 @@ import type { DecisionRule } from '@/features/masters/decision-rules/decisionRul
 import { TestReportCoverDetailsGrid } from './TestReportCoverDetailsGrid'
 import { TestReportSupplementaryGrid } from './TestReportSupplementaryGrid'
 import { TestReportRemarksSection } from './TestReportRemarksSection'
+import { TestReportOpinionsSection } from './TestReportOpinionsSection'
 import { formatSectionReportLine, type TestReportCoverDetails } from './fetchTestReportCoverDetails'
 import type { TestReportPartBDetails } from './testReportPartB'
 import type { LetterheadTemplateOptions, ReportPrepLetterheadsByScope } from './reportPrepLetterhead'
@@ -222,6 +223,12 @@ export function TestReportPrepareDialog({
                 specifiedRequirementEditable={specifiedRequirementEditable}
                 onSpecifiedRequirementUpdated={onSpecifiedRequirementUpdated}
                 decisionRule={decisionRule}
+              />
+
+              <TestReportOpinionsSection
+                sampleId={sampleId ?? active?.id ?? null}
+                srfNumber={active?.srfNumber ?? null}
+                disabled={saveLoading || issueLoading}
               />
 
               <TestReportRemarksSection

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
-import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
+import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
   deleteSamplesByIds,
@@ -83,6 +83,8 @@ import {
 import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
 import { visibleTestReportSignatures } from '@/features/settings/lab-settings/printSettingsTypes'
 import type { ReportScopeKind } from './reportScope'
+import { fetchIssueHoldNcs, ISSUE_HOLD_OVERRIDE_COLUMN, type IssueHoldNc } from './reportIssueHold'
+import { Textarea } from '@/components/ui/textarea'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import {
   sortTestReportPreparationRows,
@@ -111,6 +113,8 @@ type PendingIssue = {
   reportNumber: string | null
   ulrNumber: string | null
   signatories: Array<{ roleLabel: string; name: string; designation: string }>
+  /** Open NC records linked to the sample (issue on hold, ISO/IEC 17025 7.10.1). */
+  openNcs: IssueHoldNc[]
 }
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
@@ -167,6 +171,8 @@ export default function TestReportPreparationMasterPage() {
   const [issueLoading, setIssueLoading] = useState(false)
   const [pendingIssue, setPendingIssue] = useState<PendingIssue | null>(null)
   const [issuePasswordOpen, setIssuePasswordOpen] = useState(false)
+  const [holdOverrideReason, setHoldOverrideReason] = useState('')
+  const actorIsDirector = isLaboratoryDirector(designation)
   const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
   const [referbackDialogOpen, setReferbackDialogOpen] = useState(false)
   const [referbackRow, setReferbackRow] = useState<ListRow | null>(null)
@@ -686,6 +692,9 @@ export default function TestReportPreparationMasterPage() {
     } catch {
       // The dialog still opens; signatories are only shown for information.
     }
+    // Report issue hold: open NC linked to this sample ([] before migration 20261029100300).
+    const openNcs = await fetchIssueHoldNcs(active.id)
+    setHoldOverrideReason('')
     setPendingIssue({
       sampleId: active.id,
       scopes,
@@ -693,11 +702,16 @@ export default function TestReportPreparationMasterPage() {
       reportNumber: toCanonicalReportNumber(fullReportNumber) || null,
       ulrNumber: sanitizeNablUlrInput(nablUlrNumber) || null,
       signatories,
+      openNcs,
     })
     setIssuePasswordOpen(true)
   }
 
-  const completeIssueReport = async (pending: PendingIssue, reauthenticatedAt: string) => {
+  const completeIssueReport = async (
+    pending: PendingIssue,
+    reauthenticatedAt: string,
+    holdOverride: string | null = null,
+  ) => {
     if (!active || active.id !== pending.sampleId) return
     const scopes = pending.scopes
     setIssueLoading(true)
@@ -740,6 +754,8 @@ export default function TestReportPreparationMasterPage() {
       }
       let signatureStored = true
       let nablColumnMissing = false
+      // Director's reason for issuing despite an open NC (checked again by the database).
+      let holdOverrideStored = Boolean(holdOverride)
       const buildPayload = (): Record<string, string | boolean | null> => {
         let payload: Record<string, string | boolean | null> = issuePayload
         if (nablColumnMissing) {
@@ -755,11 +771,14 @@ export default function TestReportPreparationMasterPage() {
             ...withoutNabl,
           }
         }
-        return signatureStored ? { ...payload, ...signatureUpdate } : payload
+        const withHold = holdOverrideStored ? { ...payload, [ISSUE_HOLD_OVERRIDE_COLUMN]: holdOverride } : payload
+        return signatureStored ? { ...withHold, ...signatureUpdate } : withHold
       }
       let { error: uErr } = await supabase.from('samples').update(buildPayload()).eq('id', active.id)
-      for (let attempt = 0; uErr && attempt < 2; attempt += 1) {
-        if (signatureStored && isMissingIssueSignatureColumnError(uErr)) {
+      for (let attempt = 0; uErr && attempt < 3; attempt += 1) {
+        if (holdOverrideStored && isSupabaseMissingColumnError(uErr, ISSUE_HOLD_OVERRIDE_COLUMN)) {
+          holdOverrideStored = false
+        } else if (signatureStored && isMissingIssueSignatureColumnError(uErr)) {
           console.warn(
             `[Issue test report] Columns ${ISSUE_SIGNATURE_COLUMNS.join(', ')} are missing; apply migration 20261024100300_report_issue_signature.sql. Issuing without the issuer signature and archive.`,
             uErr.message,
@@ -1100,12 +1119,50 @@ export default function TestReportPreparationMasterPage() {
         title="Authorize Release of Test Report"
         confirmLabel="Issue Report"
         statement={ISSUE_SIGNATURE_STATEMENT}
+        confirmDisabled={
+          Boolean(pendingIssue?.openNcs.length) && (!actorIsDirector || !holdOverrideReason.trim())
+        }
         onConfirmed={({ reauthenticatedAt }) => {
           const pending = pendingIssue
+          const override = pending?.openNcs.length ? holdOverrideReason.trim() || null : null
           setPendingIssue(null)
-          if (pending) void completeIssueReport(pending, reauthenticatedAt)
+          if (pending) void completeIssueReport(pending, reauthenticatedAt, override)
         }}
       >
+        {pendingIssue && pendingIssue.openNcs.length > 0 ? (
+          <div className="space-y-2 border border-red-700/40 bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+            <p className="font-semibold">Report issue is on hold (ISO/IEC 17025 7.10)</p>
+            <p>Open nonconforming work linked to this sample:</p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {pendingIssue.openNcs.map((nc) => (
+                <li key={nc.id}>
+                  <span className="font-mono font-semibold">{nc.ncId}</span> ({nc.status})
+                  {nc.description.trim() ? ` · ${nc.description.trim().slice(0, 140)}` : ''}
+                </li>
+              ))}
+            </ul>
+            {actorIsDirector ? (
+              <div className="space-y-1">
+                <label htmlFor="issue-hold-override" className="block text-[11px] font-semibold uppercase tracking-wide text-red-900">
+                  Override reason (Laboratory Director) *
+                </label>
+                <Textarea
+                  id="issue-hold-override"
+                  rows={2}
+                  value={holdOverrideReason}
+                  onChange={(e) => setHoldOverrideReason(e.target.value)}
+                  placeholder="e.g. NC impact assessed: results of this sample not affected"
+                  className="rounded-none border-red-700/50 bg-white text-sm text-stone-900"
+                />
+              </div>
+            ) : (
+              <p>
+                Close the NC or record the resumption authorization in Nonconforming Work Records. Only the
+                Laboratory Director can override.
+              </p>
+            )}
+          </div>
+        ) : null}
         {pendingIssue ? (
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-stone-800">
             <dt className="font-semibold text-stone-600">Report</dt>

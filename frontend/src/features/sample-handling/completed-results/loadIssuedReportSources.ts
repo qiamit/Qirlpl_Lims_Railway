@@ -11,6 +11,7 @@ import {
 import type { IssuedReportDecisionRule, IssuedReportSources } from './issuedReportPrintData'
 import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
+import { fetchSampleOpinionsForPrint } from '@/features/sample-handling/report-preparation/reportOpinions'
 import type { IssuedTestReportListRow } from './types'
 
 /**
@@ -34,7 +35,7 @@ export async function loadIssuedReportSources(
         )
 
   const resultRowsPromise = fetchReportResultRowsForSample(row.id)
-  const [resultRows, coverDetails, letterheadData, printSettings, notes, rule, environmentByParameterId] = await Promise.all([
+  const [resultRows, coverDetails, letterheadData, printSettings, notes, rule, environmentByParameterId, opinions] = await Promise.all([
     resultRowsPromise,
     fetchTestReportCoverDetails(row.id, {
       fallbacks: { clientName: row.clientName, isCodeLabel: row.isCodeLabel },
@@ -45,6 +46,8 @@ export async function loadIssuedReportSources(
     fetchSampleDecisionRule(row.id),
     // ISO 17025 7.8.3.1 a): conditions saved with each result ({} before migration 20261026100300).
     resultRowsPromise.then((rows) => fetchResultEnvironmentSnapshots(rows.map((r) => r.parameterId))),
+    // ISO 17025 7.8.7: opinions and interpretations (null before migration 20261029100300).
+    fetchSampleOpinionsForPrint(row.id),
   ])
   const decisionRule: IssuedReportDecisionRule | null = rule
     ? {
@@ -82,5 +85,6 @@ export async function loadIssuedReportSources(
     templates,
     decisionRule,
     environmentByParameterId,
+    opinions,
   }
 }
