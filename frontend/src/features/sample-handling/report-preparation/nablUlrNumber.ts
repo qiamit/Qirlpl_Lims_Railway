@@ -238,6 +238,13 @@ export async function fetchNextNablUlrNumber(excludeSampleId?: string): Promise<
   }
 }
 
+/** True when a save failed because another sample already holds this ULR (unique index samples_nabl_ulr_uidx). */
+export function isNablUlrConflictError(error: { code?: string; message?: string; details?: string } | null | undefined): boolean {
+  if (!error) return false
+  const text = `${error.message ?? ''} ${error.details ?? ''}`
+  return error.code === '23505' && /nabl_ulr/i.test(text)
+}
+
 /**
  * Next ULR for Calibration Certificates (NABL CC scope).
  * Uses Lab Settings ULR prefix when set; otherwise builds from accreditation cert (CC-xxxx).

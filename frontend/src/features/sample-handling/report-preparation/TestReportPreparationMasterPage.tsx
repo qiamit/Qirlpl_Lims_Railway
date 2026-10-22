@@ -56,9 +56,11 @@ import { evaluateResultConformity } from './evaluateResultConformity'
 import {
   fetchNextNablUlrNumber,
   fetchUlrPrefix,
+  isNablUlrConflictError,
   isValidNablUlrFormat,
   sanitizeNablUlrInput,
 } from './nablUlrNumber'
+import { findReportNumberClash } from './reportNumberAvailability'
 import {
   fetchNextTestReportNumber,
   toCanonicalReportNumber,
@@ -544,6 +546,16 @@ export default function TestReportPreparationMasterPage() {
     setPage(1)
   }, [search, pageSize, sortKey, sortDir])
 
+  /** Plain-language message when the database rejects a ULR that another sample took meanwhile. */
+  const describeSaveError = (e: unknown, fallback: string) => {
+    if (isNablUlrConflictError(e as { code?: string; message?: string })) {
+      return `ULR number ${sanitizeNablUlrInput(nablUlrNumber)} was just used by another report. Please change the ULR number and try again.`
+    }
+    return e instanceof Error || (e && typeof e === 'object' && 'message' in e)
+      ? `${(e as { message: string }).message} ${fallback}`
+      : 'Save failed'
+  }
+
   const handleSaveDraft = async () => {
     if (!active) return
     setSaveLoading(true)
@@ -558,6 +570,16 @@ export default function TestReportPreparationMasterPage() {
         test_report_nabl_ulr_number: sanitizeNablUlrInput(nablUlrNumber) || null,
         ...partBUpdate,
         ...letterheadUpdate,
+      }
+      const clash = await findReportNumberClash(
+        active.id,
+        draftPayload.test_report_number,
+        draftPayload.test_report_nabl_ulr_number,
+      )
+      if (clash) {
+        setSaveMessage(clash)
+        window.alert(clash)
+        return
       }
       let { error: uErr } = await supabase.from('samples').update(draftPayload).eq('id', active.id)
       if (uErr && isSupabaseMissingColumnError(uErr, 'test_report_nabl_required')) {
@@ -589,9 +611,10 @@ export default function TestReportPreparationMasterPage() {
       await loadList()
     } catch (e) {
       setSaveMessage(
-        e instanceof Error
-          ? `${e.message} If columns are missing, run the migration: web/supabase/migrations/20260327120000_samples_report_preparation.sql`
-          : 'Save failed',
+        describeSaveError(
+          e,
+          'If columns are missing, run the migration: web/supabase/migrations/20260327120000_samples_report_preparation.sql',
+        ),
       )
     } finally {
       setSaveLoading(false)
@@ -603,6 +626,22 @@ export default function TestReportPreparationMasterPage() {
     const scopes = getApplicableReportScopes(prepareResultRows)
     if (scopes.length === 0) return
     const scopeLabel = scopes.map((s) => (s === 'nabl' ? 'NABL (A)' : 'Non-NABL (B)')).join(' & ')
+    setSaveMessage(null)
+    try {
+      const clash = await findReportNumberClash(
+        active.id,
+        toCanonicalReportNumber(fullReportNumber) || null,
+        sanitizeNablUlrInput(nablUlrNumber) || null,
+      )
+      if (clash) {
+        setSaveMessage(clash)
+        window.alert(clash)
+        return
+      }
+    } catch (e) {
+      setSaveMessage(describeSaveError(e, 'Could not check the report and ULR numbers.'))
+      return
+    }
     if (
       !window.confirm(
         `Issue ${scopeLabel} test report(s) for this SRF and move to Issued Test Report?`,
@@ -615,6 +654,9 @@ export default function TestReportPreparationMasterPage() {
     try {
       // Results status pehle finalize — phir sample stage completed pe move
       await finalizeResultsStatusBeforeIssue(active.id)
+      // Remarks must be saved while the sample is still open: once stage is 'completed',
+      // guard_issued_parameter_update blocks parameter edits for everyone except the Laboratory Director.
+      await saveReportResultRemarks(prepareResultRows)
 
       const now = new Date().toISOString()
       const { data: sampleMeta } = await supabase
@@ -653,16 +695,13 @@ export default function TestReportPreparationMasterPage() {
         ;({ error: uErr } = await supabase.from('samples').update(retry).eq('id', active.id))
       }
       if (uErr) throw uErr
-      await saveReportResultRemarks(prepareResultRows)
       setDialogOpen(false)
       setActive(null)
       await loadList()
       setSaveMessage('Test report(s) issued. SRF moved to Issued Test Report.')
     } catch (e) {
       setSaveMessage(
-        e instanceof Error
-          ? `${e.message} If columns are missing, run migration 20260531230000_report_scope_dual_templates.sql`
-          : 'Issue failed',
+        describeSaveError(e, 'If columns are missing, run migration 20260531230000_report_scope_dual_templates.sql'),
       )
     } finally {
       setIssueLoading(false)
