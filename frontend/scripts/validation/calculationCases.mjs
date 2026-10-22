@@ -1,0 +1,566 @@
+/**
+ * Reference cases for the LIMS calculation validation (ISO/IEC 17025 7.11.6).
+ *
+ * Every expected value is worked out by hand (or from the cited document),
+ * NOT copied from the program's output. `source` says where it comes from.
+ *
+ * Case fields
+ *   id        stable id, quoted in the validation report (never reuse one)
+ *   module    source file under frontend/src that is checked
+ *   title     what is checked, in plain words
+ *   source    where the expected value comes from
+ *   run(m)    calls the bundled module(s) and returns the actual value
+ *   expected  hand-calculated value
+ *   tol       optional: numbers compare within this absolute tolerance
+ *   known     optional: a known deviation that the Quality Manager has been
+ *             told about. The case is reported as KNOWN (not a failure)
+ *             while the program still gives `knownActual`; if the program is
+ *             fixed and gives `expected`, the case reports FIXED so the entry
+ *             can be removed. Any other answer is a FAIL.
+ *
+ * Module handles (see run-calculation-validation.mjs):
+ *   m.mu, m.rds, m.point, m.testResult, m.conformity, m.ulr, m.reportNo, m.series
+ */
+
+export const MODULE_FILES = {
+  mu: 'src/features/calibration/equipments/muCalcEngine.ts',
+  rds: 'src/features/calibration/rawDataSheetTypes.ts',
+  point: 'src/features/calibration/equipment-for-calibration/pointFormula.ts',
+  testResult: 'src/features/sample-handling/sample-under-testing/testResultValues.ts',
+  conformity: 'src/features/sample-handling/report-preparation/evaluateResultConformity.ts',
+  ulr: 'src/features/sample-handling/report-preparation/nablUlrNumber.ts',
+  reportNo: 'src/features/sample-handling/report-preparation/formattedTestReportNumber.ts',
+  series: 'src/features/finance/sale/shared/documentSeriesApi.ts',
+}
+
+// ---------------------------------------------------------------------------
+// Measurement uncertainty budget used by MU-02 / MU-03.
+// Five repeat readings of a 10 mm gauge block on a dial gauge (mm):
+//   10.01, 10.02, 9.99, 10.00, 10.03
+// Hand calculation (JCGM 100:2008 GUM 4.2 and 4.3; EA-4/02 M:2022):
+//   mean        = 50.05 / 5 = 10.01
+//   deviations  = 0, +0.01, -0.02, -0.01, +0.02 ; sum of squares = 0.0010
+//   s           = sqrt(0.0010 / 4) = 0.0158114
+//   uA = s/sqrt5 = 0.0070711                       -> 6 dp "0.007071"
+//   reference standard certificate U = 0.010, k = 2 -> uB1 = 0.005000
+//   resolution 0.01 (rectangular, half-width 0.005) -> uB2 = 0.01/(2*sqrt3) = 0.0028868 -> "0.002887"
+//   uc = sqrt(0.007071^2 + 0.005^2 + 0.002887^2) = sqrt(8.33338e-5) = 0.0091287 -> "0.009129"
+//   U  = k * uc = 2 * 0.009129 = 0.018258           -> 3 dp "0.018"
+// The sheet rounds every calculated column to its decimals before the next
+// column uses it (as on the printed MU sheet), so the figures above use the
+// rounded intermediate values; the unrounded chain gives the same results.
+// ---------------------------------------------------------------------------
+
+function formulaCol(key, expression, decimals) {
+  return {
+    key,
+    label: key,
+    type: 'formula',
+    required: false,
+    formula: { op: 'sum', sources: [], constant: null, decimals, expression },
+  }
+}
+
+function numberCol(key) {
+  return { key, label: key, type: 'number', required: true }
+}
+
+export const MU_BUDGET_TABLE = {
+  id: 'budget',
+  label: 'Dial gauge budget',
+  columns: [
+    numberCol('R1'),
+    numberCol('R2'),
+    numberCol('R3'),
+    numberCol('R4'),
+    numberCol('R5'),
+    formulaCol('uA', '=STDEV([R1],[R2],[R3],[R4],[R5])/SQRT(5)', 6),
+    numberCol('Uref'),
+    formulaCol('uB1', '=[Uref]/2', 6),
+    numberCol('Res'),
+    formulaCol('uB2', '=[Res]/(2*SQRT(3))', 6),
+    formulaCol('uc', '=SQRT([uA]^2+[uB1]^2+[uB2]^2)', 6),
+    formulaCol('U', '=2*[uc]', 3),
+  ],
+}
+
+const MU_BUDGET_VALUES = {
+  R1: '10.01',
+  R2: '10.02',
+  R3: '9.99',
+  R4: '10.00',
+  R5: '10.03',
+  Uref: '0.010',
+  Res: '0.01',
+}
+
+function pick(obj, keys) {
+  return Object.fromEntries(keys.map((k) => [k, obj[k]]))
+}
+
+const conf = (m, observed, requirement, options) => m.conformity.evaluateResultConformity(observed, requirement, options)
+const GUARD1 = { ruleType: 'guard_band', guardBandFactor: 1 }
+const NONBIN1 = { ruleType: 'non_binary', guardBandFactor: 1 }
+const SIMPLE = { ruleType: 'simple_acceptance' }
+
+// India Standard Time instants for the financial-year boundary (UTC + 05:30).
+const IST_2026_03_31_235959 = new Date('2026-03-31T18:29:59Z')
+const IST_2026_04_01_000000 = new Date('2026-03-31T18:30:00Z')
+const IST_2027_01_01_000000 = new Date('2026-12-31T18:30:00Z')
+const IST_2099_04_01_120000 = new Date('2099-04-01T06:30:00Z')
+
+export const CASES = [
+  // ------------------------------------------------------------- MU
+  {
+    id: 'MU-01',
+    module: 'mu',
+    title: 'Type A: sample standard deviation and s/√n of five readings',
+    source: 'Hand calculation, GUM 4.2.2–4.2.3 (s with n−1; u = s/√n)',
+    run: (m) => {
+      const r = [10.01, 10.02, 9.99, 10.0, 10.03]
+      return { s: m.mu.sampleStdDev(r), uA: m.mu.computeTypeAFromReadings(r) }
+    },
+    expected: { s: Math.sqrt(0.001 / 4), uA: Math.sqrt(0.001 / 4) / Math.sqrt(5) },
+    tol: 1e-12,
+  },
+  {
+    id: 'MU-02',
+    module: 'mu',
+    title: 'Uncertainty budget sheet: uA, uB (certificate, resolution), uc and U (k = 2)',
+    source: 'Hand calculation above MU_BUDGET_TABLE (GUM 4.3.7 rectangular a/√3; EA-4/02 M:2022 §5)',
+    run: (m) => pick(m.mu.evaluateMuTableValues(MU_BUDGET_TABLE, MU_BUDGET_VALUES, 4), ['uA', 'uB1', 'uB2', 'uc', 'U']),
+    expected: { uA: '0.007071', uB1: '0.005000', uB2: '0.002887', uc: '0.009129', U: '0.018' },
+  },
+  {
+    id: 'MU-03',
+    module: 'mu',
+    title: 'Expanded U for the report from the combined uncertainty column (U = k·uc)',
+    source: 'Hand calculation: 2 × 0.009129 = 0.018258 (6 dp of the uc column)',
+    run: (m) => {
+      const calc = {
+        enabled: true,
+        label: 'Calculation',
+        tables: [{ id: 't', label: 't', columns: [formulaCol('uc', '=1', 6)] }],
+      }
+      calc.tables[0].columns[0].label = 'Combined standard uncertainty'
+      return m.mu.pickExpandedUncertaintyDisplay(calc, { uc: '0.009129' }, 2)
+    },
+    expected: { label: 'Expanded U (k = 2)', value: '0.018258' },
+  },
+  {
+    id: 'MU-04',
+    module: 'mu',
+    title: 'Least count read from equipment text ("0.01 | 0.05" and "0.05 kN")',
+    source: 'Specification in muCalcEngine.normalizeMuLeastCountRaw: first positive number segment',
+    run: (m) => [m.mu.normalizeMuLeastCountRaw('0.01 | 0.05'), m.mu.normalizeMuLeastCountRaw('0.05 kN')],
+    expected: ['0.01', '0.05 kN'],
+  },
+  {
+    id: 'MU-05',
+    module: 'rds',
+    title: 'Formula column rounds to its decimals (raw data sheet / certificate figures)',
+    source: 'Hand rounding: 2/3 = 0.6667 (4 dp); 10.0 − 9.9875 = 0.0125 → 0.013 (3 dp, exact half rounds up)',
+    run: (m) => [
+      m.rds.computeFormulaValue(formulaCol('x', '=2/3', 4), {}, 2),
+      m.rds.computeFormulaValue(formulaCol('e', '=[A]-[B]', 3), { A: '10.0', B: '9.9875' }, 2, [
+        numberCol('A'),
+        numberCol('B'),
+        formulaCol('e', '=[A]-[B]', 3),
+      ]),
+    ],
+    expected: ['0.6667', '0.013'],
+    known: {
+      knownActual: ['0.6667', '0.012'],
+      note:
+        '10.0 − 9.9875 is 0.012499999… in binary floating point, so toFixed(3) gives 0.012 instead of 0.013. ' +
+        'Results that land exactly on a rounding half can be one step low. Decide whether to round with a decimal method.',
+    },
+  },
+
+  // ------------------------------------------------------------- calibration point formula
+  {
+    id: 'PF-01',
+    module: 'point',
+    title: 'Point formula x^2/2 + 1 at x = 4',
+    source: 'Hand: 16/2 + 1 = 9',
+    run: (m) => m.point.evaluatePointFormula('x^2/2 + 1', 4),
+    expected: 9,
+    tol: 1e-12,
+  },
+  {
+    id: 'PF-02',
+    module: 'point',
+    title: 'Scientific notation 1.2e-3·x is not read as Euler e (x = 1000)',
+    source: 'Hand: 0.0012 × 1000 = 1.2',
+    run: (m) => m.point.evaluatePointFormula('1.2e-3 * x', 1000),
+    expected: 1.2,
+    tol: 1e-12,
+  },
+  {
+    id: 'PF-03',
+    module: 'point',
+    title: 'sqrt(x) at 16 and pi·x at 2',
+    source: 'Hand: √16 = 4; 2π = 6.283185307179586',
+    run: (m) => [m.point.evaluatePointFormula('sqrt(x)', 16), m.point.evaluatePointFormula('pi * x', 2)],
+    expected: [4, 2 * Math.PI],
+    tol: 1e-12,
+  },
+  {
+    id: 'PF-04',
+    module: 'point',
+    title: 'Invalid formula and division by zero give no value (never a wrong point)',
+    source: 'Requirement URS-CAL-04: invalid or non-finite results are refused',
+    run: (m) => [m.point.evaluatePointFormula('x +', 1), m.point.evaluatePointFormula('1/(x-2)', 2)],
+    expected: [null, null],
+  },
+  {
+    id: 'PF-05',
+    module: 'point',
+    title: 'Point display rounding: 1/3 to 4 dp; 123.456789 auto (2 dp above 100)',
+    source: 'Hand rounding; pointFormula.formatFormulaResult rule (≥100 → 2 dp)',
+    run: (m) => [m.point.formatFormulaResult(1 / 3, 4), m.point.formatFormulaResult(123.456789)],
+    expected: ['0.3333', '123.46'],
+  },
+
+  // ------------------------------------------------------------- test results
+  {
+    id: 'TR-01',
+    module: 'testResult',
+    title: 'Statistics of readings 10.1, 10.3, 10.2 (mean, s, CV, range)',
+    source: 'Hand: mean 10.2; s = √(0.02/2) = 0.1; CV = 0.1/10.2 = 0.980392 %; range 0.2',
+    run: (m) => {
+      const s = m.testResult.computeTestResultStats([10.1, 10.3, 10.2])
+      return { average: s.average, stddev: s.stddev, cv: s.cv, range: s.range, count: s.count }
+    },
+    expected: { average: 10.2, stddev: 0.1, cv: (0.1 / 10.2) * 100, range: 0.2, count: 3 },
+    tol: 1e-9,
+  },
+  {
+    id: 'TR-02',
+    module: 'testResult',
+    title: 'Reported statistic text: mean (2 dp), CV (2 dp)',
+    source: 'Hand: 10.2 → "10.2"; 0.980392 % → "0.98%"',
+    run: (m) => {
+      const s = m.testResult.computeTestResultStats([10.1, 10.3, 10.2])
+      return [m.testResult.formatStatDisplay(s, 'average', 2), m.testResult.formatStatDisplay(s, 'cv', 2)]
+    },
+    expected: ['10.2', '0.98%'],
+  },
+  {
+    id: 'TR-03',
+    module: 'testResult',
+    title: 'Compare actions: ratio 45/50, |12.34 − 12.5|, divide by zero',
+    source: 'Hand: 90 %; 0.16; division by zero shows "—"',
+    run: (m) => [
+      m.testResult.computeCompareResult('ratio', 45, 50, 2),
+      m.testResult.computeCompareResult('difference', 12.34, 12.5, 2),
+      m.testResult.computeCompareResult('divide', 5, 0, 2),
+    ],
+    expected: ['90%', '0.16', '—'],
+  },
+  {
+    id: 'TR-04',
+    module: 'testResult',
+    title: 'Reading typed with a thousands separator "1,234.5"',
+    source: 'Hand: 1234.5',
+    run: (m) => m.testResult.parseReadingInput('1,234.5'),
+    expected: 1234.5,
+  },
+  {
+    id: 'TR-05',
+    module: 'testResult',
+    title: 'Rounding to 2 dp keeps the declared decimals (10.20, not 10.2)',
+    source: 'IS 2:2022 / ISO 80000-1 Annex B: the rounded value keeps the stated number of decimals',
+    run: (m) => m.testResult.formatNumber(10.2, 2),
+    expected: '10.20',
+    known: {
+      knownActual: '10.2',
+      note:
+        'formatNumber() drops trailing zeros, so a result rounded to 2 decimals prints as 10.2. ' +
+        'Decide whether reports must show the declared number of decimals.',
+    },
+  },
+  {
+    id: 'TR-06',
+    module: 'testResult',
+    title: 'Rounding of an exact half: 2.5 to 0 dp',
+    source: 'IS 2:2022 rule (round half to even): 2.5 → 2',
+    run: (m) => m.testResult.formatNumber(2.5, 0),
+    expected: '2',
+    known: {
+      knownActual: '3',
+      note: 'The app rounds an exact half up (2.5 → 3); IS 2 rounds to the even digit (2.5 → 2, 3.5 → 4). Lab policy to decide.',
+    },
+  },
+  {
+    id: 'TR-07',
+    module: 'testResult',
+    title: 'Rounding 1.015 and 2.675 to 2 dp',
+    source: 'Hand (half-up and IS 2 agree here): 1.015 → 1.02; 2.675 → 2.68',
+    run: (m) => [m.testResult.formatNumber(1.015, 2), m.testResult.formatNumber(2.675, 2)],
+    expected: ['1.02', '2.68'],
+    known: {
+      knownActual: ['1.01', '2.67'],
+      note:
+        'Binary floating point stores 1.015 as 1.01499999…, so toFixed() rounds down. ' +
+        'Values written with a trailing 5 can be reported one step low.',
+    },
+  },
+  {
+    id: 'TR-08',
+    module: 'testResult',
+    title: 'Single reading: standard deviation 0, count 1',
+    source: 'Definition: s needs n ≥ 2; the app reports 0 for n = 1',
+    run: (m) => {
+      const s = m.testResult.computeTestResultStats([7.5])
+      return { stddev: s.stddev, count: s.count, average: s.average }
+    },
+    expected: { stddev: 0, count: 1, average: 7.5 },
+  },
+
+  // ------------------------------------------------------------- conformity, no rule / simple acceptance
+  {
+    id: 'CF-01',
+    module: 'conformity',
+    title: 'No rule: 9.8 vs "10 max" conforms; 10.2 does not',
+    source: 'Simple acceptance, ILAC-G8:09/2019 §4.2.1 (w = 0)',
+    run: (m) => [conf(m, '9.8', '10 max'), conf(m, '10.2', '10 max')],
+    expected: ['Confirm', 'Not Confirm'],
+  },
+  {
+    id: 'CF-02',
+    module: 'conformity',
+    title: 'Strict and inclusive limits: 10 vs "< 10" and 10 vs "≤ 10"',
+    source: 'Hand: < excludes the limit, ≤ includes it',
+    run: (m) => [conf(m, '10', '< 10'), conf(m, '10', '≤ 10')],
+    expected: ['Not Confirm', 'Confirm'],
+  },
+  {
+    id: 'CF-03',
+    module: 'conformity',
+    title: 'Range "10 - 20": 20 (on the limit) conforms, 20.1 does not',
+    source: 'Hand: range limits are inclusive',
+    run: (m) => [conf(m, '20', '10 - 20'), conf(m, '20.1', '10 - 20')],
+    expected: ['Confirm', 'Not Confirm'],
+  },
+  {
+    id: 'CF-04',
+    module: 'conformity',
+    title: 'Tolerance "5 ± 0.2": 5.25 does not conform; 5.2 and 4.8 (on the limit) conform',
+    source: 'Hand: |5.2 − 5| = 0.2 ≤ 0.2 (tolerance limits are inclusive)',
+    run: (m) => [conf(m, '5.25', '5 ± 0.2'), conf(m, '5.2', '5 ± 0.2'), conf(m, '4.8', '5 ± 0.2')],
+    expected: ['Not Confirm', 'Confirm', 'Confirm'],
+  },
+  {
+    id: 'CF-05',
+    module: 'conformity',
+    title: 'Simple-acceptance rule ignores U: 9.9 vs "10 max" with U = 0.3',
+    source: 'ILAC-G8:09/2019 §4.2.1 (w = 0)',
+    run: (m) => conf(m, '9.9', '10 max', { rule: SIMPLE, uncertainty: '± 0.3' }),
+    expected: 'Confirm',
+  },
+  {
+    id: 'CF-06',
+    module: 'conformity',
+    title: 'Blank requirement → Not Applicable; qualitative "Absent" / "Present" vs "Absent"',
+    source: 'Requirement URS-RPT-06; qualitative results ignore U',
+    run: (m) => [
+      conf(m, '12', ''),
+      conf(m, 'Absent', 'Absent / 25 g', { rule: GUARD1, uncertainty: '0.3' }),
+      conf(m, 'Present', 'Absent / 25 g', { rule: GUARD1, uncertainty: '0.3' }),
+    ],
+    expected: ['Not Applicable', 'Confirm', 'Not Confirm'],
+  },
+
+  // ------------------------------------------------------------- conformity, guard band
+  {
+    id: 'GB-01',
+    module: 'conformity',
+    title: 'Guard band w = 1·U, U = 0.3, "10 max": 9.6 accept, 9.8 reject, 9.7 (= AL) accept',
+    source: 'ILAC-G8:09/2019 §4.2.2: acceptance limit AL = TL − w = 9.7; accept when result ≤ AL',
+    run: (m) => ['9.6', '9.8', '9.7'].map((v) => conf(m, v, '10 max', { rule: GUARD1, uncertainty: '± 0.3' })),
+    expected: ['Confirm', 'Not Confirm', 'Confirm'],
+  },
+  {
+    id: 'GB-02',
+    module: 'conformity',
+    title: 'Guard band with relative U "± 2 %" on range 40–51: 50 accept, 50.5 reject',
+    source: 'Hand: U = 2 % of 50 = 1.00, margin to 51 = 1.0 ≥ 1.0; at 50.5 U = 1.01, margin 0.5 < 1.01',
+    run: (m) => ['50', '50.5'].map((v) => conf(m, v, '40 - 51', { rule: GUARD1, uncertainty: '± 2 %' })),
+    expected: ['Confirm', 'Not Confirm'],
+  },
+  {
+    id: 'GB-03',
+    module: 'conformity',
+    title: 'Guard band on a lower limit "≥ 3", U = 0.5: 3.4 reject, 3.6 accept',
+    source: 'ILAC-G8 §4.2.2: AL = 3 + 0.5 = 3.5',
+    run: (m) => ['3.4', '3.6'].map((v) => conf(m, v, '≥ 3', { rule: GUARD1, uncertainty: '0.5' })),
+    expected: ['Not Confirm', 'Confirm'],
+  },
+  {
+    id: 'GB-04',
+    module: 'conformity',
+    title: 'Guard band with no usable U falls back to simple acceptance and says so',
+    source: 'Specification (evaluateResultConformity header): uncertaintyMissing = true',
+    run: (m) => {
+      const d = m.conformity.evaluateResultConformityDetailed('9.8', '10 max', { rule: GUARD1, uncertainty: 'N/A' })
+      return { remark: d.remark, uncertaintyMissing: d.uncertaintyMissing }
+    },
+    expected: { remark: 'Confirm', uncertaintyMissing: true },
+  },
+  {
+    id: 'GB-05',
+    module: 'conformity',
+    title: 'Guard band factor 2 (w = 2U), U = 0.1, "10 max": 9.85 reject, 9.75 accept',
+    source: 'ILAC-G8 §4.2.2: w = 0.2, AL = 9.8',
+    run: (m) =>
+      ['9.85', '9.75'].map((v) => conf(m, v, '10 max', { rule: { ruleType: 'guard_band', guardBandFactor: 2 }, uncertainty: '0.1' })),
+    expected: ['Not Confirm', 'Confirm'],
+  },
+
+  // ------------------------------------------------------------- conformity, non-binary
+  {
+    id: 'NB-01',
+    module: 'conformity',
+    title: 'Non-binary, U = 0.3, "10 max": 9.6 Pass, 9.8 Cond. Pass, 10.2 Cond. Fail, 10.4 Fail',
+    source: 'ILAC-G8:09/2019 §4.2.3 zones: ≤ 9.7 pass; 9.7–10 cond. pass; 10–10.3 cond. fail; > 10.3 fail',
+    run: (m) => ['9.6', '9.8', '10.2', '10.4'].map((v) => conf(m, v, '10 max', { rule: NONBIN1, uncertainty: '0.3' })),
+    expected: ['Pass', 'Conditional Pass', 'Conditional Fail', 'Fail'],
+  },
+  {
+    id: 'NB-02',
+    module: 'conformity',
+    title: 'Non-binary on range 10–20, U = 0.5: 15 Pass, 10.2 Cond. Pass, 9.8 Cond. Fail, 9.0 Fail',
+    source: 'ILAC-G8 §4.2.3 applied to both limits (w = 0.5)',
+    run: (m) => ['15', '10.2', '9.8', '9.0'].map((v) => conf(m, v, '10 - 20', { rule: NONBIN1, uncertainty: '0.5' })),
+    expected: ['Pass', 'Conditional Pass', 'Conditional Fail', 'Fail'],
+  },
+  {
+    id: 'NB-03',
+    module: 'conformity',
+    title: 'Expanded U read from text: "U = 0.5 mg/kg (k=2)" and "± 1.2 % at 95 % confidence"',
+    source: 'Hand reading of the text',
+    run: (m) => [m.conformity.parseUncertaintyText('U = 0.5 mg/kg (k=2)'), m.conformity.parseUncertaintyText('± 1.2 % at 95 % confidence')],
+    expected: [
+      { value: 0.5, relative: false },
+      { value: 1.2, relative: true },
+    ],
+  },
+
+  // ------------------------------------------------------------- ULR
+  {
+    id: 'ULR-01',
+    module: 'ulr',
+    title: 'NABL ULR from lab prefix TC1234526, serial 1',
+    source: 'NABL ULR format: TC + cert 12345 + YY 26 + location 0 + 8-digit serial + F = 19 characters',
+    run: (m) => {
+      const u = m.ulr.formatNablUlrNumber('TC1234526', 1)
+      return { ulr: u, length: u.length, valid: m.ulr.matchesNablUlrStructure(u) }
+    },
+    expected: { ulr: 'TC1234526000000001F', length: 19, valid: true },
+  },
+  {
+    id: 'ULR-02',
+    module: 'ulr',
+    title: 'Calibration ULR from accreditation "CC - 3039", serial 42; serial read back',
+    source: 'NABL ULR format: CC + 03039 + 26 + 0 + 00000042 + F',
+    run: (m) => {
+      const cert = m.ulr.parseNablAccreditationCert('CC - 3039')
+      const u = m.ulr.formatNablUlrNumber(`${cert.cab}${cert.digits}26`, 42, 'CC')
+      return { cert, ulr: u, serial: m.ulr.parseNablUlrSequence(u, `${cert.cab}${cert.digits}26`, 'CC') }
+    },
+    expected: { cert: { cab: 'CC', digits: '03039' }, ulr: 'CC0303926000000042F', serial: 42 },
+  },
+  {
+    id: 'ULR-03',
+    module: 'ulr',
+    title: 'Malformed ULRs are rejected (18 characters; wrong last letter)',
+    source: 'NABL ULR format: exactly 19 characters ending in F',
+    run: (m) => [m.ulr.matchesNablUlrStructure('TC123452600000001F'), m.ulr.matchesNablUlrStructure('TC1234526000000001A')],
+    expected: [false, false],
+  },
+
+  // ------------------------------------------------------------- test report number
+  {
+    id: 'RN-01',
+    module: 'reportNo',
+    title: 'Report number from prefix QI/TR/26/ and serial 7 (16 characters, NABL letter A)',
+    source: 'Lab numbering rule (formattedTestReportNumber): prefix + zero-padded serial + A = 16 characters',
+    run: (m) => m.reportNo.formatTestReportNumber('QI/TR/26/', 7),
+    expected: 'QI/TR/26/000007A',
+  },
+  {
+    id: 'RN-02',
+    module: 'reportNo',
+    title: 'Amendment / revised suffix, non-NABL letter and serial read back',
+    source: 'Lab numbering rule: …AA amendment, …AR revised, B = non-NABL scope',
+    run: (m) => [
+      m.reportNo.withReceivingReportTypeSuffix('QI/TR/26/000007A', 'Amendment Report'),
+      m.reportNo.withReceivingReportTypeSuffix('QI/TR/26/000007A', 'Revised Report'),
+      m.reportNo.toReportNumberForScope('QI/TR/26/000007A', 'non_nabl'),
+      m.reportNo.parseTestReportSequence('QI/TR/26/000007B', 'QI/TR/26/'),
+      m.reportNo.stripReceivingReportTypeSuffix('QI/TR/26/000007AS'),
+    ],
+    expected: ['QI/TR/26/000007AA', 'QI/TR/26/000007AR', 'QI/TR/26/000007B', 7, 'QI/TR/26/000007A'],
+  },
+  {
+    id: 'RN-03',
+    module: 'reportNo',
+    title: 'Serial capacity: a 14-character prefix leaves one digit, serials 9 and 10 must differ',
+    source: 'Requirement URS-RPT-03: report numbers are never repeated',
+    run: (m) => {
+      const a = m.reportNo.formatTestReportNumber('QIRLPL/TR/2026', 9)
+      const b = m.reportNo.formatTestReportNumber('QIRLPL/TR/2026', 19)
+      return a !== b
+    },
+    expected: true,
+    known: {
+      knownActual: false,
+      note:
+        'With a prefix of 14 characters only 1 serial digit is left and serial 19 prints like serial 9 (QIRLPL/TR/20269A). ' +
+        'No unique index on samples.test_report_number was found. Keep the report-number prefix to 9–10 characters.',
+    },
+  },
+
+  // ------------------------------------------------------------- finance document series
+  {
+    id: 'DS-01',
+    module: 'series',
+    title: 'Financial year at the 31 March / 1 April boundary (India time)',
+    source: 'Indian FY runs 1 April – 31 March; IST = UTC + 05:30',
+    run: (m) => [
+      m.series.resolveSeriesPrefix('QI/{FY}/', IST_2026_03_31_235959),
+      m.series.resolveSeriesPrefix('QI/{FY}/', IST_2026_04_01_000000),
+    ],
+    expected: ['QI/25-26/', 'QI/26-27/'],
+  },
+  {
+    id: 'DS-02',
+    module: 'series',
+    title: 'Calendar year tokens at New Year (India time) and FY in January',
+    source: 'Hand: 1 Jan 2027 IST → YYYY 2027, YY 27, FY 26-27',
+    run: (m) => m.series.resolveSeriesPrefix('{YYYY}/{YY}/{FY}', IST_2027_01_01_000000),
+    expected: '2027/27/26-27',
+  },
+  {
+    id: 'DS-03',
+    module: 'series',
+    title: 'Century wrap of the FY token (FY 2099–2100)',
+    source: 'Hand: two-digit years 99-00',
+    run: (m) => m.series.resolveSeriesPrefix('{FY}', IST_2099_04_01_120000),
+    expected: '99-00',
+  },
+  {
+    id: 'DS-04',
+    module: 'series',
+    title: 'Document number padding and padding limit (1–8 digits); document types',
+    source: 'Specification in documentSeriesApi.sampleDocumentNumber / seriesDocType',
+    run: (m) => [
+      m.series.sampleDocumentNumber({ prefix: 'INV/', pad_width: 4, next_number: 7 }),
+      m.series.sampleDocumentNumber({ prefix: 'INV/', pad_width: 12, next_number: 7 }),
+      m.series.seriesDocType('invoice'),
+      m.series.seriesDocType('unknown'),
+    ],
+    expected: ['INV/0007', 'INV/00000007', 'TAX_INVOICE', null],
+  },
+]

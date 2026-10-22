@@ -8,7 +8,8 @@
     "build": "vite build",
     "typecheck": "tsc -b",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validate:calculations": "node scripts/validation/run-calculation-validation.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

@@ -6,3 +6,5 @@ dist/
 .env
 .env.*
 !.env.example
+# Calculation validation evidence (import it into LIMS Validation Runs)
+scripts/validation/out/

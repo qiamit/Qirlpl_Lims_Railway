@@ -56,6 +56,10 @@ import {
   Gavel,
   Target as TargetIcon,
   CalendarRange,
+  GitCommitHorizontal,
+  FlaskRound,
+  ServerCrash,
+  DatabaseBackup,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -459,6 +463,10 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'PT / ILC Participation', to: '/quality/pt-participations', icon: TargetIcon, clause: '7.7.2' },
       { label: 'Method Verification & Validation', to: '/quality/method-verifications', icon: ClipboardCheck, clause: '7.2' },
       { label: 'Scope Verification Status', to: '/quality/scope-verification-status', icon: ShieldCheck, clause: '7.2' },
+      { label: 'Software Change Control', to: '/quality/software-changes', icon: GitCommitHorizontal, clause: '7.11' },
+      { label: 'LIMS Validation Runs', to: '/quality/validation-runs', icon: FlaskRound, clause: '7.11' },
+      { label: 'IT Incidents', to: '/quality/it-incidents', icon: ServerCrash, clause: '7.11' },
+      { label: 'Backup Restore Tests', to: '/quality/backup-tests', icon: DatabaseBackup, clause: '7.11' },
     ],
   },
   {

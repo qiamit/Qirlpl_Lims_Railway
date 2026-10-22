@@ -97,6 +97,10 @@ import {
   PtParticipationsRoute,
   MethodVerificationsRoute,
   ScopeVerificationStatusRoute,
+  SoftwareChangesRoute,
+  ValidationRunsRoute,
+  ItIncidentsRoute,
+  BackupRestoreTestsRoute,
   LabAreasRoute,
   EnvironmentLogRoute,
   AccessLogRoute,
@@ -190,6 +194,10 @@ export default function App() {
           <Route path="quality/pt-participations" element={<PtParticipationsRoute />} />
           <Route path="quality/method-verifications" element={<MethodVerificationsRoute />} />
           <Route path="quality/scope-verification-status" element={<ScopeVerificationStatusRoute />} />
+          <Route path="quality/software-changes" element={<SoftwareChangesRoute />} />
+          <Route path="quality/validation-runs" element={<ValidationRunsRoute />} />
+          <Route path="quality/it-incidents" element={<ItIncidentsRoute />} />
+          <Route path="quality/backup-tests" element={<BackupRestoreTestsRoute />} />
           <Route path="facilities/areas" element={<LabAreasRoute />} />
           <Route path="facilities/environment-log" element={<EnvironmentLogRoute />} />
           <Route path="facilities/access-log" element={<AccessLogRoute />} />

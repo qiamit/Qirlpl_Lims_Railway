@@ -94,6 +94,10 @@ const PtPlanPage = lazy(() => import('@/features/proficiency-testing/PtPlanPage'
 const PtParticipationsPage = lazy(() => import('@/features/proficiency-testing/PtParticipationsPage'))
 const MethodVerificationsPage = lazy(() => import('@/features/method-validation/MethodVerificationsPage'))
 const ScopeVerificationStatusPage = lazy(() => import('@/features/method-validation/ScopeVerificationStatusPage'))
+const SoftwareChangesPage = lazy(() => import('@/features/lims-validation/SoftwareChangesPage'))
+const ValidationRunsPage = lazy(() => import('@/features/lims-validation/ValidationRunsPage'))
+const ItIncidentsPage = lazy(() => import('@/features/lims-validation/ItIncidentsPage'))
+const BackupRestoreTestsPage = lazy(() => import('@/features/lims-validation/BackupRestoreTestsPage'))
 const LabAreasPage = lazy(() => import('@/features/environment/AreasPage'))
 const EnvironmentLogPage = lazy(() => import('@/features/environment/EnvironmentLogPage'))
 const AccessLogPage = lazy(() => import('@/features/environment/AccessLogPage'))
@@ -431,6 +435,22 @@ export function MethodVerificationsRoute() {
 
 export function ScopeVerificationStatusRoute() {
   return <ScopeVerificationStatusPage />
+}
+
+export function SoftwareChangesRoute() {
+  return <SoftwareChangesPage />
+}
+
+export function ValidationRunsRoute() {
+  return <ValidationRunsPage />
+}
+
+export function ItIncidentsRoute() {
+  return <ItIncidentsPage />
+}
+
+export function BackupRestoreTestsRoute() {
+  return <BackupRestoreTestsPage />
 }
 
 export function LabAreasRoute() {
