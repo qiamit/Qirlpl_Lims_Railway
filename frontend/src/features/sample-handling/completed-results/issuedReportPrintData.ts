@@ -34,12 +34,19 @@ import {
   type TestReportSignatureAfterPart,
 } from '@/features/settings/lab-settings/printSettingsTypes'
 import { formatDate } from '@/lib/utils'
+import {
+  summarizeReportEnvironment,
+  type ReportEnvironmentLine,
+  type ResultEnvironmentSnapshot,
+} from '@/features/environment/resultEnvironmentSnapshot'
 import type { IssuedTestReportListRow } from './types'
 
 export const SNAPSHOT_FORMAT = 'qirlpl-issued-test-report'
 /**
  * 1: commit 8bf0fcf (no print settings, no letterhead files).
  * 2: adds clientName, printSettings and per-report template (file paths + text).
+ *    Later optional keys (older v2 snapshots print without them): decisionRule,
+ *    reports[].environmentConditions.
  */
 export const SNAPSHOT_VERSION = 2
 
@@ -68,6 +75,27 @@ export type IssuedReportPrintData = {
   coverDetails: TestReportCoverDetails
   printSettings: TestReportPrintSettings
   signatureIssuedAt: string | null
+  /**
+   * Statement of the decision rule agreed on the SRF (ISO 17025 7.8.6), printed in
+   * the Part C end notes. Null / absent = none (and for snapshots taken before
+   * decision rules existed).
+   */
+  decisionRuleStatement?: string | null
+  /**
+   * Environmental conditions during testing per lab area (ISO 17025 7.8.3.1 a),
+   * printed in Part C. Absent = none recorded (and for older snapshots).
+   */
+  environmentConditions?: ReportEnvironmentLine[]
+}
+
+/** Decision rule as recorded for an issued report. JSON-safe. */
+export type IssuedReportDecisionRule = {
+  id: string
+  code: string
+  name: string
+  ruleType: string
+  guardBandFactor: number
+  statementText: string
 }
 
 /** Signed (printable) URLs for the template's file paths. */
@@ -88,6 +116,22 @@ export type IssuedReportSources = {
   letterheads: Partial<Record<ReportScopeKind, ScopeLetterheadSelection>>
   /** Unsigned templates (file paths) per scope. */
   templates: Partial<Record<ReportScopeKind, ResolvedScopeTemplate>>
+  /** Decision rule agreed on the SRF, null when none. */
+  decisionRule?: IssuedReportDecisionRule | null
+  /** Environmental conditions saved with each result, by result row id (parameterId). */
+  environmentByParameterId?: Record<string, ResultEnvironmentSnapshot>
+}
+
+/** Part C conditions block for a scope's rows; undefined when no row has conditions. */
+function environmentForRows(
+  rows: ReportResultRow[],
+  byParameterId: IssuedReportSources['environmentByParameterId'],
+): ReportEnvironmentLine[] | undefined {
+  const lines = summarizeReportEnvironment(
+    rows.map((r) => r.parameterId),
+    byParameterId,
+  )
+  return lines.length > 0 ? lines : undefined
 }
 
 function jsonClone<T>(value: T): T {
@@ -125,6 +169,8 @@ export function printDataFromSources(
     coverDetails: sources.coverDetails,
     printSettings: sources.printSettings,
     signatureIssuedAt: (scope === 'nabl' ? row.nablIssuedAt : row.nonNablIssuedAt) || row.issuedAt,
+    decisionRuleStatement: sources.decisionRule?.statementText || null,
+    environmentConditions: environmentForRows(rows, sources.environmentByParameterId),
   })
 }
 
@@ -164,6 +210,8 @@ export function renderIssuedReportContinuousHtml(
     coverDetails: printCover,
     printSettings: data.printSettings,
     signatureIssuedAt: data.signatureIssuedAt,
+    decisionRuleStatement: data.decisionRuleStatement ?? null,
+    environmentConditions: data.environmentConditions ?? null,
   })
 }
 
@@ -216,6 +264,8 @@ type SnapshotReport = {
   /** v2+ */
   template?: SnapshotTemplate
   results: SnapshotResult[]
+  /** Conditions during testing per lab area, as printed (absent = none / older snapshot). */
+  environmentConditions?: ReportEnvironmentLine[]
 }
 
 export type IssuedReportSnapshot = {
@@ -247,6 +297,11 @@ export type IssuedReportSnapshot = {
   signatories: { show: boolean; afterPart: Record<string, SnapshotSignatory[]> }
   /** v2+: full test report print settings at issue. */
   printSettings?: TestReportPrintSettings
+  /**
+   * Decision rule agreed on the SRF (ISO 17025 7.8.6). Present (possibly null)
+   * on snapshots taken after decision rules were added; absent before.
+   */
+  decisionRule?: IssuedReportDecisionRule | null
 }
 
 function signatoryForSnapshot(sig: TestReportSignature): SnapshotSignatory {
@@ -286,31 +341,36 @@ export function buildIssuedReportSnapshotFromSources(
   const scopes = issuedReportScopes(row)
   const base = toCanonicalReportNumber(row.reportNumberBase ?? '')
 
-  const reports: SnapshotReport[] = scopes.map((scope) => ({
-    scope,
-    reportNumber: base ? appendReportScopeSuffix(base, scope) : null,
-    ulrNumber: scope === 'nabl' ? row.nablUlrNumber : null,
-    issuedAt: (scope === 'nabl' ? row.nablIssuedAt : row.nonNablIssuedAt) || row.issuedAt,
-    letterhead: sources.letterheads[scope] ?? null,
-    template: templateForSnapshot(sources.templates[scope]),
-    results: filterReportRowsByScope(sources.resultRows, scope).map((r) => ({
-      parameterId: r.parameterId,
-      rowKey: r.rowKey,
-      sampleAllocationId: r.sampleAllocationId,
-      testAllocationId: r.testAllocationId,
-      srNo: r.srNo,
-      sectionCode: r.sectionCode,
-      clauseNo: r.clauseNo,
-      testName: r.testName,
-      testMethodClause: r.testMethodClause,
-      unit: r.unit,
-      specifiedRequirement: r.specifiedRequirement,
-      observedValue: r.observedValue,
-      uncertainty: r.uncertainty,
-      conformity: r.remark,
-      scope: r.scope,
-    })),
-  }))
+  const reports: SnapshotReport[] = scopes.map((scope) => {
+    const scopedRows = filterReportRowsByScope(sources.resultRows, scope)
+    const environmentConditions = environmentForRows(scopedRows, sources.environmentByParameterId)
+    return {
+      scope,
+      reportNumber: base ? appendReportScopeSuffix(base, scope) : null,
+      ulrNumber: scope === 'nabl' ? row.nablUlrNumber : null,
+      issuedAt: (scope === 'nabl' ? row.nablIssuedAt : row.nonNablIssuedAt) || row.issuedAt,
+      letterhead: sources.letterheads[scope] ?? null,
+      template: templateForSnapshot(sources.templates[scope]),
+      results: scopedRows.map((r) => ({
+        parameterId: r.parameterId,
+        rowKey: r.rowKey,
+        sampleAllocationId: r.sampleAllocationId,
+        testAllocationId: r.testAllocationId,
+        srNo: r.srNo,
+        sectionCode: r.sectionCode,
+        clauseNo: r.clauseNo,
+        testName: r.testName,
+        testMethodClause: r.testMethodClause,
+        unit: r.unit,
+        specifiedRequirement: r.specifiedRequirement,
+        observedValue: r.observedValue,
+        uncertainty: r.uncertainty,
+        conformity: r.remark,
+        scope: r.scope,
+      })),
+      ...(environmentConditions ? { environmentConditions } : {}),
+    }
+  })
 
   const signatories = {
     show: Boolean(printSettings.showSignatures),
@@ -348,6 +408,7 @@ export function buildIssuedReportSnapshotFromSources(
     reports,
     signatories,
     printSettings,
+    decisionRule: sources.decisionRule ?? null,
   }
 }
 
@@ -486,5 +547,10 @@ export function printDataFromSnapshot(
     coverDetails: snapshot.cover,
     printSettings,
     signatureIssuedAt: report.issuedAt,
+    decisionRuleStatement: snapshot.decisionRule?.statementText || null,
+    environmentConditions:
+      report.environmentConditions && report.environmentConditions.length > 0
+        ? report.environmentConditions
+        : undefined,
   })
 }

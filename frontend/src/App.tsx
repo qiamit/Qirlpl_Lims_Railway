@@ -92,6 +92,11 @@ import {
   DeclarationsRoute,
   AuditTrailRoute,
   RecycleBinRoute,
+  DecisionRulesRoute,
+  LabAreasRoute,
+  EnvironmentLogRoute,
+  AccessLogRoute,
+  HousekeepingLogRoute,
   ImprovementRoute,
   ExternallySupplierListRoute,
   SupplierEvaluationRoute,
@@ -176,6 +181,11 @@ export default function App() {
           />
           <Route path="audit-mrm/audit-trail" element={<AuditTrailRoute />} />
           <Route path="audit-mrm/recycle-bin" element={<RecycleBinRoute />} />
+          <Route path="masters/decision-rules" element={<DecisionRulesRoute />} />
+          <Route path="facilities/areas" element={<LabAreasRoute />} />
+          <Route path="facilities/environment-log" element={<EnvironmentLogRoute />} />
+          <Route path="facilities/access-log" element={<AccessLogRoute />} />
+          <Route path="facilities/housekeeping" element={<HousekeepingLogRoute />} />
 
           {/* Personnel Management (ISO 17025 §6.2) */}
           <Route path="personnel" element={<Navigate to="/personnel/employees" replace />} />

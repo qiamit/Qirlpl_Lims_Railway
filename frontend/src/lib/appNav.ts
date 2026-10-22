@@ -49,6 +49,11 @@ import {
   History,
   Lock,
   Trash2,
+  Thermometer,
+  DoorOpen,
+  Sparkles,
+  MapPin,
+  Gavel,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -444,6 +449,17 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    title: 'Facilities & Environment',
+    clause: 'facilities-environment',
+    icon: Building2,
+    items: [
+      { label: 'Lab Areas', to: '/facilities/areas', icon: MapPin, clause: '6.3' },
+      { label: 'Environment Log', to: '/facilities/environment-log', icon: Thermometer, clause: '6.3' },
+      { label: 'Access Log', to: '/facilities/access-log', icon: DoorOpen, clause: '6.3' },
+      { label: 'Housekeeping', to: '/facilities/housekeeping', icon: Sparkles, clause: '6.3' },
+    ],
+  },
+  {
     title: 'Testing LIMS',
     clause: 'testing-lims',
     icon: FlaskConical,
@@ -625,6 +641,7 @@ export const NAV_SECTIONS: NavSection[] = [
         to: '/masters/product-services',
         icon: Package,
       },
+      { label: 'Decision Rules', to: '/masters/decision-rules', icon: Gavel },
     ],
   },
 ]

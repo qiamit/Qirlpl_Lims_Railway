@@ -15,6 +15,7 @@ import {
 import { stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { FilterCombobox } from './FilterCombobox'
 import { OptionCombobox } from './OptionCombobox'
+import { DecisionRuleSelect } from '@/features/masters/decision-rules/DecisionRuleSelect'
 
 export type SrfSearchOption = Pick<SampleRow, 'id' | 'srf_number' | 'client_name'>
 
@@ -76,7 +77,12 @@ export function SampleReceivingForm({
   onDeleteReceivingOption?: (category: string, id: string) => Promise<void>
 }) {
   const yesNo = (key: keyof FormType, value: boolean) =>
-    onChange({ ...form, [key]: value })
+    onChange({
+      ...form,
+      [key]: value,
+      // "Decision Rule Applied? No" clears the selected rule.
+      ...(key === 'decisionRuleApplied' && !value ? { decisionRuleId: '' } : {}),
+    })
 
   const [customerInput, setCustomerInput] = useState('')
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
@@ -587,6 +593,29 @@ export function SampleReceivingForm({
                   </Select>
                 </div>
               ))}
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-4">
+                <Label htmlFor="srf-decision-rule" className="flex-1 pt-2 text-sm font-normal">
+                  Decision Rule (agreed with customer)
+                </Label>
+                <DecisionRuleSelect
+                  id="srf-decision-rule"
+                  scope="testing"
+                  value={form.decisionRuleId}
+                  onChange={(ruleId) =>
+                    onChange({
+                      ...form,
+                      decisionRuleId: ruleId,
+                      decisionRuleApplied: ruleId ? true : form.decisionRuleApplied,
+                    })
+                  }
+                  className="w-full sm:w-80"
+                />
+              </div>
+              {form.statementConformityRequired && !form.decisionRuleId ? (
+                <p className="border border-amber-400/70 bg-amber-50 px-2 py-1.5 text-[12px] text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                  Statement of conformity requested: select the decision rule agreed with the customer (ISO/IEC 17025 7.1.3).
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap justify-end gap-2 border-t border-stone-300 pt-3">
               <Button type="button" variant="outline" className={limsOutlineBtnClass} onClick={onClear}>

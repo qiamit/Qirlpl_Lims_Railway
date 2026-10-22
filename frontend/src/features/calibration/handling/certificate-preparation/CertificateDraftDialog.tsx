@@ -110,6 +110,7 @@ import {
   fetchSrfDueDatePolicy,
   type SrfDueDatePolicy,
 } from './srfDueDatePolicy'
+import { applyCertificateConformityNote, fetchSrfConformityPolicy } from './srfConformityPolicy'
 
 /** Wait until certificate letterhead / footer images inside host are decoded. */
 async function waitForCertificateImagesReady(
@@ -1212,7 +1213,7 @@ export function CertificateDraftDialog({
     setEquipmentLabel(activeJob.equipment_label)
 
     try {
-      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lhBase, duePolicy] =
+      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lhBase, duePolicy, conformityPolicy] =
         await Promise.all([
           resolveEquipmentMasterForJob(activeJob),
           activeJob.service_request_id
@@ -1230,6 +1231,7 @@ export function CertificateDraftDialog({
           suggestCalibrationCertificateNumber(),
           fetchManagementDocLetterhead().catch(() => null),
           fetchSrfDueDatePolicy(activeJob.service_request_id),
+          fetchSrfConformityPolicy(activeJob.service_request_id),
         ])
       setDueDatePolicy(duePolicy)
 
@@ -1358,7 +1360,11 @@ export function CertificateDraftDialog({
         loadNums.length > 0
           ? formatCertificateMinLoadDisplay(Math.min(...loadNums), loadUnit)
           : ''
-      const seedNotes = existing.notes.trim() ? existing.notes : defaultNotes
+      // ISO 17025 7.8.6: conformity note from the SRF (decision rule statement when a
+      // statement of conformity was requested). An issued certificate keeps its notes.
+      const issued = Boolean(snapshotRef.current) || activeJob.stage === 'certificates'
+      const baseNotes = existing.notes.trim() ? existing.notes : defaultNotes
+      const seedNotes = issued ? baseNotes : applyCertificateConformityNote(baseNotes, conformityPolicy)
 
       // Calibrated By = Raw Data entry person (fallback: allocated engineer).
       // Authorized Signatory = Raw Data reviewer (Review Data forward).

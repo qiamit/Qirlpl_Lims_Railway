@@ -155,7 +155,8 @@ export const CERTIFICATE_NOTES_MIN_LOAD_TOKEN = '{{MIN_LOAD}}'
 export const DEFAULT_CERTIFICATE_NOTES = [
   '1. Maximum permissible values for the given class of machine range for Indication, Repeatability, Resolution & Zero Errors are as per Table 2 of IS 1828 Part 1.',
   '2. General Inspection of machine carried out as per Annex A of IS 1828 Part - 1 : No anomalies were found.',
-  '3. The customer does not have requirement of conformity statement, so not mentioned.',
+  // Replaced from the SRF when a draft is prepared (srfConformityPolicy.ts, ISO 17025 7.8.6).
+  '3. No statement of conformity was requested by the customer.',
   `4. The lower limit of the machine for the given range = ${CERTIFICATE_NOTES_MIN_LOAD_TOKEN} (Resolution x 200)`,
   '5. This machine is calibrated in one mode as it has two work areas with common force application & indicating device.',
 ].join('\n')

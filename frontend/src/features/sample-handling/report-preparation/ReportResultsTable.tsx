@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { RESULT_REMARK_OPTIONS } from './evaluateResultConformity'
+import { RESULT_REMARK_OPTIONS, type ConformityRemark } from './evaluateResultConformity'
 import {
   groupReportRowsBySectionCode,
   sortReportResultRows,
@@ -56,6 +56,7 @@ function ResultDataRow({
   disabled,
   specifiedRequirementEditable,
   onEditSpecifiedRequirement,
+  remarkOptions = RESULT_REMARK_OPTIONS,
 }: {
   row: ReportResultRow
   showScope: boolean
@@ -64,8 +65,11 @@ function ResultDataRow({
   disabled?: boolean
   specifiedRequirementEditable?: boolean
   onEditSpecifiedRequirement?: (row: ReportResultRow) => void
+  remarkOptions?: ConformityRemark[]
 }) {
   const remark = normalizeResultRemark(row.remark)
+  // A remark outside the rule's wording (e.g. saved before the rule was chosen) stays selectable.
+  const options = remarkOptions.includes(remark) ? remarkOptions : [...remarkOptions, remark]
 
   return (
     <TableRow className="hover:bg-stone-50">
@@ -135,7 +139,7 @@ function ResultDataRow({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {RESULT_REMARK_OPTIONS.map((option) => (
+              {options.map((option) => (
                 <SelectItem
                   key={option}
                   value={option}
@@ -231,6 +235,7 @@ function ResultsGroupedBody({
   onEditSectionCode,
   specifiedRequirementEditable,
   onEditSpecifiedRequirement,
+  remarkOptions,
 }: {
   sections: ReturnType<typeof groupReportRowsBySectionCode>
   colSpan: number
@@ -242,6 +247,7 @@ function ResultsGroupedBody({
   onEditSectionCode?: (target: ReportSectionCodeEditTarget) => void
   specifiedRequirementEditable?: boolean
   onEditSpecifiedRequirement?: (row: ReportResultRow) => void
+  remarkOptions?: ConformityRemark[]
 }) {
   if (sections.length === 0) {
     return (
@@ -301,6 +307,7 @@ function ResultsGroupedBody({
               disabled={disabled}
               specifiedRequirementEditable={specifiedRequirementEditable}
               onEditSpecifiedRequirement={onEditSpecifiedRequirement}
+              remarkOptions={remarkOptions}
             />
           ))}
         </Fragment>
@@ -323,6 +330,7 @@ export function ReportResultsTable({
   specifiedRequirementEditable = false,
   onSpecifiedRequirementUpdated,
   partTitle,
+  remarkOptions,
 }: {
   rows: ReportResultRow[]
   showScope?: boolean
@@ -338,6 +346,8 @@ export function ReportResultsTable({
   onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
   /** When set, first thead row shows this title (e.g. PART C. TEST RESULTS). */
   partTitle?: string
+  /** Remark choices (default Confirm / Not Confirm / Not Applicable; non-binary rule adds conditional ones). */
+  remarkOptions?: ConformityRemark[]
 }) {
   const colSpan = columnCount(showScope)
   const sections = groupBySectionCode ? groupReportRowsBySectionCode(rows) : null
@@ -408,6 +418,7 @@ export function ReportResultsTable({
           onEditSectionCode={openSectionCodeEdit}
           specifiedRequirementEditable={specifiedRequirementEditable}
           onEditSpecifiedRequirement={openSpecifiedRequirementEdit}
+          remarkOptions={remarkOptions}
         />
       </>,
     )
@@ -434,6 +445,7 @@ export function ReportResultsTable({
               disabled={disabled}
               specifiedRequirementEditable={specifiedRequirementEditable}
               onEditSpecifiedRequirement={openSpecifiedRequirementEdit}
+              remarkOptions={remarkOptions}
             />
           ))
         )}

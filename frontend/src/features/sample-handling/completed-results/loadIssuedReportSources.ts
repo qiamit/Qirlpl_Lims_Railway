@@ -8,7 +8,9 @@ import {
   resolveReportScopeTemplateUnsigned,
   type ResolvedScopeTemplate,
 } from '@/features/sample-handling/report-preparation/reportScopeConfig'
-import type { IssuedReportSources } from './issuedReportPrintData'
+import type { IssuedReportDecisionRule, IssuedReportSources } from './issuedReportPrintData'
+import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
+import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
 import type { IssuedTestReportListRow } from './types'
 
 /**
@@ -31,15 +33,29 @@ export async function loadIssuedReportSources(
             (data as { test_report_draft_notes?: string | null } | null)?.test_report_draft_notes ?? '',
         )
 
-  const [resultRows, coverDetails, letterheadData, printSettings, notes] = await Promise.all([
-    fetchReportResultRowsForSample(row.id),
+  const resultRowsPromise = fetchReportResultRowsForSample(row.id)
+  const [resultRows, coverDetails, letterheadData, printSettings, notes, rule, environmentByParameterId] = await Promise.all([
+    resultRowsPromise,
     fetchTestReportCoverDetails(row.id, {
       fallbacks: { clientName: row.clientName, isCodeLabel: row.isCodeLabel },
     }),
     fetchReportPrepLetterheads(row.id, scopes),
     fetchTestReportPrintSettings(),
     notesPromise,
+    fetchSampleDecisionRule(row.id),
+    // ISO 17025 7.8.3.1 a): conditions saved with each result ({} before migration 20261026100300).
+    resultRowsPromise.then((rows) => fetchResultEnvironmentSnapshots(rows.map((r) => r.parameterId))),
   ])
+  const decisionRule: IssuedReportDecisionRule | null = rule
+    ? {
+        id: rule.id,
+        code: rule.code,
+        name: rule.name,
+        ruleType: rule.ruleType,
+        guardBandFactor: rule.guardBandFactor,
+        statementText: rule.statementText,
+      }
+    : null
 
   const templates: Partial<Record<ReportScopeKind, ResolvedScopeTemplate>> = {}
   const letterheads: IssuedReportSources['letterheads'] = {}
@@ -55,5 +71,16 @@ export async function loadIssuedReportSources(
     }),
   )
 
-  return { row, labName, notes, resultRows, coverDetails, printSettings, letterheads, templates }
+  return {
+    row,
+    labName,
+    notes,
+    resultRows,
+    coverDetails,
+    printSettings,
+    letterheads,
+    templates,
+    decisionRule,
+    environmentByParameterId,
+  }
 }

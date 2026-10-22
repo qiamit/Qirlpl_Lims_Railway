@@ -1,4 +1,4 @@
-import { Copy, Pencil } from 'lucide-react'
+import { Copy, History, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import {
@@ -127,6 +127,7 @@ export function EquipmentTable({
   onToggleAll,
   onEdit,
   onCopy,
+  onCalibrationHistory,
   employeeMap: _employeeMap,
 }: {
   rows: EquipmentRow[]
@@ -140,6 +141,8 @@ export function EquipmentTable({
     section?: 'calibration' | 'intermediate' | 'maintenance' | 'details',
   ) => void
   onCopy: (row: EquipmentRow) => void
+  /** Opens the calibration certificate history (ISO 17025 6.4). */
+  onCalibrationHistory?: (row: EquipmentRow) => void
   employeeMap: Record<string, string>
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
@@ -161,7 +164,7 @@ export function EquipmentTable({
               <col className="w-[10%]" />
               <col className="w-[10%]" />
               <col className="w-[10%]" />
-              <col className="w-[90px]" />
+              <col className={onCalibrationHistory ? 'w-[128px]' : 'w-[90px]'} />
             </colgroup>
             <TableHeader>
               <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
@@ -298,6 +301,19 @@ export function EquipmentTable({
                           >
                             <Copy size={16} />
                           </Button>
+                          {onCalibrationHistory ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className={cn('h-8 w-8', limsOutlineBtnClass)}
+                              aria-label={`Calibration history of ${r.asset_code || r.equipment_name}`}
+                              title="Calibration history / record new certificate"
+                              onClick={() => onCalibrationHistory(r)}
+                            >
+                              <History size={16} />
+                            </Button>
+                          ) : null}
                         </div>
                       </TableCell>
                     </TableRow>

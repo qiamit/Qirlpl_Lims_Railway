@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
+import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
+import { checkEquipmentUsableOn, todayIso } from '@/lib/equipmentTraceability'
 import {
   Briefcase,
   Calculator,
@@ -461,6 +463,50 @@ function isEmreExpandedUncertaintyExceeded(
 ): boolean {
   if (actualExpanded == null || masterUncertainty == null) return false
   return actualExpanded > masterUncertainty
+}
+
+/**
+ * Laboratory Director override for using a master that is not usable
+ * (calibration overdue / out of service), kept in the sheet payload as
+ * `masterUsabilityOverrides` (ISO 17025 6.4).
+ */
+type MasterUsabilityOverride = {
+  master_id: string
+  asset_code: string
+  blocked_reason: string
+  override_reason: string
+  by: string
+  by_name: string
+  at: string
+}
+
+const MASTER_OVERRIDE_QUICK_PICKS = [
+  'New calibration certificate received; master not updated yet',
+  'Verified by intermediate check before use',
+  'No alternative master; impact assessed',
+] as const
+
+function readMasterUsabilityOverrides(raw: unknown): MasterUsabilityOverride[] {
+  const list = (raw as { masterUsabilityOverrides?: unknown } | null)?.masterUsabilityOverrides
+  if (!Array.isArray(list)) return []
+  return list.filter(
+    (x): x is MasterUsabilityOverride =>
+      Boolean(x) && typeof x === 'object' && typeof (x as MasterUsabilityOverride).master_id === 'string',
+  )
+}
+
+/** Same rules as equipment_usable_on(): calibration overdue or status out of service / in repair. */
+function masterUsability(master: MasterEquipmentForSheet) {
+  return checkEquipmentUsableOn(
+    {
+      kind: 'equipment',
+      status: master.equipment_status,
+      calDueDate: master.next_calibration_due,
+      crmValidUpto: null,
+      openBreakdowns: [],
+    },
+    todayIso(),
+  )
 }
 
 function masterCalDueTone(
@@ -2093,6 +2139,7 @@ export function RawDataSheetDialog({
   const [srf, setSrf] = useState<SrfSummaryForSheet | null>(null)
   const [equipmentMaster, setEquipmentMaster] = useState<EquipmentMasterForSheet | null>(null)
   const [masterEquipments, setMasterEquipments] = useState<MasterEquipmentForSheet[]>([])
+  const [masterOverrides, setMasterOverrides] = useState<MasterUsabilityOverride[]>([])
   const [uncertaintyOpen, setUncertaintyOpen] = useState(false)
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const [calculationsRowId, setCalculationsRowId] = useState<string | null>(null)
@@ -2150,6 +2197,7 @@ export function RawDataSheetDialog({
     setSrf(null)
     setEquipmentMaster(null)
     setMasterEquipments([])
+    setMasterOverrides([])
     setCalculationsRowId(null)
     setContextPanel(null)
 
@@ -2203,6 +2251,7 @@ export function RawDataSheetDialog({
       }
 
       setSheetId(sheet.id)
+      setMasterOverrides(readMasterUsabilityOverrides(sheet.payload))
       setSheetSubmitted(sheet.sheet_status === 'under_review' || Boolean(sheet.reviewed_at))
       setReadOnly(forceReadOnly || sheet.sheet_status === 'approved')
 
@@ -2563,6 +2612,18 @@ export function RawDataSheetDialog({
     setPayload({ ...payload, rows: nextRows })
   }, [payload, equipmentMaster, resolvedRawDataSheetTemplate, matchedEquipmentRange])
 
+  /** Masters used on this sheet that may not be used today (overdue / out of service). */
+  const blockedMasters = useMemo(() => {
+    const used = new Set(
+      (payload?.rows ?? []).map((r) => (r.masterEquipmentId ?? '').trim()).filter(Boolean),
+    )
+    const candidates =
+      used.size > 0 ? masterEquipments.filter((m) => used.has(m.id)) : masterEquipments
+    return candidates
+      .map((master) => ({ master, ...masterUsability(master) }))
+      .filter((b) => !b.usable)
+  }, [payload?.rows, masterEquipments])
+
   const persistLocationOfCalibration = async () => {
     if (!job || readOnly || forceReadOnly) return
     const next = locationDraft.trim()
@@ -2574,6 +2635,47 @@ export function RawDataSheetDialog({
 
   const handleSave = async (asComplete = false) => {
     if (!sheetId || !payload || readOnly) return
+    // Masters not usable today block the sheet; only the Laboratory Director may override.
+    const notOverridden = blockedMasters.filter(
+      (b) =>
+        !masterOverrides.some(
+          (o) => o.master_id === b.master.id && o.blocked_reason === (b.reason ?? ''),
+        ),
+    )
+    let overridesToSave = masterOverrides
+    let overrideReason: string | null = null
+    if (notOverridden.length > 0) {
+      const list = notOverridden
+        .map((b) => `${b.master.asset_code || b.master.equipment_name}: ${b.reason}`)
+        .join('; ')
+      if (!isLaboratoryDirector(designation)) {
+        setError(
+          `Master equipment not usable — ${list}. The sheet cannot be saved; only the Laboratory Director can override.`,
+        )
+        return
+      }
+      overrideReason = await askReason({
+        title: 'Override: master equipment not usable',
+        recordLabel: list,
+        description: 'Recorded on the raw data sheet as a Laboratory Director override (ISO 17025 6.4).',
+        confirmLabel: 'Save anyway',
+        quickPicks: MASTER_OVERRIDE_QUICK_PICKS,
+      })
+      if (!overrideReason) return
+      const at = new Date().toISOString()
+      overridesToSave = [
+        ...masterOverrides,
+        ...notOverridden.map((b) => ({
+          master_id: b.master.id,
+          asset_code: b.master.asset_code,
+          blocked_reason: b.reason ?? '',
+          override_reason: overrideReason as string,
+          by: user?.id ?? '',
+          by_name: profileName.trim() || user?.email || '',
+          at,
+        })),
+      ]
+    }
     let changeReason: string | null = null
     if (sheetSubmitted && loadedPayloadJsonRef.current !== JSON.stringify(payload)) {
       changeReason = await askReason({
@@ -2650,10 +2752,17 @@ export function RawDataSheetDialog({
 
       await updateRawDataSheetPayload(
         sheetId,
-        nextPayload as unknown as Record<string, unknown>,
+        {
+          ...(nextPayload as unknown as Record<string, unknown>),
+          ...(overridesToSave.length > 0 ? { masterUsabilityOverrides: overridesToSave } : {}),
+        },
         asComplete ? 'under_review' : 'draft',
       )
-      if (changeReason) await recordReason('calibration_raw_data_sheets', sheetId, changeReason)
+      setMasterOverrides(overridesToSave)
+      const auditReason = [changeReason, overrideReason ? `Master override: ${overrideReason}` : null]
+        .filter(Boolean)
+        .join(' | ')
+      if (auditReason) await recordReason('calibration_raw_data_sheets', sheetId, auditReason)
       if (asComplete) setReadOnly(false)
       onOpenChange(false)
     } catch (err) {
@@ -3484,6 +3593,40 @@ export function RawDataSheetDialog({
             <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {error}
             </p>
+          ) : null}
+
+          {!loading && blockedMasters.length > 0 ? (
+            <div
+              className="rounded-none border-2 border-red-700/50 bg-red-50 px-3 py-2 text-sm text-red-900"
+              role="alert"
+            >
+              <p className="font-semibold">Master equipment not usable today</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px]">
+                {blockedMasters.map((b) => {
+                  const ov = masterOverrides.find(
+                    (o) => o.master_id === b.master.id && o.blocked_reason === (b.reason ?? ''),
+                  )
+                  return (
+                    <li key={b.master.id}>
+                      {b.master.asset_code || b.master.equipment_name}: {b.reason}
+                      {ov ? (
+                        <span className="text-amber-800">
+                          {' '}
+                          — overridden by {ov.by_name || 'Laboratory Director'}: {ov.override_reason}
+                        </span>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ul>
+              {!readOnly && !forceReadOnly ? (
+                <p className="mt-1 text-[12px]">
+                  {isLaboratoryDirector(designation)
+                    ? 'Saving asks for your override reason.'
+                    : 'Saving is blocked until the master is calibrated / back in service, or the Laboratory Director overrides.'}
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           {/* Context detail dialogs (opened from header buttons) */}

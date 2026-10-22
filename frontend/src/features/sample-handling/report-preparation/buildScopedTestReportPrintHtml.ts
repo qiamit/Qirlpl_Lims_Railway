@@ -28,6 +28,10 @@ import {
 } from './partCReportColumns'
 import { waitForPrintDocumentReady } from './waitForPrintDocumentReady'
 import { digitalSignatureStampFields } from './digitalSignatureStamp'
+import {
+  formatReportEnvironmentLine,
+  type ReportEnvironmentLine,
+} from '@/features/environment/resultEnvironmentSnapshot'
 
 function escapeHtml(s: string) {
   return s
@@ -228,12 +232,30 @@ function partCHeaderCellHtml(col: { key: PartCReportColumnKey; label: string }):
   return `<th>${escapeHtml(col.label)}</th>`
 }
 
+/**
+ * "Environmental conditions during testing" (ISO 17025 7.8.3.1 a), one line per
+ * lab area. Empty string when no result carries conditions.
+ */
+function buildEnvironmentConditionsHtml(lines: ReportEnvironmentLine[] | null | undefined): string {
+  if (!lines || lines.length === 0) return ''
+  const body = lines.map((line) => escapeHtml(formatReportEnvironmentLine(line))).join('<br/>')
+  return `
+      <p class="end-notes-body part-c-environment-line" style="text-align:left;margin:0 0 6px;"><strong>Environmental conditions during testing:</strong>${lines.length > 1 ? '<br/>' : ' '}${body}</p>`
+}
+
 function buildPartCResultsHtml(
   rows: ReportResultRow[],
   columns: PartCReportColumnVisibility = DEFAULT_PART_C_REPORT_COLUMNS,
-  options?: { showEndNotes?: boolean; showSectionRows?: boolean },
+  options?: {
+    showEndNotes?: boolean
+    showSectionRows?: boolean
+    decisionRuleStatement?: string | null
+    environmentConditions?: ReportEnvironmentLine[] | null
+  },
 ): { tableHtml: string; endNotesBlock: string } {
   const showEndNotes = options?.showEndNotes !== false
+  const decisionRuleStatement = options?.decisionRuleStatement?.trim() || ''
+  const environmentHtml = buildEnvironmentConditionsHtml(options?.environmentConditions)
   const showSectionRows = options?.showSectionRows !== false
   const visibleCols = visiblePartCReportColumns(columns)
   const colCount = Math.max(visibleCols.length, 1)
@@ -277,13 +299,25 @@ function buildPartCResultsHtml(
     <tbody>${rowsHtml}</tbody>
   </table>`
 
+  // ISO 17025 7.8.6: the decision rule statement prints even when the end notes are hidden.
+  // ISO 17025 7.8.3.1 a): so do the environmental conditions. They sit inside the
+  // same end-notes box (the paginator moves that box as one block).
   const endNotesBlock = showEndNotes
     ? `
-    <div class="part-c-end-notes">
+    <div class="part-c-end-notes">${environmentHtml}
       <p class="end-marker">${escapeHtml(TEST_REPORT_END_MARKER)}</p>
-      <p class="end-notes-body">${escapeHtml(formatTestReportEndNotesText())}</p>
+      <p class="end-notes-body">${escapeHtml(formatTestReportEndNotesText(decisionRuleStatement))}</p>
     </div>`
-    : ''
+    : decisionRuleStatement
+      ? `
+    <div class="part-c-end-notes part-c-decision-rule">${environmentHtml}
+      <p class="end-notes-body">${escapeHtml(decisionRuleStatement)}</p>
+    </div>`
+      : environmentHtml
+        ? `
+    <div class="part-c-end-notes part-c-environment">${environmentHtml}
+    </div>`
+        : ''
 
   return { tableHtml, endNotesBlock }
 }
@@ -292,10 +326,14 @@ function buildPartCPrintHtml(
   rows: ReportResultRow[],
   columns: PartCReportColumnVisibility = DEFAULT_PART_C_REPORT_COLUMNS,
   printSettings?: TestReportPrintSettings,
+  decisionRuleStatement?: string | null,
+  environmentConditions?: ReportEnvironmentLine[] | null,
 ): string {
   const { tableHtml, endNotesBlock } = buildPartCResultsHtml(rows, columns, {
     showEndNotes: printSettings?.showPartCEndNotes !== false,
     showSectionRows: printSettings?.showPartCSectionRows !== false,
+    decisionRuleStatement,
+    environmentConditions,
   })
   return `<section class="report-part part-c">
   ${tableHtml}
@@ -408,6 +446,10 @@ export function buildScopedTestReportPrintHtml(opts: {
   printSettings?: TestReportPrintSettings
   /** ISO timestamp used on digital signature stamps (Report Issue Date). */
   signatureIssuedAt?: string | null
+  /** Decision rule statement from the SRF (ISO 17025 7.8.6); printed in the Part C end notes. */
+  decisionRuleStatement?: string | null
+  /** Conditions during testing per lab area (ISO 17025 7.8.3.1 a); printed in Part C when present. */
+  environmentConditions?: ReportEnvironmentLine[] | null
 }): string {
   const printSettings = opts.printSettings ?? DEFAULT_TEST_REPORT_PRINT_SETTINGS
   const signatureIssuedAt =
@@ -467,6 +509,8 @@ export function buildScopedTestReportPrintHtml(opts: {
     opts.rows,
     partCColumnsForScope(printSettings.partCColumns, opts.scope),
     printSettings,
+    opts.decisionRuleStatement,
+    opts.environmentConditions,
   )
   const partDHtml = buildPartDPrintHtml(opts.notes, isLabel)
   const partAWithSignatures = withSignaturesAfterPart(

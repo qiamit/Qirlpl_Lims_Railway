@@ -54,6 +54,10 @@ import {
 } from './reportResultRows'
 import { evaluateResultConformity } from './evaluateResultConformity'
 import {
+  fetchSampleDecisionRule,
+  type DecisionRule,
+} from '@/features/masters/decision-rules/decisionRules'
+import {
   fetchNextNablUlrNumber,
   fetchUlrPrefix,
   isNablUlrConflictError,
@@ -144,6 +148,8 @@ export default function TestReportPreparationMasterPage() {
   const [ulrPrefix, setUlrPrefix] = useState('')
   const [ulrPrefixLoading, setUlrPrefixLoading] = useState(false)
   const [prepareResultRows, setPrepareResultRows] = useState<ReportResultRow[]>([])
+  /** Decision rule agreed on the SRF being prepared (ISO 17025 7.8.6), null = none. */
+  const [prepareDecisionRule, setPrepareDecisionRule] = useState<DecisionRule | null>(null)
   const [prepareResultsLoading, setPrepareResultsLoading] = useState(false)
   const [coverDetails, setCoverDetails] = useState<TestReportCoverDetails | null>(null)
   const [partBDetails, setPartBDetails] = useState<TestReportPartBDetails | null>(null)
@@ -386,6 +392,8 @@ export default function TestReportPreparationMasterPage() {
     })
     setPrepareResultsLoading(true)
     setCoverLoading(true)
+    setPrepareDecisionRule(null)
+    void fetchSampleDecisionRule(r.id).then(setPrepareDecisionRule)
     void fetchReportResultRowsForSample(r.id)
       .then(setPrepareResultRows)
       .catch(() => setPrepareResultRows([]))
@@ -985,6 +993,7 @@ export default function TestReportPreparationMasterPage() {
         onPartBDetailsChange={setPartBDetails}
         coverLoading={coverLoading}
         resultRows={prepareResultRows}
+        decisionRule={prepareDecisionRule}
         resultsLoading={prepareResultsLoading}
         saveMessage={dialogOpen ? saveMessage : null}
         saveLoading={saveLoading}
@@ -1011,6 +1020,7 @@ export default function TestReportPreparationMasterPage() {
                 remark: evaluateResultConformity(
                   r.observedValue === '—' ? '' : r.observedValue,
                   nextValue,
+                  { rule: prepareDecisionRule, uncertainty: r.uncertainty },
                 ),
               }
             }),

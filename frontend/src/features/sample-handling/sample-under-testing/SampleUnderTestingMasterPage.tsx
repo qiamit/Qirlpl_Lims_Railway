@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
+import { isMissingColumnError } from '@/lib/equipmentTraceability'
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
@@ -1056,18 +1057,57 @@ export default function SampleUnderTestingMasterPage() {
       const withIds = draft.filter((p) => Boolean(p.paramRowId?.trim()))
       const withoutIds = draft.filter((p) => !p.paramRowId?.trim())
 
+      // Equipment / CRMs used (ISO 17025 6.4, 7.5.1) and the lab area +
+      // environmental conditions (7.5.1). Before migrations 20261026100100 /
+      // 20261026100300 those columns are missing: retry without them.
+      let sendEquipment = true
+      let sendEnvironment = true
+      const withEquipment = <T extends Record<string, unknown>>(p: SectionResultsDraft, fields: T) => {
+        let out: Record<string, unknown> = fields
+        if (sendEquipment && p.equipmentUsed !== undefined) out = { ...out, equipment_used: p.equipmentUsed }
+        if (sendEnvironment && p.environmentAreaId !== undefined) {
+          out = {
+            ...out,
+            environment_area_id: p.environmentAreaId,
+            environment_snapshot: p.environmentSnapshot ?? null,
+          }
+        }
+        return out as T
+      }
+      const writeWithEquipmentFallback = async (
+        write: () => PromiseLike<{ error: { code?: string; message?: string } | null }>,
+      ) => {
+        let result = await write()
+        for (let attempt = 0; attempt < 2 && result.error && isMissingColumnError(result.error); attempt += 1) {
+          const msg = (result.error.message ?? '').toLowerCase()
+          if (sendEnvironment && (msg.includes('environment_') || !sendEquipment || !msg.includes('equipment_used'))) {
+            sendEnvironment = false
+          } else if (sendEquipment) {
+            sendEquipment = false
+          } else {
+            break
+          }
+          result = await write()
+        }
+        return result
+      }
+
       if (withIds.length > 0) {
         const results = await Promise.all(
           withIds.map((p) =>
-            supabase
-              .from('test_allocation_parameters')
-              .update({
-                test_start_date: p.testStartDate || null,
-                test_end_date: p.testEndDate || null,
-                results: p.results || null,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', p.paramRowId as string),
+            writeWithEquipmentFallback(() =>
+              supabase
+                .from('test_allocation_parameters')
+                .update(
+                  withEquipment(p, {
+                    test_start_date: p.testStartDate || null,
+                    test_end_date: p.testEndDate || null,
+                    results: p.results || null,
+                    updated_at: new Date().toISOString(),
+                  }),
+                )
+                .eq('id', p.paramRowId as string),
+            ),
           ),
         )
         const failed = results.find((r) => r.error)
@@ -1092,18 +1132,22 @@ export default function SampleUnderTestingMasterPage() {
           updated_at: new Date().toISOString(),
         }
         if (existingId) {
-          const { error } = await supabase
-            .from('test_allocation_parameters')
-            .update(fields)
-            .eq('id', existingId)
+          const { error } = await writeWithEquipmentFallback(() =>
+            supabase
+              .from('test_allocation_parameters')
+              .update(withEquipment(p, fields))
+              .eq('id', existingId),
+          )
           if (error) throw error
         } else {
-          const { error } = await supabase.from('test_allocation_parameters').insert({
-            test_allocation_id: allocationId,
-            test_parameter_id: testParameterIdForInsert,
-            test_label: label,
-            ...fields,
-          })
+          const { error } = await writeWithEquipmentFallback(() =>
+            supabase.from('test_allocation_parameters').insert({
+              test_allocation_id: allocationId,
+              test_parameter_id: testParameterIdForInsert,
+              test_label: label,
+              ...withEquipment(p, fields),
+            }),
+          )
           if (error) throw error
         }
       }

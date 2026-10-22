@@ -7,6 +7,7 @@ import {
   type SampleRow,
 } from '../types'
 import { buildReceivingSrfFromReference, stripReceivingReportSuffix } from './receivingSrfFromReference'
+import { isMissingDecisionRuleIdColumnError } from '@/features/masters/decision-rules/decisionRules'
 
 const BUCKET = 'sample-client-references'
 const STAGE = 'receiving' as const
@@ -49,6 +50,7 @@ export function mapSupabaseRowToSampleRow(r: Record<string, unknown>): SampleRow
     deviation_from_methods: (r.deviation_from_methods as boolean) ?? null,
     supporting_docs_required: (r.supporting_docs_required as boolean) ?? null,
     decision_rule_applied: (r.decision_rule_applied as boolean) ?? null,
+    decision_rule_id: typeof r.decision_rule_id === 'string' ? r.decision_rule_id : null,
     testing_method_available: (r.testing_method_available as boolean) ?? null,
     sampling_procedure_ref: (r.sampling_procedure_ref as boolean) ?? null,
     tentative_date_required: (r.tentative_date_required as string) ?? null,
@@ -128,6 +130,7 @@ export function sampleRowToReceivingForm(row: SampleRow): SampleReceivingForm {
     deviationFromMethods: row.deviation_from_methods ?? false,
     supportingDocsRequired: row.supporting_docs_required ?? false,
     decisionRuleApplied: row.decision_rule_applied ?? false,
+    decisionRuleId: row.decision_rule_id ?? '',
     testingMethodAvailable: row.testing_method_available ?? true,
     samplingProcedureRef: row.sampling_procedure_ref ?? true,
     tentativeDateRequired:
@@ -218,7 +221,8 @@ export async function saveSampleReceivingEdit(input: {
     can_complete_within_time: form.canCompleteWithinTime,
     deviation_from_methods: form.deviationFromMethods,
     supporting_docs_required: form.supportingDocsRequired,
-    decision_rule_applied: form.decisionRuleApplied,
+    decision_rule_applied: form.decisionRuleApplied || Boolean(form.decisionRuleId),
+    decision_rule_id: form.decisionRuleId.trim() || null,
     testing_method_available: form.testingMethodAvailable,
     sampling_procedure_ref: form.samplingProcedureRef,
     tentative_date_required: form.tentativeDateRequired.trim() ? form.tentativeDateRequired : null,
@@ -239,7 +243,12 @@ export async function saveSampleReceivingEdit(input: {
     })
   }
 
-  const { error } = await supabase.from('samples').update(payload).eq('id', sampleId)
+  let { error } = await supabase.from('samples').update(payload).eq('id', sampleId)
+  if (error && isMissingDecisionRuleIdColumnError(error)) {
+    // Before migration 20261026100000: save without the decision rule id.
+    delete payload.decision_rule_id
+    ;({ error } = await supabase.from('samples').update(payload).eq('id', sampleId))
+  }
   if (error) throw error
 
   return { srfNumber: srfNumber || null }

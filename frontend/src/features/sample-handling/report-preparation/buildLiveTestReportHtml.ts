@@ -14,6 +14,12 @@ import {
   resolveReportScopeTemplate,
 } from './reportScopeConfig'
 import type { TestReportPartBDetails } from './testReportPartB'
+import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
+import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
+import {
+  summarizeReportEnvironment,
+  type ReportEnvironmentLine,
+} from '@/features/environment/resultEnvironmentSnapshot'
 
 export type BuildLiveTestReportHtmlInput = {
   scope: ReportScopeKind
@@ -27,6 +33,16 @@ export type BuildLiveTestReportHtmlInput = {
   partBDetails: TestReportPartBDetails | null
   resultRows: ReportResultRow[]
   labName?: string
+  /**
+   * Decision rule statement from the SRF (ISO 17025 7.8.6). Undefined = read it
+   * from the sample; null = none.
+   */
+  decisionRuleStatement?: string | null
+  /**
+   * Environmental conditions per lab area (ISO 17025 7.8.3.1 a). Undefined =
+   * read the snapshots saved with the results; null / [] = none.
+   */
+  environmentConditions?: ReportEnvironmentLine[] | null
 }
 
 /**
@@ -54,7 +70,18 @@ export async function buildLiveTestReportHtml(
   }
 
   const letterheads = letterheadsByScope[scope]
-  const scopeConfig = await fetchReportScopeTemplatesConfig()
+  const [scopeConfig, decisionRuleStatement, environmentConditions] = await Promise.all([
+    fetchReportScopeTemplatesConfig(),
+    input.decisionRuleStatement !== undefined
+      ? Promise.resolve(input.decisionRuleStatement)
+      : fetchSampleDecisionRule(active.id).then((rule) => rule?.statementText || null),
+    input.environmentConditions !== undefined
+      ? Promise.resolve(input.environmentConditions)
+      : fetchResultEnvironmentSnapshots(scopedRows.map((r) => r.parameterId))
+          .then((byId) => summarizeReportEnvironment(scopedRows.map((r) => r.parameterId), byId))
+          // Conditions are additive: a read failure must not block the preview.
+          .catch(() => null),
+  ])
   const binding = bindingFromLetterheadSelection(scope, scopeConfig, letterheads)
   const template = await resolveReportScopeTemplate(scope, scopeConfig, binding)
 
@@ -93,5 +120,7 @@ export async function buildLiveTestReportHtml(
     template,
     coverDetails: printCover,
     printSettings,
+    decisionRuleStatement,
+    environmentConditions,
   })
 }

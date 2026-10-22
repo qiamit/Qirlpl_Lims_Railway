@@ -3,7 +3,13 @@ import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { sanitizeSectionCodeInput } from '@/features/sample-handling/allocation/sectionCode'
 import { getReportedTestResult } from '@/features/sample-handling/sample-under-testing/testResultValues'
 import { compareClauseNumbers } from './clauseNumberSort'
-import { evaluateResultConformity, type ConformityRemark } from './evaluateResultConformity'
+import {
+  evaluateResultConformity,
+  isConformityRemark,
+  resultRemarkOptionsForRule,
+  type ConformityRemark,
+} from './evaluateResultConformity'
+import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { normalizeResultRemark } from './resultRemarkUi'
 import { resolveReportScopeFromAccreditationIds, scopeKindFromLabel } from './reportScope'
 import type { ReportScopeKind } from './reportScope'
@@ -181,7 +187,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     ),
   ]
 
-  const [{ data: tpData }, { data: abData }] = await Promise.all([
+  const [{ data: tpData }, { data: abData }, decisionRule] = await Promise.all([
     tpIds.length > 0
       ? supabase
           .from('test_parameters')
@@ -191,6 +197,8 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
           .in('id', tpIds)
       : Promise.resolve({ data: [] as TestParameterSnapshot[], error: null }),
     supabase.from('accreditation_bodies').select('id, name'),
+    // ISO 17025 7.8.6: decision rule agreed on the SRF (null = original simple acceptance).
+    fetchSampleDecisionRule(sampleId),
   ])
 
   const tpMap = new Map<string, TestParameterSnapshot & { id: string }>()
@@ -211,13 +219,16 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     const observed = getReportedTestResult(p.results)
     const requirement = String(p.specific_requirement?.trim() || tp?.specific_requirement || '')
     const storedRemark = p.report_remark?.trim()
-    const remark: ConformityRemark =
-      storedRemark &&
-      (['Confirm', 'Not Confirm', 'Not Applicable'] as const).includes(
-        storedRemark as ConformityRemark,
-      )
-        ? (storedRemark as ConformityRemark)
-        : evaluateResultConformity(observed, requirement)
+    // Stored remark wins; the non-binary wording is accepted only under a non-binary rule.
+    const storedOk =
+      isConformityRemark(storedRemark) &&
+      resultRemarkOptionsForRule(decisionRule?.ruleType).includes(storedRemark)
+    const remark: ConformityRemark = storedOk
+      ? (storedRemark as ConformityRemark)
+      : evaluateResultConformity(observed, requirement, {
+          rule: decisionRule,
+          uncertainty: tp?.uncertainty_mu ?? null,
+        })
     const meta = sectionMetaByTaId.get(p.test_allocation_id)
     return {
       parameterId: p.id,

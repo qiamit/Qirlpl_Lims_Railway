@@ -231,6 +231,8 @@ export type ServiceRequestRow = {
   statement_of_conformity_requested: boolean
   specification_standard: string | null
   decision_rule: string | null
+  /** ISO 17025 7.1.3 rule from the decision rules master. Absent until migration 20261026100000. */
+  decision_rule_id?: string | null
   differences_resolved: boolean | null
   contract_accepted: boolean | null
   deviations_customer_informed: boolean | null
@@ -280,6 +282,8 @@ export type ServiceRequestForm = {
   statementOfConformityRequested: boolean
   specificationStandard: string
   decisionRule: string
+  /** decision_rules.id agreed with the customer ('' = none). */
+  decisionRuleId: string
   differencesResolved: TriBool
   contractAccepted: boolean
   deviationsCustomerInformed: TriBool
@@ -335,6 +339,7 @@ export function emptyServiceRequestForm(): ServiceRequestForm {
     statementOfConformityRequested: false,
     specificationStandard: '',
     decisionRule: '',
+    decisionRuleId: '',
     differencesResolved: true,
     contractAccepted: true,
     deviationsCustomerInformed: true,
@@ -422,6 +427,7 @@ export function rowToForm(row: ServiceRequestRow, asCopy = false, nextNumber = '
     statementOfConformityRequested: Boolean(row.statement_of_conformity_requested),
     specificationStandard: row.specification_standard ?? '',
     decisionRule: row.decision_rule ?? '',
+    decisionRuleId: row.decision_rule_id ?? '',
     differencesResolved: parseTriBool(row.differences_resolved),
     contractAccepted: Boolean(row.contract_accepted),
     deviationsCustomerInformed: parseTriBool(row.deviations_customer_informed),
@@ -472,6 +478,7 @@ export function formToPayload(form: ServiceRequestForm) {
     statement_of_conformity_requested: form.statementOfConformityRequested,
     specification_standard: normalizeText(form.specificationStandard) || null,
     decision_rule: normalizeText(form.decisionRule) || null,
+    decision_rule_id: form.statementOfConformityRequested ? form.decisionRuleId.trim() || null : null,
     differences_resolved: form.differencesResolved,
     contract_accepted: form.contractAccepted,
     deviations_customer_informed: form.deviationsCustomerInformed,
@@ -506,4 +513,21 @@ export function withoutSrfDueDateColumns<T extends Record<string, unknown>>(
   const copy: Record<string, unknown> = { ...payload }
   for (const c of SRF_DUE_DATE_COLUMNS) delete copy[c]
   return copy as Omit<T, (typeof SRF_DUE_DATE_COLUMNS)[number]>
+}
+
+/** SRF column added by migration 20261026100000 (may not exist yet). */
+export function isMissingSrfDecisionRuleColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string }
+  const msg = String(e.message ?? '')
+  return msg.includes('decision_rule_id') && (e.code === 'PGRST204' || e.code === '42703' || /column/i.test(msg))
+}
+
+/** Payload without decision_rule_id (fallback before the migration is applied). */
+export function withoutSrfDecisionRuleColumn<T extends Record<string, unknown>>(
+  payload: T,
+): Omit<T, 'decision_rule_id'> {
+  const copy: Record<string, unknown> = { ...payload }
+  delete copy.decision_rule_id
+  return copy as Omit<T, 'decision_rule_id'>
 }

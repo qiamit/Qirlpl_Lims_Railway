@@ -20,7 +20,9 @@ import { ServiceRequestFormView } from './ServiceRequestForm'
 import {
   emptyServiceRequestForm,
   formToPayload,
+  isMissingSrfDecisionRuleColumnError,
   isMissingSrfDueDateColumnError,
+  withoutSrfDecisionRuleColumn,
   nextSrfNumber,
   normalizeText,
   rowToForm,
@@ -300,9 +302,7 @@ export default function ServiceRequestMasterPage() {
       // Before migration 20261024100100 the due-date columns do not exist:
       // retry without them so the SRF still saves.
       let dueDateNotSaved = false
-      const writeSrf = async (
-        body: ReturnType<typeof formToPayload> | ReturnType<typeof withoutSrfDueDateColumns>,
-      ) => {
+      const writeSrf = async (body: Record<string, unknown>) => {
         if (editingId) {
           const { error } = await supabase
             .from('calibration_service_requests')
@@ -317,10 +317,21 @@ export default function ServiceRequestMasterPage() {
           .single()
         return { error, id: (inserted as { id: string } | null)?.id ?? null }
       }
-      let written = await writeSrf(payload)
+      let body: Record<string, unknown> = payload
+      let written = await writeSrf(body)
+      // Before migration 20261026100000 there is no decision_rule_id column.
+      if (written.error && isMissingSrfDecisionRuleColumnError(written.error)) {
+        body = withoutSrfDecisionRuleColumn(body)
+        written = await writeSrf(body)
+      }
       if (written.error && isMissingSrfDueDateColumnError(written.error)) {
         dueDateNotSaved = payload.customer_requests_due_date
-        written = await writeSrf(withoutSrfDueDateColumns(payload))
+        body = withoutSrfDueDateColumns(body)
+        written = await writeSrf(body)
+      }
+      if (written.error && isMissingSrfDecisionRuleColumnError(written.error)) {
+        body = withoutSrfDecisionRuleColumn(body)
+        written = await writeSrf(body)
       }
       if (written.error) throw written.error
       serviceRequestId = written.id

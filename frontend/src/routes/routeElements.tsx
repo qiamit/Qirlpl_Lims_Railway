@@ -89,6 +89,11 @@ const ConfidentialityRecordsPage = lazy(() => import('@/features/general-require
 const DeclarationsPage = lazy(() => import('@/features/personnel/declarations/DeclarationsPage'))
 const AuditTrailPage = lazy(() => import('@/features/audit-trail/AuditTrailPage'))
 const RecycleBinPage = lazy(() => import('@/features/recycle-bin/RecycleBinPage'))
+const DecisionRulesPage = lazy(() => import('@/features/masters/decision-rules/DecisionRulesPage'))
+const LabAreasPage = lazy(() => import('@/features/environment/AreasPage'))
+const EnvironmentLogPage = lazy(() => import('@/features/environment/EnvironmentLogPage'))
+const AccessLogPage = lazy(() => import('@/features/environment/AccessLogPage'))
+const HousekeepingLogPage = lazy(() => import('@/features/environment/HousekeepingLogPage'))
 const ImprovementPage = lazy(() => import('@/features/general-requirements/improvement/ImprovementPage'))
 const ExternallySupplierListPage = lazy(() => import('@/features/externally-providers/supplier-list/ExternallySupplierListPage'))
 const SupplierEvaluationPage = lazy(() => import('@/features/externally-providers/supplier-evaluation/SupplierEvaluationPage'))
@@ -402,6 +407,26 @@ export function AuditTrailRoute() {
 
 export function RecycleBinRoute() {
   return <RecycleBinPage />
+}
+
+export function DecisionRulesRoute() {
+  return <DecisionRulesPage />
+}
+
+export function LabAreasRoute() {
+  return <LabAreasPage />
+}
+
+export function EnvironmentLogRoute() {
+  return <EnvironmentLogPage />
+}
+
+export function AccessLogRoute() {
+  return <AccessLogPage />
+}
+
+export function HousekeepingLogRoute() {
+  return <HousekeepingLogPage />
 }
 
 export function ImprovementRoute() {

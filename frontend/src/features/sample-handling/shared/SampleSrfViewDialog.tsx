@@ -353,6 +353,7 @@ export function SampleSrfViewDialog({
                         ['Deviation from Methods', details.deviationFromMethods, 'bool'],
                         ['Supporting Docs Required', details.supportingDocsRequired, 'bool'],
                         ['Decision Rule Applied', details.decisionRuleApplied, 'bool'],
+                        ['Decision Rule', fmt(details.decisionRuleName)],
                         ['Testing Method Available', details.testingMethodAvailable, 'bool'],
                         ['Sampling Procedure Ref', details.samplingProcedureRef, 'bool'],
                       ]}

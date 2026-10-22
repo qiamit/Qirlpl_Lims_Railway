@@ -20,6 +20,8 @@ import {
 } from '@/features/sample-handling/receiving/FilterCombobox'
 import { PRESET_FREQUENCIES } from '@/features/calibration/equipment-for-calibration/types'
 import { CalibrationEquipmentSelectButton } from './SelectCalibrationEquipmentDialog'
+import { DecisionRuleSelect } from '@/features/masters/decision-rules/DecisionRuleSelect'
+import { decisionRuleLabel } from '@/features/masters/decision-rules/decisionRules'
 import {
   CAPABILITY_EVALUATION_ROWS,
   EVALUATION_DEFAULT_REMARKS,
@@ -474,13 +476,19 @@ export function ServiceRequestFormView({
                   Statement of Conformity Required
                 </p>
                 <p className="mt-0.5 text-[11px] text-stone-500">
-                  If Yes, decision rule will apply (Error + MU ≤ Tolerance / Accuracy, or customer
-                  rule).
+                  If Yes, select the decision rule agreed with the customer (ISO/IEC 17025 7.1.3);
+                  its statement is printed on the certificate.
                 </p>
               </div>
               <Select
                 value={form.statementOfConformityRequested ? 'yes' : 'no'}
-                onValueChange={(v) => set('statementOfConformityRequested', v === 'yes')}
+                onValueChange={(v) =>
+                  onChange({
+                    ...form,
+                    statementOfConformityRequested: v === 'yes',
+                    decisionRuleId: v === 'yes' ? form.decisionRuleId : '',
+                  })
+                }
               >
                 <SelectTrigger
                   className="h-10 w-28 rounded-none border-stone-500 bg-stone-50"
@@ -507,14 +515,37 @@ export function ServiceRequestFormView({
                   />
                 </div>
                 <div className="col-span-12 space-y-2 md:col-span-6">
-                  <Label htmlFor="srf-rule">Decision Rule (agreed with customer)</Label>
+                  <Label htmlFor="srf-rule-id">Decision Rule (agreed with customer)</Label>
+                  <DecisionRuleSelect
+                    id="srf-rule-id"
+                    scope="calibration"
+                    value={form.decisionRuleId}
+                    onChange={(ruleId, rule) =>
+                      onChange({
+                        ...form,
+                        decisionRuleId: ruleId,
+                        // Keep the old free-text column filled for older screens and prints.
+                        decisionRule:
+                          rule && !form.decisionRule.trim() ? decisionRuleLabel(rule) : form.decisionRule,
+                      })
+                    }
+                    triggerClassName="h-10 rounded-none border-stone-500 bg-stone-50"
+                  />
+                </div>
+                <div className="col-span-12 space-y-2">
+                  <Label htmlFor="srf-rule">Decision Rule Notes</Label>
                   <Input
                     id="srf-rule"
                     value={form.decisionRule}
                     onChange={(e) => set('decisionRule', e.target.value)}
-                    placeholder="How uncertainty is accounted for"
+                    placeholder="Customer specific details (e.g. how uncertainty is accounted for)"
                   />
                 </div>
+                {!form.decisionRuleId ? (
+                  <p className="col-span-12 border border-amber-400/70 bg-amber-50 px-2 py-1.5 text-[12px] text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                    Select the decision rule agreed with the customer: its statement is printed in the certificate notes.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>

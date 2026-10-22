@@ -13,6 +13,7 @@ import { EquipmentTable } from './EquipmentTable'
 import { EquipmentFooterBar } from './EquipmentFooterBar'
 import { EquipmentMasterForm } from './EquipmentMasterForm'
 import { AddClientDialog } from './AddClientDialog'
+import { CalibrationHistoryDialog } from './CalibrationHistoryDialog'
 import {
   emptyEquipmentForm,
   type EquipmentForm,
@@ -75,6 +76,8 @@ export default function EquipmentMasterPage() {
 
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [showForm, setShowForm] = useState(false)
+  /** Equipment whose calibration certificate history is open (ISO 17025 6.4). */
+  const [calHistoryRow, setCalHistoryRow] = useState<EquipmentRow | null>(null)
   const handleFormOpenChange = useFormDialogOpenChange((open) => {
     setShowForm(open)
     if (!open) {
@@ -1017,7 +1020,20 @@ export default function EquipmentMasterPage() {
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
         onCopy={handleCopy}
+        onCalibrationHistory={setCalHistoryRow}
         employeeMap={employeeMap}
+      />
+
+      <CalibrationHistoryDialog
+        open={calHistoryRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setCalHistoryRow(null)
+        }}
+        equipment={calHistoryRow}
+        clients={clients}
+        uploadCertificate={(equipmentId, file) => uploadAttachment(equipmentId, 'certificate', file)}
+        onViewFile={(path, name) => void handleViewFile(path, name)}
+        onEquipmentUpdated={loadEquipment}
       />
 
       <EquipmentFooterBar
