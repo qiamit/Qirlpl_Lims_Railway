@@ -60,6 +60,9 @@ import {
   FlaskRound,
   ServerCrash,
   DatabaseBackup,
+  PackageCheck,
+  Share2,
+  ListChecks as ListChecksIcon,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -328,6 +331,10 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Truck,
         clause: 'externally-providers',
         children: [
+          { label: 'Approved Supplier List', to: '/externally-providers/approved-suppliers', icon: BadgeCheck, clause: '6.6' },
+          { label: 'Supplier Evaluations', to: '/externally-providers/evaluations', icon: ListChecksIcon, clause: '6.6' },
+          { label: 'Receipt Inspection', to: '/externally-providers/receipt-inspection', icon: PackageCheck, clause: '6.6' },
+          { label: 'Subcontracting Register', to: '/externally-providers/subcontracting', icon: Share2, clause: '6.6' },
           {
             label: 'Externally Supplier List',
             to: '/externally-providers/supplier-list',

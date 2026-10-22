@@ -6,6 +6,7 @@ import { formatClientAddress, formatClientContact, formatClientContactLines } fr
 import { clientPanelClass } from './clientsFormUi'
 import { cn } from '@/lib/utils'
 import { getCurrencySymbol } from '@/lib/appCurrency'
+import { useApprovedSupplierIds } from '@/features/externally-providers/useApprovedSupplierIds'
 
 const GRID_TABLE =
   'table-fixed min-w-[920px] w-full border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4] [&_th]:p-[1mm] [&_td]:!p-[1mm]'
@@ -70,6 +71,7 @@ export function ClientsTable({
   onEdit: (row: ClientRow) => void
   onCopy: (row: ClientRow) => void
 }) {
+  const approvedSupplierIds = useApprovedSupplierIds()
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
@@ -173,6 +175,11 @@ export function ClientsTable({
                     <div className={cn(cellInnerClass, 'text-center')}>
                       <p className={primaryLineClass}>{r.company_type}</p>
                       <p className={scaleClass}>{r.company_scale}</p>
+                      {approvedSupplierIds.has(r.id) ? (
+                        <span className="inline-block border border-emerald-700/50 bg-emerald-100 px-1 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-900">
+                          Approved supplier
+                        </span>
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell className="w-[20%] align-middle text-center">

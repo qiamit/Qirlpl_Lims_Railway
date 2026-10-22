@@ -5,7 +5,7 @@ export default function ListOfConsumablesPage() {
     <ComplianceRegisterPage
       config={{
         moduleKey: 'external.consumables',
-        title: 'List of Consumables',
+        title: 'List of Consumables (legacy)',
         description: 'Register and control consumables procured from external providers for laboratory activities.',
         personLabel: 'Item',
       }}

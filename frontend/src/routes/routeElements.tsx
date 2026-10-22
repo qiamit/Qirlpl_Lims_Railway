@@ -95,6 +95,10 @@ const PtParticipationsPage = lazy(() => import('@/features/proficiency-testing/P
 const MethodVerificationsPage = lazy(() => import('@/features/method-validation/MethodVerificationsPage'))
 const ScopeVerificationStatusPage = lazy(() => import('@/features/method-validation/ScopeVerificationStatusPage'))
 const SoftwareChangesPage = lazy(() => import('@/features/lims-validation/SoftwareChangesPage'))
+const ApprovedSupplierListPage = lazy(() => import('@/features/externally-providers/approved-suppliers/ApprovedSupplierListPage'))
+const SupplierEvaluationsPage = lazy(() => import('@/features/externally-providers/evaluations/SupplierEvaluationsPage'))
+const ReceiptInspectionPage = lazy(() => import('@/features/externally-providers/receipt-inspection/ReceiptInspectionPage'))
+const SubcontractingRegisterPage = lazy(() => import('@/features/externally-providers/subcontracting/SubcontractingRegisterPage'))
 const ValidationRunsPage = lazy(() => import('@/features/lims-validation/ValidationRunsPage'))
 const ItIncidentsPage = lazy(() => import('@/features/lims-validation/ItIncidentsPage'))
 const BackupRestoreTestsPage = lazy(() => import('@/features/lims-validation/BackupRestoreTestsPage'))
@@ -439,6 +443,22 @@ export function ScopeVerificationStatusRoute() {
 
 export function SoftwareChangesRoute() {
   return <SoftwareChangesPage />
+}
+
+export function ApprovedSupplierListRoute() {
+  return <ApprovedSupplierListPage />
+}
+
+export function SupplierEvaluationsRoute() {
+  return <SupplierEvaluationsPage />
+}
+
+export function ReceiptInspectionRoute() {
+  return <ReceiptInspectionPage />
+}
+
+export function SubcontractingRegisterRoute() {
+  return <SubcontractingRegisterPage />
 }
 
 export function ValidationRunsRoute() {

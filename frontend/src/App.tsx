@@ -98,6 +98,10 @@ import {
   MethodVerificationsRoute,
   ScopeVerificationStatusRoute,
   SoftwareChangesRoute,
+  ApprovedSupplierListRoute,
+  SupplierEvaluationsRoute,
+  ReceiptInspectionRoute,
+  SubcontractingRegisterRoute,
   ValidationRunsRoute,
   ItIncidentsRoute,
   BackupRestoreTestsRoute,
@@ -253,6 +257,10 @@ export default function App() {
             path="externally-providers/list-of-consumables"
             element={<ListOfConsumablesRoute />}
           />
+          <Route path="externally-providers/approved-suppliers" element={<ApprovedSupplierListRoute />} />
+          <Route path="externally-providers/evaluations" element={<SupplierEvaluationsRoute />} />
+          <Route path="externally-providers/receipt-inspection" element={<ReceiptInspectionRoute />} />
+          <Route path="externally-providers/subcontracting" element={<SubcontractingRegisterRoute />} />
 
           {/* Complaints Management (ISO 17025 §7.9) */}
           <Route

@@ -5,7 +5,7 @@ export default function ExternallySupplierListPage() {
     <ComplianceRegisterPage
       config={{
         moduleKey: 'external.supplier-list',
-        title: 'Externally Supplier List',
+        title: 'Externally Supplier List (legacy)',
         description: 'Maintain the approved list of external suppliers for products and services used in laboratory activities.',
         personLabel: 'Supplier',
       }}
