@@ -102,6 +102,7 @@ import {
   MyDocumentAcknowledgementsRoute,
   DecisionRulesRoute,
   PtPlanRoute,
+  ControlChartsRoute,
   PtParticipationsRoute,
   MethodVerificationsRoute,
   ScopeVerificationStatusRoute,
@@ -206,6 +207,7 @@ export default function App() {
           <Route path="management-docs/my-acknowledgements" element={<MyDocumentAcknowledgementsRoute />} />
           <Route path="masters/decision-rules" element={<DecisionRulesRoute />} />
           <Route path="quality/pt-plan" element={<PtPlanRoute />} />
+          <Route path="quality/control-charts" element={<ControlChartsRoute />} />
           <Route path="quality/pt-participations" element={<PtParticipationsRoute />} />
           <Route path="quality/method-verifications" element={<MethodVerificationsRoute />} />
           <Route path="quality/scope-verification-status" element={<ScopeVerificationStatusRoute />} />

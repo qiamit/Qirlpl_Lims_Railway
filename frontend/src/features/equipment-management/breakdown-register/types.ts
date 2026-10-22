@@ -87,6 +87,12 @@ export type BreakdownRegisterRow = {
   post_repair_check_required: boolean
   post_repair_check_done: boolean
   remarks: string | null
+  /** ISO 17025 6.4.9 / 7.10 (migration 20261028100200; absent before). */
+  nc_record_id?: string | null
+  affected_work_note?: string | null
+  last_good_check_on?: string | null
+  /** Kept by the database: equipment status before it went out of service. */
+  status_before_breakdown?: string | null
   created_at?: string
 }
 
@@ -123,6 +129,9 @@ export type BreakdownRegisterForm = {
   postRepairCheckRequired: boolean
   postRepairCheckDone: boolean
   remarks: string
+  ncRecordId: string
+  affectedWorkNote: string
+  lastGoodCheckOn: string
 }
 
 function todayIsoDate() {
@@ -171,6 +180,9 @@ export function emptyBreakdownForm(registerNo = ''): BreakdownRegisterForm {
     postRepairCheckRequired: true,
     postRepairCheckDone: false,
     remarks: '',
+    ncRecordId: '',
+    affectedWorkNote: '',
+    lastGoodCheckOn: '',
   }
 }
 
@@ -213,6 +225,9 @@ export function rowToForm(row: BreakdownRegisterRow): BreakdownRegisterForm {
     postRepairCheckRequired: Boolean(row.post_repair_check_required),
     postRepairCheckDone: Boolean(row.post_repair_check_done),
     remarks: row.remarks ?? '',
+    ncRecordId: row.nc_record_id ?? '',
+    affectedWorkNote: row.affected_work_note ?? '',
+    lastGoodCheckOn: (row.last_good_check_on ?? '').slice(0, 10),
   }
 }
 
@@ -267,6 +282,32 @@ export function formToPayload(form: BreakdownRegisterForm) {
     post_repair_check_done: form.postRepairCheckDone,
     remarks: form.remarks.trim() || null,
   }
+}
+
+/**
+ * Columns added by migration 20261028100200 (NC link, affected work since the
+ * last good check). Sent together with formToPayload; when the database does
+ * not have them yet the save is retried without them.
+ */
+export function formToExtendedPayload(form: BreakdownRegisterForm) {
+  return {
+    nc_record_id: form.ncRecordId.trim() || null,
+    affected_work_note: form.affectedWorkNote.trim() || null,
+    last_good_check_on: form.lastGoodCheckOn.trim() || null,
+  }
+}
+
+/** Open statuses: the equipment is out of service while one of these is set. */
+export const OPEN_BREAKDOWN_STATUSES: readonly BreakdownStatus[] = ['Open', 'Under Repair', 'Awaiting Verification']
+
+/** What still blocks closing (the database refuses the same, ISO 17025 6.4.9). */
+export function closingProblems(form: BreakdownRegisterForm): string[] {
+  if (form.status !== 'Closed') return []
+  const out: string[] = []
+  if (!form.returnToServiceDate.trim()) out.push('return-to-service date and time')
+  if (!form.authorizedByEmployeeId.trim() && !form.authorizedByName.trim()) out.push('who authorized the return to service')
+  if (form.postRepairCheckRequired && !form.postRepairCheckDone) out.push('post-repair calibration (Calibration Form) or "Calibration Not Required"')
+  return out
 }
 
 export function formatDateDisplay(value: string | null | undefined): string {

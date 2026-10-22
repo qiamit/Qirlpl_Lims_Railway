@@ -99,6 +99,7 @@ const RetentionSchedulePage = lazy(() => import('@/features/records-retention/Re
 const MyDocumentAcknowledgementsPage = lazy(() => import('@/features/management-docs/MyDocumentAcknowledgementsPage'))
 const DecisionRulesPage = lazy(() => import('@/features/masters/decision-rules/DecisionRulesPage'))
 const PtPlanPage = lazy(() => import('@/features/proficiency-testing/PtPlanPage'))
+const ControlChartsPage = lazy(() => import('@/features/quality/control-charts/ControlChartsPage'))
 const PtParticipationsPage = lazy(() => import('@/features/proficiency-testing/PtParticipationsPage'))
 const MethodVerificationsPage = lazy(() => import('@/features/method-validation/MethodVerificationsPage'))
 const ScopeVerificationStatusPage = lazy(() => import('@/features/method-validation/ScopeVerificationStatusPage'))
@@ -467,6 +468,10 @@ export function DecisionRulesRoute() {
 
 export function PtPlanRoute() {
   return <PtPlanPage />
+}
+
+export function ControlChartsRoute() {
+  return <ControlChartsPage />
 }
 
 export function PtParticipationsRoute() {

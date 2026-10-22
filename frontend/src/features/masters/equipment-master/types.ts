@@ -1,7 +1,11 @@
 import type { MaintenanceHistoryRecord } from './maintenanceHistory'
 import type { IntermediateCheckHistoryRecord } from './intermediateCheckHistory'
 
-export type EquipmentStatus = 'Active' | 'In Repair' | 'Idle'
+/**
+ * 'Out of Service' is set by the database while a breakdown is open and
+ * 'Scrapped' when a breakdown ends in scrapping (20261028100200).
+ */
+export type EquipmentStatus = 'Active' | 'In Repair' | 'Idle' | 'Out of Service' | 'Scrapped'
 
 export type Frequency = 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Half Yearly' | 'Yearly' | ''
 
@@ -52,6 +56,12 @@ export type EquipmentRow = {
   upload_certificate_path: string | null
   upload_manual_sop_path: string | null
   custodian_employee_id: string | null
+  /** ISO 17025 6.4.12 seal / tamper protection (20261028100200; absent before). */
+  seal_no?: string | null
+  seal_intact_checked_on?: string | null
+  adjustment_protection?: string | null
+  /** True when an acceptance / commissioning record is needed before use (6.4.1). */
+  acceptance_required?: boolean | null
   created_at?: string
   updated_at?: string
 }
@@ -96,6 +106,9 @@ export type EquipmentForm = {
   uploadCertificatePath: string
   uploadManualSopPath: string
   custodianEmployeeId: string
+  sealNo: string
+  sealIntactCheckedOn: string
+  adjustmentProtection: string
   certificateFile: File | null
   manualSopFile: File | null
 }
@@ -140,6 +153,9 @@ export const emptyEquipmentForm = (): EquipmentForm => ({
   uploadCertificatePath: '',
   uploadManualSopPath: '',
   custodianEmployeeId: '',
+  sealNo: '',
+  sealIntactCheckedOn: '',
+  adjustmentProtection: '',
   certificateFile: null,
   manualSopFile: null,
 })

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { ClipboardCheck, Loader2, Sparkles } from 'lucide-react'
+import { AlertTriangle, ClipboardCheck, Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,8 +17,11 @@ import {
   type BreakdownAiFieldKey,
 } from './breakdownAiFill'
 import { PostRepairCalibrationDialog } from './PostRepairCalibrationDialog'
+import { NC_RECORDS_PATH } from '@/features/environment/shared'
+import { Link } from 'react-router-dom'
 import {
   BREAKDOWN_STATUSES,
+  closingProblems,
   matchesSourceFilter,
   type BreakdownRegisterForm,
   type BreakdownStatus,
@@ -90,6 +93,9 @@ export function EquipmentBreakdownForm({
   canSave,
   saveLoading,
   onSave,
+  extendedSupported = true,
+  ncLabel = null,
+  onRaiseNc,
 }: {
   form: BreakdownRegisterForm
   onChange: (next: BreakdownRegisterForm) => void
@@ -98,7 +104,12 @@ export function EquipmentBreakdownForm({
   canSave: boolean
   saveLoading: boolean
   onSave: () => void
+  /** NC link and affected-work fields exist (migration 20261028100200). */
+  extendedSupported?: boolean
+  ncLabel?: string | null
+  onRaiseNc?: () => void
 }) {
+  const closeBlockers = closingProblems(form)
   const showAiButtons = useShowAiButtons()
   const [eqOpen, setEqOpen] = useState(false)
   const [eqQuery, setEqQuery] = useState('')
@@ -428,6 +439,56 @@ export function EquipmentBreakdownForm({
 
       {aiError ? <p className="text-sm text-rose-700">{aiError}</p> : null}
 
+      {extendedSupported ? (
+        <div className="grid gap-4 md:grid-cols-4">
+          <div className="space-y-2">
+            <Label htmlFor="ebr-last-good">Last Good Check On</Label>
+            <Input
+              id="ebr-last-good"
+              type="date"
+              value={form.lastGoodCheckOn}
+              onChange={(e) => onChange({ ...form, lastGoodCheckOn: e.target.value })}
+            />
+            <p className="text-[11px] text-stone-600">Last calibration / intermediate check / use known to be good.</p>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="ebr-affected">Work Affected Since Last Good Check (6.4.9)</Label>
+            <Textarea
+              id="ebr-affected"
+              value={form.affectedWorkNote}
+              onChange={(e) => onChange({ ...form, affectedWorkNote: e.target.value })}
+              rows={2}
+              placeholder="SRFs / results / reports done with this equipment since then, and what was decided"
+              className="!min-h-8 resize-y"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Nonconforming Work (7.10)</Label>
+            {form.ncRecordId ? (
+              <Link
+                to={NC_RECORDS_PATH}
+                className="flex h-8 items-center border border-stone-400 bg-stone-100 px-2 text-sm font-semibold text-amber-800 hover:underline"
+              >
+                {ncLabel ?? 'Linked NC'}
+              </Link>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className={cn('h-8 w-full gap-1.5 px-3', limsOutlineBtnClass)}
+                disabled={!onRaiseNc || !form.registerNo.trim() || !form.equipmentName.trim()}
+                onClick={onRaiseNc}
+                title="Create a nonconforming work record for work affected by this breakdown"
+              >
+                <AlertTriangle size={14} />
+                Raise NC
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 md:grid-cols-4">
         <div className="space-y-2">
           <Label htmlFor="ebr-repaired-by">Repaired By</Label>
@@ -523,6 +584,12 @@ export function EquipmentBreakdownForm({
         equipmentLabel={selectedEqLabel}
         onSaved={() => onChange({ ...formRef.current, postRepairCheckDone: true })}
       />
+
+      {extendedSupported && closeBlockers.length ? (
+        <p className="border border-amber-600/50 bg-amber-50 px-3 py-2 text-[13px] text-amber-950" role="status">
+          To close this breakdown and return the equipment to service, record: {closeBlockers.join('; ')}.
+        </p>
+      ) : null}
 
       <div className="flex justify-end pt-1">
         <Button

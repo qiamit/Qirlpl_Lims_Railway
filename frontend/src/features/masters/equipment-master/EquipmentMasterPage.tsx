@@ -14,6 +14,9 @@ import { EquipmentFooterBar } from './EquipmentFooterBar'
 import { EquipmentMasterForm } from './EquipmentMasterForm'
 import { AddClientDialog } from './AddClientDialog'
 import { CalibrationHistoryDialog } from './CalibrationHistoryDialog'
+import { EquipmentAcceptanceDialog } from './EquipmentAcceptanceDialog'
+import { CorrectionFactorsDialog } from './CorrectionFactorsDialog'
+import { acceptanceStateFor, fetchLatestAcceptance, type AcceptanceState, type LatestAcceptance } from './equipmentAcceptance'
 import {
   emptyEquipmentForm,
   type EquipmentForm,
@@ -31,6 +34,7 @@ import { parseIntermediateCheckHistoryFromDb } from './intermediateCheckHistory'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
+import { isMissingColumnError } from '@/features/quality/control-charts/missingColumn'
 
 const BUCKET = 'equipment-files'
 
@@ -78,6 +82,11 @@ export default function EquipmentMasterPage() {
   const [showForm, setShowForm] = useState(false)
   /** Equipment whose calibration certificate history is open (ISO 17025 6.4). */
   const [calHistoryRow, setCalHistoryRow] = useState<EquipmentRow | null>(null)
+  /** Acceptance / commissioning (6.4.1) and correction factors (6.4.11) dialogs. */
+  const [acceptanceRow, setAcceptanceRow] = useState<EquipmentRow | null>(null)
+  const [correctionsRow, setCorrectionsRow] = useState<EquipmentRow | null>(null)
+  /** Latest acceptance record per equipment; null = table not on this database yet. */
+  const [latestAcceptance, setLatestAcceptance] = useState<Map<string, LatestAcceptance> | null>(null)
   const handleFormOpenChange = useFormDialogOpenChange((open) => {
     setShowForm(open)
     if (!open) {
@@ -125,6 +134,13 @@ export default function EquipmentMasterPage() {
     })
     return map
   }, [employees])
+
+  const acceptanceStateMap = useMemo(() => {
+    if (!latestAcceptance) return undefined
+    const map: Record<string, AcceptanceState> = {}
+    for (const r of rows) map[r.id] = acceptanceStateFor(r, latestAcceptance.get(r.id))
+    return map
+  }, [rows, latestAcceptance])
 
   const [form, setForm] = useState<EquipmentForm>(() => emptyEquipmentForm())
 
@@ -176,6 +192,7 @@ export default function EquipmentMasterPage() {
 
       if (error) throw error
       setRows((data as EquipmentRow[]) ?? [])
+      void fetchLatestAcceptance().then(setLatestAcceptance)
 
       // Dynamically extract locations
       if (data) {
@@ -384,7 +401,17 @@ export default function EquipmentMasterPage() {
           equipment_kind: EQUIPMENT_KIND_TESTING,
         }
 
-        const { error } = await supabase.from('equipment_master').upsert(payload)
+        // Seal / tamper fields (6.4.12) exist after migration 20261028100200;
+        // before it the save is retried without them.
+        const sealPayload = {
+          seal_no: form.sealNo.trim() || null,
+          seal_intact_checked_on: sanitizeDateStr(form.sealIntactCheckedOn) || null,
+          adjustment_protection: form.adjustmentProtection.trim() || null,
+        }
+        let { error } = await supabase.from('equipment_master').upsert({ ...payload, ...sealPayload })
+        if (error && isMissingColumnError(error)) {
+          ;({ error } = await supabase.from('equipment_master').upsert(payload))
+        }
         if (error) throw error
         if (changeReason) await recordReason('equipment_master', eqId, changeReason)
 
@@ -472,6 +499,9 @@ export default function EquipmentMasterPage() {
       uploadCertificatePath: row.upload_certificate_path ?? '',
       uploadManualSopPath: row.upload_manual_sop_path ?? '',
       custodianEmployeeId: row.custodian_employee_id ?? '',
+      sealNo: row.seal_no ?? '',
+      sealIntactCheckedOn: row.seal_intact_checked_on ?? '',
+      adjustmentProtection: row.adjustment_protection ?? '',
       certificateFile: null,
       manualSopFile: null,
     })
@@ -538,6 +568,10 @@ export default function EquipmentMasterPage() {
       uploadCertificatePath: row.upload_certificate_path ?? '',
       uploadManualSopPath: row.upload_manual_sop_path ?? '',
       custodianEmployeeId: row.custodian_employee_id ?? '',
+      // A copy is another physical item: its seal is recorded afresh.
+      sealNo: '',
+      sealIntactCheckedOn: '',
+      adjustmentProtection: row.adjustment_protection ?? '',
       certificateFile: null,
       manualSopFile: null,
     })
@@ -1021,7 +1055,27 @@ export default function EquipmentMasterPage() {
         onEdit={handleEdit}
         onCopy={handleCopy}
         onCalibrationHistory={setCalHistoryRow}
+        onAcceptance={latestAcceptance ? setAcceptanceRow : undefined}
+        onCorrections={latestAcceptance ? setCorrectionsRow : undefined}
+        acceptanceState={acceptanceStateMap}
         employeeMap={employeeMap}
+      />
+
+      <EquipmentAcceptanceDialog
+        open={acceptanceRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setAcceptanceRow(null)
+        }}
+        equipment={acceptanceRow}
+        onSaved={loadEquipment}
+      />
+
+      <CorrectionFactorsDialog
+        open={correctionsRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setCorrectionsRow(null)
+        }}
+        equipment={correctionsRow}
       />
 
       <CalibrationHistoryDialog
@@ -1187,6 +1241,7 @@ function buildEquipmentPrintHtml(
             <div class="field"><div class="k">Maintenance (Freq / Last / Next / Done By)</div><div class="v">${esc(r.maintenance_schedule_frequency || '-')}: ${esc(r.last_maintenance_date || '-')} / ${esc(r.next_maintenance_date || '-')} by ${esc(maintName)}</div></div>
 
             <div class="field span2"><div class="k">History of Damage/Malfunction</div><div class="v">${esc(r.history_of_damage || '-')}</div></div>
+            ${r.seal_no || r.adjustment_protection ? `<div class="field span2"><div class="k">Seal / Adjustment Protection (6.4.12)</div><div class="v">${esc(r.seal_no || '-')}${r.seal_intact_checked_on ? ` (intact on ${esc(r.seal_intact_checked_on)})` : ''} — ${esc(r.adjustment_protection || '-')}</div></div>` : ''}
           </div>
         </section>
       `

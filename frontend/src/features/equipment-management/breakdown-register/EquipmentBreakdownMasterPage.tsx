@@ -14,6 +14,7 @@ import { EquipmentBreakdownTable } from './EquipmentBreakdownTable'
 import { EquipmentBreakdownFooterBar } from './EquipmentBreakdownFooterBar'
 import {
   emptyBreakdownForm,
+  formToExtendedPayload,
   formToPayload,
   formatDateDisplay,
   formatDateTimeDisplay,
@@ -24,6 +25,12 @@ import {
   type EquipmentSource,
 } from './types'
 import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
+import { isMissingColumnError } from '@/features/quality/control-charts/missingColumn'
+import {
+  RaiseNcRecordDialog,
+  type CreatedNc,
+  type RaiseNcRequest,
+} from '@/features/quality/control-charts/RaiseNcRecordDialog'
 
 function formatSupabaseError(err: unknown) {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -77,6 +84,11 @@ function nextRegisterNo(existing: BreakdownRegisterRow[], deletedNos: string[] =
   return `${prefix}${String(max + 1).padStart(4, '0')}`
 }
 
+/**
+ * Before migration 20261028100200 the page sets the equipment status itself.
+ * After it a database trigger does (Out of Service while open, back on closure
+ * with return-to-service authorization), so this runs only on the fallback path.
+ */
 async function syncEquipmentStatus(opts: {
   source: EquipmentSource
   equipmentId: string | null
@@ -120,6 +132,10 @@ export default function EquipmentBreakdownMasterPage() {
   const [form, setForm] = useState<BreakdownRegisterForm>(() => emptyBreakdownForm())
   const [equipmentOptions, setEquipmentOptions] = useState<EquipmentPickOption[]>([])
   const [employees, setEmployees] = useState<Array<{ id: string; full_name: string }>>([])
+  /** NC link / affected-work columns present (migration 20261028100200). */
+  const [extendedSupported, setExtendedSupported] = useState(true)
+  const [ncLabels, setNcLabels] = useState<Record<string, string>>({})
+  const [ncRequest, setNcRequest] = useState<RaiseNcRequest | null>(null)
 
   const canSave =
     !saveLoading &&
@@ -206,7 +222,16 @@ export default function EquipmentBreakdownMasterPage() {
         .order('breakdown_date', { ascending: false })
         .order('created_at', { ascending: false })
       if (error) throw error
-      setRows(Array.isArray(data) ? (data as BreakdownRegisterRow[]) : [])
+      const list = Array.isArray(data) ? (data as BreakdownRegisterRow[]) : []
+      setRows(list)
+      if (list.length > 0) setExtendedSupported(list.some((r) => 'affected_work_note' in r))
+      const ncIds = Array.from(new Set(list.map((r) => r.nc_record_id).filter((v): v is string => Boolean(v))))
+      if (ncIds.length) {
+        const { data: ncs } = await supabase.from('nc_work_records').select('id, nc_id, status').in('id', ncIds)
+        const labels: Record<string, string> = {}
+        for (const n of (ncs ?? []) as Array<{ id: string; nc_id: string; status: string }>) labels[n.id] = `${n.nc_id} (${n.status})`
+        setNcLabels((prev) => ({ ...prev, ...labels }))
+      }
     } catch (err) {
       setListError(formatSupabaseError(err))
       setRows([])
@@ -273,6 +298,9 @@ export default function EquipmentBreakdownMasterPage() {
       status: 'Open',
       returnToServiceDate: '',
       postRepairCheckDone: false,
+      ncRecordId: '',
+      affectedWorkNote: '',
+      lastGoodCheckOn: '',
     })
     setShowForm(true)
   }
@@ -283,26 +311,28 @@ export default function EquipmentBreakdownMasterPage() {
       setSaveLoading(true)
       setSaveMessage(null)
       try {
-        if (editingId) {
-          const payload = formToPayload(form)
-          const { error } = await supabase
-            .from('equipment_breakdown_register')
-            .update(payload)
-            .eq('id', editingId)
-          if (error) throw error
-        } else {
-          const payload = {
-            ...formToPayload(form),
-            created_by: user?.id ?? null,
+        const write = async (withExtended: boolean) => {
+          const base = withExtended ? { ...formToPayload(form), ...formToExtendedPayload(form) } : formToPayload(form)
+          if (editingId) {
+            return supabase.from('equipment_breakdown_register').update(base).eq('id', editingId)
           }
-          const { error } = await supabase.from('equipment_breakdown_register').insert(payload)
-          if (error) throw error
+          return supabase.from('equipment_breakdown_register').insert({ ...base, created_by: user?.id ?? null })
         }
-        await syncEquipmentStatus({
-          source: form.equipmentSource,
-          equipmentId: form.equipmentId || null,
-          status: form.status,
-        })
+        let { error } = await write(true)
+        let legacy = false
+        if (error && isMissingColumnError(error)) {
+          legacy = true
+          setExtendedSupported(false)
+          ;({ error } = await write(false))
+        }
+        if (error) throw error
+        if (legacy) {
+          await syncEquipmentStatus({
+            source: form.equipmentSource,
+            equipmentId: form.equipmentId || null,
+            status: form.status,
+          })
+        }
         setSaveMessage('Saved successfully.')
         setShowForm(false)
         setEditingId(null)
@@ -434,6 +464,45 @@ th{background:#1c1917;color:#fde68a}
 </tr></thead><tbody>${rowsHtml}</tbody></table></body></html>`)
   }
 
+  const handleRaiseNc = () => {
+    const eq = [form.assetCode, form.equipmentName].filter(Boolean).join(' — ')
+    const since = [form.breakdownDate, form.breakdownTime].filter(Boolean).join(' ')
+    const lines = [
+      `Equipment breakdown ${form.registerNo} (ISO/IEC 17025 6.4.9): ${eq || 'equipment not selected'}.`,
+      `Out of service since ${since || '—'}. Nature: ${form.natureOfBreakdown.trim() || '—'}.`,
+      form.symptoms.trim() ? `Symptoms: ${form.symptoms.trim()}.` : '',
+      `Last good check: ${form.lastGoodCheckOn || 'not recorded'}.`,
+      `Work affected since the last good check: ${form.affectedWorkNote.trim() || form.impactOnWork.trim() || 'to be evaluated (results, reports, customers).'}`,
+    ].filter(Boolean)
+    setNcRequest({
+      subtitle: `Creates an Open NC record for breakdown ${form.registerNo} and links it to the breakdown.`,
+      description: lines.join('\n'),
+      equipmentOrActivity: `Equipment breakdown ${form.registerNo} — ${eq}`,
+      sourceArea: form.equipmentSource === 'calibration' || form.equipmentSource === 'calibration_iqc' ? 'Calibration' : 'Testing',
+      detectedAt: new Date().toISOString(),
+      defaultRisk: 'Medium',
+      actionsPlaceholder: form.immediateAction.trim() || 'e.g. equipment tagged out of service, affected results held',
+    })
+  }
+
+  const linkNc = async (nc: CreatedNc): Promise<string | null> => {
+    setForm((prev) => ({ ...prev, ncRecordId: nc.id }))
+    setNcLabels((prev) => ({ ...prev, [nc.id]: `${nc.nc_id} (Open)` }))
+    if (!editingId) {
+      return `NC ${nc.nc_id} created. It is linked when you save this breakdown record.`
+    }
+    const { error } = await supabase.from('equipment_breakdown_register').update({ nc_record_id: nc.id }).eq('id', editingId)
+    if (error) {
+      if (isMissingColumnError(error)) {
+        setExtendedSupported(false)
+        return `NC ${nc.nc_id} created. The link is not stored yet (database update 20261028100200 pending); note the NC number in Remarks.`
+      }
+      throw error
+    }
+    setRows((prev) => prev.map((r) => (r.id === editingId ? { ...r, nc_record_id: nc.id } : r)))
+    return null
+  }
+
   const assistantContext = useMemo(() => {
     const open = rows.filter((r) => r.status === 'Open' || r.status === 'Under Repair').length
     const lines = filteredRows.slice(0, 30).map(
@@ -502,10 +571,15 @@ th{background:#1c1917;color:#fde68a}
               canSave={canSave}
               saveLoading={saveLoading}
               onSave={handleSave}
+              extendedSupported={extendedSupported}
+              ncLabel={form.ncRecordId ? (ncLabels[form.ncRecordId] ?? 'Linked NC') : null}
+              onRaiseNc={handleRaiseNc}
             />
           </div>
         </DialogContent>
       </Dialog>
+
+      <RaiseNcRecordDialog request={ncRequest} onClose={() => setNcRequest(null)} link={linkNc} />
 
       <EquipmentBreakdownTable
         rows={pagedRows}

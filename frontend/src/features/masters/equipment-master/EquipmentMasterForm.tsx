@@ -2223,8 +2223,15 @@ export function EquipmentMasterForm({
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="In Repair">In Repair</SelectItem>
                   <SelectItem value="Idle">Idle</SelectItem>
+                  <SelectItem value="Out of Service">Out of Service</SelectItem>
+                  <SelectItem value="Scrapped">Scrapped</SelectItem>
                 </SelectContent>
               </Select>
+              {form.equipmentStatus === 'Out of Service' ? (
+                <p className="text-[11px] text-stone-600">
+                  Set while a breakdown is open; it returns when the breakdown is closed with return-to-service authorization (6.4.9).
+                </p>
+              ) : null}
             </div>
             </div>
           </section>
@@ -2785,6 +2792,44 @@ export function EquipmentMasterForm({
                 className="h-8"
               />
             </div>
+            </div>
+          </section>
+
+          <section className={cn(limsPanelClass, "p-4")}>
+            <h3 className="mb-3 border-b border-amber-700/25 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+              Seal & Adjustment Protection (6.4.12)
+            </h3>
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="eq-seal-no">Seal / Tamper Label No.</Label>
+                <Input
+                  id="eq-seal-no"
+                  placeholder="e.g. SEAL-0042"
+                  value={form.sealNo}
+                  readOnly={readOnly}
+                  onChange={(e) => onChange({ ...form, sealNo: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="eq-seal-checked">Seal Found Intact On</Label>
+                <Input
+                  id="eq-seal-checked"
+                  type="date"
+                  value={form.sealIntactCheckedOn}
+                  readOnly={readOnly}
+                  onChange={(e) => onChange({ ...form, sealIntactCheckedOn: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-6">
+                <Label htmlFor="eq-adj-protection">Protection Against Adjustment</Label>
+                <Input
+                  id="eq-adj-protection"
+                  placeholder="e.g. Calibration screw sealed; settings menu password-protected"
+                  value={form.adjustmentProtection}
+                  readOnly={readOnly}
+                  onChange={(e) => onChange({ ...form, adjustmentProtection: e.target.value })}
+                />
+              </div>
             </div>
           </section>
         </div>

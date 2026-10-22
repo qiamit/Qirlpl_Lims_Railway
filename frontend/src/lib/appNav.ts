@@ -70,6 +70,7 @@ import {
   Contact,
   Eye,
   KeyRound,
+  LineChart,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -486,6 +487,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'PT Plan (4-year)', to: '/quality/pt-plan', icon: CalendarRange, clause: '7.7.2' },
       { label: 'PT / ILC Participation', to: '/quality/pt-participations', icon: TargetIcon, clause: '7.7.2' },
+      { label: 'Control Charts', to: '/quality/control-charts', icon: LineChart, clause: '7.7.1' },
       { label: 'Method Verification & Validation', to: '/quality/method-verifications', icon: ClipboardCheck, clause: '7.2' },
       { label: 'Scope Verification Status', to: '/quality/scope-verification-status', icon: ShieldCheck, clause: '7.2' },
       { label: 'Software Change Control', to: '/quality/software-changes', icon: GitCommitHorizontal, clause: '7.11' },

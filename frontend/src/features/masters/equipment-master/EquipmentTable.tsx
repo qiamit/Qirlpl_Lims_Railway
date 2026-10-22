@@ -1,4 +1,4 @@
-import { Copy, History, Pencil } from 'lucide-react'
+import { BadgeCheck, Copy, History, Pencil, Ruler } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import {
@@ -14,6 +14,7 @@ import {
   isMaintenanceApplicable,
   type EquipmentRow,
 } from './types'
+import { ACCEPTANCE_STATE_UI, type AcceptanceState } from './equipmentAcceptance'
 
 const rowEvenClass = 'bg-[#f7f3eb] hover:bg-[#f3e9d8]'
 const rowOddClass = 'bg-[#fffcf7] hover:bg-[#f3e9d8]'
@@ -128,6 +129,9 @@ export function EquipmentTable({
   onEdit,
   onCopy,
   onCalibrationHistory,
+  onAcceptance,
+  onCorrections,
+  acceptanceState,
   employeeMap: _employeeMap,
 }: {
   rows: EquipmentRow[]
@@ -143,8 +147,15 @@ export function EquipmentTable({
   onCopy: (row: EquipmentRow) => void
   /** Opens the calibration certificate history (ISO 17025 6.4). */
   onCalibrationHistory?: (row: EquipmentRow) => void
+  /** Acceptance / commissioning before use (ISO 17025 6.4.1); absent before migration 20261028100200. */
+  onAcceptance?: (row: EquipmentRow) => void
+  /** Correction factors (ISO 17025 6.4.11). */
+  onCorrections?: (row: EquipmentRow) => void
+  acceptanceState?: Record<string, AcceptanceState>
   employeeMap: Record<string, string>
 }) {
+  const extraActions = (onCalibrationHistory ? 1 : 0) + (onAcceptance ? 1 : 0) + (onCorrections ? 1 : 0)
+  const actionColClass = extraActions >= 3 ? 'w-[200px]' : extraActions === 2 ? 'w-[164px]' : extraActions === 1 ? 'w-[128px]' : 'w-[90px]'
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
 
@@ -164,7 +175,7 @@ export function EquipmentTable({
               <col className="w-[10%]" />
               <col className="w-[10%]" />
               <col className="w-[10%]" />
-              <col className={onCalibrationHistory ? 'w-[128px]' : 'w-[90px]'} />
+              <col className={actionColClass} />
             </colgroup>
             <TableHeader>
               <TableRow className="border-stone-700 bg-stone-800 hover:bg-stone-800">
@@ -239,6 +250,24 @@ export function EquipmentTable({
                         >
                           {r.equipment_name || '—'}
                         </button>
+                        {acceptanceState?.[r.id] && acceptanceState[r.id] !== 'legacy' ? (
+                          <button
+                            type="button"
+                            className={cn(
+                              'mt-0.5 inline-flex items-center border px-1.5 py-px text-[10px] font-bold uppercase tracking-wide',
+                              ACCEPTANCE_STATE_UI[acceptanceState[r.id]].className,
+                            )}
+                            title={ACCEPTANCE_STATE_UI[acceptanceState[r.id]].title}
+                            onClick={() => onAcceptance?.(r)}
+                          >
+                            {ACCEPTANCE_STATE_UI[acceptanceState[r.id]].text}
+                          </button>
+                        ) : null}
+                        {r.equipment_status === 'Out of Service' || r.equipment_status === 'Scrapped' ? (
+                          <span className="ml-1 mt-0.5 inline-flex border border-red-700/50 bg-red-100 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-red-800">
+                            {r.equipment_status}
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell className="align-middle text-center text-sm font-medium text-stone-800">
                         {r.resolution_least_count?.trim() || '—'}
@@ -312,6 +341,32 @@ export function EquipmentTable({
                               onClick={() => onCalibrationHistory(r)}
                             >
                               <History size={16} />
+                            </Button>
+                          ) : null}
+                          {onAcceptance ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className={cn('h-8 w-8', limsOutlineBtnClass)}
+                              aria-label={`Accept / commission ${r.asset_code || r.equipment_name}`}
+                              title="Accept / commission (ISO 17025 6.4.1)"
+                              onClick={() => onAcceptance(r)}
+                            >
+                              <BadgeCheck size={16} />
+                            </Button>
+                          ) : null}
+                          {onCorrections ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className={cn('h-8 w-8', limsOutlineBtnClass)}
+                              aria-label={`Correction factors of ${r.asset_code || r.equipment_name}`}
+                              title="Correction factors (ISO 17025 6.4.11)"
+                              onClick={() => onCorrections(r)}
+                            >
+                              <Ruler size={16} />
                             </Button>
                           ) : null}
                         </div>
