@@ -13,7 +13,16 @@ import type { ReportScopeKind } from '@/features/sample-handling/report-preparat
 import { CompletedResultsFooterBar } from './CompletedResultsFooterBar'
 import { CompletedResultsHeaderBar } from './CompletedResultsHeaderBar'
 import { CompletedResultsTable } from './CompletedResultsTable'
-import { printIssuedTestReport, downloadIssuedTestReports, emailIssuedTestReports } from './printIssuedTestReport'
+import {
+  ARCHIVE_INTEGRITY_FAILED_MESSAGE,
+  IssuedReportIntegrityError,
+  printIssuedTestReport,
+  downloadIssuedTestReports,
+  emailIssuedTestReports,
+  type IssuedReportCopySource,
+} from './printIssuedTestReport'
+import { checkIssuedReportArchive, fetchIssuedReportArchivePresence } from './issuedReportArchive'
+import type { IssuedReportArchiveStatus } from './IssuedReportArchiveBadge'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import {
   referbackIssuedTestReportToPreparation,
@@ -39,6 +48,9 @@ export default function CompletedResultsMasterPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [actionBusyId, setActionBusyId] = useState<string | null>(null)
+  const [archiveStatuses, setArchiveStatuses] = useState<
+    Record<string, IssuedReportArchiveStatus | undefined>
+  >({})
 
   const [srfViewOpen, setSrfViewOpen] = useState(false)
   const [srfViewRow, setSrfViewRow] = useState<IssuedTestReportListRow | null>(null)
@@ -55,6 +67,7 @@ export default function CompletedResultsMasterPage() {
   const loadList = useCallback(async () => {
     setError(null)
     setLoading(true)
+    setArchiveStatuses({})
     try {
       const baseColumns =
         'id, srf_number, date_of_sample_receiving, test_report_is_code_id, test_report_number, test_report_issued_at, test_report_nabl_issued_at, test_report_non_nabl_issued_at, test_report_nabl_ulr_number, clients(company_name, email)'
@@ -150,6 +163,74 @@ export default function CompletedResultsMasterPage() {
     [filtered, page, pageSize],
   )
 
+  // Archive badge: one cheap lookup (ids + timestamps, no snapshots) for the
+  // visible page; hashing happens only on print / download / email / verify.
+  useEffect(() => {
+    const unknown = paged.filter((r) => archiveStatuses[r.id] === undefined)
+    if (unknown.length === 0) return
+    let cancelled = false
+    void fetchIssuedReportArchivePresence(unknown)
+      .then((presence) => {
+        if (cancelled) return
+        setArchiveStatuses((prev) => {
+          const next = { ...prev }
+          for (const r of unknown) {
+            if (next[r.id] === undefined) next[r.id] = presence?.get(r.id) ? 'archived' : 'none'
+          }
+          return next
+        })
+      })
+      .catch(() => {
+        /* badge stays empty; print still checks the archive */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [paged, archiveStatuses])
+
+  const setArchiveStatus = (id: string, status: IssuedReportArchiveStatus) =>
+    setArchiveStatuses((prev) => ({ ...prev, [id]: status }))
+
+  const archiveStatusForSource = (source: IssuedReportCopySource): IssuedReportArchiveStatus =>
+    source === 'archive' ? 'verified' : source === 'live_integrity_failed' ? 'failed' : 'none'
+
+  const sourceNote = (source: IssuedReportCopySource) =>
+    source === 'archive'
+      ? ' Printed from the archived issued copy.'
+      : source === 'live_no_archive'
+        ? ' No archived copy on file; regenerated from current records.'
+        : ' NOT THE ISSUED COPY – regenerated from current records.'
+
+  const confirmRegenerate = (row: IssuedTestReportListRow, action: string) =>
+    window.confirm(
+      `${ARCHIVE_INTEGRITY_FAILED_MESSAGE} for ${row.srfNumber?.trim() || 'this SRF'}.\n\n` +
+        'The stored copy of this issued report does not match its SHA-256 fingerprint, so it cannot be ' +
+        'reproduced as issued. Report this to the Quality Manager.\n\n' +
+        `${action} from current records instead? Every page will be marked ` +
+        `"NOT THE ISSUED COPY – regenerated <date>".`,
+    )
+
+  const handleVerifyArchive = async (row: IssuedTestReportListRow) => {
+    setArchiveStatus(row.id, 'checking')
+    try {
+      const check = await checkIssuedReportArchive(row.id, row.issuedAt)
+      setArchiveStatus(
+        row.id,
+        check.status === 'verified' ? 'verified' : check.status === 'integrity_failed' ? 'failed' : 'none',
+      )
+      setSaveMessage(
+        check.status === 'verified'
+          ? `Archived copy of ${row.srfNumber ?? 'SRF'} matches its SHA-256 fingerprint.`
+          : check.status === 'integrity_failed'
+            ? `${ARCHIVE_INTEGRITY_FAILED_MESSAGE} (${row.srfNumber ?? 'SRF'}): ${check.reason}`
+            : `No archived copy on file for ${row.srfNumber ?? 'SRF'}.`,
+      )
+    } catch (e) {
+      setArchiveStatus(row.id, 'archived')
+      setSaveMessage(e instanceof Error ? e.message : 'Archive check failed')
+    }
+  }
+
   const selectedRows = useMemo(
     () => rows.filter((r) => selectedIds.has(r.id)),
     [rows, selectedIds],
@@ -187,14 +268,29 @@ export default function CompletedResultsMasterPage() {
   const handlePrintReport = async (row: IssuedTestReportListRow, scope: ReportScopeKind) => {
     setActionBusyId(row.id)
     setSaveMessage(null)
-    try {
-      await printIssuedTestReport(row, scope, labName)
+    const sentToPrint = (source: IssuedReportCopySource) =>
       setSaveMessage(
-        scope === 'nabl'
+        (scope === 'nabl'
           ? `Accredited report sent to print (${row.srfNumber ?? 'SRF'}).`
-          : `Non Accredited report sent to print (${row.srfNumber ?? 'SRF'}).`,
+          : `Non Accredited report sent to print (${row.srfNumber ?? 'SRF'}).`) + sourceNote(source),
       )
+    try {
+      const { source } = await printIssuedTestReport(row, scope, labName)
+      setArchiveStatus(row.id, archiveStatusForSource(source))
+      sentToPrint(source)
     } catch (e) {
+      if (e instanceof IssuedReportIntegrityError) {
+        setArchiveStatus(row.id, 'failed')
+        setSaveMessage(`${ARCHIVE_INTEGRITY_FAILED_MESSAGE} (${row.srfNumber ?? 'SRF'}). Nothing was printed.`)
+        if (!confirmRegenerate(row, 'Print')) return
+        try {
+          const { source } = await printIssuedTestReport(row, scope, labName, { allowRegenerated: true })
+          sentToPrint(source)
+        } catch (e2) {
+          setSaveMessage(e2 instanceof Error ? e2.message : 'Print failed')
+        }
+        return
+      }
       setSaveMessage(e instanceof Error ? e.message : 'Print failed')
     } finally {
       setActionBusyId(null)
@@ -204,12 +300,28 @@ export default function CompletedResultsMasterPage() {
   const handleDownloadPdfs = async (row: IssuedTestReportListRow) => {
     setActionBusyId(row.id)
     setSaveMessage(null)
-    try {
-      const labels = await downloadIssuedTestReports(row, labName)
+    const downloaded = (labels: string[], source: IssuedReportCopySource) =>
       setSaveMessage(
-        `Downloaded ${labels.join(' & ')} PDF${labels.length > 1 ? 's' : ''} (${row.srfNumber ?? 'SRF'}).`,
+        `Downloaded ${labels.join(' & ')} PDF${labels.length > 1 ? 's' : ''} (${row.srfNumber ?? 'SRF'}).` +
+          sourceNote(source),
       )
+    try {
+      const { labels, source } = await downloadIssuedTestReports(row, labName)
+      setArchiveStatus(row.id, archiveStatusForSource(source))
+      downloaded(labels, source)
     } catch (e) {
+      if (e instanceof IssuedReportIntegrityError) {
+        setArchiveStatus(row.id, 'failed')
+        setSaveMessage(`${ARCHIVE_INTEGRITY_FAILED_MESSAGE} (${row.srfNumber ?? 'SRF'}). Nothing was downloaded.`)
+        if (!confirmRegenerate(row, 'Download')) return
+        try {
+          const r = await downloadIssuedTestReports(row, labName, { allowRegenerated: true })
+          downloaded(r.labels, r.source)
+        } catch (e2) {
+          setSaveMessage(e2 instanceof Error ? e2.message : 'PDF download failed')
+        }
+        return
+      }
       setSaveMessage(e instanceof Error ? e.message : 'PDF download failed')
     } finally {
       setActionBusyId(null)
@@ -234,10 +346,19 @@ export default function CompletedResultsMasterPage() {
     setSaveMessage(null)
     try {
       const sent = await emailIssuedTestReports(row, labName)
+      setArchiveStatus(row.id, archiveStatusForSource(sent.source))
       setSaveMessage(
-        `${sent.labels.join(' & ')} report${sent.labels.length > 1 ? 's' : ''} emailed to ${sent.email}.`,
+        `${sent.labels.join(' & ')} report${sent.labels.length > 1 ? 's' : ''} emailed to ${sent.email}.` +
+          (sent.source === 'archive' ? ' Sent from the archived issued copy.' : sourceNote(sent.source)),
       )
     } catch (e) {
+      if (e instanceof IssuedReportIntegrityError) {
+        setArchiveStatus(row.id, 'failed')
+        setSaveMessage(
+          `${ARCHIVE_INTEGRITY_FAILED_MESSAGE} (${row.srfNumber ?? 'SRF'}). The report was not emailed; report this to the Quality Manager.`,
+        )
+        return
+      }
       setSaveMessage(e instanceof Error ? e.message : 'Email failed')
     } finally {
       setActionBusyId(null)
@@ -407,6 +528,8 @@ export default function CompletedResultsMasterPage() {
         onReferbackToResultsReview={(row) => void handleReferbackToResultsReview(row)}
         onIssueAmendment={openAmendmentDialog}
         canReferbackToResultsReview={Boolean(user?.id)}
+        archiveStatuses={archiveStatuses}
+        onVerifyArchive={(row) => void handleVerifyArchive(row)}
       />
 
       <CompletedResultsFooterBar

@@ -6,26 +6,19 @@
  * JSON (sorted keys), hashed with SHA-256 and stored once in
  * issued_report_archive via archive_issued_test_report() (migration
  * 20261024100300_report_issue_signature.sql). The RPC takes the report number,
- * ULR, issue time and issuer from the issued sample row itself.
+ * ULR, issue time and issuer from the issued sample row itself. Re-prints read
+ * it back with checkIssuedReportArchive() (see printIssuedTestReport.ts).
  */
 import { supabase } from '@/lib/supabaseClient'
 import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
-import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
 import {
-  TEST_REPORT_SIGNATURE_PART_IDS,
-  signaturesForPart,
-  type TestReportSignature,
-} from '@/features/settings/lab-settings/printSettingsTypes'
-import { toCanonicalReportNumber } from '@/features/sample-handling/report-preparation/formattedTestReportNumber'
-import { fetchTestReportCoverDetails } from '@/features/sample-handling/report-preparation/fetchTestReportCoverDetails'
-import { fetchReportPrepLetterheads } from '@/features/sample-handling/report-preparation/reportPrepLetterhead'
-import {
-  fetchReportResultRowsForSample,
-  filterReportRowsByScope,
-} from '@/features/sample-handling/report-preparation/reportResultRows'
-import { appendReportScopeSuffix } from '@/features/sample-handling/report-preparation/reportScope'
-import { issuedReportScopes } from './printIssuedTestReport'
+  buildIssuedReportSnapshotFromSources,
+  isIssuedReportSnapshot,
+  issuedReportScopes,
+  type IssuedReportSnapshot,
+} from './issuedReportPrintData'
+import { loadIssuedReportSources } from './loadIssuedReportSources'
 import type { IssuedTestReportListRow } from './types'
 
 /** Stored in samples.issued_signature_meaning. */
@@ -40,9 +33,6 @@ export const ISSUE_SIGNATURE_COLUMNS = [
   'issued_signature_meaning',
   'issued_reauthenticated_at',
 ] as const
-
-const SNAPSHOT_FORMAT = 'qirlpl-issued-test-report'
-const SNAPSHOT_VERSION = 1
 
 type PgLikeError = { message?: string; code?: string; details?: string; hint?: string } | null | undefined
 
@@ -87,6 +77,11 @@ export async function sha256Hex(text: string): Promise<string> {
     .join('')
 }
 
+/** snapshot_sha256 as stored by archiveIssuedTestReport(): SHA-256 of the canonical JSON. */
+export function snapshotSha256(snapshot: unknown): Promise<string> {
+  return sha256Hex(canonicalJson(snapshot))
+}
+
 function labNameFromSettings(): string {
   try {
     return (
@@ -95,16 +90,6 @@ function labNameFromSettings(): string {
     )
   } catch {
     return 'Quality International Research & Laboratories Pvt. Ltd.'
-  }
-}
-
-function signatoryForSnapshot(sig: TestReportSignature) {
-  return {
-    roleLabel: sig.roleLabel ?? '',
-    userId: sig.userId ?? '',
-    name: sig.name ?? '',
-    designation: sig.designation ?? '',
-    department: sig.department ?? '',
   }
 }
 
@@ -131,10 +116,10 @@ type IssuedSampleRow = {
 
 /**
  * Builds the snapshot of an issued report from the database, using the same
- * loaders as the issued-report print (results per scope, cover details,
- * letterheads, signatories, Part D notes).
+ * loader and data shape as the issued-report print (issuedReportPrintData.ts),
+ * so a re-print from the snapshot renders the issued copy.
  */
-export async function buildIssuedReportSnapshot(sampleId: string): Promise<Record<string, unknown>> {
+export async function buildIssuedReportSnapshot(sampleId: string): Promise<IssuedReportSnapshot> {
   const { data, error } = await supabase
     .from('samples')
     .select(
@@ -172,80 +157,18 @@ export async function buildIssuedReportSnapshot(sampleId: string): Promise<Recor
     issuedAt: s.test_report_issued_at ?? null,
     nablUlrNumber: s.test_report_nabl_ulr_number ?? null,
   }
-  const scopes = issuedReportScopes(row)
-  const base = toCanonicalReportNumber(row.reportNumberBase ?? '')
-
-  const [resultRows, coverDetails, letterheadData, printSettings] = await Promise.all([
-    fetchReportResultRowsForSample(row.id),
-    fetchTestReportCoverDetails(row.id, {
-      fallbacks: { clientName: row.clientName, isCodeLabel: row.isCodeLabel },
-    }),
-    fetchReportPrepLetterheads(row.id, scopes),
-    fetchTestReportPrintSettings(),
-  ])
-
-  const reports = scopes.map((scope) => ({
-    scope,
-    reportNumber: base ? appendReportScopeSuffix(base, scope) : null,
-    ulrNumber: scope === 'nabl' ? row.nablUlrNumber : null,
-    issuedAt: (scope === 'nabl' ? row.nablIssuedAt : row.nonNablIssuedAt) || row.issuedAt,
-    letterhead: letterheadData.letterheads[scope] ?? null,
-    results: filterReportRowsByScope(resultRows, scope).map((r) => ({
-      parameterId: r.parameterId,
-      srNo: r.srNo,
-      sectionCode: r.sectionCode,
-      clauseNo: r.clauseNo,
-      testName: r.testName,
-      testMethodClause: r.testMethodClause,
-      unit: r.unit,
-      specifiedRequirement: r.specifiedRequirement,
-      observedValue: r.observedValue,
-      uncertainty: r.uncertainty,
-      conformity: r.remark,
-      scope: r.scope,
-    })),
-  }))
-
-  const signatories = {
-    show: Boolean(printSettings.showSignatures),
-    afterPart: Object.fromEntries(
-      TEST_REPORT_SIGNATURE_PART_IDS.map((part) => [
-        part,
-        signaturesForPart(printSettings, part).map(signatoryForSnapshot),
-      ]),
-    ),
-  }
-
-  return {
-    format: SNAPSHOT_FORMAT,
-    version: SNAPSHOT_VERSION,
+  const sources = await loadIssuedReportSources(row, issuedReportScopes(row), labNameFromSettings(), {
+    notes: s.test_report_draft_notes ?? '',
+  })
+  return buildIssuedReportSnapshotFromSources(sources, {
     capturedAt: new Date().toISOString(),
-    labName: labNameFromSettings(),
-    sampleId: row.id,
-    srfNumber: row.srfNumber,
-    dateOfSampleReceiving: row.dateReceiving,
-    reportNumber: base || null,
-    ulrNumber: row.nablUlrNumber,
-    issuedAt: row.issuedAt,
-    nablIssuedAt: row.nablIssuedAt,
-    nonNablIssuedAt: row.nonNablIssuedAt,
     issuedBy: {
       userId: s.issued_by ?? null,
       name: s.issued_by_name ?? null,
       signatureMeaning: s.issued_signature_meaning ?? null,
       reauthenticatedAt: s.issued_reauthenticated_at ?? null,
     },
-    customer: {
-      name: coverDetails.customerName ?? row.clientName,
-      address: coverDetails.customerAddress,
-      details: coverDetails.customerDetails,
-    },
-    isStandard: row.isCodeLabel,
-    cover: coverDetails,
-    remarks: s.test_report_draft_notes ?? '',
-    reports,
-    signatories,
-  }
+  })
 }
 
 export type ArchiveIssuedReportResult =
@@ -262,7 +185,7 @@ export async function archiveIssuedTestReport(sampleId: string): Promise<Archive
     const raw = await buildIssuedReportSnapshot(sampleId)
     // Round-trip so the stored JSON is exactly what was hashed.
     const snapshot = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>
-    const sha256 = await sha256Hex(canonicalJson(snapshot))
+    const sha256 = await snapshotSha256(snapshot)
     const { data, error } = await supabase.rpc('archive_issued_test_report', {
       p_sample_id: sampleId,
       p_snapshot: snapshot,
@@ -285,4 +208,111 @@ export async function archiveIssuedTestReport(sampleId: string): Promise<Archive
       message: e instanceof Error ? e.message : (err?.message ?? 'Could not store the issued report copy.'),
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reading the archive back (ISO/IEC 17025 7.8.2: a re-print matches the issue)
+// ---------------------------------------------------------------------------
+
+export type IssuedReportArchiveCheck =
+  /** Archive row for the current issue whose snapshot matches its SHA-256. */
+  | { status: 'verified'; archiveId: string; sha256: string; snapshot: IssuedReportSnapshot }
+  /** No archive row for this issue (issued before the archive, or migration not applied). */
+  | { status: 'missing' }
+  /** Archive row exists but its snapshot does not match snapshot_sha256 (or is unreadable). */
+  | {
+      status: 'integrity_failed'
+      archiveId: string
+      expectedSha256: string
+      actualSha256: string | null
+      reason: string
+    }
+
+type ArchiveRow = {
+  id: string
+  issued_at: string
+  snapshot: unknown
+  snapshot_sha256: string
+}
+
+/**
+ * Loads the archive row for the sample's current issue (matching issued_at)
+ * and recomputes the snapshot hash exactly as archiveIssuedTestReport() does.
+ */
+export async function checkIssuedReportArchive(
+  sampleId: string,
+  issuedAt: string | null,
+): Promise<IssuedReportArchiveCheck> {
+  if (!issuedAt) return { status: 'missing' }
+  const { data, error } = await supabase
+    .from('issued_report_archive')
+    .select('id, issued_at, snapshot, snapshot_sha256')
+    .eq('sample_id', sampleId)
+    .eq('issued_at', issuedAt)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    if (isMissingArchiveError(error)) return { status: 'missing' }
+    throw new Error(error.message || 'Could not read the issued report archive.')
+  }
+  if (!data) return { status: 'missing' }
+  return verifyArchiveRow(data as ArchiveRow, sampleId)
+}
+
+/** Hash check of one archive row; exported for tests. */
+export async function verifyArchiveRow(
+  row: ArchiveRow,
+  sampleId: string,
+): Promise<IssuedReportArchiveCheck> {
+  const expected = String(row.snapshot_sha256 ?? '').trim().toLowerCase()
+  const fail = (reason: string, actual: string | null) =>
+    ({
+      status: 'integrity_failed',
+      archiveId: row.id,
+      expectedSha256: expected,
+      actualSha256: actual,
+      reason,
+    }) as const
+  if (!row.snapshot || typeof row.snapshot !== 'object' || Array.isArray(row.snapshot)) {
+    return fail('The archived snapshot is not a JSON object.', null)
+  }
+  const actual = await snapshotSha256(row.snapshot)
+  if (actual !== expected) return fail('SHA-256 of the archived snapshot does not match.', actual)
+  if (!isIssuedReportSnapshot(row.snapshot)) {
+    return fail('The archived snapshot is not an issued test report.', actual)
+  }
+  if (row.snapshot.sampleId !== sampleId) {
+    return fail('The archived snapshot belongs to a different sample.', actual)
+  }
+  return { status: 'verified', archiveId: row.id, sha256: actual, snapshot: row.snapshot }
+}
+
+/**
+ * Which rows have an archive row for their current issue. Reads only ids and
+ * timestamps (no snapshots, no hashing). Null when the archive is not deployed.
+ */
+export async function fetchIssuedReportArchivePresence(
+  rows: Array<Pick<IssuedTestReportListRow, 'id' | 'issuedAt'>>,
+): Promise<Map<string, boolean> | null> {
+  const wanted = rows.filter((r) => r.issuedAt)
+  const result = new Map<string, boolean>(rows.map((r) => [r.id, false]))
+  if (wanted.length === 0) return result
+  const { data, error } = await supabase
+    .from('issued_report_archive')
+    .select('sample_id, issued_at')
+    .in(
+      'sample_id',
+      wanted.map((r) => r.id),
+    )
+  if (error) {
+    if (isMissingArchiveError(error)) return null
+    throw new Error(error.message || 'Could not read the issued report archive.')
+  }
+  const issuedAtById = new Map(wanted.map((r) => [r.id, Date.parse(r.issuedAt as string)]))
+  for (const a of (Array.isArray(data) ? data : []) as Array<{ sample_id: string; issued_at: string }>) {
+    const t = issuedAtById.get(a.sample_id)
+    if (t !== undefined && Date.parse(a.issued_at) === t) result.set(a.sample_id, true)
+  }
+  return result
 }
