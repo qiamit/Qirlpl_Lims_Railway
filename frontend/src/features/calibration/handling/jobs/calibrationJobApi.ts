@@ -10,6 +10,10 @@ import {
   type CalibrationJobStage,
 } from '../types'
 import { EQUIPMENT_KIND_CALIBRATION } from '@/lib/equipmentKind'
+import {
+  fetchOpenCertificateAmendmentIds,
+  issueCertificateAmendment,
+} from '../certificates/certificateAmendmentApi'
 
 const JOB_SELECT =
   'id, service_request_id, equipment_line_index, srf_number, client_id, client_name, equipment_label, equipment_detail, equipment_master_id, calibration_location, location_of_calibration, stage, stage_entered_at, remarks, allocated_engineer_id, allocated_engineer_name, allocated_engineer_designation, outgoing_checklist, inward_checklist, certificate_draft, created_at, updated_at'
@@ -247,12 +251,25 @@ export async function moveCalibrationJobsToNextStage(ids: string[]): Promise<{
     .in('id', ids)
   if (error) throw error
 
+  // ISO 17025 7.8.8: a reopened (amended) certificate is re-issued through its amendment.
+  const atCertificatePrep = (data ?? [])
+    .filter((row) => (row.stage as CalibrationJobStage) === 'certificate_preparation')
+    .map((row) => String(row.id))
+  const openAmendments = await fetchOpenCertificateAmendmentIds(atCertificatePrep)
+
   const byNext = new Map<CalibrationJobStage, string[]>()
   let skippedTerminal = 0
+  let moved = 0
   for (const row of data ?? []) {
     const next = nextCalibrationJobStage(row.stage as CalibrationJobStage)
     if (!next) {
       skippedTerminal += 1
+      continue
+    }
+    const amendmentId = openAmendments.get(String(row.id))
+    if (amendmentId) {
+      await issueCertificateAmendment(amendmentId)
+      moved += 1
       continue
     }
     const list = byNext.get(next) ?? []
@@ -260,7 +277,6 @@ export async function moveCalibrationJobsToNextStage(ids: string[]): Promise<{
     byNext.set(next, list)
   }
 
-  let moved = 0
   for (const [nextStage, jobIds] of byNext) {
     await moveCalibrationJobStage(jobIds, nextStage)
     moved += jobIds.length

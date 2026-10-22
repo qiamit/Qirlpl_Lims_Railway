@@ -1,5 +1,22 @@
 /** Certificate Preparation draft stored on calibration_jobs.certificate_draft */
 
+export type CertificateAmendmentType = 'amendment' | 'revised' | 'supplementary'
+
+/**
+ * Set by start_certificate_amendment() when an issued certificate is reopened
+ * (ISO/IEC 17025 7.8.8). Printed as a one-line statement on the new certificate.
+ */
+export type CertificateAmendmentRef = {
+  id: string
+  amendmentNo: number
+  type: CertificateAmendmentType
+  reason: string
+  replacesCertificateNumber: string
+  replacesUlrNumber: string
+  /** yyyy-mm-dd issue date of the certificate being replaced. */
+  replacesIssueDate: string
+}
+
 export type CertificateDraftPayload = {
   version: 1
   srfNumber: string
@@ -28,6 +45,8 @@ export type CertificateDraftPayload = {
   calibratedByName: string
   authorizedSignatoryDesignation: string
   authorizedSignatoryName: string
+  /** Present when this certificate amends an earlier issued one. */
+  amendment: CertificateAmendmentRef | null
   updatedAt: string | null
 }
 
@@ -57,6 +76,7 @@ export const EMPTY_CERTIFICATE_DRAFT: CertificateDraftPayload = {
   calibratedByName: '',
   authorizedSignatoryDesignation: '',
   authorizedSignatoryName: '',
+  amendment: null,
   updatedAt: null,
 }
 
@@ -197,6 +217,49 @@ function dateStr(row: Record<string, unknown>, camel: string, snake: string): st
   return str(row, camel, snake).slice(0, 10)
 }
 
+const AMENDMENT_TYPES: CertificateAmendmentType[] = ['amendment', 'revised', 'supplementary']
+
+export function parseCertificateAmendmentRef(raw: unknown): CertificateAmendmentRef | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const row = raw as Record<string, unknown>
+  const id = String(row.id ?? '').trim()
+  const amendmentNo = Number.parseInt(String(row.amendmentNo ?? row.amendment_no ?? ''), 10)
+  if (!id || !Number.isFinite(amendmentNo) || amendmentNo < 1) return null
+  const typeRaw = String(row.type ?? '').trim().toLowerCase() as CertificateAmendmentType
+  return {
+    id,
+    amendmentNo,
+    type: AMENDMENT_TYPES.includes(typeRaw) ? typeRaw : 'amendment',
+    reason: String(row.reason ?? '').trim(),
+    replacesCertificateNumber: str(row, 'replacesCertificateNumber', 'replaces_certificate_number'),
+    replacesUlrNumber: str(row, 'replacesUlrNumber', 'replaces_ulr_number'),
+    replacesIssueDate: dateStr(row, 'replacesIssueDate', 'replaces_issue_date'),
+  }
+}
+
+export const CERTIFICATE_AMENDMENT_TYPE_LABELS: Record<CertificateAmendmentType, string> = {
+  amendment: 'Amendment',
+  revised: 'Revised',
+  supplementary: 'Supplementary',
+}
+
+/**
+ * One-line statement printed on an amended certificate, e.g.
+ * "Amendment No. 1 — replaces certificate QI/CC/2026/0001 dated 01/10/2026. Reason: …"
+ */
+export function certificateAmendmentStatement(
+  ref: CertificateAmendmentRef,
+  formatIssueDate: (isoDate: string) => string,
+): string {
+  const kind =
+    ref.type === 'revised' ? 'Revision' : ref.type === 'supplementary' ? 'Supplement' : 'Amendment'
+  const verb = ref.type === 'supplementary' ? 'supplements' : 'replaces'
+  const original = ref.replacesCertificateNumber || '—'
+  const dated = ref.replacesIssueDate ? ` dated ${formatIssueDate(ref.replacesIssueDate)}` : ''
+  const reason = ref.reason ? ` Reason: ${ref.reason.replace(/\s+/g, ' ')}` : ''
+  return `${kind} No. ${ref.amendmentNo} — ${verb} certificate ${original}${dated}.${reason}`
+}
+
 export function parseCertificateDraft(raw: unknown): CertificateDraftPayload {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { ...EMPTY_CERTIFICATE_DRAFT }
@@ -245,6 +308,7 @@ export function parseCertificateDraft(raw: unknown): CertificateDraftPayload {
       'authorized_signatory_designation',
     ),
     authorizedSignatoryName: str(row, 'authorizedSignatoryName', 'authorized_signatory_name'),
+    amendment: parseCertificateAmendmentRef(row.amendment),
     updatedAt:
       row.updatedAt != null
         ? String(row.updatedAt)
@@ -289,6 +353,7 @@ export function serializeCertificateDraft(
     calibratedByName: draft.calibratedByName.trim(),
     authorizedSignatoryDesignation: draft.authorizedSignatoryDesignation.trim(),
     authorizedSignatoryName: draft.authorizedSignatoryName.trim(),
+    amendment: draft.amendment,
     updatedAt: new Date().toISOString(),
   }
 }

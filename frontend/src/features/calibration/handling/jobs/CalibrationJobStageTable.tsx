@@ -8,7 +8,19 @@ import {
   type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, FileCheck, FileSpreadsheet, Package, Printer, Search, Send, Sigma, Undo2 } from 'lucide-react'
+import {
+  Download,
+  FileCheck,
+  FilePenLine,
+  FileSpreadsheet,
+  History,
+  Package,
+  Printer,
+  Search,
+  Send,
+  Sigma,
+  Undo2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -51,7 +63,16 @@ import {
 } from './calibrationJobApi'
 import { RawDataSheetDialog } from './RawDataSheetDialog'
 import { CertificateDraftDialog } from '../certificate-preparation/CertificateDraftDialog'
-import { parseCertificateDraft } from '../certificate-preparation/certificateDraftTypes'
+import {
+  CERTIFICATE_AMENDMENT_TYPE_LABELS,
+  parseCertificateDraft,
+} from '../certificate-preparation/certificateDraftTypes'
+import { CertificateAmendmentDialog } from '../certificates/CertificateAmendmentDialog'
+import { CertificateAmendmentHistoryDialog } from '../certificates/CertificateAmendmentHistoryDialog'
+import {
+  fetchCertificateAmendmentCapability,
+  type CertificateAmendmentCapability,
+} from '../certificates/certificateAmendmentApi'
 
 const GRID_TABLE =
   'table-fixed min-w-[980px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border [&_td]:whitespace-nowrap'
@@ -71,6 +92,13 @@ const referBackIconBtnClass =
   `${actionIconOnlyBase} border-stone-500 bg-stone-50 text-stone-700 hover:border-stone-800 hover:bg-stone-800 hover:text-amber-100`
 const certPrepIconBtnClass =
   `${actionIconOnlyBase} border-amber-800/60 bg-[#fff7ed] text-amber-950 hover:border-amber-900 hover:bg-amber-800 hover:text-white`
+
+/** Certificate Preparation: job reopened by an amendment that is not issued yet. */
+function pendingAmendmentLabel(job: CalibrationJobRow): string | null {
+  const ref = parseCertificateDraft(job.certificate_draft).amendment
+  if (!ref) return null
+  return `${CERTIFICATE_AMENDMENT_TYPE_LABELS[ref.type]} No. ${ref.amendmentNo} of ${ref.replacesCertificateNumber}`
+}
 
 function cellText(value: string | null | undefined): string {
   const t = (value ?? '').trim()
@@ -1165,6 +1193,9 @@ function SrfCertificatesListDialog({
   onDownloadCertificate,
   onPrintSelected,
   onDownloadSelected,
+  amendment,
+  onAmend,
+  onHistory,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1175,6 +1206,10 @@ function SrfCertificatesListDialog({
   onDownloadCertificate: (job: CalibrationJobRow) => void
   onPrintSelected: (jobs: CalibrationJobRow[]) => void
   onDownloadSelected: (jobs: CalibrationJobRow[]) => void
+  /** ISO 17025 7.8.8 amendments (hidden until the migration is applied). */
+  amendment: CertificateAmendmentCapability
+  onAmend: (job: CalibrationJobRow) => void
+  onHistory: (job: CalibrationJobRow) => void
 }) {
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -1400,6 +1435,16 @@ function SrfCertificatesListDialog({
                         </TableCell>
                         <TableCell className="truncate align-middle text-left text-sm font-medium">
                           {cellText(draft.certificateNumber)}
+                          {draft.amendment ? (
+                            <span
+                              className="mt-0.5 block truncate text-[11px] font-normal text-amber-800"
+                              title={`Replaces ${draft.amendment.replacesCertificateNumber}`}
+                            >
+                              {CERTIFICATE_AMENDMENT_TYPE_LABELS[draft.amendment.type]} No.{' '}
+                              {draft.amendment.amendmentNo} · replaces{' '}
+                              {draft.amendment.replacesCertificateNumber}
+                            </span>
+                          ) : null}
                         </TableCell>
                         <TableCell className="truncate text-center align-middle font-mono text-xs">
                           {cellText(draft.ulrNumber)}
@@ -1439,6 +1484,32 @@ function SrfCertificatesListDialog({
                             >
                               <Printer size={15} aria-hidden />
                             </Button>
+                            {amendment.available ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className={referBackIconBtnClass}
+                                onClick={() => onHistory(job)}
+                                aria-label={`Amendment history for ${job.equipment_label}`}
+                                title="Amendment history"
+                              >
+                                <History size={15} aria-hidden />
+                              </Button>
+                            ) : null}
+                            {amendment.available && amendment.canAmend ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className={referBackIconBtnClass}
+                                onClick={() => onAmend(job)}
+                                aria-label={`Amend certificate for ${job.equipment_label}`}
+                                title="Amend certificate"
+                              >
+                                <FilePenLine size={15} aria-hidden />
+                              </Button>
+                            ) : null}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1474,6 +1545,7 @@ export function CalibrationJobStageTable({
   hideAction = false,
   referbackOnly = false,
   emptyMessage,
+  onJobsChanged,
 }: {
   stage: CalibrationJobStage
   groups: CalibrationSrfGroup[]
@@ -1495,6 +1567,8 @@ export function CalibrationJobStageTable({
   /** Forwarded SRF list: only Referback (return to Job Allocation). */
   referbackOnly?: boolean
   emptyMessage?: string
+  /** Reload after a certificate amendment was started or cancelled. */
+  onJobsChanged?: () => void
 }) {
   const [ducGroup, setDucGroup] = useState<CalibrationSrfGroup | null>(null)
   const [certListGroup, setCertListGroup] = useState<CalibrationSrfGroup | null>(null)
@@ -1502,6 +1576,12 @@ export function CalibrationJobStageTable({
   const [reviewOpenUncertainty, setReviewOpenUncertainty] = useState(false)
   const [reviewDetailsJob, setReviewDetailsJob] = useState<CalibrationJobRow | null>(null)
   const [certificateDraftJob, setCertificateDraftJob] = useState<CalibrationJobRow | null>(null)
+  const [amendJob, setAmendJob] = useState<CalibrationJobRow | null>(null)
+  const [historyJob, setHistoryJob] = useState<CalibrationJobRow | null>(null)
+  const [amendmentCapability, setAmendmentCapability] = useState<CertificateAmendmentCapability>({
+    available: false,
+    canAmend: false,
+  })
   const [certificateAutoPrint, setCertificateAutoPrint] = useState(false)
   const [certificateAutoDownload, setCertificateAutoDownload] = useState(false)
   const [certificateQueue, setCertificateQueue] = useState<{
@@ -1536,6 +1616,19 @@ export function CalibrationJobStageTable({
   const canReferback = true
   const canForward = !referbackOnly && !hideAction && stage !== 'certificates'
   const showActionColumn = !hideAction
+  // Issued certificates are reopened only through "Amend certificate" once amendments exist.
+  const showGroupReferback = !(isCertificates && amendmentCapability.available)
+
+  useEffect(() => {
+    if (!isCertificates) return
+    let cancelled = false
+    void fetchCertificateAmendmentCapability().then((cap) => {
+      if (!cancelled) setAmendmentCapability(cap)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isCertificates])
 
   const liveDucGroup = useMemo(() => {
     if (!ducGroup) return null
@@ -1681,6 +1774,11 @@ export function CalibrationJobStageTable({
                       </TableCell>
                       <TableCell className="truncate text-center align-middle text-sm font-medium">
                         {cellText(job.srf_number)}
+                        {pendingAmendmentLabel(job) ? (
+                          <span className="mt-0.5 block truncate text-[11px] font-normal text-amber-800">
+                            {pendingAmendmentLabel(job)}
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell className="min-w-0 align-middle text-sm font-medium">
                         <button
@@ -1819,6 +1917,11 @@ export function CalibrationJobStageTable({
                       </TableCell>
                       <TableCell className="truncate text-center align-middle text-sm font-medium">
                         {cellText(job.srf_number)}
+                        {pendingAmendmentLabel(job) ? (
+                          <span className="mt-0.5 block truncate text-[11px] font-normal text-amber-800">
+                            {pendingAmendmentLabel(job)}
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell className="min-w-0 align-middle text-sm font-medium">
                         <button
@@ -2002,6 +2105,7 @@ export function CalibrationJobStageTable({
                                 <Send size={15} aria-hidden />
                               </Button>
                             ) : null}
+                            {showGroupReferback ? (
                             <Button
                               type="button"
                               size="icon"
@@ -2022,6 +2126,7 @@ export function CalibrationJobStageTable({
                             >
                               <Undo2 size={15} aria-hidden />
                             </Button>
+                            ) : null}
                           </div>
                         </TableCell>
                       ) : null}
@@ -2073,6 +2178,32 @@ export function CalibrationJobStageTable({
             onDownloadCertificate={(job) => openCertificateJob(job, 'download')}
             onPrintSelected={(jobs) => startCertificateQueue(jobs, 'print')}
             onDownloadSelected={(jobs) => startCertificateQueue(jobs, 'download')}
+            amendment={amendmentCapability}
+            onAmend={(job) => setAmendJob(job)}
+            onHistory={(job) => setHistoryJob(job)}
+          />
+          <CertificateAmendmentDialog
+            open={Boolean(amendJob)}
+            onOpenChange={(open) => {
+              if (!open) setAmendJob(null)
+            }}
+            job={amendJob}
+            onStarted={(job) => {
+              setCertListGroup(null)
+              onJobsChanged?.()
+              window.alert(
+                `Certificate reopened for amendment. Continue in Certificate Preparation (${cellText(job.equipment_label)}).`,
+              )
+            }}
+          />
+          <CertificateAmendmentHistoryDialog
+            open={Boolean(historyJob)}
+            onOpenChange={(open) => {
+              if (!open) setHistoryJob(null)
+            }}
+            job={historyJob}
+            canAmend={amendmentCapability.canAmend}
+            onChanged={() => onJobsChanged?.()}
           />
           <DucEquipmentDetailsDialog
             job={reviewDetailsJob}

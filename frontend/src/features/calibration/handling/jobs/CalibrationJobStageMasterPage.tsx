@@ -553,6 +553,9 @@ export function CalibrationJobStageMasterPage({
           onReferback={handleReferbackGroup}
           actionLoading={actionLoading}
           scopedToEngineer={scopeConductToEngineer}
+          onJobsChanged={() => {
+            void loadRows()
+          }}
         />
       )}
       <CalibrationJobStageFooterBar

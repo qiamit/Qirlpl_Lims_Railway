@@ -40,6 +40,7 @@ export function IssuedCertificatesDialog({
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!open) {
@@ -66,7 +67,7 @@ export function IssuedCertificatesDialog({
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, reloadKey])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -168,6 +169,7 @@ export function IssuedCertificatesDialog({
             onForward={() => undefined}
             onReferback={() => undefined}
             hideAction
+            onJobsChanged={() => setReloadKey((k) => k + 1)}
             emptyMessage="No issued certificates yet. Issue a certificate from Certificate Preparation to see it here."
           />
         </div>
