@@ -2,6 +2,7 @@ import { FolderOpen, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
+import { IsCodeReviewBadge } from '@/features/method-validation/MethodValidationUi'
 import { buildIsCodeAssistantContext, formatIsCodeLabel } from './buildIsCodeAssistantContext'
 import type { IsCodeRow } from './types'
 
@@ -93,6 +94,11 @@ export function IsCodesTable({
                   <TableCell className="align-middle text-left">
                     <div className="min-w-[120px] space-y-0.5">
                       <p className="font-medium text-foreground">{formatIsCodeLabel(r)}</p>
+                      <IsCodeReviewBadge
+                        standardStatus={r.standard_status}
+                        nextReviewDue={r.next_review_due}
+                        supersededBy={r.superseded_by}
+                      />
                       <Button
                         type="button"
                         variant="outline"

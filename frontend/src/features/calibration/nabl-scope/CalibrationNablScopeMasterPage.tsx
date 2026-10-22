@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { checkScopeMethod, useScopeVerificationStatus } from '@/features/method-validation/useScopeVerificationStatus'
 import { CalibrationNablScopeFormView } from './CalibrationNablScopeForm'
 import { CalibrationNablScopeHeaderBar } from './CalibrationNablScopeHeaderBar'
 import { CalibrationNablScopeTable } from './CalibrationNablScopeTable'
@@ -116,6 +117,8 @@ export default function CalibrationNablScopeMasterPage() {
     void loadItems()
   }, [])
 
+  const methodVerification = useScopeVerificationStatus(rows)
+
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rows
@@ -185,7 +188,15 @@ export default function CalibrationNablScopeMasterPage() {
           const { error } = await supabase.from('calibration_nabl_scope').insert(payload)
           if (error) throw error
         }
-        setSaveMessage('Saved successfully.')
+        // ISO/IEC 17025 7.2.1.5 / 7.2.2 soft gate: warn, never block.
+        let methodWarning: string | null = null
+        try {
+          const chk = await checkScopeMethod('calibration', payload.calibration_method, payload.measurand)
+          if (chk && !chk.covered) methodWarning = chk.message
+        } catch {
+          methodWarning = null
+        }
+        setSaveMessage(methodWarning ? `Saved. Warning: ${methodWarning}` : 'Saved successfully.')
         setShowForm(false)
         setEditingId(null)
         await loadItems()
@@ -360,6 +371,7 @@ export default function CalibrationNablScopeMasterPage() {
       </Dialog>
 
       <CalibrationNablScopeTable
+        verificationByScopeId={methodVerification.byScopeId}
         rows={pagedRows}
         loading={listLoading}
         error={listError}

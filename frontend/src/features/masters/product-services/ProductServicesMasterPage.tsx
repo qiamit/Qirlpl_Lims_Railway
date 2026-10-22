@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { checkScopeMethod, useScopeVerificationStatus } from '@/features/method-validation/useScopeVerificationStatus'
 import { ProductServicesForm } from './ProductServicesForm'
 import { ProductServicesHeaderBar } from './ProductServicesHeaderBar'
 import { ProductServicesTable } from './ProductServicesTable'
@@ -165,6 +166,8 @@ export default function ProductServicesMasterPage() {
     void loadItems()
   }, [])
 
+  const methodVerification = useScopeVerificationStatus(rows)
+
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
@@ -252,7 +255,17 @@ export default function ProductServicesMasterPage() {
           if (error) throw error
         }
 
-        setSaveMessage('Saved successfully.')
+        // ISO/IEC 17025 7.2.1.5 / 7.2.2 soft gate: warn, never block.
+        let methodWarning: string | null = null
+        if (payload.scope_status === 'Accredited') {
+          try {
+            const chk = await checkScopeMethod('testing', payload.test_method_specification, payload.component_parameter)
+            if (chk && !chk.covered) methodWarning = chk.message
+          } catch {
+            methodWarning = null
+          }
+        }
+        setSaveMessage(methodWarning ? `Saved. Warning: ${methodWarning}` : 'Saved successfully.')
         setShowForm(false)
         setEditingId(null)
         await loadItems()
@@ -585,6 +598,7 @@ export default function ProductServicesMasterPage() {
       </Dialog>
 
       <ProductServicesTable
+        verificationByScopeId={methodVerification.byScopeId}
         rows={pagedRows}
         loading={listLoading}
         error={listError}

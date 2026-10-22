@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { limsPanelClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { ScopeVerificationWarning } from '@/features/method-validation/MethodValidationUi'
+import type { ScopeVerificationRow } from '@/features/method-validation/methodValidation'
 import type { CalibrationNablScopeRow } from './types'
 
 const GRID_TABLE =
@@ -39,6 +41,7 @@ export function CalibrationNablScopeTable({
   onToggleAll,
   onEdit,
   onCopy,
+  verificationByScopeId,
 }: {
   rows: CalibrationNablScopeRow[]
   loading: boolean
@@ -49,6 +52,8 @@ export function CalibrationNablScopeTable({
   onToggleAll: (checked: boolean) => void
   onEdit: (row: CalibrationNablScopeRow) => void
   onCopy: (row: CalibrationNablScopeRow) => void
+  /** Method verification coverage (ISO/IEC 17025 7.2.1.5 / 7.2.2); warning badge when not covered. */
+  verificationByScopeId?: Map<string, ScopeVerificationRow>
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -146,6 +151,7 @@ export function CalibrationNablScopeTable({
                     </TableCell>
                     <TableCell className="align-top">
                       <p className={secondaryLineClass}>{r.calibration_method || '—'}</p>
+                      <ScopeVerificationWarning entry={verificationByScopeId?.get(r.id)} />
                     </TableCell>
                     <TableCell className="align-top">
                       <p className={secondaryLineClass}>{r.measurement_range || '—'}</p>

@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { limsPanelClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { ScopeVerificationWarning } from '@/features/method-validation/MethodValidationUi'
+import type { ScopeVerificationRow } from '@/features/method-validation/methodValidation'
 import { formatScopeNumber, formatUncertaintyDisplay, type NablScopeRow } from './types'
 
 const GRID_TABLE =
@@ -41,6 +43,7 @@ export function ProductServicesTable({
   onToggleAll,
   onEdit,
   onCopy,
+  verificationByScopeId,
 }: {
   rows: NablScopeRow[]
   loading: boolean
@@ -51,6 +54,8 @@ export function ProductServicesTable({
   onToggleAll: (checked: boolean) => void
   onEdit: (row: NablScopeRow) => void
   onCopy: (row: NablScopeRow) => void
+  /** Method verification coverage (ISO/IEC 17025 7.2.1.5 / 7.2.2); warning badge when not covered. */
+  verificationByScopeId?: Map<string, ScopeVerificationRow>
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -148,6 +153,7 @@ export function ProductServicesTable({
                     <TableCell className="w-[15%] align-middle text-center">
                       <div className={cn(cellInnerClass, 'text-center')}>
                         <p className={primaryLineClass}>{r.test_method_specification?.trim() || '—'}</p>
+                        <ScopeVerificationWarning entry={verificationByScopeId?.get(r.id)} />
                       </div>
                     </TableCell>
 

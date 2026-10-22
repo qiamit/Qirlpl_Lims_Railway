@@ -12,7 +12,15 @@ import { IsCodesTable } from './IsCodesTable'
 import { IsCodesTableFooterBar } from './IsCodesFooterBar'
 import { IsCodesFilesDialog, type IsCodeViewFile } from './IsCodesFilesDialog'
 import { buildIsCodesListAssistantContext, formatIsCodeLabel } from './buildIsCodeAssistantContext'
-import { emptyIsCodeForm, normalizeText, toProperTitleCase, type IsCodeFileRow, type IsCodeForm, type IsCodeRow } from './types'
+import {
+  emptyIsCodeForm,
+  isCodeReviewFormFields,
+  normalizeText,
+  toProperTitleCase,
+  type IsCodeFileRow,
+  type IsCodeForm,
+  type IsCodeRow,
+} from './types'
 
 const BUCKET = 'is-code-files'
 /** Must stay within storage.buckets.file_size_limit for is-code-files. */
@@ -302,6 +310,7 @@ export default function IsCodesMasterPage() {
       testingCharges: String(row.testing_charges ?? ''),
       remarks: row.remarks ?? '',
       files: [],
+      ...isCodeReviewFormFields(row),
     })
     setShowForm(true)
     void loadFiles(row.id)
@@ -321,6 +330,7 @@ export default function IsCodesMasterPage() {
       testingCharges: String(row.testing_charges ?? ''),
       remarks: row.remarks ?? '',
       files: [],
+      ...isCodeReviewFormFields(row),
     })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -677,17 +687,26 @@ export default function IsCodesMasterPage() {
           testing_charges: form.testingCharges ? Number(form.testingCharges) : null,
           remarks: normalizeText(form.remarks) || null,
         }
+        // Edition review (ISO/IEC 17025 7.2.1.4); dropped when migration
+        // 20261027100100_method_validation.sql is not applied yet.
+        const reviewPayload = {
+          standard_status: form.standardStatus || 'current',
+          superseded_by: normalizeText(form.supersededBy) || null,
+          last_reviewed_on: form.lastReviewedOn || null,
+          next_review_due: form.nextReviewDue || null,
+        }
 
         // Prefer insert/update over upsert — avoids 42P10 when the unique index
         // on (is_number, revision_year) is missing or not visible to PostgREST.
-        const { data, error } = editingId
-          ? await supabase
-              .from('is_codes')
-              .update(basePayload)
-              .eq('id', editingId)
-              .select('id')
-              .single()
-          : await supabase.from('is_codes').insert(basePayload).select('id').single()
+        const write = (payload: Record<string, unknown>) =>
+          editingId
+            ? supabase.from('is_codes').update(payload).eq('id', editingId).select('id').single()
+            : supabase.from('is_codes').insert(payload).select('id').single()
+        let res = await write({ ...basePayload, ...reviewPayload })
+        if (res.error && /standard_status|superseded_by|last_reviewed_on|next_review_due/i.test(res.error.message ?? '')) {
+          res = await write(basePayload)
+        }
+        const { data, error } = res
         if (error) throw error
 
         const id = (data as { id: string } | null)?.id ?? editingId
