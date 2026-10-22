@@ -27,6 +27,7 @@ const APP_PREFIXES = [
   '/nonconforming-work',
   '/equipment-management',
   '/facilities',
+  '/quality',
   '/training',
   '/calibration',
   '/finance',

@@ -93,6 +93,10 @@ import {
   AuditTrailRoute,
   RecycleBinRoute,
   DecisionRulesRoute,
+  PtPlanRoute,
+  PtParticipationsRoute,
+  MethodVerificationsRoute,
+  ScopeVerificationStatusRoute,
   LabAreasRoute,
   EnvironmentLogRoute,
   AccessLogRoute,
@@ -182,6 +186,10 @@ export default function App() {
           <Route path="audit-mrm/audit-trail" element={<AuditTrailRoute />} />
           <Route path="audit-mrm/recycle-bin" element={<RecycleBinRoute />} />
           <Route path="masters/decision-rules" element={<DecisionRulesRoute />} />
+          <Route path="quality/pt-plan" element={<PtPlanRoute />} />
+          <Route path="quality/pt-participations" element={<PtParticipationsRoute />} />
+          <Route path="quality/method-verifications" element={<MethodVerificationsRoute />} />
+          <Route path="quality/scope-verification-status" element={<ScopeVerificationStatusRoute />} />
           <Route path="facilities/areas" element={<LabAreasRoute />} />
           <Route path="facilities/environment-log" element={<EnvironmentLogRoute />} />
           <Route path="facilities/access-log" element={<AccessLogRoute />} />

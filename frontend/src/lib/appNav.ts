@@ -54,6 +54,8 @@ import {
   Sparkles,
   MapPin,
   Gavel,
+  Target as TargetIcon,
+  CalendarRange,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -446,6 +448,17 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: AlertTriangle,
         clause: '6.4',
       },
+    ],
+  },
+  {
+    title: 'Quality Assurance',
+    clause: 'quality-assurance',
+    icon: BadgeCheck,
+    items: [
+      { label: 'PT Plan (4-year)', to: '/quality/pt-plan', icon: CalendarRange, clause: '7.7.2' },
+      { label: 'PT / ILC Participation', to: '/quality/pt-participations', icon: TargetIcon, clause: '7.7.2' },
+      { label: 'Method Verification & Validation', to: '/quality/method-verifications', icon: ClipboardCheck, clause: '7.2' },
+      { label: 'Scope Verification Status', to: '/quality/scope-verification-status', icon: ShieldCheck, clause: '7.2' },
     ],
   },
   {
