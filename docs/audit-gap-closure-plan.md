@@ -106,3 +106,11 @@ schedule (8.4), then the P3 list in the audit report.
 | 1 Access helpers, document numbering | Built (migrations not applied) |
 | 2 Typed sale tables, GST supply mode, backfill | Planned: waits for finance users to sync browser records |
 | 3–8 | Planned (see `backend/scripts/finance-phase2-mapping.md` and the audit report) |
+
+## Decisions (Amit, 22 Oct 2026)
+
+- An amended calibration certificate keeps the original ULR (current behaviour of P1-12b).
+- The amendment reason is printed on the amended certificate (current behaviour).
+- PDFs of re-printed test reports without an archived copy keep the
+  "Regenerated from current records" note, including when emailed to customers.
+- Finish all stages first, then test everything together before anything goes to production.
