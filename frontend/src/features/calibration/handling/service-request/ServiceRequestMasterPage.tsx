@@ -19,9 +19,11 @@ import { ServiceRequestFormView } from './ServiceRequestForm'
 import {
   emptyServiceRequestForm,
   formToPayload,
+  isMissingSrfDueDateColumnError,
   nextSrfNumber,
   normalizeText,
   rowToForm,
+  withoutSrfDueDateColumns,
   type ServiceRequestForm,
   type ServiceRequestRow,
 } from './types'
@@ -97,8 +99,9 @@ const CSV_HEADERS = [
 
 const CUSTOMER_DOC_BUCKET = 'calibration-srf-documents'
 
-const SELECT_COLS =
-  'id, srf_number, srf_date, client_id, client_name, customer_reference_no, customer_reference_date, calibration_location, equipment_description, quantity, customer_required_date, required_completion_date, customer_document_path, customer_document_name, contact_person, contact_number_mail, physical_condition, calibration_method_choice, invoice_no, invoice_date, special_instruction, witness_required, witness_activity, accreditation_status, terms_accepted, capability_evaluation, resource_evaluation, req_defined_understood, capability_resources_ok, external_provider_used, external_provider_customer_approved, external_provider_details, methods_selected_ok, method_notes, method_outdated_customer_informed, statement_of_conformity_requested, specification_standard, decision_rule, differences_resolved, contract_accepted, deviations_customer_informed, review_remarks, status, created_at, updated_at'
+// '*' (not an explicit list) so the optional due-date columns from migration
+// 20261024100100 load when present and the query still works before it is applied.
+const SELECT_COLS = '*'
 
 export default function ServiceRequestMasterPage() {
   const { session, loading: authLoading } = useAuth()
@@ -292,21 +295,36 @@ export default function ServiceRequestMasterPage() {
         customerDocumentName: customerDocName ?? '',
       })
       let serviceRequestId = editingId
-      if (editingId) {
-        const { error } = await supabase
-          .from('calibration_service_requests')
-          .update(payload)
-          .eq('id', editingId)
-        if (error) throw error
-      } else {
+      // Before migration 20261024100100 the due-date columns do not exist:
+      // retry without them so the SRF still saves.
+      let dueDateNotSaved = false
+      const writeSrf = async (
+        body: ReturnType<typeof formToPayload> | ReturnType<typeof withoutSrfDueDateColumns>,
+      ) => {
+        if (editingId) {
+          const { error } = await supabase
+            .from('calibration_service_requests')
+            .update(body)
+            .eq('id', editingId)
+          return { error, id: editingId }
+        }
         const { data: inserted, error } = await supabase
           .from('calibration_service_requests')
-          .insert(payload)
+          .insert(body)
           .select('id')
           .single()
-        if (error) throw error
-        serviceRequestId = (inserted as { id: string } | null)?.id ?? null
+        return { error, id: (inserted as { id: string } | null)?.id ?? null }
       }
+      let written = await writeSrf(payload)
+      if (written.error && isMissingSrfDueDateColumnError(written.error)) {
+        dueDateNotSaved = payload.customer_requests_due_date
+        written = await writeSrf(withoutSrfDueDateColumns(payload))
+      }
+      if (written.error) throw written.error
+      serviceRequestId = written.id
+      const dueDateNote = dueDateNotSaved
+        ? ' Due-date request not saved: database update pending (migration 20261024100100).'
+        : ''
 
       if (payload.status === 'Accepted' && serviceRequestId) {
         const { created } = await ensureCalibrationJobsForAcceptedSrf({
@@ -317,12 +335,12 @@ export default function ServiceRequestMasterPage() {
           equipmentDescription: payload.equipment_description,
         })
         setSaveMessage(
-          created > 0
+          (created > 0
             ? `Saved ${payload.srf_number}. Created ${created} calibration job(s).`
-            : `Saved ${payload.srf_number}.`,
+            : `Saved ${payload.srf_number}.`) + dueDateNote,
         )
       } else {
-        setSaveMessage(`Saved ${payload.srf_number}.`)
+        setSaveMessage(`Saved ${payload.srf_number}.${dueDateNote}`)
       }
       setShowForm(false)
       setEditingId(null)

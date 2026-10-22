@@ -102,6 +102,12 @@ import {
 } from './certificateDraftTypes'
 import { waitForPrintDocumentReady } from '@/features/sample-handling/report-preparation/waitForPrintDocumentReady'
 import { downloadCertificatePagesAsPdf } from './downloadCertificatePagesAsPdf'
+import {
+  NO_DUE_DATE_POLICY,
+  dueDateFrequency,
+  fetchSrfDueDatePolicy,
+  type SrfDueDatePolicy,
+} from './srfDueDatePolicy'
 
 /** Wait until certificate letterhead / footer images inside host are decoded. */
 async function waitForCertificateImagesReady(
@@ -1161,6 +1167,8 @@ export function CertificateDraftDialog({
     defaultCalibrationCertificateTemplate(),
   )
   const [modeOfCalibration, setModeOfCalibration] = useState('')
+  // ISO 17025 7.8.4.3: due date only when the customer asked for it on the SRF.
+  const [dueDatePolicy, setDueDatePolicy] = useState<SrfDueDatePolicy>(NO_DUE_DATE_POLICY)
   const pagesHostRef = useRef<HTMLDivElement | null>(null)
   const autoDownloadFiredRef = useRef(false)
   const autoPrintFiredRef = useRef(false)
@@ -1178,23 +1186,27 @@ export function CertificateDraftDialog({
     setLetterhead(null)
     setCertTemplate(defaultCalibrationCertificateTemplate())
     setModeOfCalibration('')
+    setDueDatePolicy(NO_DUE_DATE_POLICY)
     setDraft({ ...EMPTY_CERTIFICATE_DRAFT })
     setEquipmentLabel(activeJob.equipment_label)
 
     try {
-      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lhBase] = await Promise.all([
-        resolveEquipmentMasterForJob(activeJob),
-        activeJob.service_request_id
-          ? fetchSrfSummaryForSheet(activeJob.service_request_id, {
-              clientId: activeJob.client_id,
-              clientName: activeJob.client_name,
-            })
-          : Promise.resolve(null),
-        fetchRawDataSheetByJobId(activeJob.id),
-        fetchCertificateDraftByJobId(activeJob.id),
-        suggestCalibrationCertificateNumber(),
-        fetchManagementDocLetterhead().catch(() => null),
-      ])
+      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lhBase, duePolicy] =
+        await Promise.all([
+          resolveEquipmentMasterForJob(activeJob),
+          activeJob.service_request_id
+            ? fetchSrfSummaryForSheet(activeJob.service_request_id, {
+                clientId: activeJob.client_id,
+                clientName: activeJob.client_name,
+              })
+            : Promise.resolve(null),
+          fetchRawDataSheetByJobId(activeJob.id),
+          fetchCertificateDraftByJobId(activeJob.id),
+          suggestCalibrationCertificateNumber(),
+          fetchManagementDocLetterhead().catch(() => null),
+          fetchSrfDueDatePolicy(activeJob.service_request_id),
+        ])
+      setDueDatePolicy(duePolicy)
 
       let lh = lhBase
       try {
@@ -1255,18 +1267,19 @@ export function CertificateDraftDialog({
 
       const existing = parseCertificateDraft(storedDraft)
       const eqFields = parseJobEquipmentFields(activeJob)
-      const frequency = eqFields.frequency.trim() || 'Yearly'
+      const frequency = dueDateFrequency(duePolicy, eqFields.frequency)
       // Calibration Date = day Raw Data Sheet was filled/seeded (fallback today).
       const sheetFillDate = isoDateOnly(parsedSheet?.seededAt)
       const calDate =
         sheetFillDate ||
         existing.dateOfCalibration ||
         todayIsoDate()
-      // Due Date always from Calibration Date + Raw Data Sheet Frequency (default Yearly).
-      const due =
-        computeDueFromFrequency(calDate, frequency) ||
-        existing.dueDateOfCalibration ||
-        ''
+      // ISO 17025 7.8.4.3: Due Date only when the SRF records the customer's request
+      // (Calibration Date + SRF interval, else Raw Data Sheet Frequency, default Yearly).
+      // Otherwise blank, even if an older draft stored one.
+      const due = duePolicy.requested
+        ? computeDueFromFrequency(calDate, frequency) || existing.dueDateOfCalibration || ''
+        : ''
       const srfContact = srfCustomerContactFields(srfRow)
       const existingContact =
         existing.customerContactPerson ||
@@ -1567,9 +1580,9 @@ export function CertificateDraftDialog({
   ) => {
     setDraft((prev) => {
       const next = { ...prev, [key]: value }
-      if (key === 'dateOfCalibration') {
+      if (key === 'dateOfCalibration' && dueDatePolicy.requested) {
         const cal = String(value)
-        const frequency = (eqFields?.frequency ?? '').trim() || 'Yearly'
+        const frequency = dueDateFrequency(dueDatePolicy, eqFields?.frequency ?? '')
         const computed = computeDueFromFrequency(cal, frequency)
         if (computed) next.dueDateOfCalibration = computed
       }
@@ -2225,6 +2238,12 @@ export function CertificateDraftDialog({
                   {message}
                 </p>
               ) : null}
+              {!dueDatePolicy.requested ? (
+                <p className="certificate-draft-no-print px-1 text-xs text-stone-500">
+                  Due date not shown: the customer did not request one on the SRF (ISO/IEC 17025
+                  clause 7.8.4.3).
+                </p>
+              ) : null}
 
               <CertificateLetterPage
                 lh={letterhead}
@@ -2342,15 +2361,17 @@ export function CertificateDraftDialog({
                           {formatDisplayDate(draft.dateOfCalibration)}
                         </span>
                       </CertMetaRow>
-                      <CertMetaRow label="Due Date of Calibration">
-                        <span
-                          id="cert-due-date"
-                          title="Auto: Calibration Date + Frequency"
-                          className={certMetaValueTextClass}
-                        >
-                          {formatDisplayDate(draft.dueDateOfCalibration)}
-                        </span>
-                      </CertMetaRow>
+                      {dueDatePolicy.requested ? (
+                        <CertMetaRow label="Due Date of Calibration">
+                          <span
+                            id="cert-due-date"
+                            title="Customer requested on SRF: Calibration Date + Frequency"
+                            className={certMetaValueTextClass}
+                          >
+                            {formatDisplayDate(draft.dueDateOfCalibration)}
+                          </span>
+                        </CertMetaRow>
+                      ) : null}
                     </div>
                   </div>
                 </div>

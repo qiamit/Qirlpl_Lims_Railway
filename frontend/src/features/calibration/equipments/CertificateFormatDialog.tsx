@@ -504,7 +504,7 @@ function CertificateFormatPreview({
               </span>
               <span className="flex h-4 min-h-4 max-h-4 items-center justify-self-center text-center">:</span>
               <span className="flex h-4 min-h-4 max-h-4 w-full min-w-0 items-center justify-end justify-self-stretch text-right text-slate-500">
-                Calibration Date + Frequency
+                Only if customer asks (SRF)
               </span>
             </div>
           </div>

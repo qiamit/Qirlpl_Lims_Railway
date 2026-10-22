@@ -18,6 +18,7 @@ import {
   FilterCombobox,
   type FilterComboboxOption,
 } from '@/features/sample-handling/receiving/FilterCombobox'
+import { PRESET_FREQUENCIES } from '@/features/calibration/equipment-for-calibration/types'
 import { CalibrationEquipmentSelectButton } from './SelectCalibrationEquipmentDialog'
 import {
   CAPABILITY_EVALUATION_ROWS,
@@ -513,6 +514,56 @@ export function ServiceRequestFormView({
                     onChange={(e) => set('decisionRule', e.target.value)}
                     placeholder="How uncertainty is accounted for"
                   />
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className={cn(limsPanelClass, 'space-y-3 p-3 sm:p-4')}>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                id="srf-customer-requests-due-date"
+                type="checkbox"
+                className="mt-0.5 h-5 w-5 shrink-0 accent-amber-700"
+                checked={form.customerRequestsDueDate}
+                onChange={(e) =>
+                  onChange({
+                    ...form,
+                    customerRequestsDueDate: e.target.checked,
+                    dueDateInterval: e.target.checked ? form.dueDateInterval : '',
+                  })
+                }
+              />
+              <span className="min-w-0">
+                <span className="block text-[12px] font-semibold text-stone-800">
+                  Customer requests a recommended calibration due date on the certificate
+                </span>
+                <span className="mt-0.5 block text-[11px] text-stone-500">
+                  ISO/IEC 17025 7.8.4.3: leave unticked unless the customer asked for it. When
+                  unticked, the certificate prints no due date.
+                </span>
+              </span>
+            </label>
+            {form.customerRequestsDueDate ? (
+              <div className="grid grid-cols-12 gap-4 border-t border-stone-300 pt-3 md:gap-6">
+                <div className="col-span-12 space-y-2 md:col-span-6">
+                  <Label htmlFor="srf-due-date-interval">
+                    Calibration interval requested (optional)
+                  </Label>
+                  <Input
+                    id="srf-due-date-interval"
+                    list="srf-due-date-interval-options"
+                    value={form.dueDateInterval}
+                    onChange={(e) => set('dueDateInterval', e.target.value)}
+                    placeholder="e.g. Yearly, Half Yearly, 180 Days"
+                  />
+                  <datalist id="srf-due-date-interval-options">
+                    {PRESET_FREQUENCIES.map((f) => (
+                      <option key={f} value={f} />
+                    ))}
+                  </datalist>
+                  <p className="text-[11px] text-stone-500">
+                    Blank = Raw Data Sheet frequency (default Yearly).
+                  </p>
                 </div>
               </div>
             ) : null}
