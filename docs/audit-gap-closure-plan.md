@@ -32,6 +32,8 @@ for Amit).
 | L-8 | Set `PDF_ALLOWED_ORIGINS` on the PDF service | Needs approval |
 | B-2 | Record one restore test (restore a backup into a new service, check, delete) | Planned |
 | U-1 | Clean up duplicate logins and the orphan module-access rule | Planned (needs Amit's list of who keeps which login) |
+| DEP-2 | Production frontend sends no security headers (served as a static site, `server: railway-hikari`); `frontend/server.mjs` with CSP/HSTS/X-Frame-Options only takes effect once Railway starts the frontend with `node server.mjs`. Do this after the staging test, since the new CSP blocks inline scripts and eval (all known uses removed). | Needs approval |
+| GT-1 | GoTrue settings: SMTP (password reset emails), password minimum 10, MFA TOTP enable, refresh-token rotation, rate limits, site URL and `/auth/reset` in the allow list | Needs approval |
 
 ## Stage 1: integrity of records (Sprint 1–2)
 
@@ -48,55 +50,93 @@ for Amit).
 
 ### Migrations waiting to be applied (in this order, after a fresh backup)
 
-1. `20261022120000_security_hardening.sql`
-2. `20261023000001_finance_access_helpers.sql`, `20261023000002_finance_document_series.sql`
-3. `20261024100000_audit_trail_expansion.sql`
-4. `20261024100100_srf_customer_requests_due_date.sql`
-5. `20261024100200_personnel_declarations.sql`
-6. `20261024100300_report_issue_signature.sql`
-7. `20261025100000_soft_delete.sql` (needs 3 first)
-8. `20261025100100_calibration_certificate_amendments.sql`
-9. `20261025100200_ai_data_guard.sql`
 
-The frontend works before and after each one, so the branch can be merged first.
+1. `20261022120000_security_hardening.sql`
+2. `20261023000001_finance_access_helpers.sql`
+3. `20261023000002_finance_document_series.sql`
+4. `20261024100000_audit_trail_expansion.sql`
+5. `20261024100100_srf_customer_requests_due_date.sql`
+6. `20261024100200_personnel_declarations.sql`
+7. `20261024100300_report_issue_signature.sql`
+8. `20261025100000_soft_delete.sql` (needs the audit trail migration first)
+9. `20261025100100_calibration_certificate_amendments.sql`
+10. `20261025100200_ai_data_guard.sql`
+11. `20261026100000_decision_rules.sql`
+12. `20261026100100_equipment_traceability.sql`
+13. `20261026100200_environmental_monitoring.sql`
+14. `20261026100300_result_environment.sql`
+15. `20261027100000_proficiency_testing.sql`
+16. `20261027100100_method_validation.sql`
+17. `20261027100200_management_review_meetings.sql`
+18. `20261027100300_lims_validation_registers.sql`
+19. `20261027100400_personnel_competence.sql`
+20. `20261028100000_document_control_and_retention.sql`
+21. `20261028100100_risk_scoring_audit_coverage.sql`
+22. `20261028100200_control_charts_equipment_acceptance.sql` (sets equipment with an open breakdown to Out of Service immediately)
+23. `20261028100300_supplier_management.sql`
+24. `20261029100000_login_security.sql`
+25. `20261029100100_user_admin_lab_settings.sql`
+26. `20261029100200_db_module_access.sql` (starts in 'log' mode; nothing is blocked)
+27. `20261029100300_capa_opinions_observations.sql`
+28. `20261030100000_finance_sale_books.sql` (only after finance users have synced their browsers)
+29. `20261030100100_finance_gst_supply_mode.sql`
+30. `20261030100200_backfill_sale_documents_to_finance.sql`
+31. `20261030100300_document_series_typed_tables.sql`
+32. `20261031100000_p3_good_practice.sql`
+33. `20261031100100_equipment_history_tables.sql`
+
+Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 
 ## Stage 2: results and reporting (Sprint 3–4)
 
 | ID | Item | Clauses | Status |
 |---|---|---|---|
-| P1-3 | Decision-rule master (ILAC G8), MU-aware conformity (result ± U), rule printed on reports and certificates; remove the hard-coded "no conformity statement" note | 7.1.3, 7.8.6 | Planned |
-| P1-8 | Equipment and CRMs used recorded on each result; block overdue/out-of-service equipment and expired CRMs; certificate acceptance record and calibration history | 6.4, 6.5, 7.5.1 | Planned |
-| P1-6 | Environmental monitoring: areas with limits, daily logs, alerts that open an NC, conditions on results and reports | 6.3, 7.8.3 | Planned |
+| P1-3 | Decision-rule master (ILAC G8), MU-aware conformity (result ± U), rule printed on reports and certificates; remove the hard-coded "no conformity statement" note | 7.1.3, 7.8.6 | Built |
+| P1-8 | Equipment and CRMs used recorded on each result; block overdue/out-of-service equipment and expired CRMs; certificate acceptance record and calibration history | 6.4, 6.5, 7.5.1 | Built |
+| P1-6 | Environmental monitoring: areas with limits, daily logs, alerts that open an NC, conditions on results and reports | 6.3, 7.8.3 | Built |
 
 ## Stage 3: people, methods, PT, management review (Sprint 5–6)
 
 | ID | Item | Clauses | Status |
 |---|---|---|---|
-| P1-4 | Authorization matrix (employee × test/method × perform/review/sign/opinion) enforced at allocation, review and signing; structured competence, training and monitoring records | 6.2 | Planned |
-| P1-5 | PT/ILC module: 4-year plan, rounds, z/En scores, NC on unsatisfactory results | 7.7.2 | Planned |
-| P1-7 | Method verification and validation records; standard status (current/withdrawn) | 7.2 | Planned |
-| P1-11 | Management review meeting: attendance, minutes per input, outputs, actions | 8.9 | Planned |
-| P1-9 | LIMS validation pack, software change-control register, IT incident log (mostly documents plus small registers) | 7.11 | Planned |
+| P1-4 | Authorization matrix (employee × test/method × perform/review/sign/opinion) enforced at allocation, review and signing; structured competence, training and monitoring records | 6.2 | Built |
+| P1-5 | PT/ILC module: 4-year plan, rounds, z/En scores, NC on unsatisfactory results | 7.7.2 | Built |
+| P1-7 | Method verification and validation records; standard status (current/withdrawn) | 7.2 | Built |
+| P1-11 | Management review meeting: attendance, minutes per input, outputs, actions | 8.9 | Built |
+| P1-9 | LIMS validation pack, software change-control register, IT incident log (mostly documents plus small registers) | 7.11 | Built |
 
 ## Stage 4: P2 and P3 items
 
-Document-control e-approval (8.3), risk scoring and heat map (8.5), unified
-CAPA register (8.7), control charts (7.7), database-level module access
-(7.11.3 a), supplier module (6.6), equipment acceptance and correction factors
-(6.4), opinions section (7.8.7), audit coverage matrix (8.8), retention
-schedule (8.4), then the P3 list in the audit report.
+| ID | Item | Clauses | Status |
+|---|---|---|---|
+| P2-1 | Document control e-approval, periodic review, distribution and read acknowledgement, watermarks | 8.3 | Built |
+| P2-2 | Risk scoring (inherent/residual), owner, review dates, heat map | 8.5, 4.1 | Built |
+| P2-3 | Unified CAPA register, complaint → NC, hold on report issue while an NC is open | 7.9, 7.10, 8.7 | Built |
+| P2-4 | IQC control charts with Westgard rules, NC on violation | 7.7.1, 7.7.3 | Built |
+| P2-5 | Database-level module access (log → enforce_writes → enforce), idle timeout, MFA, auth event log | 7.11.3 a | Built |
+| P2-6 | Approved suppliers, evaluations, receipt inspection, subcontracting with consent | 6.6 | Built |
+| P2-7 | Equipment acceptance, breakdown → Out of Service, correction factors, seal fields | 6.4 | Built |
+| P2-8 | Opinions and interpretations (authorized persons only) | 7.8.7 | Built |
+| P2-9 | Internal audit coverage matrix, auditor independence check | 8.8 | Built |
+| P2-10 | Records retention schedule | 8.4 | Built |
+| P2-11 | Entered-by per result, raw-data attachments, sample custody log | 7.4, 7.5.1 | Built |
+| P3-1 | Sampling plan and record | 7.3, 7.8.5 | Not started: only needed if the lab does sampling (otherwise state the exclusion in the Quality Manual) |
+| P3-2, 3, 5, 6, 7, 9 | MU by range band, org chart + NABL ULR scope check, CRM opened-on/expiry, public complaints process + KPIs, objective KPIs, SRF contract change log | various | In progress |
+| P3-4, 8 | Equipment QR status labels; append-only maintenance and intermediate-check history | 6.4.8, 6.4.10 | In progress |
+| CF-04 | Results exactly on a tolerance limit now conform (floating-point fix) | 7.8.6 | Done |
+| EV-1 | Calibration/IQC formulas evaluated without `new Function` (needed for the CSP) | 7.11 | Done |
 
 ## Login, security, user management, Lab Settings (runs alongside)
 
 | ID | Item | Status |
 |---|---|---|
-| S-4 | Password policy of 10+ characters, same in UI, functions and GoTrue | Planned |
-| S-5/6/7 | Change password, Director reset with must-change, forgot password by email | Planned |
-| S-8/9 | Rate limits, 30-minute idle timeout, MFA for Director and signatories | Planned |
-| S-10/11/12 | All profile edits through one server function; keep at least one active Director; deactivate instead of delete | Planned |
-| S-14/15 | Database-level module access (view = read-only) | Planned |
-| S-16/17 | `lab_settings` writes through Director-only functions; sanitise letterhead and template HTML | Planned |
-| S-19 | Remove `'unsafe-inline'` from the CSP | Planned |
+| S-4 | Password policy of 10+ characters, same in UI, functions and GoTrue | Built (GoTrue setting needs approval) |
+| S-5/6/7 | Change password, Director reset with must-change, forgot password by email | Built (reset email needs GoTrue SMTP) |
+| S-8/9 | Rate limits, 30-minute idle timeout, MFA for Director and signatories | Built (MFA optional until enforced) |
+| S-10/11/12 | All profile edits through one server function; keep at least one active Director; deactivate instead of delete | Built |
+| S-14/15 | Database-level module access (view = read-only) | Built (starts in log mode) |
+| S-16/17 | `lab_settings` writes through Director-only functions; sanitise letterhead and template HTML | Built |
+| S-19 | Remove `'unsafe-inline'` from the CSP | Built (live only after DEP-2) |
 
 ## Finance (Consultancy Pro port)
 
@@ -104,7 +144,7 @@ schedule (8.4), then the P3 list in the audit report.
 |---|---|
 | 0 Profile production | Done (22 Oct) |
 | 1 Access helpers, document numbering | Built (migrations not applied) |
-| 2 Typed sale tables, GST supply mode, backfill | Planned: waits for finance users to sync browser records |
+| 2 Typed sale tables, GST supply mode, backfill | Built (apply after finance users sync browser records) |
 | 3–8 | Planned (see `backend/scripts/finance-phase2-mapping.md` and the audit report) |
 
 ## Decisions (Amit, 22 Oct 2026)
