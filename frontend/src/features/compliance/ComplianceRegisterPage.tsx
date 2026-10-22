@@ -165,7 +165,7 @@ export function ComplianceRegisterPage({ config }: { config: ComplianceRegisterC
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search"
             aria-label={`Search ${config.title}`}
-            className="w-48"
+            className="w-full sm:w-48"
           />
           <Button type="button" onClick={openNew}>
             Add record

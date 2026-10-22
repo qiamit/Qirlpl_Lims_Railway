@@ -132,7 +132,7 @@ export function ProductsServicesForm({
         ) : null}
 
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6 flex flex-col space-y-2 md:col-span-3">
+          <div className="col-span-12 flex flex-col space-y-2 sm:col-span-6 md:col-span-3">
             <div className="flex h-5 items-center">
               <Label htmlFor="ps-item-type" className="min-w-0 truncate">
                 Item (Product / Service) *
@@ -152,7 +152,7 @@ export function ProductsServicesForm({
             </Select>
           </div>
 
-          <div className="col-span-6 flex flex-col space-y-2 md:col-span-3">
+          <div className="col-span-12 flex flex-col space-y-2 sm:col-span-6 md:col-span-3">
             <div className="flex h-5 items-center">
               <Label htmlFor="ps-item-code">Item Code *</Label>
             </div>
@@ -166,7 +166,7 @@ export function ProductsServicesForm({
             />
           </div>
 
-          <div className="col-span-6 flex flex-col space-y-2 md:col-span-3">
+          <div className="col-span-12 flex flex-col space-y-2 sm:col-span-6 md:col-span-3">
             <div className="flex h-5 items-center">
               <Label htmlFor="ps-item-category">Item Category *</Label>
             </div>
@@ -179,7 +179,7 @@ export function ProductsServicesForm({
             />
           </div>
 
-          <div className="col-span-6 flex flex-col space-y-2 md:col-span-3">
+          <div className="col-span-12 flex flex-col space-y-2 sm:col-span-6 md:col-span-3">
             <div className="flex h-5 items-center">
               <Label htmlFor="ps-hsn">Item HSN Code</Label>
             </div>
@@ -228,7 +228,7 @@ export function ProductsServicesForm({
             />
           </div>
 
-          <div className="col-span-12 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="col-span-12 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
             <CurrencyInrField
               id="ps-sale"
               label="Sale Price"
@@ -334,7 +334,7 @@ export function ProductsServicesForm({
       </div>
 
       {!hideFooter ? (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:px-6">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:px-6">
           <Button
             type="button"
             className={cn(limsPrimaryBtnClass, 'h-9 px-4')}

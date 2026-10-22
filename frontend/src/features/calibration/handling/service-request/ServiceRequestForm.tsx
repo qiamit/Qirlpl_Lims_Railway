@@ -47,7 +47,7 @@ const FORM_TABS = [
 type FormTab = (typeof FORM_TABS)[number]
 
 const formTabTriggerClass = cn(
-  'group min-w-0 flex-1 whitespace-nowrap rounded-none border border-transparent px-2 py-2 text-[11px] font-semibold uppercase tracking-wide shadow-none sm:px-3 sm:text-xs',
+  'group min-w-max flex-1 whitespace-nowrap rounded-none border border-transparent px-2 py-2 text-[11px] font-semibold uppercase tracking-wide shadow-none sm:px-3 sm:text-xs',
   'text-stone-600 hover:bg-stone-200/70 hover:text-stone-900',
   'focus-visible:ring-2 focus-visible:ring-amber-500/25 focus-visible:ring-offset-0',
   'data-[state=active]:border-amber-500/50 data-[state=active]:bg-stone-800 data-[state=active]:text-amber-100',
@@ -319,7 +319,7 @@ export function ServiceRequestFormView({
   return (
     <div className={clientRegistryFormClass}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-4 flex h-auto w-full items-stretch gap-1 overflow-hidden rounded-none border-2 border-stone-500 bg-stone-100 p-1">
+        <TabsList className="mb-4 flex h-auto w-full items-stretch gap-1 overflow-x-auto overflow-y-hidden rounded-none border-2 border-stone-500 bg-stone-100 p-1">
           <TabsTrigger value="request" className={formTabTriggerClass}>
             Request Details
           </TabsTrigger>
@@ -782,7 +782,7 @@ export function ServiceRequestFormView({
         </TabsContent>
       </Tabs>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-300 pt-4">
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 pt-4">
         {!isLastTab ? (
           <Button
             type="button"

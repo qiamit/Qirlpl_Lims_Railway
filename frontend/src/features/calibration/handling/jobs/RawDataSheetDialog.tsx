@@ -3910,7 +3910,7 @@ export function RawDataSheetDialog({
                     No verification checks on this template.
                   </p>
                 ) : (
-                  <div className="overflow-hidden rounded-none border-2 border-stone-700">
+                  <div className="overflow-x-auto rounded-none border-2 border-stone-700">
                     <table className={cn(limsTableClass, 'table-fixed')}>
                       <colgroup>
                         <col className="w-10" />

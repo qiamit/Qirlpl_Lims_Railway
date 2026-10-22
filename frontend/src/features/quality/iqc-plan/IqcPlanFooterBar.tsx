@@ -68,7 +68,7 @@ export function IqcPlanFooterBar({
             </Button>
             </LaboratoryDirectorOnly>
           )}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="icon" className={cn('h-8 w-8', limsDarkBarBtnClass)} disabled={page <= 1 || loading} onClick={onPrevPage} aria-label="Previous page">
                 <ChevronLeft size={16} />

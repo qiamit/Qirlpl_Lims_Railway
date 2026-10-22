@@ -476,7 +476,7 @@ export function TestAllocationForm({
           </Select>
         </div>
         <div className={cn(limsPanelClass, 'flex w-full flex-col overflow-hidden bg-[#f7f3eb]')}>
-          <div>
+          <div className="overflow-x-auto">
           {filteredTestParamOptions.length === 0 ? (
             <div className="m-3 border border-dashed border-[#d6d3d1] bg-[#fffcf7] p-4 text-center sm:m-4">
               <p className="text-sm text-[#57534e]">No test parameters for this IS Code &amp; Department.</p>
@@ -486,7 +486,7 @@ export function TestAllocationForm({
               <p className="text-sm text-[#57534e]">No matches for &quot;{testParamSearch.trim()}&quot;.</p>
             </div>
           ) : (
-            <table className={cn(limsTableClass, 'table-fixed')}>
+            <table className={cn(limsTableClass, 'min-w-[720px] table-fixed')}>
               <colgroup>
                 <col className="w-9" />
                 <col className="w-[18%]" />
@@ -714,7 +714,7 @@ export function TestAllocationForm({
             </div>
             {editSpecError && <p className="text-sm text-red-700">{editSpecError}</p>}
           </div>
-          <div className="relative flex justify-end gap-2 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3">
+          <div className="relative flex flex-wrap justify-end gap-2 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-5 py-3">
             <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
             <Button
               type="button"

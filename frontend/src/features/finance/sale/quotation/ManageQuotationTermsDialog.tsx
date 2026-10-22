@@ -232,7 +232,7 @@ export function ManageQuotationTermsDialog({
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-none border border-stone-500">
+            <div className="overflow-x-auto rounded-none border border-stone-500">
               <table className="w-full table-fixed border-collapse text-sm">
                 <thead>
                   <tr className="bg-stone-800 text-amber-200">

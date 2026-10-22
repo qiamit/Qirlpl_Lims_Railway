@@ -470,7 +470,7 @@ export function MaintenanceHistoryDialog({
                 style={limsDarkBarGlowStyle}
               />
               <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-              <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2">
+              <div className="relative flex min-w-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 md:flex-nowrap sm:gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   {selectedIds.size > 0 ? (
                     <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
@@ -717,7 +717,7 @@ export function MaintenanceHistoryDialog({
                 style={limsDarkBarGlowStyle}
               />
               <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-              <div className="relative flex items-center justify-end gap-2">
+              <div className="relative flex flex-wrap items-center justify-end gap-2">
                 {isEditing ? (
                   <Button
                     type="button"

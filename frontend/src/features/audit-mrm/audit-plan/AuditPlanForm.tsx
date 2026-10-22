@@ -255,7 +255,7 @@ function CriteriaClausePickerDialog({
               </tbody>
             </table>
           </div>
-          <div className="flex justify-end gap-2 border-t border-stone-200 pt-3">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-stone-200 pt-3">
             <Button
               type="button"
               variant="outline"
@@ -675,7 +675,7 @@ export function AuditPlanForm({
         </div>
       </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-200 pt-4">
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-stone-200 pt-4">
         <Button
           type="button"
           className={limsPrimaryBtnClass}

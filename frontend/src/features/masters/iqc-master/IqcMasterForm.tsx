@@ -1154,7 +1154,7 @@ export function IqcMasterForm({
               {sectionContent}
             </div>
           </CardContent>
-          <CardFooter className="-mx-0 mt-4 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3">
+          <CardFooter className="-mx-0 mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3">
             <Button
               type="button"
               onClick={onSave}
@@ -1389,7 +1389,7 @@ export function IqcMasterForm({
 
           <section className={cn(limsPanelClass, 'p-4')}>
             <h3 className={sectionTitleClass}>Purchase & Location</h3>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="min-w-0 space-y-0.5">
                 <Label htmlFor="iqc-purchase-date">Date of Purchased</Label>
                 <Input
@@ -1846,7 +1846,7 @@ export function IqcMasterForm({
         </div>
       </CardContent>
 
-      <CardFooter className="-mx-4 mt-5 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+      <CardFooter className="-mx-4 mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
         {readOnly ? (
           <Button
             type="button"

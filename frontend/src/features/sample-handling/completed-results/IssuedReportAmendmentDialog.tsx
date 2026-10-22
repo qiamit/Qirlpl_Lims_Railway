@@ -640,7 +640,7 @@ export function IssuedReportAmendmentDialog({
 
           {submitError ? <p className="text-sm text-red-700">{submitError}</p> : null}
 
-          <div className="flex justify-end gap-2 border-t border-stone-300 pt-3">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-stone-300 pt-3">
             <Button
               type="button"
               variant="outline"

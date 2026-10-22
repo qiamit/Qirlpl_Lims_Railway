@@ -293,13 +293,26 @@ export function FilterCombobox({
     }, 200)
   }
 
+  /* Keep the (min 420px) list inside narrow viewports such as phones. */
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0
+  const dropdownWidth = dropdownPosition
+    ? viewportWidth > 0
+      ? Math.min(Math.max(dropdownPosition.width, 420), viewportWidth - 16)
+      : Math.max(dropdownPosition.width, 420)
+    : 0
+  const dropdownLeft = dropdownPosition
+    ? viewportWidth > 0
+      ? Math.max(8, Math.min(dropdownPosition.left, viewportWidth - dropdownWidth - 8))
+      : dropdownPosition.left
+    : 0
+
   const dropdownList = showList && dropdownPosition ? (
     <div
       {...{ [FILTER_COMBOBOX_DROPDOWN_ATTR]: '' }}
       className="pointer-events-auto fixed z-[10000] overflow-hidden rounded-none border-2 border-stone-500 bg-white shadow-xl ring-1 ring-amber-700/25"
       style={{
-        left: dropdownPosition.left,
-        width: Math.max(dropdownPosition.width, 420),
+        left: dropdownLeft,
+        width: dropdownWidth,
         top: dropdownPosition.top,
         bottom: dropdownPosition.bottom,
         pointerEvents: 'auto',

@@ -170,7 +170,7 @@ export function SampleReceivingForm({
     <div className={cn(limsRegistryFormClass, 'space-y-0')}>
         <Tabs value={activeTab} onValueChange={onTabChange}>
           <div
-            className="grid h-10 w-full grid-cols-2 items-center justify-center rounded-none border border-stone-500 bg-stone-200/80 p-1 text-stone-600"
+            className="grid min-h-10 w-full grid-cols-2 items-stretch justify-center rounded-none border border-stone-500 bg-stone-200/80 p-1 text-stone-600 sm:h-10 sm:items-center"
             role="tablist"
             aria-label="Sample receiving sections"
           >
@@ -180,7 +180,7 @@ export function SampleReceivingForm({
               tabIndex={-1}
               aria-selected={activeTab === 'details'}
               className={cn(
-                'inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
+                'inline-flex min-w-0 items-center justify-center rounded-none px-2 py-1.5 text-center text-xs font-medium leading-tight transition-all sm:whitespace-nowrap sm:px-3 sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
                 activeTab === 'details'
                   ? 'bg-stone-800 text-amber-100 shadow-sm'
                   : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
@@ -195,7 +195,7 @@ export function SampleReceivingForm({
               tabIndex={-1}
               aria-selected={activeTab === 'review'}
               className={cn(
-                'inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
+                'inline-flex min-w-0 items-center justify-center rounded-none px-2 py-1.5 text-center text-xs font-medium leading-tight transition-all sm:whitespace-nowrap sm:px-3 sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
                 activeTab === 'review'
                   ? 'bg-stone-800 text-amber-100 shadow-sm'
                   : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
@@ -510,7 +510,7 @@ export function SampleReceivingForm({
                 )}
               </div>
             </div>
-            <div className="flex justify-end gap-2 border-t border-stone-300 pt-3">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-stone-300 pt-3">
               <Button type="button" variant="outline" className={limsOutlineBtnClass} onClick={onClear}>
                 Clear
               </Button>
@@ -588,7 +588,7 @@ export function SampleReceivingForm({
                 </div>
               ))}
             </div>
-            <div className="flex justify-end gap-2 border-t border-stone-300 pt-3">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-stone-300 pt-3">
               <Button type="button" variant="outline" className={limsOutlineBtnClass} onClick={onClear}>
                 Clear
               </Button>

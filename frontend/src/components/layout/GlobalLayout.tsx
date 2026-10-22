@@ -314,12 +314,12 @@ function Breadcrumbs() {
   if (!label || location.pathname === '/') return null
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm text-stone-300">
-      <NavLink to="/" className="shrink-0 transition-colors hover:text-amber-200">
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-xs text-stone-300 sm:text-sm">
+      <NavLink to="/" className="hidden shrink-0 transition-colors hover:text-amber-200 sm:inline">
         Dashboard
       </NavLink>
-      <ChevronsRight size={14} className="shrink-0 text-stone-500" />
-      <span className="truncate font-medium text-white">{label}</span>
+      <ChevronsRight size={14} className="hidden shrink-0 text-stone-500 sm:block" />
+      <span className="truncate text-xs font-medium text-white sm:text-sm" title={label}>{label}</span>
     </nav>
   )
 }
@@ -805,11 +805,11 @@ export default function GlobalLayout() {
           />
           <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
 
-          <div className="relative flex min-w-0 items-center gap-3">
+          <div className="relative flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
               className={cn(
-                'inline-flex h-9 w-9 items-center justify-center rounded-none border border-stone-500 bg-stone-800/80 text-white shadow-sm transition-colors hover:border-amber-500/50 hover:bg-stone-700',
+                'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-stone-500 bg-stone-800/80 text-white shadow-sm transition-colors hover:border-amber-500/50 hover:bg-stone-700',
                 !sidebarCollapsed && 'xl:hidden',
               )}
               onClick={() => {

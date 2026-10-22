@@ -1139,7 +1139,7 @@ export function AuditChecklistDialog({
             </div>
           )}
 
-          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-stone-300 pt-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-stone-300 pt-3">
             <Button
               type="button"
               className={cn(limsPrimaryBtnClass, 'min-w-[8.5rem]')}

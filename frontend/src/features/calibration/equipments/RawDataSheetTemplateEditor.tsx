@@ -1595,7 +1595,7 @@ function EnvironmentConditionEditor({
             </DialogHeader>
           </div>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
-            <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
+            <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>

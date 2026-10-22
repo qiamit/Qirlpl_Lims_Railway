@@ -323,7 +323,7 @@ export function IsCodesForm({
       </div>
 
       {!hideFooter ? (
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
           <Button
             type="button"
             className={cn(limsPrimaryBtnClass, 'h-9 px-4')}

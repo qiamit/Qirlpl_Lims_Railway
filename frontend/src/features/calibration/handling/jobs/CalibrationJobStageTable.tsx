@@ -1002,8 +1002,8 @@ function DucAllocationDialog({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5 sm:py-5">
-          <div className="overflow-hidden rounded-none border-2 border-stone-500 bg-white">
-            <Table className={cn(DUC_GRID, 'table-fixed min-w-0 w-full')}>
+          <div className="overflow-x-auto rounded-none border-2 border-stone-500 bg-white">
+            <Table className={cn(DUC_GRID, 'table-fixed w-full min-w-[720px] md:min-w-0')}>
               <TableHeader>
                 <TableRow className="bg-stone-800 hover:bg-stone-800">
                   <TableHead className="w-[4%] px-1 text-center text-xs">
@@ -1323,8 +1323,8 @@ function SrfCertificatesListDialog({
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-none border-2 border-stone-700 bg-white">
-            <Table className={cn(DUC_GRID, 'table-fixed min-w-0 w-full')}>
+          <div className="overflow-x-auto rounded-none border-2 border-stone-700 bg-white">
+            <Table className={cn(DUC_GRID, 'table-fixed w-full min-w-[720px] md:min-w-0')}>
               <colgroup>
                 <col className="w-[5%]" />
                 <col className="w-[22%]" />

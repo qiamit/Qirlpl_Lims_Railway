@@ -60,7 +60,7 @@ export function SampleReceivingTableFooterBar({
               </p>
             )}
           </div>
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
             <Input aria-label="Jump to page" placeholder="Page" value={jumpTo} onChange={(e) => onJumpToChange(e.target.value.replace(/[^0-9]/g, ''))} className={cn(limsDarkBarFieldClass, 'w-14 sm:w-16')} />
             <Button type="button" variant="outline" className={limsDarkBarBtnClass} onClick={onJumpToGo} disabled={loading}>Jump</Button>

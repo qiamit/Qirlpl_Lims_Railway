@@ -567,7 +567,7 @@ export function ClientsForm({
             </Dialog>
           </div>
 
-          <div className={cn('col-span-12 grid grid-cols-3', compact ? 'gap-2' : 'gap-4')}>
+          <div className={cn('col-span-12 grid grid-cols-1 sm:grid-cols-3', compact ? 'gap-2' : 'gap-4')}>
             <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label htmlFor="contact-person">Name of the Contact Person</Label>
               <Input
@@ -655,7 +655,7 @@ export function ClientsForm({
             </div>
           </div>
 
-          <div className={cn('col-span-12 grid grid-cols-3', compact ? 'gap-2' : 'gap-4')}>
+          <div className={cn('col-span-12 grid grid-cols-1 sm:grid-cols-3', compact ? 'gap-2' : 'gap-4')}>
             <div className={cn('flex min-w-0 flex-col', compact ? 'space-y-1' : 'space-y-2')}>
               <Label htmlFor="opening-balance">Opening Balance</Label>
               <div className="flex h-10 gap-2">
@@ -739,7 +739,7 @@ export function ClientsForm({
         </div>
       </div>
       {!hideFooter ? (
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
           <Button
             type="button"
             className="h-9 rounded-none bg-amber-700 px-4 text-sm text-white shadow-sm hover:bg-amber-800"

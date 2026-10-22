@@ -1505,7 +1505,7 @@ export function QuotationFormView({
           <h3 className="pt-2 text-xs font-bold uppercase tracking-wide text-stone-800">
             Bank Details
           </h3>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-stone-800">
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm text-stone-800 sm:grid-cols-2">
             <p className="min-w-0">
               <span className="font-medium">Bank Name: </span>
               {bankDetails.bankName || '—'}
@@ -1523,7 +1523,7 @@ export function QuotationFormView({
               {bankDetails.ifsc || '—'}
             </p>
             {bankDetails.upi ? (
-              <p className="col-span-2 min-w-0">
+              <p className="min-w-0 sm:col-span-2">
                 <span className="font-medium">UPI: </span>
                 {bankDetails.upi}
               </p>
@@ -1779,7 +1779,7 @@ export function QuotationFormView({
       {/* Other */}
       <section className="space-y-3">
         <h3 className={sectionTitleClass}>Other</h3>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div className="flex min-w-0 flex-col space-y-2">
             <Label htmlFor="term-condition">Term &amp; Condition</Label>
             <LimsFieldWithAdd
@@ -1921,7 +1921,7 @@ export function QuotationFormView({
         </div>
       </section>
 
-      <div className="mt-1 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
+      <div className="mt-1 flex flex-wrap items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
         <Button
           type="button"
           className={cn(limsPrimaryBtnClass, 'h-9 px-4 text-sm')}
@@ -1959,7 +1959,7 @@ export function QuotationFormView({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
-            <div className="overflow-hidden rounded-none border border-stone-500">
+            <div className="overflow-x-auto rounded-none border border-stone-500">
               <table className="w-full border-collapse text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-stone-800 text-amber-200">

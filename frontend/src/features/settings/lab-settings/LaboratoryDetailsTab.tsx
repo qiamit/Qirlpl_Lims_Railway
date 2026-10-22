@@ -189,7 +189,7 @@ export function LaboratoryDetailsTab(props: LaboratoryDetailsTabProps) {
   return (
     <Card>
       <CardContent className="space-y-6">
-        <div className="flex items-center justify-end gap-3 pt-4">
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-4">
           {props.saveMessage && (
             <p className={props.saveMessage.toLowerCase().includes('saved') ? 'text-sm text-emerald-700' : 'text-sm text-destructive'}>
               {props.saveMessage}

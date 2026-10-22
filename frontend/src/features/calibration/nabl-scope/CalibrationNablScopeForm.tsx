@@ -161,7 +161,7 @@ export function CalibrationNablScopeFormView({
         </div>
       </div>
 
-      <div className="-mx-4 mt-2 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+      <div className="-mx-4 mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
         <Button
           type="button"
           className={limsPrimaryBtnClass}

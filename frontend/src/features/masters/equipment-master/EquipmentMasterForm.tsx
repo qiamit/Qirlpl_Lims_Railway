@@ -2121,7 +2121,7 @@ export function EquipmentMasterForm({
             {sectionContent}
           </div>
         </CardContent>
-        <CardFooter className="-mx-4 mt-4 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+        <CardFooter className="-mx-4 mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
           <Button
             type="button"
             onClick={onSave}
@@ -2790,7 +2790,7 @@ export function EquipmentMasterForm({
         </div>
       </CardContent>
 
-      <CardFooter className="-mx-4 mt-5 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+      <CardFooter className="-mx-4 mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
         {readOnly ? (
           <Button
             type="button"

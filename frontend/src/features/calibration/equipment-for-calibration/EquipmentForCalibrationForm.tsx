@@ -2453,7 +2453,7 @@ export function EquipmentForCalibrationForm({
         />
       </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-300 pt-4">
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 pt-4">
         {readOnly ? (
           <Button
             type="button"

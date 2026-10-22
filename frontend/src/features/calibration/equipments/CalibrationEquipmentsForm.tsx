@@ -1589,8 +1589,8 @@ export function CalibrationEquipmentsForm({
                 Factor can only be set per point.
               </p>
             ) : null}
-            <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
-              <table className="w-full table-fixed border-collapse text-sm">
+            <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
+              <table className="w-full min-w-[720px] table-fixed border-collapse text-sm">
                 <thead>
                   <tr>
                     <th className={cn(vfThClass, 'w-[8%]')}>Point</th>
