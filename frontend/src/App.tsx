@@ -93,6 +93,8 @@ import {
   AuditTrailRoute,
   RecycleBinRoute,
   AuditCoverageRoute,
+  RetentionScheduleRoute,
+  MyDocumentAcknowledgementsRoute,
   DecisionRulesRoute,
   PtPlanRoute,
   PtParticipationsRoute,
@@ -195,6 +197,8 @@ export default function App() {
           <Route path="audit-mrm/audit-trail" element={<AuditTrailRoute />} />
           <Route path="audit-mrm/recycle-bin" element={<RecycleBinRoute />} />
           <Route path="audit-mrm/audit-coverage" element={<AuditCoverageRoute />} />
+          <Route path="quality/records-retention" element={<RetentionScheduleRoute />} />
+          <Route path="management-docs/my-acknowledgements" element={<MyDocumentAcknowledgementsRoute />} />
           <Route path="masters/decision-rules" element={<DecisionRulesRoute />} />
           <Route path="quality/pt-plan" element={<PtPlanRoute />} />
           <Route path="quality/pt-participations" element={<PtParticipationsRoute />} />

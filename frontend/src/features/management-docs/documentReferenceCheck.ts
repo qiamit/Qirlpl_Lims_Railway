@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
 import {
-  parseDraftContent,
   displaySectionLabel,
   type DraftSection,
 } from './draftDocumentModel'

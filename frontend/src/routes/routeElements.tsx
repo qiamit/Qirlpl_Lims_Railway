@@ -90,6 +90,8 @@ const DeclarationsPage = lazy(() => import('@/features/personnel/declarations/De
 const AuditTrailPage = lazy(() => import('@/features/audit-trail/AuditTrailPage'))
 const RecycleBinPage = lazy(() => import('@/features/recycle-bin/RecycleBinPage'))
 const AuditCoveragePage = lazy(() => import('@/features/audit-mrm/audit-coverage/AuditCoveragePage'))
+const RetentionSchedulePage = lazy(() => import('@/features/records-retention/RetentionSchedulePage'))
+const MyDocumentAcknowledgementsPage = lazy(() => import('@/features/management-docs/MyDocumentAcknowledgementsPage'))
 const DecisionRulesPage = lazy(() => import('@/features/masters/decision-rules/DecisionRulesPage'))
 const PtPlanPage = lazy(() => import('@/features/proficiency-testing/PtPlanPage'))
 const PtParticipationsPage = lazy(() => import('@/features/proficiency-testing/PtParticipationsPage'))
@@ -424,6 +426,14 @@ export function RecycleBinRoute() {
 
 export function AuditCoverageRoute() {
   return <AuditCoveragePage />
+}
+
+export function RetentionScheduleRoute() {
+  return <RetentionSchedulePage />
+}
+
+export function MyDocumentAcknowledgementsRoute() {
+  return <MyDocumentAcknowledgementsPage />
 }
 
 export function DecisionRulesRoute() {

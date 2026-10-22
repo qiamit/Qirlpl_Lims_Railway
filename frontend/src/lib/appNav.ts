@@ -64,6 +64,8 @@ import {
   Share2,
   ListChecks as ListChecksIcon,
   Grid3x3 as GridIcon,
+  Archive,
+  BookCheck,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -481,6 +483,8 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'LIMS Validation Runs', to: '/quality/validation-runs', icon: FlaskRound, clause: '7.11' },
       { label: 'IT Incidents', to: '/quality/it-incidents', icon: ServerCrash, clause: '7.11' },
       { label: 'Backup Restore Tests', to: '/quality/backup-tests', icon: DatabaseBackup, clause: '7.11' },
+      { label: 'Records Retention', to: '/quality/records-retention', icon: Archive, clause: '8.4' },
+      { label: 'Documents to Read', to: '/management-docs/my-acknowledgements', icon: BookCheck, clause: '8.3' },
     ],
   },
   {

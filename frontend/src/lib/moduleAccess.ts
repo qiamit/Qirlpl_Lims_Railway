@@ -151,7 +151,7 @@ function pathMatchesAllowlist(pathname: string, allowed: readonly string[]): boo
   })
 }
 
-/** Help, Contact Us and the annual declarations (every employee signs) — available to every signed-in user. */
+/** Help, Contact Us, annual declarations and documents to read (every employee signs/acknowledges) — available to every signed-in user. */
 export function isPublicSupportPath(pathname: string | undefined): boolean {
   if (!pathname) return false
   const path = pathname.replace(/\/+$/, '') || '/'
@@ -160,7 +160,8 @@ export function isPublicSupportPath(pathname: string | undefined): boolean {
     path.startsWith('/help/') ||
     path === '/contact-us' ||
     path.startsWith('/contact-us/') ||
-    path === '/personnel/declarations'
+    path === '/personnel/declarations' ||
+    path === '/management-docs/my-acknowledgements'
   )
 }
 

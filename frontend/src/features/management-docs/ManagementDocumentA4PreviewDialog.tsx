@@ -21,8 +21,6 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -82,6 +80,8 @@ import {
 import type { ManagementDocumentRow } from './types'
 import { MANAGEMENT_DOC_STATUSES } from './types'
 import { createInertHtmlContainer } from '@/lib/inertHtml'
+import { useAuth } from '@/hooks/useAuth'
+import { buildDocumentWatermarkCss } from './documentWatermark'
 
 /** Fullscreen preview — main content area only (sidebar 268px stays visible). */
 const MGMT_A4_PREVIEW_OVERLAY = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
@@ -843,7 +843,10 @@ function SectionHoverActions({
   const showAiButtons = useShowAiButtons()
   const label = displaySectionLabel(section)
   return (
-    <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 print:hidden">
+    <span
+      data-mgmt-section-actions=""
+      className="inline-flex shrink-0 flex-wrap items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 print:hidden"
+    >
       <button
         type="button"
         className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 hover:bg-amber-100"
@@ -1415,6 +1418,7 @@ export function ManagementDocumentA4PreviewDialog({
   onOpenChange,
   onDraftUpdated,
   autoPrint = false,
+  readOnly = false,
 }: {
   open: boolean
   row: ManagementDocumentRow | null
@@ -1423,8 +1427,13 @@ export function ManagementDocumentA4PreviewDialog({
   onDraftUpdated?: (row: ManagementDocumentRow) => void
   /** When true, open print dialog once pages are ready, then close. */
   autoPrint?: boolean
+  /** Approved / obsolete controlled document: view and print only (ISO/IEC 17025 8.3). */
+  readOnly?: boolean
 }) {
-  const showAiButtons = useShowAiButtons()
+  const showAiButtonsSetting = useShowAiButtons()
+  const showAiButtons = showAiButtonsSetting && !readOnly
+  const { profileName, user: authUser } = useAuth()
+  const printedByName = profileName.trim() || authUser?.email || ''
   const [letterhead, setLetterhead] = useState<ManagementDocLetterhead | null>(null)
   const [pages, setPages] = useState<ContentBlock[][]>([[]])
   const [pageBySectionId, setPageBySectionId] = useState<Map<string, number>>(
@@ -2113,6 +2122,14 @@ export function ManagementDocumentA4PreviewDialog({
 
   if (!workingRow) return null
 
+  const watermarkCss = buildDocumentWatermarkCss({
+    status: workingRow.status,
+    printedBy: printedByName,
+  })
+  const readOnlyCss = readOnly
+    ? '[data-mgmt-a4-pages] [data-mgmt-section-actions] { display: none !important; }'
+    : ''
+
   const lh = letterhead
   const pageCount = Math.max(1, pages.length) + coverPageCount
   const { widthMm: pageWidthMm, heightMm: pageHeightMm } = pageDimensionsMm(
@@ -2245,6 +2262,7 @@ export function ManagementDocumentA4PreviewDialog({
             }
           }
         `}</style>
+        <style>{`${watermarkCss}\n${readOnlyCss}`}</style>
 
         <div className="relative flex shrink-0 items-center justify-between gap-3 overflow-hidden bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white print:hidden sm:px-6 sm:py-3">
           <div
@@ -2256,6 +2274,13 @@ export function ManagementDocumentA4PreviewDialog({
             <DialogTitle className="truncate text-base font-semibold tracking-tight text-white sm:text-lg">
               {workingRow.doc_number} — {workingRow.title}
             </DialogTitle>
+            {readOnly ? (
+              <p className="text-[11px] text-amber-200">
+                {workingRow.status === 'obsolete'
+                  ? 'Obsolete document - read-only, for reference.'
+                  : 'Approved document - read-only. Start a new revision to change it.'}
+              </p>
+            ) : null}
           </DialogHeader>
           <div className="relative flex shrink-0 items-center gap-2">
             <Button
@@ -2428,14 +2453,20 @@ export function ManagementDocumentA4PreviewDialog({
                           <div key={block.id}>
                             <ContentBlockView
                               block={block}
-                              onEditSection={openEditSection}
-                              onAddSection={openAddSection}
-                              onTogglePageBreak={(section) => void togglePageBreak(section)}
-                              onAddSectionRelative={(section, position) =>
-                                void addSectionRelative(section, position)
+                              onEditSection={readOnly ? undefined : openEditSection}
+                              onAddSection={readOnly ? undefined : openAddSection}
+                              onTogglePageBreak={
+                                readOnly ? undefined : (section) => void togglePageBreak(section)
                               }
-                              onDeleteSection={(section) => void deleteSection(section)}
-                              onAiSection={openAiForSection}
+                              onAddSectionRelative={
+                                readOnly
+                                  ? undefined
+                                  : (section, position) => void addSectionRelative(section, position)
+                              }
+                              onDeleteSection={
+                                readOnly ? undefined : (section) => void deleteSection(section)
+                              }
+                              onAiSection={readOnly ? undefined : openAiForSection}
                               pageBySectionId={pageBySectionId}
                               typography={layoutSettings}
                             />

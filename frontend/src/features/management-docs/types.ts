@@ -52,6 +52,24 @@ export type ManagementDocumentRow = {
   draft_content: string | null
   created_at: string
   updated_at: string
+  // Document control (migration 20261028100000); absent before it is applied.
+  prepared_by_id?: string | null
+  prepared_at?: string | null
+  reviewed_by_id?: string | null
+  reviewed_at?: string | null
+  review_comment?: string | null
+  approved_by_id?: string | null
+  approved_at?: string | null
+  approval_comment?: string | null
+  review_period_months?: number | null
+  next_review_due?: string | null
+  last_periodic_review_at?: string | null
+  last_periodic_review_by?: string | null
+  last_periodic_review_note?: string | null
+  distribution_user_ids?: string[] | null
+  distribute_to_all?: boolean | null
+  obsoleted_at?: string | null
+  obsoleted_by?: string | null
 }
 
 export type ManagementDocumentForm = {
