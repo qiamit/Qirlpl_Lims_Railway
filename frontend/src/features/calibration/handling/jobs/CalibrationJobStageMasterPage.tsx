@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
@@ -443,7 +444,7 @@ export function CalibrationJobStageMasterPage({
     if (!w) return
     w.document.open()
     w.document.write(
-      `<!doctype html><html><head><title>Calibration Jobs</title></head><body style="font-family:sans-serif;padding:24px">${cards}<script>window.onload=function(){setTimeout(function(){window.print()},200)}</script></body></html>`,
+      `<!doctype html><html><head><title>Calibration Jobs</title></head><body style="font-family:sans-serif;padding:24px">${cards}${printHelperScriptTag()}</body></html>`,
     )
     w.document.close()
   }

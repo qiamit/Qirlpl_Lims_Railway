@@ -64,7 +64,9 @@ function securityHeaders() {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
     'Content-Security-Policy': [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      // No 'unsafe-inline': the theme bootstrap is /theme-init.js and print
+      // pop-ups load /print-helper.js (security plan S-19).
+      "script-src 'self'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https:",
@@ -86,9 +88,10 @@ function isAppPath(pathname) {
 }
 
 // Files whose URL never changes between deploys must be revalidated.
+const UNHASHED_SCRIPTS = new Set(['sw.js', 'theme-init.js', 'print-helper.js', 'offline.js'])
 function cacheControlFor(filePath, ext) {
   if (ext === '.html' || ext === '.webmanifest') return 'no-cache'
-  if (path.basename(filePath) === 'sw.js') return 'no-cache'
+  if (UNHASHED_SCRIPTS.has(path.basename(filePath))) return 'no-cache'
   return 'public, max-age=31536000, immutable'
 }
 

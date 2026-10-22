@@ -1,3 +1,5 @@
+import { stripMarkup } from '@/lib/sanitizeHtml'
+
 export type ReportScopeKind = 'nabl' | 'non_nabl'
 
 export type ReportScopeTemplateBinding = {
@@ -70,12 +72,13 @@ export function parseReportScopeTemplates(raw: unknown): ReportScopeTemplatesCon
       }
     }
     const b = block as Record<string, unknown>
+    // Template names are plain text; strip any markup planted through the API.
+    const text = (v: unknown) => stripMarkup(String(v ?? '')).trim()
     return {
-      headerName: String(b.headerName ?? '').trim() || headerFallback,
-      footerName:
-        String(b.footerName ?? '').trim() || DEFAULT_LETTERHEAD_TEMPLATE_NAMES.footer,
-      termsName: String(b.termsName ?? '').trim(),
-      watermarkName: String(b.watermarkName ?? '').trim(),
+      headerName: text(b.headerName) || headerFallback,
+      footerName: text(b.footerName) || DEFAULT_LETTERHEAD_TEMPLATE_NAMES.footer,
+      termsName: text(b.termsName),
+      watermarkName: text(b.watermarkName),
     }
   }
 

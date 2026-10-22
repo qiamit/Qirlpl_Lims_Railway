@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import type { UserAccount } from './types'
 
 function esc(value: string): string {
@@ -58,13 +59,7 @@ export function buildUsersPrintHtml(users: UserAccount[]): string {
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <script>
-      window.addEventListener('load', function () {
-        setTimeout(function () {
-          try { window.focus(); window.print(); } catch (e) {}
-        }, 250);
-      });
-    </script>
+    ${printHelperScriptTag()}
   </body>
 </html>`
 }

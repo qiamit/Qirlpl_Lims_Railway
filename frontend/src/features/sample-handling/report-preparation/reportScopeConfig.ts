@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import { LAB_SETTINGS_SINGLETON_ID, letterheadFromRow } from '@/features/settings/lab-settings/labSettingsDb'
+import { saveLabTemplateSetting } from '@/features/settings/lab-settings/labSettingsRpc'
 import {
   EMPTY_REPORT_SCOPE_TEMPLATES,
   LETTERHEAD_TEMPLATE_NAME_ALIASES,
@@ -223,12 +224,17 @@ async function resolveReportScopeTemplateImpl(
 }
 
 export async function saveReportScopeTemplatesConfig(config: ReportScopeTemplatesConfig): Promise<void> {
-  const { error } = await supabase.from('lab_settings').upsert(
-    {
-      id: LAB_SETTINGS_SINGLETON_ID,
-      report_scope_templates: config,
-    },
-    { onConflict: 'id' },
-  )
-  if (error) throw error
+  // save_report_templates RPC (security plan S-16); the direct upsert is the
+  // fallback while that RPC is not on the database.
+  await saveLabTemplateSetting('report_scope_templates', config, async (clean) => {
+    const { error } = await supabase.from('lab_settings').upsert(
+      {
+        id: LAB_SETTINGS_SINGLETON_ID,
+        report_scope_templates: clean,
+      },
+      { onConflict: 'id' },
+    )
+    if (error) throw error
+    return clean
+  })
 }

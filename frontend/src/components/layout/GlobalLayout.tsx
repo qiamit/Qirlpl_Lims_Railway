@@ -78,6 +78,7 @@ import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import { canAccessNavItem as checkNavAccess } from '@/lib/moduleAccess'
 import { useModuleAccessOptional } from '@/features/settings/module-access/ModuleAccessProvider'
 import { RequireModuleAccess } from '@/components/auth/RequireModuleAccess'
+import { AccountSecurityMenuItems } from '@/components/auth/AccountSecurityMenuItems'
 import {
   RESULT_VALIDATION_MODULES,
   resultValidationModulePath,
@@ -917,6 +918,8 @@ export default function GlobalLayout() {
                   </NavLink>
                 </DropdownMenuItem>
 
+                <DropdownMenuSeparator />
+                <AccountSecurityMenuItems />
                 <DropdownMenuSeparator />
 
                 <DropdownMenuItem

@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { getCurrencySymbol } from '@/lib/appCurrency'
@@ -137,7 +138,7 @@ function buildPrintHtml(rows: ProductServiceRow[]) {
     .field .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
     .field .v{font-size:13px;margin-top:4px}.span2{grid-column:span 2}
   </style></head><body><div class="wrap">${cards}</div>
-  <script>window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print()}catch(e){}},250)})</script>
+  ${printHelperScriptTag()}
   </body></html>`
 }
 

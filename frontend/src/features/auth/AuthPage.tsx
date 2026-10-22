@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { signIn, useAuth } from '@/hooks/useAuth'
+import { RESET_DONE_NOTICE_KEY, logAuthEvent, logFailedLogin } from '@/lib/authEvents'
+import { IDLE_NOTICE_KEY, IDLE_TIMEOUT_MS, markActivityNow } from '@/lib/idleTimeout'
+import { supabase } from '@/lib/supabaseClient'
 import {
   limsDarkBarAccentClass,
   limsDarkBarClass,
@@ -38,9 +41,28 @@ export default function AuthPage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mode, setMode] = useState<'signin' | 'forgot'>('signin')
+  const [forgotSent, setForgotSent] = useState(false)
+  // One-time notes left by the idle sign-out and the password-reset page.
+  const [notice] = useState<string | null>(() => {
+    try {
+      if (sessionStorage.getItem(IDLE_NOTICE_KEY)) {
+        sessionStorage.removeItem(IDLE_NOTICE_KEY)
+        return `You were signed out after ${Math.round(IDLE_TIMEOUT_MS / 60000)} minutes without activity.`
+      }
+      if (sessionStorage.getItem(RESET_DONE_NOTICE_KEY)) {
+        sessionStorage.removeItem(RESET_DONE_NOTICE_KEY)
+        return 'Your password has been changed. Sign in with the new password.'
+      }
+    } catch {
+      // ignore
+    }
+    return null
+  })
 
+  // Passwords are used exactly as typed (never trimmed).
   const canSubmit = useMemo(() => {
-    return Boolean(email.trim() && password.trim())
+    return Boolean(email.trim() && password.length > 0)
   }, [email, password])
 
   const goAfterAuth = () => {
@@ -60,7 +82,14 @@ export default function AuthPage() {
 
     try {
       const { error: loginError } = await signIn(email.trim(), password)
-      if (loginError) throw loginError
+      if (loginError) {
+        if (loginError.code === 'invalid_credentials' || loginError.status === 400) {
+          void logFailedLogin(email.trim())
+        }
+        throw loginError
+      }
+      markActivityNow()
+      void logAuthEvent('login')
       goAfterAuth()
     } catch (err) {
       const isObject = typeof err === 'object' && err !== null
@@ -101,6 +130,27 @@ export default function AuthPage() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && canSubmit && !loading) {
       void handleSubmit()
+    }
+  }
+
+  const handleForgot = async () => {
+    const address = email.trim()
+    if (!address) {
+      setError('Enter your email address.')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      // The same message is shown whether or not the account exists.
+      await supabase.auth.resetPasswordForEmail(address, {
+        redirectTo: `${window.location.origin}/auth/reset`,
+      })
+    } catch {
+      // network errors included: still neutral
+    } finally {
+      setLoading(false)
+      setForgotSent(true)
     }
   }
 
@@ -167,11 +217,75 @@ export default function AuthPage() {
               <div className={limsDarkBarAccentClass} />
               <div className="relative flex items-center justify-center gap-2">
                 <ShieldCheck size={18} className="text-amber-300" />
-                <h2 className="text-lg font-semibold tracking-tight text-white">Sign In</h2>
+                <h2 className="text-lg font-semibold tracking-tight text-white">
+                  {mode === 'forgot' ? 'Reset Password' : 'Sign In'}
+                </h2>
               </div>
             </div>
 
             <div className={cn(limsRegistryFormClass, 'space-y-5 p-5')}>
+              {notice ? (
+                <div className="rounded-none border border-amber-500/50 bg-amber-50 px-3 py-2.5">
+                  <p className="text-sm text-amber-900">{notice}</p>
+                </div>
+              ) : null}
+              {mode === 'forgot' ? (
+                <div className="space-y-4">
+                  {forgotSent ? (
+                    <p className="text-sm text-stone-700">
+                      If an account exists for that address, a password-reset link has been sent to it. The link
+                      works once and expires after a short time. If no email arrives, contact your Laboratory
+                      Director.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="forgot-email">Email Address</Label>
+                      <Input
+                        id="forgot-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !loading) void handleForgot()
+                        }}
+                        placeholder={PUBLIC_EMAIL}
+                        autoComplete="email"
+                        autoFocus
+                        className={limsFieldClass}
+                      />
+                    </div>
+                  )}
+                  {error && (
+                    <div className="rounded-none border border-red-500/40 bg-red-50 px-3 py-2.5">
+                      <p className="whitespace-pre-line text-sm text-red-700">{error}</p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-amber-800 hover:underline"
+                      onClick={() => {
+                        setMode('signin')
+                        setForgotSent(false)
+                        setError(null)
+                      }}
+                    >
+                      Back to sign in
+                    </button>
+                    {forgotSent ? null : (
+                      <Button
+                        type="button"
+                        className={cn(limsPrimaryBtnClass, 'h-8 w-auto min-w-[7.5rem] px-5')}
+                        onClick={() => void handleForgot()}
+                        disabled={loading || !email.trim()}
+                      >
+                        {loading ? 'Sending...' : 'Send reset link'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+              <>
               <div className="space-y-4" onKeyDown={handleKeyDown}>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address</Label>
@@ -209,6 +323,19 @@ export default function AuthPage() {
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-amber-800 hover:underline"
+                      onClick={() => {
+                        setMode('forgot')
+                        setForgotSent(false)
+                        setError(null)
+                      }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -228,6 +355,8 @@ export default function AuthPage() {
                   {loading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </div>
+              </>
+              )}
 
               <p className="text-center text-xs text-stone-500">
                 For Login Access Issues, Contact your Laboratory Director

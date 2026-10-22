@@ -16,7 +16,14 @@ const PRECACHE = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/offline.html',
+  '/offline.js',
+  '/theme-init.js',
+  '/print-helper.js',
 ]
+
+// Unhashed scripts loaded by the shell / offline page: network first so a
+// deploy is picked up, cached copy when offline.
+const SHELL_SCRIPTS = new Set(['/theme-init.js', '/print-helper.js', '/offline.js'])
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -72,6 +79,21 @@ self.addEventListener('fetch', (event) => {
           return response
         })
         .catch(async () => (await caches.match(SHELL)) || (await caches.match('/offline.html')) || Response.error()),
+    )
+    return
+  }
+
+  if (SHELL_SCRIPTS.has(url.pathname)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok && response.type === 'basic') {
+            const copy = response.clone()
+            caches.open(CACHE).then((cache) => cache.put(url.pathname, copy))
+          }
+          return response
+        })
+        .catch(async () => (await caches.match(url.pathname)) || Response.error()),
     )
     return
   }

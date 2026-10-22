@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
@@ -512,7 +513,7 @@ export default function AuditPlanMasterPage() {
   .team th,.team td{border:1px solid #e7eaf0;padding:8px 10px;text-align:left}
   .team th{background:#f5f7fb;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 </style></head><body>${cards}
-<script>window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print()}catch(e){}},250)})</script>
+${printHelperScriptTag()}
 </body></html>`
 
     const iframe = document.createElement('iframe')

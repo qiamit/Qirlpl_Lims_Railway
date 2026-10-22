@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { getCurrencySymbol } from '@/lib/appCurrency'
@@ -1268,13 +1269,7 @@ function buildClientsPrintHtml(rows: ClientRow[]) {
     </head>
     <body>
       <div class="wrap">${cards}</div>
-      <script>
-        window.addEventListener('load', function () {
-          setTimeout(function () {
-            try { window.focus(); window.print(); } catch (e) {}
-          }, 250);
-        });
-      </script>
+      ${printHelperScriptTag()}
     </body>
   </html>`
 }

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEnterTogglesCheckbox } from '@/hooks/useEnterTogglesCheckbox'
 import { RoutePersistence } from '@/components/routing/RoutePersistence'
 import AuthPage from '@/features/auth/AuthPage'
+import ResetPasswordPage from '@/features/auth/ResetPasswordPage'
 import PublicSiteLayout from '@/features/public-site/PublicSiteLayout'
 import PublicHomePage from '@/features/public-site/PublicHomePage'
 import NotFoundPage from '@/features/public-site/NotFoundPage'
@@ -140,6 +141,7 @@ export default function App() {
           <Route path="news" element={<Navigate to="/home" replace />} />
           <Route path="contact" element={<Navigate to="/home#contact" replace />} />
           <Route path="auth" element={<AuthPage />} />
+          <Route path="auth/reset" element={<ResetPasswordPage />} />
           <Route path="scope-letters/:kind" element={<ScopeLetterPage />} />
         </Route>
 

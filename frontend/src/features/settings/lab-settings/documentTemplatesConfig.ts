@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabaseClient'
+import { sanitizeTemplateJson } from '@/lib/sanitizeHtml'
 import { LAB_SETTINGS_SINGLETON_ID, resolveLabSettingsRowId } from './labSettingsDb'
+import { saveLabTemplateSetting } from './labSettingsRpc'
 import {
   DEFAULT_LAB_DOCUMENT_TEMPLATES,
   labDocumentTemplatesToJson,
@@ -31,7 +33,7 @@ export async function fetchLabDocumentTemplates(): Promise<LabDocumentTemplates>
 
   const raw = data?.document_templates
   if (raw != null && typeof raw === 'object') {
-    return parseLabDocumentTemplates(raw)
+    return parseLabDocumentTemplates(sanitizeTemplateJson(raw))
   }
   return { ...DEFAULT_LAB_DOCUMENT_TEMPLATES }
 }
@@ -40,9 +42,18 @@ export async function saveLabDocumentTemplates(
   templates: LabDocumentTemplates,
 ): Promise<LabDocumentTemplates> {
   await requireAuthSession()
-  const rowId = await resolveLabSettingsRowId(supabase)
   const json = labDocumentTemplatesToJson(templates)
+  const saved = await saveLabTemplateSetting('document_templates', json, (clean) =>
+    saveLabDocumentTemplatesDirect(clean),
+  )
+  return parseLabDocumentTemplates(saved)
+}
 
+/** Old direct write, used only while save_report_templates is not on the database. */
+async function saveLabDocumentTemplatesDirect(
+  json: LabDocumentTemplates,
+): Promise<LabDocumentTemplates> {
+  const rowId = await resolveLabSettingsRowId(supabase)
   const { data, error } = await supabase
     .from('lab_settings')
     .update({ document_templates: json })

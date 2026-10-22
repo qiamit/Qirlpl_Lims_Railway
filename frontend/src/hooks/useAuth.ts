@@ -1,6 +1,7 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabaseClient'
+import { logAuthEvent } from '@/lib/authEvents'
 
 interface AuthState {
   user: User | null
@@ -244,6 +245,7 @@ export function useAuth(): AuthState {
   return ctx
 }
 
+/** Passwords are passed exactly as typed (never trimmed). */
 export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password })
 }
@@ -252,5 +254,7 @@ export async function signIn(email: string, password: string) {
 // the functions service (User Management).
 
 export async function signOut() {
+  // Recorded while the session is still valid; best effort, at most 2 s.
+  await logAuthEvent('logout')
   return supabase.auth.signOut()
 }

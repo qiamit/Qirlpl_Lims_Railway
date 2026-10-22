@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import {
@@ -497,7 +498,7 @@ export default function ServiceRequestMasterPage() {
       return
     }
     w.document.open()
-    w.document.write(`<!doctype html><html><head><title>Service Requests</title></head><body style="font-family:sans-serif;padding:24px">${cards}<script>window.onload=function(){setTimeout(function(){window.print()},200)}</script></body></html>`)
+    w.document.write(`<!doctype html><html><head><title>Service Requests</title></head><body style="font-family:sans-serif;padding:24px">${cards}${printHelperScriptTag()}</body></html>`)
     w.document.close()
   }
 

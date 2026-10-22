@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import {
@@ -220,13 +221,7 @@ function buildEquipmentsPrintHtml(rows: CalibrationEquipmentRow[]) {
     </head>
     <body>
       <div class="wrap">${cards}</div>
-      <script>
-        window.addEventListener('load', function () {
-          setTimeout(function () {
-            try { window.focus(); window.print(); } catch (e) {}
-          }, 250);
-        });
-      </script>
+      ${printHelperScriptTag()}
     </body>
   </html>`
 }

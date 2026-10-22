@@ -1,6 +1,7 @@
 /** Maps LabSettingsPage fields ↔ public.lab_settings and related lab tables */
 
 import type { SupabaseClient } from '@/lib/supabaseClient'
+import { stripMarkup } from '@/lib/sanitizeHtml'
 
 export const LAB_SETTINGS_SINGLETON_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -252,6 +253,8 @@ export function letterheadFromRow(row: {
   const type = String(row.template_type ?? '')
   const title = String(row.title ?? row.name ?? '')
   const fileUrl = typeof row.file_path === 'string' ? row.file_path : null
-  const text = String(row.content_text ?? row.footer_html ?? row.header_html ?? '')
-  return { type, title, fileUrl, text }
+  // Letterhead text (terms, watermark text, legacy header/footer HTML) is used
+  // as plain text in reports and previews: strip any markup on render.
+  const text = stripMarkup(String(row.content_text ?? row.footer_html ?? row.header_html ?? ''))
+  return { type, title: stripMarkup(title), fileUrl, text }
 }

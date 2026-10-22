@@ -35,6 +35,7 @@ import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-set
 import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
 import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { isMissingColumnError } from '@/features/quality/control-charts/missingColumn'
+import { printHelperScriptTag } from '@/lib/printHelper'
 
 const BUCKET = 'equipment-files'
 
@@ -1275,13 +1276,7 @@ function buildEquipmentPrintHtml(
     </head>
     <body>
       <div class="wrap">${cards}</div>
-      <script>
-        window.addEventListener('load', function () {
-          setTimeout(function () {
-            try { window.focus(); window.print(); } catch (e) {}
-          }, 250);
-        });
-      </script>
+      ${printHelperScriptTag()}
     </body>
   </html>`
 }

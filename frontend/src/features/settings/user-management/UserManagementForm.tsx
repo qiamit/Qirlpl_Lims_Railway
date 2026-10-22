@@ -57,6 +57,12 @@ type UserManagementFormProps = {
   onSave: (formData: UserForm, countryCode?: string) => Promise<void>
   onOptionsChanged?: () => Promise<void>
   loading?: boolean
+  /** Delete mode: true = user has records (offer deactivation only), false = may be deleted, null = unknown. */
+  deleteHasRecords?: boolean | null
+  /** Delete mode: the records check is still running. */
+  deleteChecking?: boolean
+  /** Delete mode: set the user Inactive instead of deleting. */
+  onDeactivateInstead?: () => Promise<void>
 }
 
 function FormSection({
@@ -535,10 +541,26 @@ export function UserManagementForm(props: UserManagementFormProps) {
               </DialogTitle>
             </DialogHeader>
           </div>
-          <div className="bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
-            <DialogDescription className="text-sm text-stone-700">
-              This action cannot be undone. This will permanently remove the user entry from the list.
-            </DialogDescription>
+          <div className="space-y-2 bg-gradient-to-b from-stone-100/80 to-white px-4 py-4">
+            {props.deleteChecking ? (
+              <DialogDescription className="text-sm text-stone-700">
+                Checking whether this user has records…
+              </DialogDescription>
+            ) : props.deleteHasRecords === true ? (
+              <DialogDescription className="text-sm text-stone-700">
+                This user is recorded as the author, reviewer or owner of laboratory records, so the
+                account cannot be deleted (ISO/IEC 17025 records must keep their author). Deactivate it
+                instead: the user can no longer sign in and the records stay traceable.
+              </DialogDescription>
+            ) : (
+              <DialogDescription className="text-sm text-stone-700">
+                This action cannot be undone. This will permanently remove the user entry from the list.
+                {props.deleteHasRecords == null
+                  ? ' The records check is not available on this database yet; deactivating is the safer choice.'
+                  : ' This user has no records.'}
+              </DialogDescription>
+            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <DialogFooter className="gap-2 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:justify-end">
             <Button
@@ -549,15 +571,31 @@ export function UserManagementForm(props: UserManagementFormProps) {
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="rounded-none"
-              onClick={handleSave}
-              disabled={loading}
-            >
-              {loading ? 'Removing…' : 'Remove User'}
-            </Button>
+            {props.onDeactivateInstead && props.initialData?.status !== 'Inactive' && (
+              <Button
+                type="button"
+                variant={props.deleteHasRecords === true ? 'default' : 'outline'}
+                className={props.deleteHasRecords === true ? 'rounded-none' : limsOutlineBtnClass}
+                onClick={() => {
+                  setLoading(true)
+                  void props.onDeactivateInstead?.().finally(() => setLoading(false))
+                }}
+                disabled={loading || props.deleteChecking}
+              >
+                Deactivate instead
+              </Button>
+            )}
+            {props.deleteHasRecords !== true && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-none"
+                onClick={handleSave}
+                disabled={loading || props.deleteChecking}
+              >
+                {loading ? 'Removing…' : 'Remove User'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

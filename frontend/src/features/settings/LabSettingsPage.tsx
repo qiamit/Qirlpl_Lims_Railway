@@ -18,6 +18,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FileUpload } from '@/components/ui/file-upload'
 import { supabase } from '@/lib/supabaseClient'
+import { stripMarkup } from '@/lib/sanitizeHtml'
+import { saveLabSettingsCore } from './lab-settings/labSettingsRpc'
 import { EMAIL_INPUT_PATTERN } from '@/lib/validation'
 import { LegalDocumentsTab } from './lab-settings/LegalDocumentsTab'
 import { RegistrationDocumentsTab } from './lab-settings/RegistrationDocumentsTab'
@@ -325,7 +327,7 @@ export default function LabSettingsPage() {
 
         for (const h of headerTemplates) {
           if (!h.name.trim()) continue
-          const label = h.name.trim()
+          const label = stripMarkup(h.name).trim()
           payload.push({
             name: label,
             template_type: 'header',
@@ -337,7 +339,7 @@ export default function LabSettingsPage() {
         }
         for (const f of footerTemplates) {
           if (!f.name.trim()) continue
-          const label = f.name.trim()
+          const label = stripMarkup(f.name).trim()
           payload.push({
             name: label,
             template_type: 'footer',
@@ -349,20 +351,20 @@ export default function LabSettingsPage() {
         }
         for (const t of termsTemplates) {
           if (!t.name.trim()) continue
-          const label = t.name.trim()
+          const label = stripMarkup(t.name).trim()
           payload.push({
             name: label,
             template_type: 'terms',
             title: label,
             file_path: '',
-            content_text: t.text ?? '',
+            content_text: stripMarkup(t.text ?? ''),
             is_default: false,
           })
         }
 
         for (const wm of watermarkTemplates) {
           if (!wm.name.trim()) continue
-          const label = wm.name.trim()
+          const label = stripMarkup(wm.name).trim()
           if (wm.type === 'image') {
             payload.push({
               name: label,
@@ -378,7 +380,7 @@ export default function LabSettingsPage() {
               template_type: 'watermark_text',
               title: label,
               file_path: '',
-              content_text: wm.text?.trim() ?? '',
+              content_text: stripMarkup(wm.text ?? '').trim(),
               is_default: false,
             })
           }
@@ -1221,11 +1223,15 @@ export default function LabSettingsPage() {
         ...partial,
       }
 
-      const { error: upsertError } = await supabase
-        .from('lab_settings')
-        .upsert(payload, { onConflict: 'id' })
+      // save_lab_settings RPC (Director only, security plan S-16); the direct
+      // upsert is the fallback while that RPC is not on the database.
+      await saveLabSettingsCore(payload, async (clean) => {
+        const { error: upsertError } = await supabase
+          .from('lab_settings')
+          .upsert({ ...clean, id: LAB_SETTINGS_SINGLETON_ID }, { onConflict: 'id' })
 
-      if (upsertError) throw upsertError
+        if (upsertError) throw upsertError
+      })
     })()
   }
 
