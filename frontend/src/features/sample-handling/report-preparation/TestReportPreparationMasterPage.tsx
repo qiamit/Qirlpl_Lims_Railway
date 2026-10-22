@@ -68,6 +68,17 @@ import {
 } from './formattedTestReportNumber'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 import { buildSampleRetentionIssuePayload } from '@/features/sample-handling/retain-disposed/sampleRetention'
+import { ConfirmLoginPasswordDialog } from '@/features/sample-handling/shared/ConfirmLoginPasswordDialog'
+import {
+  archiveIssuedTestReport,
+  ISSUE_SIGNATURE_COLUMNS,
+  ISSUE_SIGNATURE_MEANING,
+  ISSUE_SIGNATURE_STATEMENT,
+  isMissingIssueSignatureColumnError,
+} from '@/features/sample-handling/completed-results/issuedReportArchive'
+import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
+import { visibleTestReportSignatures } from '@/features/settings/lab-settings/printSettingsTypes'
+import type { ReportScopeKind } from './reportScope'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import {
   sortTestReportPreparationRows,
@@ -87,6 +98,16 @@ const DEFAULT_SCOPE_LETTERHEADS_NON_NABL = {
 }
 
 type ListRow = ReportPreparationListRow
+
+/** Report waiting for the issuer's password before it is issued. */
+type PendingIssue = {
+  sampleId: string
+  scopes: ReportScopeKind[]
+  scopeLabel: string
+  reportNumber: string | null
+  ulrNumber: string | null
+  signatories: Array<{ roleLabel: string; name: string; designation: string }>
+}
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 
@@ -138,6 +159,8 @@ export default function TestReportPreparationMasterPage() {
   const [coverLoading, setCoverLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
   const [issueLoading, setIssueLoading] = useState(false)
+  const [pendingIssue, setPendingIssue] = useState<PendingIssue | null>(null)
+  const [issuePasswordOpen, setIssuePasswordOpen] = useState(false)
   const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
   const [referbackDialogOpen, setReferbackDialogOpen] = useState(false)
   const [referbackRow, setReferbackRow] = useState<ListRow | null>(null)
@@ -642,13 +665,33 @@ export default function TestReportPreparationMasterPage() {
       setSaveMessage(describeSaveError(e, 'Could not check the report and ULR numbers.'))
       return
     }
-    if (
-      !window.confirm(
-        `Issue ${scopeLabel} test report(s) for this SRF and move to Issued Test Report?`,
-      )
-    ) {
-      return
+    // Authenticated release (ISO/IEC 17025 7.8.1, 7.11): the issuer re-enters
+    // their password; the issue continues in completeIssueReport.
+    let signatories: PendingIssue['signatories'] = []
+    try {
+      const printSettings = await fetchTestReportPrintSettings()
+      signatories = visibleTestReportSignatures(printSettings).map((sig) => ({
+        roleLabel: sig.roleLabel.trim(),
+        name: sig.name.trim(),
+        designation: sig.designation.trim(),
+      }))
+    } catch {
+      // The dialog still opens; signatories are only shown for information.
     }
+    setPendingIssue({
+      sampleId: active.id,
+      scopes,
+      scopeLabel,
+      reportNumber: toCanonicalReportNumber(fullReportNumber) || null,
+      ulrNumber: sanitizeNablUlrInput(nablUlrNumber) || null,
+      signatories,
+    })
+    setIssuePasswordOpen(true)
+  }
+
+  const completeIssueReport = async (pending: PendingIssue, reauthenticatedAt: string) => {
+    if (!active || active.id !== pending.sampleId) return
+    const scopes = pending.scopes
     setIssueLoading(true)
     setSaveMessage(null)
     try {
@@ -679,26 +722,68 @@ export default function TestReportPreparationMasterPage() {
         ...partBUpdate,
         ...letterheadUpdate,
       }
-      let { error: uErr } = await supabase.from('samples').update(issuePayload).eq('id', active.id)
-      if (uErr && isSupabaseMissingColumnError(uErr, 'test_report_nabl_required')) {
-        const { test_report_nabl_required: _n, ...withoutNabl } = partBUpdate
-        const retry: Record<string, string | boolean | null> = {
-          stage: issuePayload.stage,
-          test_report_number: issuePayload.test_report_number,
-          test_report_draft_notes: issuePayload.test_report_draft_notes,
-          test_report_nabl_ulr_number: issuePayload.test_report_nabl_ulr_number,
-          test_report_issued_at: issuePayload.test_report_issued_at,
-          test_report_nabl_issued_at: issuePayload.test_report_nabl_issued_at,
-          test_report_non_nabl_issued_at: issuePayload.test_report_non_nabl_issued_at,
-          ...withoutNabl,
+      // Who issued it and how. The database trigger (migration 20261024100300)
+      // overwrites issued_by / issued_by_name with the signed-in user.
+      const signatureUpdate: Record<string, string | null> = {
+        issued_by: user?.id ?? null,
+        issued_by_name: profileName.trim() || user?.email || null,
+        issued_signature_meaning: ISSUE_SIGNATURE_MEANING,
+        issued_reauthenticated_at: reauthenticatedAt,
+      }
+      let signatureStored = true
+      let nablColumnMissing = false
+      const buildPayload = (): Record<string, string | boolean | null> => {
+        let payload: Record<string, string | boolean | null> = issuePayload
+        if (nablColumnMissing) {
+          const { test_report_nabl_required: _n, ...withoutNabl } = partBUpdate
+          payload = {
+            stage: issuePayload.stage,
+            test_report_number: issuePayload.test_report_number,
+            test_report_draft_notes: issuePayload.test_report_draft_notes,
+            test_report_nabl_ulr_number: issuePayload.test_report_nabl_ulr_number,
+            test_report_issued_at: issuePayload.test_report_issued_at,
+            test_report_nabl_issued_at: issuePayload.test_report_nabl_issued_at,
+            test_report_non_nabl_issued_at: issuePayload.test_report_non_nabl_issued_at,
+            ...withoutNabl,
+          }
         }
-        ;({ error: uErr } = await supabase.from('samples').update(retry).eq('id', active.id))
+        return signatureStored ? { ...payload, ...signatureUpdate } : payload
+      }
+      let { error: uErr } = await supabase.from('samples').update(buildPayload()).eq('id', active.id)
+      for (let attempt = 0; uErr && attempt < 2; attempt += 1) {
+        if (signatureStored && isMissingIssueSignatureColumnError(uErr)) {
+          console.warn(
+            `[Issue test report] Columns ${ISSUE_SIGNATURE_COLUMNS.join(', ')} are missing; apply migration 20261024100300_report_issue_signature.sql. Issuing without the issuer signature and archive.`,
+            uErr.message,
+          )
+          signatureStored = false
+        } else if (!nablColumnMissing && isSupabaseMissingColumnError(uErr, 'test_report_nabl_required')) {
+          nablColumnMissing = true
+        } else {
+          break
+        }
+        ;({ error: uErr } = await supabase.from('samples').update(buildPayload()).eq('id', active.id))
       }
       if (uErr) throw uErr
+
+      // Frozen copy of what was issued (report data + SHA-256), stored after the issue succeeded.
+      let archiveNote = ''
+      if (signatureStored) {
+        const archived = await archiveIssuedTestReport(active.id)
+        if (archived.status === 'unavailable') {
+          console.warn(
+            '[Issue test report] issued_report_archive is not available; apply migration 20261024100300_report_issue_signature.sql.',
+            archived.message,
+          )
+        } else if (archived.status === 'failed') {
+          console.warn('[Issue test report] Could not store the issued report copy.', archived.message)
+          archiveNote = ` The frozen copy of the issued report could not be stored: ${archived.message}`
+        }
+      }
       setDialogOpen(false)
       setActive(null)
       await loadList()
-      setSaveMessage('Test report(s) issued. SRF moved to Issued Test Report.')
+      setSaveMessage(`Test report(s) issued. SRF moved to Issued Test Report.${archiveNote}`)
     } catch (e) {
       setSaveMessage(
         describeSaveError(e, 'If columns are missing, run migration 20260531230000_report_scope_dual_templates.sql'),
@@ -996,6 +1081,50 @@ export default function TestReportPreparationMasterPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmLoginPasswordDialog
+        open={issuePasswordOpen}
+        onOpenChange={(open) => {
+          setIssuePasswordOpen(open)
+        }}
+        title="Authorize Release of Test Report"
+        confirmLabel="Issue Report"
+        statement={ISSUE_SIGNATURE_STATEMENT}
+        onConfirmed={({ reauthenticatedAt }) => {
+          const pending = pendingIssue
+          setPendingIssue(null)
+          if (pending) void completeIssueReport(pending, reauthenticatedAt)
+        }}
+      >
+        {pendingIssue ? (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-stone-800">
+            <dt className="font-semibold text-stone-600">Report</dt>
+            <dd>{pendingIssue.scopeLabel}</dd>
+            <dt className="font-semibold text-stone-600">Report No.</dt>
+            <dd className="break-all">{fmt(pendingIssue.reportNumber)}</dd>
+            <dt className="font-semibold text-stone-600">ULR</dt>
+            <dd className="break-all">{fmt(pendingIssue.ulrNumber)}</dd>
+            <dt className="font-semibold text-stone-600">Signatories</dt>
+            <dd>
+              {pendingIssue.signatories.length === 0 ? (
+                '—'
+              ) : (
+                <ul className="space-y-0.5">
+                  {pendingIssue.signatories.map((sig, index) => (
+                    <li key={`${sig.name}-${index}`}>
+                      {sig.roleLabel ? `${sig.roleLabel}: ` : ''}
+                      {sig.name || '—'}
+                      {sig.designation ? `, ${sig.designation}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </dd>
+            <dt className="font-semibold text-stone-600">Issued by</dt>
+            <dd>{profileName.trim() || user?.email || '—'}</dd>
+          </dl>
+        ) : null}
+      </ConfirmLoginPasswordDialog>
 
       <TestReportReferbackToReviewDialog
         open={referbackDialogOpen}

@@ -19,6 +19,10 @@ const SAMPLE_OMIT = new Set([
   'test_report_issued_at',
   'test_report_nabl_issued_at',
   'test_report_non_nabl_issued_at',
+  'issued_by',
+  'issued_by_name',
+  'issued_signature_meaning',
+  'issued_reauthenticated_at',
 ])
 
 const ROW_OMIT = new Set(['id', 'created_at', 'updated_at'])

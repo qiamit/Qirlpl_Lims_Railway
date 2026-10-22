@@ -7,6 +7,7 @@ import {
   deleteSamplesByIds,
 } from '@/features/sample-handling/shared/deleteSampleRecords'
 import { supabase } from '@/lib/supabaseClient'
+import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
 import { SampleSrfViewDialog } from '@/features/sample-handling/shared/SampleSrfViewDialog'
 import type { ReportScopeKind } from '@/features/sample-handling/report-preparation/reportScope'
 import { CompletedResultsFooterBar } from './CompletedResultsFooterBar'
@@ -55,15 +56,21 @@ export default function CompletedResultsMasterPage() {
     setError(null)
     setLoading(true)
     try {
-      const { data, error: qErr } = await supabase
-        .from('samples')
-        .select(
-          'id, srf_number, date_of_sample_receiving, test_report_is_code_id, test_report_number, test_report_issued_at, test_report_nabl_issued_at, test_report_non_nabl_issued_at, test_report_nabl_ulr_number, clients(company_name, email)',
-        )
-        .eq('stage', 'completed')
-        .order('test_report_issued_at', { ascending: false, nullsFirst: false })
+      const baseColumns =
+        'id, srf_number, date_of_sample_receiving, test_report_is_code_id, test_report_number, test_report_issued_at, test_report_nabl_issued_at, test_report_non_nabl_issued_at, test_report_nabl_ulr_number, clients(company_name, email)'
+      const fetchIssued = (columns: string) =>
+        supabase
+          .from('samples')
+          .select(columns)
+          .eq('stage', 'completed')
+          .order('test_report_issued_at', { ascending: false, nullsFirst: false })
+      // issued_by_name comes with migration 20261024100300; list without it until then.
+      let { data, error: qErr } = await fetchIssued(`${baseColumns}, issued_by_name`)
+      if (qErr && isSupabaseMissingColumnError(qErr, 'issued_by_name')) {
+        ;({ data, error: qErr } = await fetchIssued(baseColumns))
+      }
       if (qErr) throw qErr
-      const list = Array.isArray(data) ? data : []
+      const list = (Array.isArray(data) ? data : []) as unknown as Array<Record<string, unknown>>
 
       const isIds = [
         ...new Set(
@@ -109,6 +116,7 @@ export default function CompletedResultsMasterPage() {
             nonNablIssuedAt: (r.test_report_non_nabl_issued_at as string) ?? null,
             issuedAt: (r.test_report_issued_at as string) ?? null,
             nablUlrNumber: (r.test_report_nabl_ulr_number as string) ?? null,
+            issuedByName: (r.issued_by_name as string | null | undefined) ?? null,
           }
         }),
       )

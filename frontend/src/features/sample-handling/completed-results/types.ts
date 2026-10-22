@@ -53,4 +53,6 @@ export type IssuedTestReportListRow = {
   nonNablIssuedAt: string | null
   issuedAt: string | null
   nablUlrNumber: string | null
+  /** Who issued the report (samples.issued_by_name); undefined before migration 20261024100300. */
+  issuedByName?: string | null
 }

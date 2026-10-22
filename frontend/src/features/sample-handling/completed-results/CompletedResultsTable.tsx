@@ -5,7 +5,7 @@ import {
   limsTableClass,
   limsTableHeadClass,
 } from '@/lib/limsThemeUi'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { IssuedTestReportRowActions } from './IssuedTestReportRowActions'
 import type { IssuedTestReportListRow } from './types'
 
@@ -152,6 +152,14 @@ export function CompletedResultsTable({
                     className={cn(tdClass, 'w-0 whitespace-nowrap text-center text-[#78716c]')}
                   >
                     {formatDate(r.issuedAt ?? '')}
+                    {r.issuedByName ? (
+                      <div
+                        className="text-[11px] leading-tight text-[#a8a29e]"
+                        title={`Issued by ${r.issuedByName}, ${formatDateTime(r.issuedAt ?? '')}`}
+                      >
+                        by {r.issuedByName}
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className={cn(tdClass, 'min-w-[252px] whitespace-nowrap text-center')}>
                     <IssuedTestReportRowActions

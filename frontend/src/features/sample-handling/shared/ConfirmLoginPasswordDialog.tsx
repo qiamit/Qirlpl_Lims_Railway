@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,13 +23,20 @@ export function ConfirmLoginPasswordDialog({
   onOpenChange,
   title = 'Confirm Password',
   confirmLabel = 'Confirm',
+  statement,
+  children,
   onConfirmed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   title?: string
   confirmLabel?: string
-  onConfirmed: () => void
+  /** Meaning of this signature, shown above the password (e.g. "I authorize release of this test report"). */
+  statement?: string
+  /** Details of what is being signed, shown above the statement. */
+  children?: ReactNode
+  /** Called after the password is verified, with the time it was verified. */
+  onConfirmed: (info: { reauthenticatedAt: string }) => void
 }) {
   const { user } = useAuth()
   const [password, setPassword] = useState('')
@@ -63,8 +70,9 @@ export function ConfirmLoginPasswordDialog({
         setError(authError.message || 'Incorrect password.')
         return
       }
+      const reauthenticatedAt = new Date().toISOString()
       onOpenChange(false)
-      onConfirmed()
+      onConfirmed({ reauthenticatedAt })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not verify password.')
     } finally {
@@ -94,6 +102,12 @@ export function ConfirmLoginPasswordDialog({
         </div>
 
         <div className="space-y-4 bg-[#f7f3eb] px-4 py-4">
+          {children}
+          {statement ? (
+            <p className="border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-semibold text-stone-800">
+              {statement}
+            </p>
+          ) : null}
           <div className="space-y-2">
             <Label
               htmlFor="confirm-login-password"
