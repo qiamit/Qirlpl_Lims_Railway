@@ -89,6 +89,19 @@ export type QuotationRow = {
   created_at?: string
   updated_at?: string
   line_items?: QuotationLineRow[]
+  /** Sale documents: 'intra' = CGST + SGST, 'inter' = IGST. Not stored for quotations. */
+  gst_supply_mode?: 'intra' | 'inter' | null
+  /** True when the user chose the supply mode instead of leaving it to the GSTIN / state. */
+  gst_supply_mode_manual?: boolean
+  /** Credit note / payment receipt: the invoice it refers to (finance_tax_invoices.id). */
+  invoice_id?: string | null
+  /** Payment receipt: the invoice number as typed (credit notes use reference_no). */
+  invoice_reference_no?: string | null
+  /** Payment receipt: TDS deducted by the customer. */
+  tds_percent?: number | null
+  tds_section?: string | null
+  tds_amount?: number | null
+  tds_taxable_amount?: number | null
 }
 
 export type QuotationLineForm = {
@@ -136,6 +149,15 @@ export type QuotationForm = {
   paymentAmount: string
   /** Payment Receipt: how payment was received (Bank / Cash / …). */
   paymentMethod: string
+  /** Sale documents: '' = work it out from the lab and client GSTIN / state. */
+  gstSupplyMode: '' | 'intra' | 'inter'
+  /** Payment Receipt: invoice number this payment is against (optional). */
+  invoiceReferenceNo: string
+  /** Payment Receipt: TDS deducted by the customer. Blank percent = no TDS. */
+  tdsPercent: string
+  tdsSection: string
+  /** Amount the TDS % applies to; blank = the payment amount. */
+  tdsTaxableAmount: string
   lines: QuotationLineForm[]
 }
 
@@ -227,6 +249,11 @@ export function emptyQuotationForm(nextNumber = ''): QuotationForm {
     gstPercent: '18',
     paymentAmount: '',
     paymentMethod: 'Bank',
+    gstSupplyMode: '',
+    invoiceReferenceNo: '',
+    tdsPercent: '',
+    tdsSection: '',
+    tdsTaxableAmount: '',
     lines: [emptyQuotationLine()],
   }
 }
@@ -440,6 +467,15 @@ export function rowToForm(row: QuotationRow, asCopy = false, nextNumber = ''): Q
     gstPercent: String(row.gst_percent ?? 18),
     paymentAmount: String(row.grand_total ?? 0),
     paymentMethod: normalizePaymentMethod(row.reference_no),
+    gstSupplyMode:
+      row.gst_supply_mode_manual && (row.gst_supply_mode === 'intra' || row.gst_supply_mode === 'inter')
+        ? row.gst_supply_mode
+        : '',
+    invoiceReferenceNo: asCopy ? '' : (row.invoice_reference_no ?? ''),
+    tdsPercent: asCopy || row.tds_percent == null ? '' : String(row.tds_percent),
+    tdsSection: asCopy ? '' : (row.tds_section ?? ''),
+    tdsTaxableAmount:
+      asCopy || row.tds_percent == null || !row.tds_taxable_amount ? '' : String(row.tds_taxable_amount),
     lines,
   }
 }

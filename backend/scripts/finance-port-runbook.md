@@ -73,9 +73,32 @@ The profile was run read-only on production. `sale_documents` is empty and not
 yet granted, so all proformas, invoices, credit notes and receipts are still in
 users' browsers. Findings and the Phase 2 mapping: `finance-phase2-mapping.md`.
 
-## Next: Phase 2
+## Phase 2: typed sale books (built, not applied)
 
-Typed sale tables (`finance_tax_invoices`, `finance_proforma_invoices`,
-`finance_credit_notes` with lines) and `transactions`, GST supply mode, and a
-backfill from `sale_documents`. Needs the Phase 0 profile output first, to map
-statuses, payment modes and payload keys.
+Before applying:
+
+1. Every finance user opens Proforma Invoice, Invoice, Credit Note and
+   Payment Receipt once on every PC and browser they used, so records kept
+   in the browser upload to `sale_documents` (the grants are live since
+   22 Oct 2026).
+2. Re-run `finance_phase0_profile.sql` and check queries 3–9.
+3. Take a fresh Railway backup.
+
+Apply in order, after Phase 1:
+
+1. `20261030100000_finance_sale_books.sql` (typed tables, transactions, clients.pan/archived_at)
+2. `20261030100100_finance_gst_supply_mode.sql`
+3. `20261030100200_backfill_sale_documents_to_finance.sql` (copies sale_documents; safe to re-run)
+4. `20261030100300_document_series_typed_tables.sql`
+
+After applying, the app reads and writes the typed tables. If anyone uploads
+through an old browser tab afterwards, run
+`SELECT * FROM public.finance_backfill_sale_documents();` again; it copies only
+new rows. `sale_documents` stays as a read-only legacy copy until sign-off.
+
+Still open: the SAC for testing/calibration services, whether cancelled
+documents keep their numbers, and a PAN field in the Clients master.
+
+## Next: Phase 3
+
+Balances per invoice, ageing, payment reminders, emailing documents and quotation-to-invoice conversion (see the phased plan in finance-gap.md).

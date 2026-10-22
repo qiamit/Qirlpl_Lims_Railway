@@ -43,6 +43,7 @@ import {
   saveSaleDocument,
 } from './saleDocumentsApi'
 import { numberForNewDocument, peekDocumentNumber } from './documentSeriesApi'
+import { tdsAmount } from './financeRules'
 
 export type SaleDocumentModuleConfig = {
   title: string
@@ -113,6 +114,9 @@ function formToStoredRow(
   const totals = computeQuotationTotals(form)
   const paymentAmount = Math.max(0, parseMoney(form.paymentAmount))
   const id = existingId ?? crypto.randomUUID()
+  const tdsPercentValue = parseMoney(form.tdsPercent)
+  const hasTds = Boolean(opts?.paymentReceipt) && form.tdsPercent.trim() !== '' && tdsPercentValue > 0 && tdsPercentValue <= 100
+  const tdsTaxable = hasTds ? Math.max(0, parseMoney(form.tdsTaxableAmount) || paymentAmount) : 0
   const lineItems: QuotationLineRow[] = opts?.paymentReceipt
     ? []
     : form.lines
@@ -169,12 +173,21 @@ function formToStoredRow(
     line_items: lineItems,
     updated_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
+    // Supply mode: a choice made on the form, otherwise worked out when saving.
+    gst_supply_mode: opts?.paymentReceipt ? null : form.gstSupplyMode || null,
+    gst_supply_mode_manual: !opts?.paymentReceipt && Boolean(form.gstSupplyMode),
+    invoice_reference_no: opts?.paymentReceipt ? form.invoiceReferenceNo.trim() || null : null,
+    tds_percent: hasTds ? tdsPercentValue : null,
+    tds_section: hasTds ? form.tdsSection.trim() || null : null,
+    tds_taxable_amount: tdsTaxable,
+    tds_amount: hasTds ? tdsAmount(tdsTaxable, tdsPercentValue) : 0,
   }
 }
 
 /**
  * Quotation-matching chrome for other Sale modules (same theme, header, table, footer, form).
- * Records are stored in sale_documents. A browser copy is imported once.
+ * Records are stored in the typed finance tables (sale_documents before the Phase 2
+ * migrations; see saleDocumentsApi.ts). A browser copy is imported once.
  */
 export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleConfig }) {
   const [rows, setRows] = useState<QuotationRow[]>([])
@@ -285,6 +298,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
             contactEmail: String(row.email ?? '').trim(),
             contactMobile,
             gstNumber: String(row.gst_number ?? '').trim(),
+            state: String(row.state ?? '').trim(),
             address: addressParts.join(', '),
             openingBalance: Number(row.opening_balance ?? 0) || 0,
             balanceType: String(row.balance_type ?? 'Dr').trim() === 'Cr' ? 'Cr' : 'Dr',
@@ -488,8 +502,8 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
           paymentReceipt: isPaymentReceipt,
         })
         const previous = editingId ? rows.find((row) => row.id === editingId) : undefined
-        const saved = previous?.created_at ? { ...stored, created_at: previous.created_at } : stored
-        await saveSaleDocument(config.documentKind, saved)
+        const toSave = previous?.created_at ? { ...stored, created_at: previous.created_at } : stored
+        const saved = await saveSaleDocument(config.documentKind, toSave)
         const next = editingId
           ? rows.map((row) => (row.id === editingId ? saved : row))
           : [saved, ...rows]
@@ -544,10 +558,9 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
 
   const handleStatusChange = (row: QuotationRow, status: QuotationStatus) => {
     setStatusUpdatingId(row.id)
-    const nextRow = { ...row, status }
     void (async () => {
       try {
-        await saveSaleDocument(config.documentKind, nextRow)
+        const nextRow = await saveSaleDocument(config.documentKind, { ...row, status })
         const next = rows.map((item) => (item.id === row.id ? nextRow : item))
         rememberSaleDocumentRows(config.documentKind, next)
         setRows(next)

@@ -1,5 +1,14 @@
 import type { QuotationRow } from '../quotation/types'
+import { dbStatusFor } from './financeRules'
 import { loadSaleDocumentRows } from './saleDocumentsApi'
+
+/*
+ * The rows come from the sale document cache, which after finance Phase 2
+ * is read from finance_tax_invoices, finance_credit_notes and transactions
+ * (payment_flow 'in'); before the Phase 2 migrations from sale_documents.
+ * Cancelled documents (Rejected / Expired) do not count, and a receipt
+ * settles its amount plus the TDS the customer deducted.
+ */
 
 export { loadSaleDocumentRows, refreshSaleDocumentCache } from './saleDocumentsApi'
 
@@ -14,6 +23,16 @@ function sameClient(row: QuotationRow, clientId: string, clientName: string): bo
 function rowAmount(row: QuotationRow): number {
   const n = Number(row.grand_total)
   return Number.isFinite(n) ? Math.max(0, n) : 0
+}
+
+function isCounted(row: QuotationRow): boolean {
+  return dbStatusFor(String(row.status ?? '')) !== 'cancelled'
+}
+
+/** Payment plus TDS deducted by the customer. */
+function receiptSettled(row: QuotationRow): number {
+  const tds = Number(row.tds_amount ?? 0)
+  return rowAmount(row) + (Number.isFinite(tds) ? Math.max(0, tds) : 0)
 }
 
 export type ClientLedgerBalance = {
@@ -39,14 +58,14 @@ export function computeClientSaleBalance(opts: {
   signed += Math.max(0, Number(opts.extraDebit ?? 0) || 0)
 
   for (const row of loadSaleDocumentRows('invoice')) {
-    if (sameClient(row, opts.clientId, opts.clientName)) signed += rowAmount(row)
+    if (isCounted(row) && sameClient(row, opts.clientId, opts.clientName)) signed += rowAmount(row)
   }
   for (const row of loadSaleDocumentRows('creditNote')) {
-    if (sameClient(row, opts.clientId, opts.clientName)) signed -= rowAmount(row)
+    if (isCounted(row) && sameClient(row, opts.clientId, opts.clientName)) signed -= rowAmount(row)
   }
   for (const row of loadSaleDocumentRows('paymentReceipt')) {
     if (opts.excludeReceiptId && row.id === opts.excludeReceiptId) continue
-    if (sameClient(row, opts.clientId, opts.clientName)) signed -= rowAmount(row)
+    if (isCounted(row) && sameClient(row, opts.clientId, opts.clientName)) signed -= receiptSettled(row)
   }
 
   const rounded = Math.round(signed * 100) / 100
@@ -73,7 +92,7 @@ export function receiptLedgerSnapshot(
   })
   const received = rowAmount(row)
   const signed =
-    (opening.type === 'Cr' ? -opening.amount : opening.amount) - received
+    (opening.type === 'Cr' ? -opening.amount : opening.amount) - (isCounted(row) ? receiptSettled(row) : 0)
   const rounded = Math.round(signed * 100) / 100
   const after: ClientLedgerBalance =
     rounded < 0

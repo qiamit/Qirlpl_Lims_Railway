@@ -78,6 +78,14 @@ import {
 import { amountInIndianRupeesWords } from './amountInIndianRupeesWords'
 import { parseLabSettingsRow } from '@/features/settings/lab-settings/labSettingsDb'
 import { computeClientSaleBalance, refreshSaleDocumentCache } from '@/features/finance/sale/shared/clientSaleBalance'
+import { cachedInvoiceNumbers } from '@/features/finance/sale/shared/saleDocumentsApi'
+import {
+  gstSupplyModeForClient,
+  gstSupplyModeLabel,
+  tdsAmount,
+  TDS_SECTION_OPTIONS,
+  type GstSupplyMode,
+} from '@/features/finance/sale/shared/financeRules'
 import { supabase } from '@/lib/supabaseClient'
 
 export type QuotationClientContact = {
@@ -85,6 +93,8 @@ export type QuotationClientContact = {
   contactEmail: string
   contactMobile: string
   gstNumber: string
+  /** Client state name; decides CGST + SGST or IGST when there is no valid GSTIN. */
+  state?: string
   address: string
   openingBalance: number
   balanceType: 'Dr' | 'Cr'
@@ -322,7 +332,6 @@ export function QuotationFormView({
   productById,
   onReloadClients,
   onReloadProducts,
-  canSave,
   saveLoading,
   onSave,
   documentLabel = 'Quotation',
@@ -391,9 +400,17 @@ export function QuotationFormView({
     ifsc: '',
     upi: '',
   })
+  const [labGst, setLabGst] = useState({ gstin: '', state: '' })
 
-  const gstMode: 'intra' | 'inter' =
-    showIgstRow && !showCgstRow && !showSgstRow ? 'inter' : 'intra'
+  // CGST + SGST (same state as the lab) or IGST: the user's choice, else the
+  // client's GSTIN, else its state name (lab: Chhattisgarh, 22).
+  const autoSupplyMode: GstSupplyMode = gstSupplyModeForClient({
+    labGstin: labGst.gstin,
+    labState: labGst.state,
+    clientGstin: form.clientGstNumber,
+    clientState: form.clientId ? clientContactById[form.clientId]?.state : '',
+  })
+  const gstMode: GstSupplyMode = form.gstSupplyMode || autoSupplyMode
   const totals = computeQuotationTotals(form, gstMode)
   const showGstBreakdown = showCgstRow || showSgstRow || showIgstRow
   const amountInWords = amountInIndianRupeesWords(totals.grandTotal)
@@ -425,6 +442,14 @@ export function QuotationFormView({
   useEffect(() => {
     setClientQuery(form.clientName)
   }, [form.clientId, form.clientName])
+
+  // Show the tax rows that match the supply mode.
+  useEffect(() => {
+    if (isPaymentReceipt) return
+    setShowCgstRow(gstMode === 'intra')
+    setShowSgstRow(gstMode === 'intra')
+    setShowIgstRow(gstMode === 'inter')
+  }, [gstMode, isPaymentReceipt])
 
   useEffect(() => {
     if (parseMoney(form.discountAmount) > 0 || parseMoney(form.discountPercent) > 0) {
@@ -512,7 +537,7 @@ export function QuotationFormView({
       try {
         const { data, error } = await supabase
           .from('lab_settings')
-          .select('bank_name, branch_name, account_number, ifsc, upi')
+          .select('bank_name, branch_name, account_number, ifsc, upi, gst_number, state')
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -526,6 +551,7 @@ export function QuotationFormView({
           ifsc: parsed.ifsc,
           upi: parsed.upi,
         })
+        setLabGst({ gstin: parsed.gstNumber, state: parsed.state })
       } catch {
         if (!cancelled) {
           setBankDetails({
@@ -722,15 +748,24 @@ export function QuotationFormView({
   ])
 
   const paymentAmountValue = parseMoney(form.paymentAmount)
+  const tdsPercentValue = parseMoney(form.tdsPercent)
+  const tdsActive = form.tdsPercent.trim() !== '' && tdsPercentValue > 0 && tdsPercentValue <= 100
+  const tdsOnAmount = tdsActive ? Math.max(0, parseMoney(form.tdsTaxableAmount) || paymentAmountValue) : 0
+  const tdsDeducted = tdsActive ? tdsAmount(tdsOnAmount, tdsPercentValue) : 0
   const balanceAfterPayment = useMemo(() => {
     const signed =
       selectedClientBalance.type === 'Cr'
         ? -Math.abs(selectedClientBalance.amount)
         : Math.abs(selectedClientBalance.amount)
-    const next = signed - Math.max(0, paymentAmountValue)
+    // The customer settles the payment plus the TDS it deducted.
+    const next = signed - Math.max(0, paymentAmountValue) - tdsDeducted
     if (next < 0) return { amount: Math.abs(next), type: 'Cr' as const }
     return { amount: Math.abs(next), type: 'Dr' as const }
-  }, [paymentAmountValue, selectedClientBalance.amount, selectedClientBalance.type])
+  }, [paymentAmountValue, tdsDeducted, selectedClientBalance.amount, selectedClientBalance.type])
+  const invoiceNumberOptions = useMemo(() => {
+    void saleDocsVersion
+    return isPaymentReceipt ? cachedInvoiceNumbers() : []
+  }, [isPaymentReceipt, saleDocsVersion])
 
   const filteredProductsByQuery = useMemo(() => {
     const map: Record<string, FilterComboboxOption[]> = {}
@@ -961,6 +996,69 @@ export function QuotationFormView({
               highlight
             />
           </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="flex min-w-0 flex-col space-y-2">
+              <Label htmlFor="payment-invoice-ref">Against Invoice No.</Label>
+              <Input
+                id="payment-invoice-ref"
+                list="payment-invoice-ref-options"
+                value={form.invoiceReferenceNo}
+                onChange={(e) => set('invoiceReferenceNo', e.target.value)}
+                placeholder="Optional"
+                className={fieldClass}
+              />
+              <datalist id="payment-invoice-ref-options">
+                {invoiceNumberOptions.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+            </div>
+            <div className="flex min-w-0 flex-col space-y-2">
+              <Label htmlFor="payment-tds-percent">TDS %</Label>
+              <Input
+                id="payment-tds-percent"
+                type="text"
+                inputMode="decimal"
+                value={form.tdsPercent}
+                onChange={(e) => set('tdsPercent', sanitizeMoneyInput(e.target.value))}
+                placeholder="None"
+                className={cn(fieldClass, 'text-right tabular-nums')}
+                aria-invalid={form.tdsPercent.trim() !== '' && !tdsActive && tdsPercentValue !== 0}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col space-y-2">
+              <Label htmlFor="payment-tds-section">TDS Section</Label>
+              <Select
+                value={form.tdsSection || undefined}
+                onValueChange={(v) => set('tdsSection', v)}
+                disabled={!tdsActive}
+              >
+                <SelectTrigger id="payment-tds-section" className={cn(fieldClass, 'w-full')}>
+                  <SelectValue placeholder="Select section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TDS_SECTION_OPTIONS.map((section) => (
+                    <SelectItem key={section} value={section}>
+                      {section}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <CurrencyInrField
+              id="payment-tds-taxable"
+              label="TDS On Amount"
+              value={form.tdsTaxableAmount}
+              onChange={(v) => set('tdsTaxableAmount', v)}
+              placeholder={formatMoney(paymentAmountValue)}
+            />
+            <CurrencyBalanceField
+              label="TDS Deducted"
+              amount={tdsDeducted}
+              balanceType="Cr"
+              emptyText={tdsActive ? undefined : '—'}
+            />
+          </div>
         </section>
       ) : (
         <>
@@ -1094,7 +1192,7 @@ export function QuotationFormView({
                 const descValue = descOpen ? (descQueryByKey[line.key] ?? combined) : combined
                 const cellTextClass =
                   'align-middle px-2 py-1.5 text-center text-sm text-stone-800'
-                const gstSplit = lineGstSplit(line, 'intra')
+                const gstSplit = lineGstSplit(line, gstMode)
                 const moneyCellClass =
                   'align-middle px-2 py-1.5 text-center tabular-nums font-medium text-stone-900'
                 return (
@@ -1579,6 +1677,7 @@ export function QuotationFormView({
                 <DropdownMenuItem
                   disabled={showCgstRow}
                   onSelect={() => {
+                    if (gstMode !== 'intra') set('gstSupplyMode', 'intra')
                     setShowIgstRow(false)
                     setShowCgstRow(true)
                   }}
@@ -1588,6 +1687,7 @@ export function QuotationFormView({
                 <DropdownMenuItem
                   disabled={showSgstRow}
                   onSelect={() => {
+                    if (gstMode !== 'intra') set('gstSupplyMode', 'intra')
                     setShowIgstRow(false)
                     setShowSgstRow(true)
                   }}
@@ -1597,6 +1697,7 @@ export function QuotationFormView({
                 <DropdownMenuItem
                   disabled={showIgstRow}
                   onSelect={() => {
+                    if (gstMode !== 'inter') set('gstSupplyMode', 'inter')
                     setShowCgstRow(false)
                     setShowSgstRow(false)
                     setShowIgstRow(true)
@@ -1606,6 +1707,28 @@ export function QuotationFormView({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="gst-supply-mode" className="text-stone-600">
+              GST Supply
+            </Label>
+            <Select
+              value={form.gstSupplyMode || 'auto'}
+              onValueChange={(v) => set('gstSupplyMode', v === 'intra' || v === 'inter' ? v : '')}
+            >
+              <SelectTrigger
+                id="gst-supply-mode"
+                className="!h-7 w-[min(15rem,100%)] rounded-none border-stone-500 bg-white px-2 text-xs"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto: {gstSupplyModeLabel(autoSupplyMode)}</SelectItem>
+                <SelectItem value="intra">{gstSupplyModeLabel('intra')}</SelectItem>
+                <SelectItem value="inter">{gstSupplyModeLabel('inter')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between gap-3">

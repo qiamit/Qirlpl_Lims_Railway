@@ -8,6 +8,7 @@ import {
 import { fetchLabDocumentTemplates } from '@/features/settings/lab-settings/documentTemplatesConfig'
 import { supabase } from '@/lib/supabaseClient'
 import { amountInIndianRupeesWords } from './amountInIndianRupeesWords'
+import { gstSupplyModeLabel, printGstRows } from '../shared/financeRules'
 import { resolveSignatureSignedUrl, fetchLabCompanySignContext } from './quotationSignatureStorage'
 import {
   formatDate,
@@ -312,8 +313,9 @@ function buildOneQuotationHtml(
 ): string {
   const tpl = opts.template
   const metaLabels = documentMetaFieldLabels(tpl.documentTitle || 'Document')
-  const gstMode: 'intra' | 'inter' =
-    tpl.showIgst && !tpl.showCgst && !tpl.showSgst ? 'inter' : 'intra'
+  // A saved supply mode decides the split: CGST + SGST, or IGST.
+  const gstRows = printGstRows(row.gst_supply_mode, tpl)
+  const gstMode = gstRows.mode
 
   let cgstTotal = 0
   let sgstTotal = 0
@@ -411,17 +413,22 @@ function buildOneQuotationHtml(
       `<tr><td class="k">GST Amount</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(row.gst_amount))}</td></tr>`,
     )
   }
-  if (tpl.showCgst) {
+  if (row.gst_supply_mode && (gstRows.showCgst || gstRows.showIgst)) {
+    totalRows.push(
+      `<tr><td class="k">GST Supply</td><td class="sep">:</td><td class="v">${esc(gstSupplyModeLabel(row.gst_supply_mode))}</td></tr>`,
+    )
+  }
+  if (gstRows.showCgst) {
     totalRows.push(
       `<tr><td class="k">CGST</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(cgstTotal))}</td></tr>`,
     )
   }
-  if (tpl.showSgst) {
+  if (gstRows.showSgst) {
     totalRows.push(
       `<tr><td class="k">SGST</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(sgstTotal))}</td></tr>`,
     )
   }
-  if (tpl.showIgst) {
+  if (gstRows.showIgst) {
     totalRows.push(
       `<tr><td class="k">IGST</td><td class="sep">:</td><td class="v">${getCurrencySymbol()} ${esc(formatMoney(igstTotal))}</td></tr>`,
     )
