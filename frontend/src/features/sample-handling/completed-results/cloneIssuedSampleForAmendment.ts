@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { withReceivingReportTypeSuffix } from '@/features/sample-handling/report-preparation/formattedTestReportNumber'
 import {
   receivingReportTypeForIssueKind,
@@ -56,8 +57,12 @@ function omitKeys(row: Record<string, unknown>, keys: Set<string>): Record<strin
 async function existingSrfNumbersLike(base: string): Promise<string[]> {
   const { data, error } = await supabase.from('samples').select('srf_number').ilike('srf_number', `${base}%`)
   if (error) throw error
-  return (Array.isArray(data) ? data : [])
-    .map((r) => String((r as { srf_number?: string }).srf_number ?? '').trim())
+  // SRF numbers of deleted samples are never reused.
+  const deleted = (await fetchDeletedKeys('samples', 'srf_number')).filter((n) =>
+    n.toLowerCase().startsWith(base.toLowerCase()),
+  )
+  return [...(Array.isArray(data) ? data : []).map((r) => String((r as { srf_number?: string }).srf_number ?? '')), ...deleted]
+    .map((n) => n.trim())
     .filter(Boolean)
 }
 

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -114,6 +115,7 @@ export default function EquipmentForCalibrationMasterPage({
   })
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<EquipmentForCalibrationRow[]>([])
+  const deletedAssetCodes = useDeletedKeys('equipment_for_calibration', 'asset_code', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -283,8 +285,8 @@ export default function EquipmentForCalibrationMasterPage({
   }, [])
 
   const makeNextCode = useCallback(
-    () => nextAssetCode(labName, rows.map((r) => r.asset_code), variant),
-    [labName, rows, variant],
+    () => nextAssetCode(labName, [...rows.map((r) => r.asset_code), ...deletedAssetCodes], variant),
+    [labName, rows, deletedAssetCodes, variant],
   )
 
   const filteredRows = useMemo(() => {

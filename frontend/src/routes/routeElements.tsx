@@ -88,6 +88,7 @@ const ImpartialityRiskRegisterPage = lazy(() => import('@/features/general-requi
 const ConfidentialityRecordsPage = lazy(() => import('@/features/general-requirements/confidentiality/ConfidentialityRecordsPage'))
 const DeclarationsPage = lazy(() => import('@/features/personnel/declarations/DeclarationsPage'))
 const AuditTrailPage = lazy(() => import('@/features/audit-trail/AuditTrailPage'))
+const RecycleBinPage = lazy(() => import('@/features/recycle-bin/RecycleBinPage'))
 const ImprovementPage = lazy(() => import('@/features/general-requirements/improvement/ImprovementPage'))
 const ExternallySupplierListPage = lazy(() => import('@/features/externally-providers/supplier-list/ExternallySupplierListPage'))
 const SupplierEvaluationPage = lazy(() => import('@/features/externally-providers/supplier-evaluation/SupplierEvaluationPage'))
@@ -397,6 +398,10 @@ export function DeclarationsRoute() {
 
 export function AuditTrailRoute() {
   return <AuditTrailPage />
+}
+
+export function RecycleBinRoute() {
+  return <RecycleBinPage />
 }
 
 export function ImprovementRoute() {

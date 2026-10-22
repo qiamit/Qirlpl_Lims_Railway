@@ -10,6 +10,7 @@ import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { fetchTeamUsers } from '@/lib/fetchTeamUsers'
 import { buildMrmAgendaPrintHtml } from './buildMrmAgendaPrintHtml'
 import { MrmAgendaFooterBar } from './MrmAgendaFooterBar'
@@ -138,6 +139,7 @@ function openPrintWindow(html: string) {
 export default function MrmAgendaMasterPage() {
   const { user } = useAuth()
   const [rows, setRows] = useState<MrmPlanRow[]>([])
+  const deletedPlanCodes = useDeletedKeys('mrm_plans', 'plan_code', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -323,7 +325,7 @@ export default function MrmAgendaMasterPage() {
       emptyMrmPlanForm(
         nextMrmPlanCode(
           firmInitials,
-          rows.map((r) => r.planCode),
+          [...rows.map((r) => r.planCode), ...deletedPlanCodes],
         ),
       ),
     )

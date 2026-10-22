@@ -133,9 +133,10 @@ export function formToPayload(form: FeedbackForm) {
   }
 }
 
-export function nextFeedbackId(rows: FeedbackRow[]): string {
+/** `deletedIds`: feedback IDs of deleted records (never reused). */
+export function nextFeedbackId(rows: FeedbackRow[], deletedIds: string[] = []): string {
   return nextPrefixedId(
-    rows.map((r) => r.feedback_id),
+    [...rows.map((r) => r.feedback_id), ...deletedIds],
     'FBK',
   )
 }

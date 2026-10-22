@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { receivingReportSuffix } from '@/features/sample-handling/receiving/receivingSrfFromReference'
 import { REPORT_SCOPE_SUFFIX, type ReportScopeKind } from './reportScope'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
@@ -157,15 +158,21 @@ export async function fetchNextTestReportNumber(excludeSampleId?: string): Promi
     query = query.neq('id', excludeSampleId)
   }
 
-  const { data, error } = await query
+  // Report numbers of deleted samples are never reused.
+  const [{ data, error }, deletedNumbers] = await Promise.all([
+    query,
+    fetchDeletedKeys('samples', 'test_report_number'),
+  ])
   if (error) {
     console.warn('[fetchNextTestReportNumber]', error.message)
     return { prefix, number: formatTestReportNumber(prefix, 1), sequence: 1 }
   }
 
   let maxSeq = 0
-  for (const row of Array.isArray(data) ? data : []) {
-    const num = row.test_report_number as string | null
+  for (const num of [
+    ...(Array.isArray(data) ? data : []).map((row) => row.test_report_number as string | null),
+    ...deletedNumbers,
+  ]) {
     if (!num?.trim()) continue
     const parsed = parseTestReportSequence(toCanonicalReportNumber(num), prefix)
     if (parsed !== null && parsed > maxSeq) maxSeq = parsed

@@ -4,6 +4,7 @@ import { escapeHtml } from '@/lib/htmlText'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useAuth } from '@/hooks/useAuth'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -63,12 +64,12 @@ function printViaIframe(html: string) {
   }
 }
 
-function nextRegisterNo(existing: BreakdownRegisterRow[]): string {
+/** `deletedNos`: register numbers of deleted records (never reused). */
+function nextRegisterNo(existing: BreakdownRegisterRow[], deletedNos: string[] = []): string {
   const year = new Date().getFullYear()
   const prefix = `EBR-${year}-`
   let max = 0
-  for (const r of existing) {
-    const no = r.register_no ?? ''
+  for (const no of [...existing.map((r) => r.register_no ?? ''), ...deletedNos]) {
     if (!no.startsWith(prefix)) continue
     const n = Number(no.slice(prefix.length))
     if (Number.isFinite(n)) max = Math.max(max, n)
@@ -109,6 +110,7 @@ export default function EquipmentBreakdownMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<BreakdownRegisterRow[]>([])
+  const deletedRegisterNos = useDeletedKeys('equipment_breakdown_register', 'register_no', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -251,7 +253,7 @@ export default function EquipmentBreakdownMasterPage() {
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm(emptyBreakdownForm(nextRegisterNo(rows)))
+    setForm(emptyBreakdownForm(nextRegisterNo(rows, deletedRegisterNos)))
     setShowForm(true)
   }
 
@@ -267,7 +269,7 @@ export default function EquipmentBreakdownMasterPage() {
     setEditingId(null)
     setForm({
       ...rowToForm(row),
-      registerNo: nextRegisterNo(rows),
+      registerNo: nextRegisterNo(rows, deletedRegisterNos),
       status: 'Open',
       returnToServiceDate: '',
       postRepairCheckDone: false,

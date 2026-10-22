@@ -3,6 +3,7 @@ import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { CalibrationNablScopeFormView } from './CalibrationNablScopeForm'
@@ -29,8 +30,9 @@ function formatSupabaseError(err: unknown) {
   return parts.length ? parts.join(' | ') : 'Unknown error'
 }
 
-function nextSNo(list: CalibrationNablScopeRow[]) {
-  return list.map((r) => r.s_no).reduce((a, b) => Math.max(a, b), 0) + 1
+/** `deletedSNos`: S.No. of deleted rows (never reused). */
+function nextSNo(list: CalibrationNablScopeRow[], deletedSNos: string[] = []) {
+  return [...list.map((r) => r.s_no), ...deletedSNos.map((v) => Number(v) || 0)].reduce((a, b) => Math.max(a, b), 0) + 1
 }
 
 function printViaIframe(html: string) {
@@ -71,6 +73,7 @@ export default function CalibrationNablScopeMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<CalibrationNablScopeRow[]>([])
+  const deletedSNos = useDeletedKeys('calibration_nabl_scope', 's_no', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -147,7 +150,7 @@ export default function CalibrationNablScopeMasterPage() {
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...emptyCalibrationNablScopeForm(), sNo: String(nextSNo(rows)) })
+    setForm({ ...emptyCalibrationNablScopeForm(), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
   }
 
@@ -161,7 +164,7 @@ export default function CalibrationNablScopeMasterPage() {
   const handleCopy = (row: CalibrationNablScopeRow) => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows)) })
+    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
   }
 

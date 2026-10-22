@@ -3,6 +3,7 @@ import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ProductServicesForm } from './ProductServicesForm'
@@ -97,8 +98,9 @@ function parseCsv(text: string) {
   return rows
 }
 
-function nextSNo(list: NablScopeRow[]) {
-  const max = list.map((r) => r.s_no).reduce((a, b) => Math.max(a, b), 0)
+/** `deletedSNos`: S.No. of deleted rows (never reused). */
+function nextSNo(list: NablScopeRow[], deletedSNos: string[] = []) {
+  const max = [...list.map((r) => r.s_no), ...deletedSNos.map((v) => Number(v) || 0)].reduce((a, b) => Math.max(a, b), 0)
   return max + 1
 }
 
@@ -111,6 +113,7 @@ export default function ProductServicesMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<NablScopeRow[]>([])
+  const deletedSNos = useDeletedKeys('nabl_scope', 's_no', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -165,7 +168,7 @@ export default function ProductServicesMasterPage() {
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...emptyNablScopeForm(), sNo: String(nextSNo(rows)) })
+    setForm({ ...emptyNablScopeForm(), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -196,7 +199,7 @@ export default function ProductServicesMasterPage() {
   const handleCopy = (row: NablScopeRow) => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows)) })
+    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -480,7 +483,7 @@ export default function ProductServicesMasterPage() {
           }
 
           return {
-            s_no: Number(get('s_no')) || nextSNo(rows),
+            s_no: Number(get('s_no')) || nextSNo(rows, deletedSNos),
             discipline_group: get('discipline_group') || '',
             materials_products: get('materials_products') || '',
             component_parameter: get('component_parameter') || '',

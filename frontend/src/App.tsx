@@ -91,6 +91,7 @@ import {
   ConfidentialityRecordsRoute,
   DeclarationsRoute,
   AuditTrailRoute,
+  RecycleBinRoute,
   ImprovementRoute,
   ExternallySupplierListRoute,
   SupplierEvaluationRoute,
@@ -174,6 +175,7 @@ export default function App() {
             element={<ManagementReviewMeetingRoute />}
           />
           <Route path="audit-mrm/audit-trail" element={<AuditTrailRoute />} />
+          <Route path="audit-mrm/recycle-bin" element={<RecycleBinRoute />} />
 
           {/* Personnel Management (ISO 17025 §6.2) */}
           <Route path="personnel" element={<Navigate to="/personnel/employees" replace />} />

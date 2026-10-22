@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import {
   fetchSrfPrefix,
   formatSrfNumber,
@@ -22,15 +23,22 @@ export async function generateNextSrfNumber(dateStr?: string): Promise<string> {
   const prefix = await fetchSrfPrefix()
   const datePattern = srfNumberLikePattern(prefix, yymmdd)
 
-  const { data: existingForDate } = await supabase
-    .from('samples')
-    .select('srf_number')
-    .not('srf_number', 'is', null)
-    .like('srf_number', datePattern)
+  const [{ data: existingForDate }, deletedNumbers] = await Promise.all([
+    supabase
+      .from('samples')
+      .select('srf_number')
+      .not('srf_number', 'is', null)
+      .like('srf_number', datePattern),
+    // SRF numbers of deleted samples are never reused (the helpers below filter by prefix / date).
+    fetchDeletedKeys('samples', 'srf_number'),
+  ])
 
-  const dateNumbers = (existingForDate ?? [])
-    .map((r) => (r as { srf_number?: string }).srf_number)
-    .filter((n): n is string => typeof n === 'string')
+  const dateNumbers = [
+    ...(existingForDate ?? [])
+      .map((r) => (r as { srf_number?: string }).srf_number)
+      .filter((n): n is string => typeof n === 'string'),
+    ...deletedNumbers,
+  ]
 
   const primaryForDate = maxPrimarySerialForDate(dateNumbers, prefix, yymmdd)
 
@@ -46,9 +54,12 @@ export async function generateNextSrfNumber(dateStr?: string): Promise<string> {
     .not('srf_number', 'is', null)
     .like('srf_number', prefixPattern)
 
-  const allNumbers = (allForPrefix ?? [])
-    .map((r) => (r as { srf_number?: string }).srf_number)
-    .filter((n): n is string => typeof n === 'string')
+  const allNumbers = [
+    ...(allForPrefix ?? [])
+      .map((r) => (r as { srf_number?: string }).srf_number)
+      .filter((n): n is string => typeof n === 'string'),
+    ...deletedNumbers,
+  ]
 
   const nextPrimary = maxPrimarySerialGlobal(allNumbers, prefix) + 1
   return formatSrfNumber(prefix, yymmdd, nextPrimary, 1)

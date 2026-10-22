@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
@@ -177,6 +178,8 @@ function formToStoredRow(
  */
 export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleConfig }) {
   const [rows, setRows] = useState<QuotationRow[]>([])
+  // Numbers of deleted documents (any kind; nextQuotationNumber keeps only this prefix) are never reused.
+  const deletedNumbers = useDeletedKeys('sale_documents', 'document_number', rows)
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -396,10 +399,10 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   const nextNumberFromRows = useCallback(() => {
     const prefix = defaultNumberPrefix(config.documentKind)
     return nextQuotationNumber(
-      rows.map((r) => r.quotation_number),
+      [...rows.map((r) => r.quotation_number), ...deletedNumbers],
       prefix,
     )
-  }, [config.documentKind, rows])
+  }, [config.documentKind, rows, deletedNumbers])
 
   const previewNextNumber = useCallback(async () => {
     const peeked = await peekDocumentNumber(config.documentKind).catch(() => null)

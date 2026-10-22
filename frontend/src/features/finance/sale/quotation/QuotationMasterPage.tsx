@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
@@ -378,12 +379,16 @@ export default function QuotationMasterPage() {
   /** Browser-side fallback while the document_series migration is not applied. */
   const nextQuotationNumberFromRows = async () => {
     const prefix = await fetchQuotationPrefix()
-    const { data, error } = await supabase.from('quotations').select('quotation_number')
+    const [{ data, error }, deletedNumbers] = await Promise.all([
+      supabase.from('quotations').select('quotation_number'),
+      // Numbers of deleted quotations are never reused.
+      fetchDeletedKeys('quotations', 'quotation_number'),
+    ])
     if (error) throw error
     const numbers = (Array.isArray(data) ? data : []).map((row) =>
       String((row as { quotation_number?: string | null }).quotation_number ?? ''),
     )
-    return nextQuotationNumber(numbers, prefix)
+    return nextQuotationNumber([...numbers, ...deletedNumbers], prefix)
   }
 
   const previewNextQuotationNumber = async () => {

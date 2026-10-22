@@ -7,6 +7,7 @@ import {
 } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
@@ -114,6 +115,7 @@ export default function ServiceRequestMasterPage() {
 
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<ServiceRequestRow[]>([])
+  const deletedSrfNumbers = useDeletedKeys('calibration_service_requests', 'srf_number', rows)
   const [clientOptions, setClientOptions] = useState<FilterComboboxOption[]>([])
   const [clientContactById, setClientContactById] = useState<
     Record<string, { contactPerson: string; contactNumberMail: string }>
@@ -194,8 +196,8 @@ export default function ServiceRequestMasterPage() {
   }, [authLoading, session?.access_token, loadClients, loadRows])
 
   const makeNextSrf = useCallback(
-    () => nextSrfNumber(rows.map((r) => r.srf_number)),
-    [rows],
+    () => nextSrfNumber([...rows.map((r) => r.srf_number), ...deletedSrfNumbers]),
+    [rows, deletedSrfNumbers],
   )
 
   const filteredRows = useMemo(() => {

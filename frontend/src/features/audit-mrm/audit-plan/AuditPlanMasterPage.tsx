@@ -3,6 +3,7 @@ import { csvCell } from '@/lib/csv'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -219,9 +220,11 @@ export default function AuditPlanMasterPage() {
   const allocateAuditId = useCallback(
     async (initials?: string) => {
       const fi = initials ?? (await resolveFirmInitials())
+      // Audit IDs of deleted plans are never reused.
+      const deletedIds = await fetchDeletedKeys('audit_plans', 'audit_id')
       return nextAuditPlanId(
         fi,
-        rows.map((r) => r.audit_id),
+        [...rows.map((r) => r.audit_id), ...deletedIds],
       )
     },
     [resolveFirmInitials, rows],

@@ -20,6 +20,7 @@ import {
 } from '@/lib/limsThemeUi'
 import { escapeHtml } from '@/lib/htmlText'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { cn } from '@/lib/utils'
 import { GrFooterBar } from './GrFooterBar'
 import { GrHeaderBar } from './GrHeaderBar'
@@ -162,6 +163,7 @@ function FieldControl({
 export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
   const showAiButtons = useShowAiButtons()
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([])
+  const deletedIds = useDeletedKeys(config.tableName, config.idField, rows)
   const [loading, setLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -270,7 +272,7 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
     setMessage(null)
     setEditingId(null)
     const next = config.emptyForm()
-    const ids = rows.map((r) => String(r[config.idField] ?? ''))
+    const ids = [...rows.map((r) => String(r[config.idField] ?? '')), ...deletedIds]
     next[config.idField] = nextPrefixedId(ids, config.idPrefix)
     const dateField = config.fields.find((f) => f.kind === 'date')
     if (dateField && !String(next[dateField.key] ?? '').trim()) {
@@ -291,7 +293,7 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
     setMessage(null)
     setEditingId(null)
     const next = rowToForm(row)
-    const ids = rows.map((r) => String(r[config.idField] ?? ''))
+    const ids = [...rows.map((r) => String(r[config.idField] ?? '')), ...deletedIds]
     next[config.idField] = nextPrefixedId(ids, config.idPrefix)
     setForm(next)
     setShowForm(true)

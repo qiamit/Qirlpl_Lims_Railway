@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { escapeHtml } from '@/lib/htmlText'
 import { cn } from '@/lib/utils'
 import { ComplaintsFooterBar } from '../ComplaintsFooterBar'
@@ -32,6 +33,7 @@ export default function CustomerFeedbackMasterPage({
   evaluationMode?: boolean
 }) {
   const [rows, setRows] = useState<FeedbackRow[]>([])
+  const deletedFeedbackIds = useDeletedKeys('customer_feedback', 'feedback_id', rows)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [loading, setLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
@@ -121,7 +123,7 @@ export default function CustomerFeedbackMasterPage({
   const handleNew = () => {
     setMessage(null)
     setEditingId(null)
-    setForm(emptyFeedbackForm(nextFeedbackId(rows)))
+    setForm(emptyFeedbackForm(nextFeedbackId(rows, deletedFeedbackIds)))
     setShowForm(true)
   }
 
@@ -143,7 +145,7 @@ export default function CustomerFeedbackMasterPage({
     setEditingId(null)
     setForm({
       ...rowToForm(row),
-      feedbackId: nextFeedbackId(rows),
+      feedbackId: nextFeedbackId(rows, deletedFeedbackIds),
       status: 'Open',
       evaluationStatus: 'Pending',
       evaluationNotes: '',

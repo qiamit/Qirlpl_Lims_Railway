@@ -7,6 +7,7 @@ import {
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -272,6 +273,7 @@ export default function CalibrationEquipmentsMasterPage() {
 
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<CalibrationEquipmentRow[]>([])
+  const deletedAssetCodes = useDeletedKeys('equipment_master', 'asset_code', rows)
   const [isCodeOptions, setIsCodeOptions] = useState<FilterComboboxOption[]>([])
   const [masterEquipmentOptions, setMasterEquipmentOptions] = useState<FilterComboboxOption[]>([])
   const [listLoading, setListLoading] = useState(false)
@@ -436,8 +438,8 @@ export default function CalibrationEquipmentsMasterPage() {
   }, [])
 
   const makeNextAssetCode = useCallback(
-    () => nextCalibrationAssetCode(labName, rows.map((r) => r.asset_code)),
-    [labName, rows],
+    () => nextCalibrationAssetCode(labName, [...rows.map((r) => r.asset_code), ...deletedAssetCodes]),
+    [labName, rows, deletedAssetCodes],
   )
 
   const filteredRows = useMemo(() => {

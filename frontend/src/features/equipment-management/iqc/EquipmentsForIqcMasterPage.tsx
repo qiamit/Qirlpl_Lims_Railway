@@ -5,6 +5,7 @@ import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { escapeHtml } from '@/lib/htmlText'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys, useDeletedKeys } from '@/lib/softDelete'
 import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
@@ -166,6 +167,7 @@ export default function EquipmentsForIqcMasterPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [testingRows, setTestingRows] = useState<IqcRow[]>([])
   const [calibrationRows, setCalibrationRows] = useState<EquipmentForCalibrationRow[]>([])
+  const deletedCalCodes = useDeletedKeys('equipment_for_calibration', 'asset_code', calibrationRows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -405,9 +407,11 @@ export default function EquipmentsForIqcMasterPage() {
     } catch {
       // default
     }
+    // Codes of deleted records are never reused.
+    const deletedCodes = await fetchDeletedKeys('iqc_masters', 'asset_code')
+    const codes = [...testingRows.map((r) => r.asset_code || ''), ...deletedCodes]
     let maxSerial = 0
-    testingRows.forEach((r) => {
-      const code = r.asset_code || ''
+    codes.forEach((code) => {
       if (code.startsWith(prefix)) {
         const trailing = code.slice(prefix.length).replace(/\D/g, '')
         const num = parseInt(trailing, 10)
@@ -420,7 +424,7 @@ export default function EquipmentsForIqcMasterPage() {
   const makeNextCalCode = () =>
     nextAssetCode(
       labName,
-      calibrationRows.map((r) => r.asset_code),
+      [...calibrationRows.map((r) => r.asset_code), ...deletedCalCodes],
       'iqc',
     )
 

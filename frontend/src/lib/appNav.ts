@@ -48,6 +48,7 @@ import {
   TrendingUp,
   History,
   Lock,
+  Trash2,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -203,6 +204,12 @@ export const NAV_SECTIONS: NavSection[] = [
             to: '/audit-mrm/audit-trail',
             icon: History,
             clause: '7.5',
+          },
+          {
+            label: 'Recycle Bin',
+            to: '/audit-mrm/recycle-bin',
+            icon: Trash2,
+            clause: '8.4',
           },
         ],
       },

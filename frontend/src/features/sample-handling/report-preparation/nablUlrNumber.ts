@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { type PrefixRow } from './testReportNumberPrefix'
 
 /**
@@ -216,15 +217,21 @@ export async function fetchNextNablUlrNumber(excludeSampleId?: string): Promise<
     query = query.neq('id', excludeSampleId)
   }
 
-  const { data, error } = await query
+  // ULRs of deleted samples are never reused.
+  const [{ data, error }, deletedUlrs] = await Promise.all([
+    query,
+    fetchDeletedKeys('samples', 'test_report_nabl_ulr_number'),
+  ])
   if (error) {
     console.warn('[fetchNextNablUlrNumber]', error.message)
     return { prefix, ulr: formatNablUlrNumber(prefix, 1), sequence: 1 }
   }
 
   let maxSeq = 0
-  for (const row of Array.isArray(data) ? data : []) {
-    const num = row.test_report_nabl_ulr_number as string | null
+  for (const num of [
+    ...(Array.isArray(data) ? data : []).map((row) => row.test_report_nabl_ulr_number as string | null),
+    ...deletedUlrs,
+  ]) {
     if (!num?.trim()) continue
     const parsed = parseNablUlrSequence(num, prefix)
     if (parsed !== null && parsed > maxSeq) maxSeq = parsed
@@ -267,7 +274,7 @@ export async function fetchNextCalibrationNablUlrNumber(opts?: {
   const prefix = useSettings ? settingPrefix : fromAccreditation
   const fallbackCab = useSettings ? 'TC' : cab
 
-  const [samplesRes, jobsRes] = await Promise.all([
+  const [samplesRes, jobsRes, deletedUlrs] = await Promise.all([
     supabase
       .from('samples')
       .select('test_report_nabl_ulr_number')
@@ -281,6 +288,8 @@ export async function fetchNextCalibrationNablUlrNumber(opts?: {
       if (opts?.excludeJobId) q = q.neq('id', opts.excludeJobId)
       return q
     })(),
+    // ULRs of deleted samples are never reused.
+    fetchDeletedKeys('samples', 'test_report_nabl_ulr_number'),
   ])
 
   if (samplesRes.error) {
@@ -300,6 +309,7 @@ export async function fetchNextCalibrationNablUlrNumber(opts?: {
   for (const row of Array.isArray(samplesRes.data) ? samplesRes.data : []) {
     consider(row.test_report_nabl_ulr_number as string | null)
   }
+  for (const num of deletedUlrs) consider(num)
   for (const row of Array.isArray(jobsRes.data) ? jobsRes.data : []) {
     const draft = (row as { certificate_draft?: unknown }).certificate_draft
     if (!draft || typeof draft !== 'object') continue
