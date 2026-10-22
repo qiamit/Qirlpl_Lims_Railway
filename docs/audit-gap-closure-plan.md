@@ -37,14 +37,28 @@ for Amit).
 
 | ID | Item | Clauses | Done means | Status |
 |---|---|---|---|---|
-| P1-1 | Audit trail on every technical and quality table, reason for change, append-only log, Audit Trail page for Director and QM | 7.5.2, 7.11, 8.4 | Any change to a technical record shows who, when, old → new, and why; the log cannot be edited | In progress |
-| P1-1b | Soft delete instead of hard delete (about 51 screens); block deleting issued/closed records in the database | 7.5.2, 8.4 | Deleted records stay recoverable with who/why; issued records cannot be deleted | Planned |
-| P1-2 | Password re-entry when issuing a test report; who issued it stored; frozen archive copy with SHA-256 | 7.8.1, 7.8.2, 7.11 | Each issued report has an authenticated issuer and a hash-checked archived snapshot | In progress |
-| P1-2b | Re-print issued reports from the archive; same flow for calibration certificates | 7.8.2, 7.8.8 | A re-print matches the issued report even if masters change later | Planned |
-| P1-12 | Calibration due date printed only when the customer asked for it (SRF flag) | 7.8.4.3 | No due date on certificates unless the SRF says so | In progress |
-| P1-12b | Amendment and reissue flow for calibration certificates | 7.8.8 | Amended certificate references the original | Planned |
-| P1-10 | Impartiality risk register and confidentiality records pages; yearly impartiality/COI and confidentiality declarations signed in the app | 4.1, 4.2 | Every active employee has signed both declarations this year; Director sees pending ones | In progress |
-| P1-10b | AI data guard: per-client consent, redaction before sending to AI providers, switch to turn AI off for client data | 4.2 | No client data reaches an AI provider without consent | Planned |
+| P1-1 | Audit trail on every technical and quality table, reason for change, append-only log, Audit Trail page for Director and QM | 7.5.2, 7.11, 8.4 | Any change to a technical record shows who, when, old → new, and why; the log cannot be edited | Built |
+| P1-1b | Soft delete instead of hard delete (about 51 screens); block deleting issued/closed records in the database; Recycle Bin; next numbers skip deleted records; reason-for-change prompts on key screens | 7.5.2, 8.4 | Deleted records stay recoverable with who/why; issued records cannot be deleted | Built (more screens can get reason prompts) |
+| P1-2 | Password re-entry when issuing a test report; who issued it stored; frozen archive copy with SHA-256 | 7.8.1, 7.8.2, 7.11 | Each issued report has an authenticated issuer and a hash-checked archived snapshot | Built |
+| P1-2b | Re-print issued reports from the archive; same flow for calibration certificates | 7.8.2, 7.8.8 | A re-print matches the issued report even if masters change later | Built for test reports; calibration certificates planned |
+| P1-12 | Calibration due date printed only when the customer asked for it (SRF flag) | 7.8.4.3 | No due date on certificates unless the SRF says so | Built |
+| P1-12b | Amendment and reissue flow for calibration certificates | 7.8.8 | Amended certificate references the original | Built |
+| P1-10 | Impartiality risk register and confidentiality records pages; yearly impartiality/COI and confidentiality declarations signed in the app | 4.1, 4.2 | Every active employee has signed both declarations this year; Director sees pending ones | Built |
+| P1-10b | AI data guard: per-client consent, redaction before sending to AI providers, switch to turn AI off for client data | 4.2 | No client data reaches an AI provider without consent | Built |
+
+### Migrations waiting to be applied (in this order, after a fresh backup)
+
+1. `20261022120000_security_hardening.sql`
+2. `20261023000001_finance_access_helpers.sql`, `20261023000002_finance_document_series.sql`
+3. `20261024100000_audit_trail_expansion.sql`
+4. `20261024100100_srf_customer_requests_due_date.sql`
+5. `20261024100200_personnel_declarations.sql`
+6. `20261024100300_report_issue_signature.sql`
+7. `20261025100000_soft_delete.sql` (needs 3 first)
+8. `20261025100100_calibration_certificate_amendments.sql`
+9. `20261025100200_ai_data_guard.sql`
+
+The frontend works before and after each one, so the branch can be merged first.
 
 ## Stage 2: results and reporting (Sprint 3–4)
 
