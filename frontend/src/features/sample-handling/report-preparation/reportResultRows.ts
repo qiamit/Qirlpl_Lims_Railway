@@ -13,6 +13,9 @@ import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decis
 import { normalizeResultRemark } from './resultRemarkUi'
 import { resolveReportScopeFromAccreditationIds, scopeKindFromLabel } from './reportScope'
 import type { ReportScopeKind } from './reportScope'
+import { fetchMuBands } from '@/features/masters/test-parameter/muBandsApi'
+import type { MuBand } from '@/features/masters/test-parameter/muBands'
+import { groupMuBandsByParameter, reportUncertaintyText } from './reportMuUncertainty'
 
 export type ReportResultRow = {
   parameterId: string
@@ -112,7 +115,25 @@ function buildTestNameParts(
   }
 }
 
-export async function fetchReportResultRowsForSample(sampleId: string): Promise<ReportResultRow[]> {
+/** MU bands of the parameters (one request); [] when none, not migrated or unreadable. */
+async function fetchMuBandsForReport(tpIds: string[]): Promise<MuBand[]> {
+  if (tpIds.length === 0) return []
+  try {
+    const res = await fetchMuBands(tpIds)
+    return res.available ? res.bands : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * @param opts.muOnDate date (YYYY-MM-DD) for choosing MU bands; default today.
+ *   Issued reports pass their issue date.
+ */
+export async function fetchReportResultRowsForSample(
+  sampleId: string,
+  opts: { muOnDate?: string } = {},
+): Promise<ReportResultRow[]> {
   const { data: allocs, error: aErr } = await supabase
     .from('sample_allocations')
     .select('id')
@@ -187,7 +208,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     ),
   ]
 
-  const [{ data: tpData }, { data: abData }, decisionRule] = await Promise.all([
+  const [{ data: tpData }, { data: abData }, decisionRule, muBands] = await Promise.all([
     tpIds.length > 0
       ? supabase
           .from('test_parameters')
@@ -199,7 +220,10 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     supabase.from('accreditation_bodies').select('id, name'),
     // ISO 17025 7.8.6: decision rule agreed on the SRF (null = original simple acceptance).
     fetchSampleDecisionRule(sampleId),
+    // ISO 17025 7.6 (P3-2): MU by range band; [] keeps uncertainty_mu as before.
+    fetchMuBandsForReport(tpIds),
   ])
+  const muBandsByTp = groupMuBandsByParameter(muBands)
 
   const tpMap = new Map<string, TestParameterSnapshot & { id: string }>()
   for (const row of Array.isArray(tpData) ? tpData : []) {
@@ -218,6 +242,13 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
     const { testName, testMethodClause } = buildTestNameParts(tp, p.test_label ?? '—')
     const observed = getReportedTestResult(p.results)
     const requirement = String(p.specific_requirement?.trim() || tp?.specific_requirement || '')
+    // Band U for this result when the parameter has MU bands, else uncertainty_mu unchanged.
+    const uncertaintyText = reportUncertaintyText(
+      p.test_parameter_id ? muBandsByTp.get(p.test_parameter_id) : undefined,
+      observed,
+      tp?.uncertainty_mu ?? null,
+      opts.muOnDate,
+    )
     const storedRemark = p.report_remark?.trim()
     // Stored remark wins; the non-binary wording is accepted only under a non-binary rule.
     const storedOk =
@@ -227,7 +258,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
       ? (storedRemark as ConformityRemark)
       : evaluateResultConformity(observed, requirement, {
           rule: decisionRule,
-          uncertainty: tp?.uncertainty_mu ?? null,
+          uncertainty: uncertaintyText,
         })
     const meta = sectionMetaByTaId.get(p.test_allocation_id)
     return {
@@ -243,7 +274,7 @@ export async function fetchReportResultRowsForSample(sampleId: string): Promise<
       unit: fmt(tp?.unit_value),
       specifiedRequirement: fmt(p.specific_requirement?.trim() || tp?.specific_requirement),
       observedValue: fmt(observed),
-      uncertainty: fmt(tp?.uncertainty_mu),
+      uncertainty: fmt(uncertaintyText),
       remark,
       scope: resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),
     }

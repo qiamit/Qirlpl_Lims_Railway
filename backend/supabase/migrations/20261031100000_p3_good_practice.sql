@@ -60,11 +60,10 @@
 --   Director or Quality Manager (app_p3_can_manage_org). SRF contract
 --   changes: any known staff records them. Deletes: Laboratory Director only
 --   (MU bands and positions also by app_p3_can_manage / _org).
---   Module access (20261029100200): mu bands, objective measurements and SRF
---   contract changes are added to module_table_map when that table exists.
---   org_positions is NOT mapped until its route is in the module catalog
---   (an unmapped table is not restricted by module access; the role checks
---   above still apply).
+--   Module access (20261029100200): mu bands, objective measurements, SRF
+--   contract changes and org_positions (Organisation Chart,
+--   /general-requirements/organisation-chart, in the module catalog seed) are
+--   added to module_table_map when that table exists.
 
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '120s';
@@ -819,7 +818,8 @@ BEGIN
     ('srf_contract_changes', '/samples/under-testing', 'edit', 'view', 'SRF contract amendments'),
     ('srf_contract_changes', '/samples/results-review', 'edit', 'view', 'SRF contract amendments'),
     ('srf_contract_changes', '/samples/report-preparation', 'edit', 'view', 'SRF contract amendments'),
-    ('srf_contract_changes', '/samples/completed', 'never', 'view', 'SRF contract amendments')
+    ('srf_contract_changes', '/samples/completed', 'never', 'view', 'SRF contract amendments'),
+    ('org_positions', '/general-requirements/organisation-chart', 'edit', 'view', 'organisation chart')
   ) AS v(t, p, w, r, n)
   ON CONFLICT (table_name, module_path) DO NOTHING;
   SELECT count(*) INTO v_installed FROM public.app_module_access_install() WHERE status = 'installed';

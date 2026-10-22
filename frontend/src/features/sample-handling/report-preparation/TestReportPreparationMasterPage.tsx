@@ -84,6 +84,7 @@ import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/p
 import { visibleTestReportSignatures } from '@/features/settings/lab-settings/printSettingsTypes'
 import type { ReportScopeKind } from './reportScope'
 import { fetchIssueHoldNcs, ISSUE_HOLD_OVERRIDE_COLUMN, type IssueHoldNc } from './reportIssueHold'
+import { checkUlrScope, formatUlrScopeWarnings, type UlrScopeWarning } from './ulrScopeCheck'
 import { Textarea } from '@/components/ui/textarea'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import {
@@ -115,6 +116,12 @@ type PendingIssue = {
   signatories: Array<{ roleLabel: string; name: string; designation: string }>
   /** Open NC records linked to the sample (issue on hold, ISO/IEC 17025 7.10.1). */
   openNcs: IssueHoldNc[]
+  /**
+   * NABL report only: parameters marked NABL that are not in the accredited
+   * NABL scope (NABL 133, ulr_scope_check). Warning only, the issuer must
+   * acknowledge it. [] for non-NABL reports or before migration 20261031100000.
+   */
+  ulrScopeWarnings: UlrScopeWarning[]
 }
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
@@ -172,6 +179,7 @@ export default function TestReportPreparationMasterPage() {
   const [pendingIssue, setPendingIssue] = useState<PendingIssue | null>(null)
   const [issuePasswordOpen, setIssuePasswordOpen] = useState(false)
   const [holdOverrideReason, setHoldOverrideReason] = useState('')
+  const [ulrScopeAcknowledged, setUlrScopeAcknowledged] = useState(false)
   const actorIsDirector = isLaboratoryDirector(designation)
   const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
   const [referbackDialogOpen, setReferbackDialogOpen] = useState(false)
@@ -694,7 +702,19 @@ export default function TestReportPreparationMasterPage() {
     }
     // Report issue hold: open NC linked to this sample ([] before migration 20261029100300).
     const openNcs = await fetchIssueHoldNcs(active.id)
+    // NABL ULR scope warning (NABL 133): parameters marked NABL but outside the
+    // accredited scope. Warning only; nothing when the RPC is not deployed yet.
+    let ulrScopeWarnings: UlrScopeWarning[] = []
+    if (scopes.includes('nabl')) {
+      try {
+        const scopeCheck = await checkUlrScope(active.id)
+        if (scopeCheck.available) ulrScopeWarnings = scopeCheck.warnings
+      } catch {
+        // A failed check never blocks the issue.
+      }
+    }
     setHoldOverrideReason('')
+    setUlrScopeAcknowledged(false)
     setPendingIssue({
       sampleId: active.id,
       scopes,
@@ -703,6 +723,7 @@ export default function TestReportPreparationMasterPage() {
       ulrNumber: sanitizeNablUlrInput(nablUlrNumber) || null,
       signatories,
       openNcs,
+      ulrScopeWarnings,
     })
     setIssuePasswordOpen(true)
   }
@@ -1120,7 +1141,8 @@ export default function TestReportPreparationMasterPage() {
         confirmLabel="Issue Report"
         statement={ISSUE_SIGNATURE_STATEMENT}
         confirmDisabled={
-          Boolean(pendingIssue?.openNcs.length) && (!actorIsDirector || !holdOverrideReason.trim())
+          (Boolean(pendingIssue?.openNcs.length) && (!actorIsDirector || !holdOverrideReason.trim())) ||
+          (Boolean(pendingIssue?.ulrScopeWarnings.length) && !ulrScopeAcknowledged)
         }
         onConfirmed={({ reauthenticatedAt }) => {
           const pending = pendingIssue
@@ -1161,6 +1183,35 @@ export default function TestReportPreparationMasterPage() {
                 Laboratory Director can override.
               </p>
             )}
+          </div>
+        ) : null}
+        {pendingIssue && pendingIssue.ulrScopeWarnings.length > 0 ? (
+          <div className="space-y-2 border border-amber-600/50 bg-amber-50 px-3 py-2 text-sm text-amber-950" role="alert">
+            <p className="font-semibold">NABL scope warning (NABL 133)</p>
+            <p>
+              {pendingIssue.ulrScopeWarnings.length === 1
+                ? '1 parameter marked NABL is'
+                : `${pendingIssue.ulrScopeWarnings.length} parameters marked NABL are`}{' '}
+              not in the active accredited NABL scope:
+            </p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {formatUlrScopeWarnings(pendingIssue.ulrScopeWarnings).map((line, index) => (
+                <li key={`${pendingIssue.ulrScopeWarnings[index]?.testParameterId ?? ''}-${index}`}>{line}</li>
+              ))}
+            </ul>
+            <p>
+              A NABL ULR / accreditation symbol must cover only accredited parameters. Report these under the
+              non-accredited part, or correct the test parameter / scope first.
+            </p>
+            <label className="flex items-start gap-2 font-medium">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700"
+                checked={ulrScopeAcknowledged}
+                onChange={(e) => setUlrScopeAcknowledged(e.target.checked)}
+              />
+              <span>I have reviewed these parameters and accept issuing the NABL report as it is.</span>
+            </label>
           </div>
         ) : null}
         {pendingIssue ? (

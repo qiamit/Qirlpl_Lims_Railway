@@ -13,6 +13,14 @@ import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decis
 import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
 import { fetchSampleOpinionsForPrint } from '@/features/sample-handling/report-preparation/reportOpinions'
 import type { IssuedTestReportListRow } from './types'
+import { isoDate } from '@/features/masters/test-parameter/muBands'
+
+function issueDateForMu(row: IssuedTestReportListRow): string | undefined {
+  const at = row.issuedAt ?? row.nablIssuedAt ?? row.nonNablIssuedAt
+  if (!at) return undefined
+  const d = new Date(at)
+  return Number.isNaN(d.getTime()) ? undefined : isoDate(d)
+}
 
 /**
  * Loads what an issued-report print needs from current records. Used by the
@@ -34,7 +42,9 @@ export async function loadIssuedReportSources(
             (data as { test_report_draft_notes?: string | null } | null)?.test_report_draft_notes ?? '',
         )
 
-  const resultRowsPromise = fetchReportResultRowsForSample(row.id)
+  // MU bands (ISO 17025 7.6) are chosen as on the issue date, so a later band
+  // change does not alter a reprint; today when the issue time is unknown.
+  const resultRowsPromise = fetchReportResultRowsForSample(row.id, { muOnDate: issueDateForMu(row) })
   const [resultRows, coverDetails, letterheadData, printSettings, notes, rule, environmentByParameterId, opinions] = await Promise.all([
     resultRowsPromise,
     fetchTestReportCoverDetails(row.id, {

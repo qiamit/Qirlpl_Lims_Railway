@@ -7,9 +7,9 @@
  * reported_only) from 20261031100000_p3_good_practice.sql.
  *
  * Warning only: this helper never blocks the issue flow. The report issue
- * screen can call it before a NABL ULR is generated and show the result
- * (wiring into the issue flow is a separate change). Before the migration
- * is applied it returns { available: false, warnings: [] }.
+ * dialog (TestReportPreparationMasterPage) lists the result for NABL reports
+ * and asks the issuer to acknowledge it. Before the migration is applied it
+ * returns { available: false, warnings: [] }.
  */
 import { supabase } from '@/lib/supabaseClient'
 import { isMissingFunctionError } from '@/lib/missingSchema'

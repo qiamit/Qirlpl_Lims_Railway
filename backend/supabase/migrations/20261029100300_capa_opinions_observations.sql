@@ -1045,4 +1045,39 @@ COMMENT ON VIEW public.capa_register_v IS
 REVOKE ALL ON public.capa_register_v FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.capa_register_v TO authenticated, service_role;
 
+-- ---------------------------------------------------------------------------
+-- Module access (20261029100200): result attachments and the custody log
+-- belong to the sample-handling family: every sample stage screen shows them
+-- (SRF view dialog, result entry) and any sample stage editor may write, like
+-- samples itself. capa_register_v is a security_invoker view: the module
+-- access policies of its source tables apply. Skipped before 20261029100200.
+-- ---------------------------------------------------------------------------
+
+DO $$
+DECLARE
+  v_installed int;
+BEGIN
+  IF to_regclass('public.module_table_map') IS NULL
+     OR to_regprocedure('public.app_module_access_install()') IS NULL THEN
+    RETURN;
+  END IF;
+  DELETE FROM public.module_table_map WHERE source = 'seed:20261029100300';
+  INSERT INTO public.module_table_map (table_name, module_path, write_requires, read_requires, source, note)
+  SELECT t, p, w, 'view', 'seed:20261029100300', n
+  FROM unnest(ARRAY['result_attachments', 'sample_custody_log']) AS t,
+  (VALUES
+    ('/samples/receiving', 'edit', 'sample handling stages'),
+    ('/samples/allocation', 'edit', 'sample handling stages'),
+    ('/samples/test-allocation', 'edit', 'sample handling stages'),
+    ('/samples/under-testing', 'edit', 'sample handling stages'),
+    ('/samples/results-review', 'edit', 'sample handling stages'),
+    ('/samples/report-preparation', 'edit', 'sample handling stages'),
+    ('/samples/completed', 'edit', 'sample handling stages'),
+    ('/samples/retain-disposed', 'edit', 'sample handling stages')
+  ) AS v(p, w, n)
+  ON CONFLICT (table_name, module_path) DO NOTHING;
+  SELECT count(*) INTO v_installed FROM public.app_module_access_install() WHERE status = 'installed';
+  RAISE NOTICE 'module access re-installed on % tables', v_installed;
+END $$;
+
 NOTIFY pgrst, 'reload schema';

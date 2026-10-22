@@ -65,7 +65,8 @@ export async function deleteMuBand(id: string, testParameterId: string): Promise
 }
 
 // ---------------------------------------------------------------------------
-// muForResult: for the decision rule / conformity code (not wired in yet).
+// muForResult: single-result lookup. Report rows load all bands of a sample
+// once (fetchMuBands) and select with reportMuUncertainty.ts instead.
 // ---------------------------------------------------------------------------
 
 const CACHE_MS = 60_000
