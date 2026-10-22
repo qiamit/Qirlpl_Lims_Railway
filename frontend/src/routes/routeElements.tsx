@@ -84,6 +84,10 @@ const NcWorkEvaluationActionsPage = lazy(() => import('@/features/nonconforming-
 const NcWorkCorrectiveActionPage = lazy(() => import('@/features/nonconforming-work/corrective-action/NcWorkCorrectiveActionPage'))
 const ListOfObjectivesPage = lazy(() => import('@/features/general-requirements/list-of-objectives/ListOfObjectivesPage'))
 const RiskAnalysisPage = lazy(() => import('@/features/general-requirements/risk-analysis/RiskAnalysisPage'))
+const ImpartialityRiskRegisterPage = lazy(() => import('@/features/general-requirements/impartiality/ImpartialityRiskRegisterPage'))
+const ConfidentialityRecordsPage = lazy(() => import('@/features/general-requirements/confidentiality/ConfidentialityRecordsPage'))
+const DeclarationsPage = lazy(() => import('@/features/personnel/declarations/DeclarationsPage'))
+const AuditTrailPage = lazy(() => import('@/features/audit-trail/AuditTrailPage'))
 const ImprovementPage = lazy(() => import('@/features/general-requirements/improvement/ImprovementPage'))
 const ExternallySupplierListPage = lazy(() => import('@/features/externally-providers/supplier-list/ExternallySupplierListPage'))
 const SupplierEvaluationPage = lazy(() => import('@/features/externally-providers/supplier-evaluation/SupplierEvaluationPage'))
@@ -377,6 +381,22 @@ export function ListOfObjectivesRoute() {
 
 export function RiskAnalysisRoute() {
   return <RiskAnalysisPage />
+}
+
+export function ImpartialityRiskRegisterRoute() {
+  return <ImpartialityRiskRegisterPage />
+}
+
+export function ConfidentialityRecordsRoute() {
+  return <ConfidentialityRecordsPage />
+}
+
+export function DeclarationsRoute() {
+  return <DeclarationsPage />
+}
+
+export function AuditTrailRoute() {
+  return <AuditTrailPage />
 }
 
 export function ImprovementRoute() {

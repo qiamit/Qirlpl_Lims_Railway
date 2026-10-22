@@ -87,6 +87,10 @@ import {
   NcWorkCorrectiveActionRoute,
   ListOfObjectivesRoute,
   RiskAnalysisRoute,
+  ImpartialityRiskRegisterRoute,
+  ConfidentialityRecordsRoute,
+  DeclarationsRoute,
+  AuditTrailRoute,
   ImprovementRoute,
   ExternallySupplierListRoute,
   SupplierEvaluationRoute,
@@ -169,6 +173,7 @@ export default function App() {
             path="audit-mrm/management-review-meeting"
             element={<ManagementReviewMeetingRoute />}
           />
+          <Route path="audit-mrm/audit-trail" element={<AuditTrailRoute />} />
 
           {/* Personnel Management (ISO 17025 §6.2) */}
           <Route path="personnel" element={<Navigate to="/personnel/employees" replace />} />
@@ -187,6 +192,7 @@ export default function App() {
             element={<RolesResponsibilitiesRoute />}
           />
           <Route path="personnel/authorities" element={<AuthoritiesRoute />} />
+          <Route path="personnel/declarations" element={<DeclarationsRoute />} />
 
           {/* General Requirements (ISO 17025 related) */}
           <Route
@@ -198,6 +204,8 @@ export default function App() {
             element={<ListOfObjectivesRoute />}
           />
           <Route path="general-requirements/risk-analysis" element={<RiskAnalysisRoute />} />
+          <Route path="general-requirements/impartiality" element={<ImpartialityRiskRegisterRoute />} />
+          <Route path="general-requirements/confidentiality" element={<ConfidentialityRecordsRoute />} />
           <Route path="general-requirements/improvement" element={<ImprovementRoute />} />
 
           {/* Externally Providers (ISO 17025 §6.6) */}

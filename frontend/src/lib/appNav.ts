@@ -46,6 +46,8 @@ import {
   Building2,
   BadgeCheck,
   TrendingUp,
+  History,
+  Lock,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -141,6 +143,18 @@ export const NAV_SECTIONS: NavSection[] = [
             icon: TrendingUp,
             clause: '8.6',
           },
+          {
+            label: 'Impartiality Risk Register',
+            to: '/general-requirements/impartiality',
+            icon: Scale,
+            clause: '4.1',
+          },
+          {
+            label: 'Confidentiality Records',
+            to: '/general-requirements/confidentiality',
+            icon: Lock,
+            clause: '4.2',
+          },
         ],
       },
       {
@@ -184,6 +198,12 @@ export const NAV_SECTIONS: NavSection[] = [
             icon: Users,
             clause: 'mrm',
           },
+          {
+            label: 'Audit Trail',
+            to: '/audit-mrm/audit-trail',
+            icon: History,
+            clause: '7.5',
+          },
         ],
       },
       {
@@ -226,6 +246,12 @@ export const NAV_SECTIONS: NavSection[] = [
             to: '/personnel/authorities',
             icon: Shield,
             clause: '6.2',
+          },
+          {
+            label: 'Annual Declarations',
+            to: '/personnel/declarations',
+            icon: FileSignature,
+            clause: '4.1',
           },
         ],
       },
