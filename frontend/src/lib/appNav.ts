@@ -63,6 +63,7 @@ import {
   PackageCheck,
   Share2,
   ListChecks as ListChecksIcon,
+  Grid3x3 as GridIcon,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -212,6 +213,12 @@ export const NAV_SECTIONS: NavSection[] = [
             to: '/audit-mrm/management-review-meeting',
             icon: Users,
             clause: 'mrm',
+          },
+          {
+            label: 'Audit Coverage',
+            to: '/audit-mrm/audit-coverage',
+            icon: GridIcon,
+            clause: '8.8',
           },
           {
             label: 'Audit Trail',

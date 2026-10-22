@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import {
+  auditKindLabel,
   auditTypeLabel,
+  describeIndependenceConflict,
   formatDate,
   formatProposedRange,
   type AuditPlanRow,
@@ -145,6 +147,20 @@ export function AuditPlanTable({
                   </TableCell>
                   <TableCell className="align-middle text-center">
                     <span className="text-sm text-foreground">{auditTypeLabel(r.audit_type)}</span>
+                    {r.audit_kind && r.audit_kind !== 'system' ? (
+                      <p className="text-[11px] font-medium text-stone-600">
+                        {auditKindLabel(r.audit_kind)}
+                        {r.scope_discipline ? ` · ${r.scope_discipline}` : ''}
+                      </p>
+                    ) : null}
+                    {r.independence_conflicts?.length ? (
+                      <p
+                        className="text-[11px] font-semibold text-red-700"
+                        title={r.independence_conflicts.map(describeIndependenceConflict).join('\n')}
+                      >
+                        Independence: {r.independence_conflicts.length} conflict(s)
+                      </p>
+                    ) : null}
                   </TableCell>
                   <TableCell className="align-middle text-center">
                     <span className="text-sm tabular-nums text-foreground">

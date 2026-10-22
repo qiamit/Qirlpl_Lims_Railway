@@ -15,9 +15,14 @@ import { cn } from '@/lib/utils'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { supabase } from '@/lib/supabaseClient'
 import { ISO_17025_AUDIT_PLAN_CLAUSES } from '@/features/audit-mrm/audit-checklist/iso17025Clauses'
+import { fetchScopeDisciplines } from '@/features/audit-mrm/audit-coverage/coverageData'
 import {
+  AUDIT_KINDS,
   AUDIT_TYPES,
+  describeIndependenceConflict,
   emptyTeamRow,
+  teamIndependenceConflicts,
+  type AuditKind,
   type AuditPlanForm,
   type AuditTeamFormRow,
   type AuditType,
@@ -27,6 +32,25 @@ type OrgTriple = {
   division: string
   department: string
   designation: string
+}
+
+type StaffProfile = OrgTriple & {
+  id: string
+  name: string
+  active: boolean
+}
+
+const NONE = '__none__'
+
+/** Staff matching the row's auditor division / department / designation (when picked). */
+function auditorCandidates(staff: StaffProfile[], row: AuditTeamFormRow): StaffProfile[] {
+  return staff.filter(
+    (p) =>
+      (p.active || p.id === row.auditorUserId) &&
+      (!row.auditorDivision || p.division === row.auditorDivision) &&
+      (!row.auditorDepartment || p.department === row.auditorDepartment) &&
+      (!row.auditorDesignation || p.designation === row.auditorDesignation),
+  )
 }
 
 function uniqSorted(values: Iterable<string>): string[] {
@@ -298,8 +322,22 @@ export function AuditPlanForm({
   const [allDepartments, setAllDepartments] = useState<string[]>([])
   const [allDesignations, setAllDesignations] = useState<string[]>([])
   const [profiles, setProfiles] = useState<OrgTriple[]>([])
+  const [staff, setStaff] = useState<StaffProfile[]>([])
+  const [disciplines, setDisciplines] = useState<string[]>([])
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [criteriaRowKey, setCriteriaRowKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    let canceled = false
+    void fetchScopeDisciplines()
+      .then((list) => {
+        if (!canceled) setDisciplines(list)
+      })
+      .catch(() => undefined)
+    return () => {
+      canceled = true
+    }
+  }, [])
 
   useEffect(() => {
     let canceled = false
@@ -309,7 +347,7 @@ export function AuditPlanForm({
           fetchDesignationAndDepartmentLabels(),
           supabase
             .from('user_profiles')
-            .select('division, department_name, designation, status'),
+            .select('id, full_name, division, department_name, designation, status'),
         ])
         if (canceled) return
         setDivisions(labels.divisions)
@@ -326,6 +364,22 @@ export function AuditPlanForm({
           }))
           .filter((t) => t.division || t.department || t.designation)
         setProfiles(triples)
+        setStaff(
+          (Array.isArray(profileRes.data) ? profileRes.data : [])
+            .map((raw) => {
+              const r = raw as Record<string, unknown>
+              return {
+                id: String(r.id ?? ''),
+                name: String(r.full_name ?? '').trim() || String(r.id ?? ''),
+                division: String(r.division ?? '').trim(),
+                department: String(r.department_name ?? '').trim(),
+                designation: String(r.designation ?? '').trim(),
+                active: String(r.status ?? 'Active').toLowerCase() !== 'inactive',
+              }
+            })
+            .filter((p) => p.id)
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        )
         setOptionsError(null)
       } catch (err) {
         if (canceled) return
@@ -361,6 +415,18 @@ export function AuditPlanForm({
   }
 
   const criteriaEditingRow = form.teamRows.find((r) => r.key === criteriaRowKey) ?? null
+
+  const profileDeptById = useMemo(() => {
+    const m = new Map<string, { department: string; name: string }>()
+    for (const p of staff) m.set(p.id, { department: p.department, name: p.name })
+    return m
+  }, [staff])
+  const conflicts = useMemo(
+    () => teamIndependenceConflicts(form.teamRows, profileDeptById),
+    [form.teamRows, profileDeptById],
+  )
+  const conflictRows = new Set(conflicts.map((c) => c.row))
+  const disciplineOptions = ensureOption(disciplines, form.scopeDiscipline)
 
   return (
     <div className={labRegistryFormClass}>
@@ -437,6 +503,92 @@ export function AuditPlanForm({
         </div>
       </div>
 
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-2">
+          <Label htmlFor="audit-kind">Audit Kind</Label>
+          <Select value={form.auditKind} onValueChange={(v) => set('auditKind', v as AuditKind)}>
+            <SelectTrigger id="audit-kind" aria-label="Audit Kind">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AUDIT_KINDS.map((k) => (
+                <SelectItem key={k.value} value={k.value}>
+                  {k.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {form.auditKind !== 'system' ? (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="scope-discipline">NABL Scope Discipline</Label>
+              <Select
+                value={form.scopeDiscipline || NONE}
+                onValueChange={(v) => set('scopeDiscipline', v === NONE ? '' : v)}
+              >
+                <SelectTrigger id="scope-discipline" aria-label="NABL Scope Discipline">
+                  <SelectValue placeholder="Discipline" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>—</SelectItem>
+                  {disciplineOptions.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="witnessed-person">
+                {form.auditKind === 'witness' ? 'Person Witnessed (analyst / signatory)' : 'Signatory of Traced Report'}
+              </Label>
+              <Select
+                value={form.witnessedUserId || NONE}
+                onValueChange={(v) => {
+                  const id = v === NONE ? '' : v
+                  onChange({
+                    ...form,
+                    witnessedUserId: id,
+                    witnessedName: staff.find((p) => p.id === id)?.name ?? '',
+                  })
+                }}
+              >
+                <SelectTrigger id="witnessed-person" aria-label="Person witnessed">
+                  <SelectValue placeholder="Person" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>—</SelectItem>
+                  {staff
+                    .filter((p) => p.active || p.id === form.witnessedUserId)
+                    .map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                        {p.department ? ` · ${p.department}` : ''}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sample-ref">Sample / Report No. Traced</Label>
+              <Input
+                id="sample-ref"
+                value={form.sampleRef}
+                onChange={(e) => set('sampleRef', e.target.value)}
+                placeholder="e.g. sample or ULR number"
+              />
+            </div>
+          </>
+        ) : (
+          <p className="self-end text-xs text-stone-600 xl:col-span-3">
+            Vertical and witness audits record the NABL scope discipline and the person witnessed, for the
+            audit coverage page (ISO/IEC 17025 8.8).
+          </p>
+        )}
+      </div>
+
       <div className="mt-6 space-y-3">
         <div>
           <h3 className="text-sm font-semibold text-stone-900">Audit Team &amp; Criteria</h3>
@@ -446,7 +598,7 @@ export function AuditPlanForm({
         </div>
 
         <div className="overflow-x-auto border border-stone-500 bg-white">
-          <table className="min-w-[1180px] w-full border-collapse text-sm">
+          <table className="min-w-[1340px] w-full border-collapse text-sm">
             <thead>
               <tr className="bg-stone-800">
                 <th
@@ -456,7 +608,7 @@ export function AuditPlanForm({
                   Auditee
                 </th>
                 <th
-                  colSpan={3}
+                  colSpan={4}
                   className="border border-stone-700 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200"
                 >
                   Auditor
@@ -492,6 +644,9 @@ export function AuditPlanForm({
                 </th>
                 <th className="border border-stone-700 px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-amber-100/90 min-w-[130px]">
                   Designation
+                </th>
+                <th className="border border-stone-700 px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-amber-100/90 min-w-[150px]">
+                  Person
                 </th>
               </tr>
             </thead>
@@ -529,8 +684,11 @@ export function AuditPlanForm({
                 const divisionOptsAuditee = ensureOption(divisions, row.auditeeDivision)
                 const divisionOptsAuditor = ensureOption(divisions, row.auditorDivision)
 
+                const candidates = auditorCandidates(staff, row)
+                const conflict = conflictRows.has(index + 1)
+
                 return (
-                  <tr key={row.key}>
+                  <tr key={row.key} className={conflict ? 'bg-red-50' : undefined}>
                     <td className="border border-stone-400 p-1.5 align-middle">
                       <OrgSelect
                         id={`auditee-div-${row.key}`}
@@ -618,6 +776,35 @@ export function AuditPlanForm({
                       />
                     </td>
                     <td className="border border-stone-400 p-1.5 align-middle">
+                      <Select
+                        value={row.auditorUserId || NONE}
+                        onValueChange={(v) => {
+                          const id = v === NONE ? '' : v
+                          patchTeamRow(row.key, {
+                            auditorUserId: id,
+                            auditorName: staff.find((p) => p.id === id)?.name ?? '',
+                          })
+                        }}
+                      >
+                        <SelectTrigger
+                          id={`auditor-person-${row.key}`}
+                          aria-label="Auditor person"
+                          className={cn('h-8 text-xs', conflict && 'border-red-600')}
+                        >
+                          <SelectValue placeholder="Person" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>—</SelectItem>
+                          {candidates.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                              {p.department ? ` · ${p.department}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="border border-stone-400 p-1.5 align-middle">
                       <Button
                         type="button"
                         size="sm"
@@ -673,6 +860,19 @@ export function AuditPlanForm({
             </tbody>
           </table>
         </div>
+        {conflicts.length ? (
+          <div className="border-l-2 border-red-600 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
+            <p className="font-semibold">
+              Auditor independence (ISO/IEC 17025 8.8.2): an auditor should not audit their own department.
+            </p>
+            <ul className="mt-1 list-disc pl-5">
+              {conflicts.map((c) => (
+                <li key={c.row}>{describeIndependenceConflict(c)}</li>
+              ))}
+            </ul>
+            <p className="mt-1">You will be asked to confirm on save; the conflict is recorded on the plan.</p>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-stone-200 pt-4">

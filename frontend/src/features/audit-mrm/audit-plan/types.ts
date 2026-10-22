@@ -3,6 +3,17 @@ import { formatDate } from '@/lib/utils'
 
 export type AuditType = 'internal' | 'external'
 
+/** NABL: system (horizontal) audit, vertical audit (one job traced end to end), witness audit. */
+export type AuditKind = 'system' | 'vertical' | 'witness'
+
+/** Team row where the auditor is from the audited department (ISO/IEC 17025 8.8.2). */
+export type IndependenceConflict = {
+  row: number
+  auditee_department: string
+  auditor_department: string
+  auditor_name: string | null
+}
+
 /** Persisted team row in audit_plans.team_rows jsonb */
 export type AuditTeamRow = {
   auditeeDivision: string
@@ -12,6 +23,9 @@ export type AuditTeamRow = {
   auditorDepartment: string
   auditorDesignation: string
   criteriaClauseNos: string[]
+  /** Auditor person (user_profiles.id) — used for the independence check. */
+  auditorUserId?: string
+  auditorName?: string
   /** Legacy free-text (read-only migration aid; not written on new saves) */
   auditee?: string
   auditor?: string
@@ -26,6 +40,13 @@ export type AuditPlanRow = {
   audit_id: string
   next_audit_date: string
   team_rows: AuditTeamRow[]
+  /** Columns from 20261028100100_risk_scoring_audit_coverage.sql (absent before it). */
+  audit_kind?: AuditKind
+  scope_discipline?: string | null
+  witnessed_user_id?: string | null
+  witnessed_name?: string | null
+  sample_ref?: string | null
+  independence_conflicts?: IndependenceConflict[]
   created_by?: string | null
   created_at?: string
   updated_at?: string
@@ -40,6 +61,8 @@ export type AuditTeamFormRow = {
   auditorDepartment: string
   auditorDesignation: string
   criteriaClauseNos: string[]
+  auditorUserId: string
+  auditorName: string
 }
 
 export type AuditPlanForm = {
@@ -49,6 +72,70 @@ export type AuditPlanForm = {
   auditId: string
   nextAuditDate: string
   teamRows: AuditTeamFormRow[]
+  auditKind: AuditKind
+  scopeDiscipline: string
+  witnessedUserId: string
+  witnessedName: string
+  sampleRef: string
+}
+
+export const AUDIT_KINDS: Array<{ value: AuditKind; label: string }> = [
+  { value: 'system', label: 'System / horizontal' },
+  { value: 'vertical', label: 'Vertical (job traced end to end)' },
+  { value: 'witness', label: 'Witness (activity observed)' },
+]
+
+export function auditKindLabel(kind: AuditKind | string | null | undefined): string {
+  if (kind === 'vertical') return 'Vertical'
+  if (kind === 'witness') return 'Witness'
+  return 'System'
+}
+
+export function normalizeAuditKind(raw: unknown): AuditKind {
+  return raw === 'vertical' || raw === 'witness' ? raw : 'system'
+}
+
+export function normalizeIndependenceConflicts(raw: unknown): IndependenceConflict[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object')
+    .map((c) => ({
+      row: Number(c.row) || 0,
+      auditee_department: String(c.auditee_department ?? ''),
+      auditor_department: String(c.auditor_department ?? ''),
+      auditor_name: c.auditor_name == null ? null : String(c.auditor_name),
+    }))
+}
+
+/**
+ * Same rule as app_audit_team_conflicts() in the database: the auditor's
+ * department is the chosen person's profile department, else the department
+ * picked on the row; equal (case-insensitive) to the auditee department = conflict.
+ */
+export function teamIndependenceConflicts(
+  rows: Array<Pick<AuditTeamFormRow, 'auditeeDepartment' | 'auditorDepartment' | 'auditorUserId' | 'auditorName' | 'auditorDesignation'>>,
+  profileDeptById: Map<string, { department: string; name: string }>,
+): IndependenceConflict[] {
+  const out: IndependenceConflict[] = []
+  rows.forEach((r, index) => {
+    const auditee = r.auditeeDepartment.trim()
+    if (!auditee) return
+    const profile = r.auditorUserId ? profileDeptById.get(r.auditorUserId) : undefined
+    const auditorDept = profile?.department.trim() || r.auditorDepartment.trim()
+    if (auditorDept.toLowerCase() !== auditee.toLowerCase()) return
+    out.push({
+      row: index + 1,
+      auditee_department: auditee,
+      auditor_department: auditorDept,
+      auditor_name: profile?.name || r.auditorName.trim() || r.auditorDesignation.trim() || null,
+    })
+  })
+  return out
+}
+
+export function describeIndependenceConflict(c: IndependenceConflict): string {
+  const who = c.auditor_name ? `${c.auditor_name} (${c.auditor_department})` : `an auditor from ${c.auditor_department}`
+  return `Row ${c.row}: ${who} audits own department ${c.auditee_department}`
 }
 
 export const AUDIT_TYPES: Array<{ value: AuditType; label: string }> = [
@@ -70,6 +157,8 @@ export function emptyTeamRow(): AuditTeamFormRow {
     auditorDepartment: '',
     auditorDesignation: '',
     criteriaClauseNos: [],
+    auditorUserId: '',
+    auditorName: '',
   }
 }
 
@@ -81,6 +170,11 @@ export function emptyAuditPlanForm(auditId = ''): AuditPlanForm {
     auditId,
     nextAuditDate: '',
     teamRows: [emptyTeamRow()],
+    auditKind: 'system',
+    scopeDiscipline: '',
+    witnessedUserId: '',
+    witnessedName: '',
+    sampleRef: '',
   }
 }
 
@@ -112,6 +206,7 @@ function teamRowHasContent(r: AuditTeamRow): boolean {
       r.auditorDepartment ||
       r.auditorDesignation ||
       r.criteriaClauseNos.length > 0 ||
+      r.auditorUserId ||
       r.auditee ||
       r.auditor ||
       r.criteria,
@@ -131,6 +226,8 @@ export function normalizeTeamRows(raw: unknown): AuditTeamRow[] {
       auditorDepartment: String(r.auditorDepartment ?? '').trim(),
       auditorDesignation: String(r.auditorDesignation ?? '').trim(),
       criteriaClauseNos,
+      auditorUserId: String(r.auditorUserId ?? '').trim() || undefined,
+      auditorName: String(r.auditorName ?? '').trim() || undefined,
       auditee: String(r.auditee ?? '').trim() || undefined,
       auditor: String(r.auditor ?? '').trim() || undefined,
       criteria: String(r.criteria ?? '').trim() || undefined,
@@ -174,6 +271,8 @@ export function rowToForm(row: AuditPlanRow, asCopy = false, nextAuditId = ''): 
           auditorDepartment: t.auditorDepartment ?? '',
           auditorDesignation: t.auditorDesignation ?? '',
           criteriaClauseNos: [...(t.criteriaClauseNos ?? [])],
+          auditorUserId: t.auditorUserId ?? '',
+          auditorName: t.auditorName ?? '',
         }))
       : [emptyTeamRow()]
 
@@ -184,6 +283,11 @@ export function rowToForm(row: AuditPlanRow, asCopy = false, nextAuditId = ''): 
     auditId: asCopy ? nextAuditId : row.audit_id,
     nextAuditDate: (row.next_audit_date ?? '').slice(0, 10),
     teamRows: team,
+    auditKind: normalizeAuditKind(row.audit_kind),
+    scopeDiscipline: row.scope_discipline ?? '',
+    witnessedUserId: row.witnessed_user_id ?? '',
+    witnessedName: row.witnessed_name ?? '',
+    sampleRef: row.sample_ref ?? '',
   }
 }
 
@@ -197,6 +301,9 @@ export function formTeamToPayload(rows: AuditTeamFormRow[]): AuditTeamRow[] {
       auditorDepartment: r.auditorDepartment.trim(),
       auditorDesignation: r.auditorDesignation.trim(),
       criteriaClauseNos: [...r.criteriaClauseNos],
+      ...(r.auditorUserId.trim()
+        ? { auditorUserId: r.auditorUserId.trim(), auditorName: r.auditorName.trim() }
+        : {}),
     }))
     .filter(teamRowHasContent)
 }

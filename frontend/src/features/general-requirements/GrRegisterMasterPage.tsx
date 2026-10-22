@@ -57,6 +57,15 @@ export type GrFieldDef = {
   numeric?: boolean
   /** Shown read-only from the other fields and never saved (e.g. generated columns). */
   compute?: (form: Record<string, string | boolean>) => string
+  /** Select options with a label different from the stored value (e.g. user ids). */
+  optionItems?: Array<{ value: string; label: string }>
+  /** Select can be set back to blank ('' / null). */
+  clearable?: boolean
+  /**
+   * Column added by a later migration. When the database does not have it yet
+   * (PGRST204 / 42703) the save is retried without the optional fields.
+   */
+  optional?: boolean
 }
 
 export type GrColumnDef = {
@@ -91,6 +100,19 @@ export type GrRegisterConfig = {
     fieldLabel: string
     form: Record<string, string | boolean>
   }) => Promise<string>
+  /** Shown after a save that had to leave out the `optional` fields. */
+  optionalFieldsNote?: string
+}
+
+const SELECT_NONE = '__none__'
+
+/** PostgREST / Postgres: a column in the payload does not exist (yet). */
+function isMissingColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string }
+  if (e.code === 'PGRST204' || e.code === '42703') return true
+  const msg = String(e.message ?? '').toLowerCase()
+  return msg.includes('column') && (msg.includes('schema cache') || msg.includes('does not exist'))
 }
 
 function FieldControl({
@@ -115,16 +137,22 @@ function FieldControl({
       </label>
     )
   }
-  if (field.kind === 'select' && field.options) {
+  if (field.kind === 'select' && (field.options || field.optionItems)) {
+    const items = field.optionItems ?? (field.options ?? []).map((opt) => ({ value: opt, label: opt }))
+    const current = String(value ?? '')
     return (
-      <Select value={String(value)} onValueChange={(v) => onChange(v)}>
+      <Select
+        value={current === '' && field.clearable ? SELECT_NONE : current}
+        onValueChange={(v) => onChange(v === SELECT_NONE ? '' : v)}
+      >
         <SelectTrigger aria-label={field.label}>
-          <SelectValue />
+          <SelectValue placeholder="—" />
         </SelectTrigger>
         <SelectContent>
-          {field.options.map((opt) => (
-            <SelectItem key={opt} value={opt}>
-              {opt}
+          {field.clearable ? <SelectItem value={SELECT_NONE}>—</SelectItem> : null}
+          {items.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -160,7 +188,17 @@ function FieldControl({
   )
 }
 
-export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
+export function GrRegisterMasterPage({
+  config,
+  beforeTable,
+  rowFilter,
+}: {
+  config: GrRegisterConfig
+  /** Rendered above the table with all loaded rows (e.g. a heat map). */
+  beforeTable?: (rows: Array<Record<string, unknown>>) => ReactNode
+  /** Extra filter on top of the search box. */
+  rowFilter?: ((row: Record<string, unknown>) => boolean) | null
+}) {
   const showAiButtons = useShowAiButtons()
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([])
   const deletedIds = useDeletedKeys(config.tableName, config.idField, rows)
@@ -223,15 +261,16 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) =>
+    const base = rowFilter ? rows.filter(rowFilter) : rows
+    if (!q) return base
+    return base.filter((r) =>
       config.searchKeys
         .map((k) => String(r[k] ?? ''))
         .join(' ')
         .toLowerCase()
         .includes(q),
     )
-  }, [rows, search, config.searchKeys])
+  }, [rows, search, config.searchKeys, rowFilter])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize) || 1)
   const safePage = Math.min(page, pageCount)
@@ -239,7 +278,7 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
 
   useEffect(() => {
     setPage(1)
-  }, [search, pageSize])
+  }, [search, pageSize, rowFilter])
 
   const rowToForm = (row: Record<string, unknown>) => {
     const next = config.emptyForm()
@@ -263,6 +302,7 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
         payload[field.key] = text === '' ? null : Number(text)
       }
       else if (field.kind === 'date') payload[field.key] = String(v || '').trim() || null
+      else if (field.clearable) payload[field.key] = String(v ?? '').trim() || null
       else payload[field.key] = String(v ?? '').trim()
     }
     return payload
@@ -305,18 +345,27 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
       setSaveLoading(true)
       setMessage(null)
       try {
+        const write = async (payload: Record<string, unknown>) =>
+          editingId
+            ? (await supabase.from(config.tableName).update(payload).eq('id', editingId)).error
+            : (await supabase.from(config.tableName).insert(payload)).error
         const payload = formToPayload(form)
-        if (editingId) {
-          const { error: err } = await supabase
-            .from(config.tableName)
-            .update(payload)
-            .eq('id', editingId)
-          if (err) throw err
-        } else {
-          const { error: err } = await supabase.from(config.tableName).insert(payload)
-          if (err) throw err
+        let err = await write(payload)
+        let leftOut = false
+        const optionalKeys = config.fields.filter((f) => f.optional).map((f) => f.key)
+        if (err && optionalKeys.length && isMissingColumnError(err)) {
+          // Database not migrated yet: save what the old columns can hold.
+          const reduced = { ...payload }
+          for (const k of optionalKeys) delete reduced[k]
+          err = await write(reduced)
+          leftOut = !err
         }
-        setMessage('Saved successfully.')
+        if (err) throw err
+        setMessage(
+          leftOut
+            ? `Saved successfully. ${config.optionalFieldsNote ?? 'Some new fields were not saved because the database is not updated yet.'}`
+            : 'Saved successfully.',
+        )
         setShowForm(false)
         setEditingId(null)
         await load()
@@ -553,6 +602,8 @@ export function GrRegisterMasterPage({ config }: { config: GrRegisterConfig }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {beforeTable ? beforeTable(rows) : null}
 
       <div className={cn(limsPanelClass, 'min-h-0 flex-1 overflow-auto bg-[#f7f3eb]')}>
         {error ? <p className="px-3 pt-3 text-sm text-red-600">{error}</p> : null}

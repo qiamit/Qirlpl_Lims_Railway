@@ -92,6 +92,7 @@ import {
   DeclarationsRoute,
   AuditTrailRoute,
   RecycleBinRoute,
+  AuditCoverageRoute,
   DecisionRulesRoute,
   PtPlanRoute,
   PtParticipationsRoute,
@@ -193,6 +194,7 @@ export default function App() {
           />
           <Route path="audit-mrm/audit-trail" element={<AuditTrailRoute />} />
           <Route path="audit-mrm/recycle-bin" element={<RecycleBinRoute />} />
+          <Route path="audit-mrm/audit-coverage" element={<AuditCoverageRoute />} />
           <Route path="masters/decision-rules" element={<DecisionRulesRoute />} />
           <Route path="quality/pt-plan" element={<PtPlanRoute />} />
           <Route path="quality/pt-participations" element={<PtParticipationsRoute />} />
