@@ -71,6 +71,7 @@ import {
   Eye,
   KeyRound,
   LineChart,
+  Network,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -177,6 +178,12 @@ export const NAV_SECTIONS: NavSection[] = [
             to: '/general-requirements/confidentiality',
             icon: Lock,
             clause: '4.2',
+          },
+          {
+            label: 'Organisation Chart',
+            to: '/general-requirements/organisation-chart',
+            icon: Network,
+            clause: '5',
           },
         ],
       },

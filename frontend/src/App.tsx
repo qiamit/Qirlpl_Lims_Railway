@@ -3,6 +3,7 @@ import { useEnterTogglesCheckbox } from '@/hooks/useEnterTogglesCheckbox'
 import { RoutePersistence } from '@/components/routing/RoutePersistence'
 import AuthPage from '@/features/auth/AuthPage'
 import ResetPasswordPage from '@/features/auth/ResetPasswordPage'
+import ComplaintsProcessPage from '@/features/public-site/ComplaintsProcessPage'
 import PublicSiteLayout from '@/features/public-site/PublicSiteLayout'
 import PublicHomePage from '@/features/public-site/PublicHomePage'
 import NotFoundPage from '@/features/public-site/NotFoundPage'
@@ -94,6 +95,7 @@ import {
   AuditTrailRoute,
   RecycleBinRoute,
   AuditCoverageRoute,
+  OrganisationChartRoute,
   ModuleAccessEnforcementRoute,
   AuthorizationMatrixRoute,
   EmployeeDossierRoute,
@@ -143,6 +145,7 @@ export default function App() {
           <Route path="contact" element={<Navigate to="/home#contact" replace />} />
           <Route path="auth" element={<AuthPage />} />
           <Route path="auth/reset" element={<ResetPasswordPage />} />
+          <Route path="complaints-process" element={<ComplaintsProcessPage />} />
           <Route path="scope-letters/:kind" element={<ScopeLetterPage />} />
         </Route>
 
@@ -259,6 +262,7 @@ export default function App() {
           <Route path="general-requirements/risk-analysis" element={<RiskAnalysisRoute />} />
           <Route path="general-requirements/impartiality" element={<ImpartialityRiskRegisterRoute />} />
           <Route path="general-requirements/confidentiality" element={<ConfidentialityRecordsRoute />} />
+          <Route path="general-requirements/organisation-chart" element={<OrganisationChartRoute />} />
           <Route path="general-requirements/improvement" element={<ImprovementRoute />} />
 
           {/* Externally Providers (ISO 17025 §6.6) */}

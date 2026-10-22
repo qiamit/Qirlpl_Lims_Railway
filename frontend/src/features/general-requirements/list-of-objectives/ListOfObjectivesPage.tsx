@@ -3,6 +3,7 @@ import {
   type GrRegisterConfig,
 } from '../GrRegisterMasterPage'
 import { aiFillObjectiveField, type ObjectivesAiFieldKey } from './objectivesAiFill'
+import { ObjectiveKpiPanel } from './ObjectiveKpiPanel'
 
 const config: GrRegisterConfig = {
   title: 'List of Objectives',
@@ -65,5 +66,10 @@ const config: GrRegisterConfig = {
 }
 
 export default function ListOfObjectivesPage() {
-  return <GrRegisterMasterPage config={config} />
+  return (
+    <GrRegisterMasterPage
+      config={config}
+      beforeTable={(rows) => <ObjectiveKpiPanel objectives={rows} />}
+    />
+  )
 }

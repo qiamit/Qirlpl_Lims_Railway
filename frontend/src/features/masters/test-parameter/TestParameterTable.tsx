@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Calculator, Eye, Pencil } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Calculator, Eye, Layers, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { QiAssistant } from '@/components/qi-assistant/QiAssistant'
@@ -9,6 +9,8 @@ import {
   formatTestParameterLabel,
 } from './buildTestParameterAssistantContext'
 import type { AccreditationBodyRow, TestParameterRow } from './types'
+import { MuReviewBadge } from './MuBandsDialog'
+import { summarizeMuReview, type MuBand } from './muBands'
 
 const REQUIREMENT_PREVIEW_MAX = 30
 
@@ -86,6 +88,8 @@ export function TestParameterTable({
   sortKey,
   sortDir,
   onSort,
+  muBandsByParameter,
+  onOpenMuBands,
 }: {
   rows: TestParameterRow[]
   loading: boolean
@@ -100,6 +104,9 @@ export function TestParameterTable({
   sortKey: TestParameterSortKey
   sortDir: TestParameterSortDir
   onSort: (key: TestParameterSortKey) => void
+  /** MU range bands per parameter (ISO 17025 7.6); omitted until the P3 migration is applied. */
+  muBandsByParameter?: Map<string, MuBand[]>
+  onOpenMuBands?: (row: TestParameterRow) => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -263,6 +270,25 @@ export function TestParameterTable({
                         Calculate
                       </Button>
                     )}
+                    {onOpenMuBands ? (() => {
+                      const bands = muBandsByParameter?.get(r.id) ?? []
+                      const review = summarizeMuReview(bands)
+                      return (
+                        <div className="flex flex-wrap items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-stone-700 hover:bg-stone-100"
+                            title="MU by measuring range (bands)"
+                            aria-label={`MU range bands for ${r.item_name}`}
+                            onClick={() => onOpenMuBands(r)}
+                          >
+                            <Layers size={12} />
+                            {review.count > 0 ? `Bands (${review.count})` : 'Bands'}
+                          </button>
+                          <MuReviewBadge status={review.status} due={review.nextDue} />
+                        </div>
+                      )
+                    })() : null}
                   </div>
                 </TableCell>
                 <TableCell className={`${tdClass} text-xs`}>

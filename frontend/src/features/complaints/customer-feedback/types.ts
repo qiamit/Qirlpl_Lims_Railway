@@ -44,6 +44,8 @@ export type FeedbackRow = {
   evaluated_by_name: string | null
   evaluated_at: string | null
   evaluation_status: EvalStatus
+  /** 1 - 5 (20261031100000); absent before that migration. */
+  satisfaction_rating?: number | null
   created_at?: string
 }
 
@@ -65,6 +67,8 @@ export type FeedbackForm = {
   evaluatedByName: string
   evaluatedAt: string
   evaluationStatus: EvalStatus
+  /** '' or '1' - '5' */
+  satisfactionRating: string
 }
 
 export function emptyFeedbackForm(feedbackId = ''): FeedbackForm {
@@ -86,6 +90,7 @@ export function emptyFeedbackForm(feedbackId = ''): FeedbackForm {
     evaluatedByName: '',
     evaluatedAt: '',
     evaluationStatus: 'Pending',
+    satisfactionRating: '',
   }
 }
 
@@ -108,6 +113,7 @@ export function rowToForm(row: FeedbackRow): FeedbackForm {
     evaluatedByName: row.evaluated_by_name ?? '',
     evaluatedAt: fromIsoToLocalInput(row.evaluated_at),
     evaluationStatus: (row.evaluation_status as EvalStatus) || 'Pending',
+    satisfactionRating: row.satisfaction_rating == null ? '' : String(row.satisfaction_rating),
   }
 }
 
@@ -130,6 +136,8 @@ export function formToPayload(form: FeedbackForm) {
     evaluated_by_name: form.evaluatedByName.trim() || null,
     evaluated_at: toIsoOrNull(form.evaluatedAt),
     evaluation_status: form.evaluationStatus,
+    // Sent only when set, so saves work before 20261031100000 is applied.
+    ...(form.satisfactionRating ? { satisfaction_rating: Number(form.satisfactionRating) } : {}),
   }
 }
 

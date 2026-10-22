@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { isMissingColumnErr } from '@/lib/missingSchema'
 import { useDeletedKeys } from '@/lib/softDelete'
 import { escapeHtml } from '@/lib/htmlText'
 import { cn } from '@/lib/utils'
@@ -165,17 +166,19 @@ export default function CustomerFeedbackMasterPage({
       setSaveLoading(true)
       setMessage(null)
       try {
-        const payload = formToPayload(form)
-        if (editingId) {
-          const { error: err } = await supabase
-            .from('customer_feedback')
-            .update(payload)
-            .eq('id', editingId)
-          if (err) throw err
-        } else {
-          const { error: err } = await supabase.from('customer_feedback').insert(payload)
-          if (err) throw err
+        const full: Record<string, unknown> = formToPayload(form)
+        const write = (payload: Record<string, unknown>) =>
+          editingId
+            ? supabase.from('customer_feedback').update(payload).eq('id', editingId)
+            : supabase.from('customer_feedback').insert(payload)
+        let { error: err } = await write(full)
+        // satisfaction_rating needs 20261031100000; save the rest without it.
+        if (err && 'satisfaction_rating' in full && isMissingColumnErr(err)) {
+          const rest = { ...full }
+          delete rest.satisfaction_rating
+          ;({ error: err } = await write(rest))
         }
+        if (err) throw err
         setMessage('Saved successfully.')
         setShowForm(false)
         setEditingId(null)

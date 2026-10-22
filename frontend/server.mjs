@@ -24,6 +24,7 @@ const APP_PREFIXES = [
   '/general-requirements',
   '/externally-providers',
   '/complaints',
+  '/complaints-process',
   '/nonconforming-work',
   '/equipment-management',
   '/facilities',

@@ -20,6 +20,7 @@ export const PUBLIC_SECTION_LINKS: Array<{ href: string; label: string }> = [
   { href: '/home', label: 'Home' },
   { href: '/home#about', label: 'About' },
   { href: '/home#contact', label: 'Contact Us' },
+  { href: '/home#complaints', label: 'Complaints & Feedback' },
   { href: '/auth', label: 'Login' },
 ]
 
@@ -48,3 +49,5 @@ export const PUBLIC_BIS = 'Lab Code 5197006'
 export const PUBLIC_DOC_NABL_CALIBRATION = '/scope-letters/nabl-calibration'
 export const PUBLIC_DOC_NABL_TESTING = '/scope-letters/nabl-testing'
 export const PUBLIC_DOC_BIS = '/scope-letters/bis'
+/** Complaint process (ISO/IEC 17025 7.9.3): acknowledgement target shown to the public. Confirm with the QM. */
+export const PUBLIC_COMPLAINT_ACK_WORKING_DAYS = 3
