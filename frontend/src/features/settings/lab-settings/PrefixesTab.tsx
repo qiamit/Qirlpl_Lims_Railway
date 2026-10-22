@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { PrefixItem } from './types'
 import { LabSettingsPanel } from './labSettingsUi'
+import { DocumentSeriesPanel } from './DocumentSeriesPanel'
 
 type PrefixesTabProps = {
   saveMessage: string | null
@@ -160,6 +161,8 @@ export function PrefixesTab(props: PrefixesTabProps) {
             ))}
           </div>
         )}
+
+        <DocumentSeriesPanel />
       </div>
 
       <Dialog

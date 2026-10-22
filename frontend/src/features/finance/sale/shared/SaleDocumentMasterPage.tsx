@@ -41,6 +41,7 @@ import {
   rememberSaleDocumentRows,
   saveSaleDocument,
 } from './saleDocumentsApi'
+import { numberForNewDocument, peekDocumentNumber } from './documentSeriesApi'
 
 export type SaleDocumentModuleConfig = {
   title: string
@@ -192,6 +193,8 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   const [form, setForm] = useState<QuotationFormType>(() => emptyQuotationForm())
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  /** Number shown in a new form from the database series; the real one is taken on save. */
+  const [previewNumber, setPreviewNumber] = useState<string | null>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
 
   const [clientOptions, setClientOptions] = useState<FilterComboboxOption[]>([])
@@ -389,7 +392,8 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     }
   }, [config.documentKind])
 
-  const allocateNextNumber = useCallback(() => {
+  /** Browser-side fallback while the document_series migration is not applied. */
+  const nextNumberFromRows = useCallback(() => {
     const prefix = defaultNumberPrefix(config.documentKind)
     return nextQuotationNumber(
       rows.map((r) => r.quotation_number),
@@ -397,10 +401,16 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     )
   }, [config.documentKind, rows])
 
+  const previewNextNumber = useCallback(async () => {
+    const peeked = await peekDocumentNumber(config.documentKind).catch(() => null)
+    setPreviewNumber(peeked)
+    return peeked ?? nextNumberFromRows()
+  }, [config.documentKind, nextNumberFromRows])
+
   const openNew = () => {
     void (async () => {
       const [next, defaultTerm, defaultNote, defaultSign] = await Promise.all([
-        Promise.resolve(allocateNextNumber()),
+        previewNextNumber(),
         fetchDefaultQuotationTerm(config.documentKind).catch(() =>
           config.documentKind === 'quotation' ? '100 % Advance' : '',
         ),
@@ -432,11 +442,13 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   }
 
   const openCopy = (row: QuotationRow) => {
-    const next = allocateNextNumber()
-    setEditingId(null)
-    setForm(rowToForm(row, true, next))
-    setSaveMessage(null)
-    setShowForm(true)
+    void (async () => {
+      const next = await previewNextNumber()
+      setEditingId(null)
+      setForm(rowToForm(row, true, next))
+      setSaveMessage(null)
+      setShowForm(true)
+    })()
   }
 
   const handleSave = () => {
@@ -460,7 +472,16 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     setSaveMessage(null)
     void (async () => {
       try {
-        const stored = formToStoredRow(form, editingId, {
+        let toStore = form
+        if (!editingId) {
+          const assigned = await numberForNewDocument(config.documentKind, form.quotationNumber, previewNumber)
+          setPreviewNumber(null)
+          if (assigned !== form.quotationNumber.trim()) {
+            toStore = { ...form, quotationNumber: assigned }
+            setForm(toStore)
+          }
+        }
+        const stored = formToStoredRow(toStore, editingId, {
           paymentReceipt: isPaymentReceipt,
         })
         const previous = editingId ? rows.find((row) => row.id === editingId) : undefined

@@ -28,6 +28,11 @@ import {
   type QuotationStatus,
 } from './types'
 import { fetchQuotationPrefix } from './quotationNumberPrefix'
+import {
+  allocateDocumentNumber,
+  numberForNewDocument,
+  peekDocumentNumber,
+} from '../shared/documentSeriesApi'
 import { fetchDefaultQuotationTerm } from './quotationTermsApi'
 import { fetchDefaultQuotationNote } from './quotationNotesApi'
 import { downloadQuotationPdfWithTemplate, printQuotationsWithTemplate } from './outputQuotationDocument'
@@ -119,6 +124,8 @@ export default function QuotationMasterPage() {
   const [form, setForm] = useState<QuotationFormType>(() => emptyQuotationForm())
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  /** Number shown in a new form from the database series; the real one is taken on save. */
+  const [previewNumber, setPreviewNumber] = useState<string | null>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
 
   const [clientOptions, setClientOptions] = useState<FilterComboboxOption[]>([])
@@ -368,7 +375,8 @@ export default function QuotationMasterPage() {
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, safePage, pageSize])
 
-  const allocateNextQuotationNumber = async () => {
+  /** Browser-side fallback while the document_series migration is not applied. */
+  const nextQuotationNumberFromRows = async () => {
     const prefix = await fetchQuotationPrefix()
     const { data, error } = await supabase.from('quotations').select('quotation_number')
     if (error) throw error
@@ -378,10 +386,16 @@ export default function QuotationMasterPage() {
     return nextQuotationNumber(numbers, prefix)
   }
 
+  const previewNextQuotationNumber = async () => {
+    const peeked = await peekDocumentNumber('quotation').catch(() => null)
+    setPreviewNumber(peeked)
+    return peeked ?? nextQuotationNumberFromRows()
+  }
+
   const openNew = () => {
     void (async () => {
       const [next, defaultTerm, defaultNote, defaultSign] = await Promise.all([
-        allocateNextQuotationNumber(),
+        previewNextQuotationNumber(),
         fetchDefaultQuotationTerm('quotation').catch(() => '100 % Advance'),
         fetchDefaultQuotationNote('quotation').catch(() => ''),
         fetchDefaultSignatureForKind('quotation').catch(() => ({
@@ -411,7 +425,7 @@ export default function QuotationMasterPage() {
 
   const openCopy = (row: QuotationRow) => {
     void (async () => {
-      const next = await allocateNextQuotationNumber()
+      const next = await previewNextQuotationNumber()
       setEditingId(null)
       setForm(rowToForm(row, true, next))
       setSaveMessage(null)
@@ -464,6 +478,12 @@ export default function QuotationMasterPage() {
           .eq('quotation_id', editingId)
         if (delErr) throw delErr
       } else {
+        const assigned = await numberForNewDocument('quotation', payload.quotation_number, previewNumber)
+        if (assigned !== payload.quotation_number) {
+          payload.quotation_number = assigned
+          setForm((prev) => ({ ...prev, quotationNumber: assigned }))
+        }
+        setPreviewNumber(null)
         const wanted = payload.quotation_number
         const { data: clash, error: clashErr } = await supabase
           .from('quotations')
@@ -472,7 +492,7 @@ export default function QuotationMasterPage() {
           .limit(1)
         if (clashErr) throw clashErr
         if (Array.isArray(clash) && clash.length > 0) {
-          const next = await allocateNextQuotationNumber()
+          const next = (await allocateDocumentNumber('quotation')) ?? (await nextQuotationNumberFromRows())
           payload.quotation_number = next
           setForm((prev) => ({ ...prev, quotationNumber: next }))
         }
