@@ -131,6 +131,33 @@ Staging URLs: frontend `https://frontend-staging-1898.up.railway.app`, API `http
 | Clean-up | The temporary copy service (which held production credentials) is deleted |
 | Production | No deployment after 22 Oct, bucket still 453 objects, services unchanged |
 
-Staging auth, rest, storage and frontend all respond. Next: step D (apply the 37 migrations on staging), which needs approval.
+Staging auth, rest, storage and frontend all respond.
+
+**D. Done (with findings).** All 37 migrations applied to staging in the planned order, one transaction each, in six groups (1–3, 4–10, 11–19, 20–27, 28–33, 34–37), each group followed by checks. None failed.
+
+| Check | Result |
+|---|---|
+| Data | Unchanged after every group: samples 335, clients 146, staff logins 27, files 385, equipment 489 |
+| RLS | On for every public table (`schema_migrations` was the only table with RLS off; migration 1 turned it on) |
+| `anon` | Had INSERT/UPDATE/DELETE/TRUNCATE grants on 71 tables before; none after migration 1 |
+| SECURITY DEFINER functions without `search_path` | None |
+| Invalid indexes | None |
+| Equipment (migration 22) | No open breakdowns, so no equipment changed status |
+| Module access (migration 26) | Mode `log`; nothing is blocked |
+| Finance backfill (migration 30) | 0 documents copied (production has no sale documents yet) |
+| Report numbers (migration 35) | 8 report numbers are on two samples each (for example QI/REP/20260179A on SR260611/76-005S and SR260716/107-001), so the unique index was skipped and no number was changed. These need a decision before go-live |
+| Re-run | Running all 37 a second and third time succeeded. The second run added a restrictive known-staff policy to 8 internal tables (soft_delete_tables, auth_events, finance_backfill_log and module-access tables); the third run changed nothing |
+| App | 104 menu pages opened as the Laboratory Director (nothing saved): 401 API calls, no page crashed. Only error: `rpc/app_deleted_keys` returns 400 on 18 pages (see below) |
+| Production | Not changed; one read-only catalog query (below) |
+
+**Finding: production schema has drifted from the repository.** A read-only query on production shows 1 unique constraint and 7 unique indexes in `public`, while the migrations in the repository create unique keys on business numbers (for example `equipment_master.asset_code`, `customer_complaints.complaint_id`, `nc_work_records.nc_id`, `mrm_plans.plan_code`, `gr_objectives.objective_id`). Production has none of these. The staging copy matches production, so the restore was faithful. Effects, all present in production today:
+
+1. Seven saves use an upsert on a column without a unique key and fail with error 42P10 ("no unique or exclusion constraint matching the ON CONFLICT specification"): new client (`clients.company_name`), equipment and IQC bulk save (`asset_code`), calibration SRF (`srf_number`), management documents (`level, doc_number`), products and services (`item_code`), audit NC action (`checklist_item_id`).
+2. Nothing stops two records getting the same asset code, complaint ID, NC ID, SRF number or plan code.
+3. Soft delete's "numbers of deleted records are not reused" guard (`app_deleted_keys`) refuses columns without a unique key, so on 18 pages it returns 400 and the app falls back to visible rows only.
+
+Fix (not yet done): a reconciliation migration that lists duplicates per key and adds each missing unique key only where the data has none, run on staging first.
+
+Next: decide on the 8 duplicate report numbers and the schema drift fix, then step E (testing with each role).
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
