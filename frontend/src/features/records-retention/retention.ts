@@ -7,6 +7,9 @@
 import { csvCell } from '@/lib/csv'
 import { supabase } from '@/lib/supabaseClient'
 
+/** Lab policy (Amit, 23 Oct 2026): every record is kept for at least 3 years. */
+export const MIN_RETENTION_YEARS = 3
+
 export type RetentionRule = {
   id: string
   rule_key: string | null

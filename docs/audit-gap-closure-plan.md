@@ -154,3 +154,17 @@ Every migration is idempotent and the frontend works before and after each one, 
 - PDFs of re-printed test reports without an archived copy keep the
   "Regenerated from current records" note, including when emailed to customers.
 - Finish all stages first, then test everything together before anything goes to production.
+
+## Decisions (Amit, 23 Oct 2026)
+
+- SAC code for testing and calibration services: **9983**.
+- Cancelled finance documents keep their number (cancel, never delete or reuse).
+- Rounding follows **IS 2:1960** (round half to even; keep the declared decimals).
+- The lab does not sample today; the sampling module is built but switched off
+  (Lab Settings → sampling in use) until needed. Until then the Quality Manual
+  states the exclusion of 7.3.
+- Every record is retained for **at least 3 years** (enforced in the retention
+  schedule; the seeded rules are 6–8 years).
+- Complaints are acknowledged within **5 working days** (public complaints page).
+- Plan a Railway staging copy for full testing before production
+  (`docs/staging-plan.md`).

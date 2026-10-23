@@ -22,6 +22,7 @@ import {
   fetchRetentionRules,
   formatYears,
   isRetentionMissingError,
+  MIN_RETENTION_YEARS,
   retentionCsv,
   retentionErrorText,
   updateRetentionRule,
@@ -127,8 +128,8 @@ export default function RetentionSchedulePage() {
   const save = async () => {
     if (!editing || !form) return
     const years = Number(form.years)
-    if (!Number.isFinite(years) || years <= 0 || years > 100) {
-      setFormError('Retention must be more than 0 and at most 100 years (decimals allowed, e.g. 0.5).')
+    if (!Number.isFinite(years) || years < MIN_RETENTION_YEARS || years > 100) {
+      setFormError(`Retention must be at least ${MIN_RETENTION_YEARS} years (lab policy) and at most 100 years.`)
       return
     }
     setSaving(true)
@@ -377,7 +378,7 @@ export default function RetentionSchedulePage() {
                     id="ret-years"
                     type="number"
                     step="0.5"
-                    min={0.5}
+                    min={MIN_RETENTION_YEARS}
                     max={100}
                     className={limsFieldClass}
                     value={form.years}
