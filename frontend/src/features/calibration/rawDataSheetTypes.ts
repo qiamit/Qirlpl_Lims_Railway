@@ -7,6 +7,7 @@ import {
   masterPointsFormulaRefValues,
   type MasterFormulaRefSource,
 } from './masterEquipmentFormulaRefs'
+import { is2RoundFixed } from '@/lib/is2Rounding'
 import { evaluateSafeExpression } from '@/lib/safeExpression'
 
 export type RawDataColumnType = 'text' | 'number' | 'formula'
@@ -1806,7 +1807,11 @@ export function formatPlusMinusPairDisplay(value: string): string {
   return `${m[1]}±${m[2]}`
 }
 
-/** Round a formula result to the column's Decimals setting (numbers and numeric strings / ± pairs). */
+/**
+ * Round a formula result to the column's Decimals setting (numbers and numeric
+ * strings / ± pairs) by IS 2:1960: decimal (not binary) rounding, exact half to
+ * the even digit, declared decimals kept (lab decision 23 Oct 2026).
+ */
 export function formatFormulaOutput(result: number | string, decimals: number): string {
   const dp =
     Number.isFinite(decimals) && decimals >= 0 && decimals <= 12
@@ -1815,7 +1820,7 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
 
   if (typeof result === 'number') {
     if (!Number.isFinite(result)) return ''
-    return result.toFixed(dp)
+    return is2RoundFixed(result, dp)
   }
 
   const t = String(result ?? '').trim()
@@ -1825,7 +1830,7 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
     t,
   )
   if (pm) {
-    return `${Number(pm[1]).toFixed(dp)}±${Number(pm[2]).toFixed(dp)}`
+    return `${is2RoundFixed(pm[1]!, dp)}±${is2RoundFixed(pm[2]!, dp)}`
   }
 
   const withPm = formatPlusMinusPairDisplay(t)
@@ -1833,13 +1838,13 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
 
   const asNum = Number(t)
   if (Number.isFinite(asNum) && /^-?\d/.test(t) && !/[^\d.eE+-]/.test(t)) {
-    return asNum.toFixed(dp)
+    return is2RoundFixed(t, dp) || is2RoundFixed(asNum, dp)
   }
 
   // Mixed text + numbers (e.g. `0.123456 °C`): round each numeric token.
   return t.replace(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, (m) => {
     const x = Number(m)
-    return Number.isFinite(x) ? x.toFixed(dp) : m
+    return Number.isFinite(x) ? is2RoundFixed(m, dp) || is2RoundFixed(x, dp) : m
   })
 }
 
@@ -2808,7 +2813,7 @@ function columnLabelForKey(
 
 function formatStepNumber(n: number, decimalPlaces: number): string {
   if (!Number.isFinite(n)) return String(n)
-  return n.toFixed(decimalPlaces)
+  return is2RoundFixed(n, decimalPlaces)
 }
 
 /** Calculation-step display values always use 2 decimal places. */

@@ -111,6 +111,7 @@ import {
   type SrfDueDatePolicy,
 } from './srfDueDatePolicy'
 import { applyCertificateConformityNote, fetchSrfConformityPolicy } from './srfConformityPolicy'
+import { is2RoundCompact, is2RoundFixed } from '@/lib/is2Rounding'
 
 /** Wait until certificate letterhead / footer images inside host are decoded. */
 async function waitForCertificateImagesReady(
@@ -160,7 +161,7 @@ function formatCertEnvNumber(raw: string | null | undefined): string {
   if (!t) return ''
   const n = Number.parseFloat(t.replace(/,/g, ''))
   if (!Number.isFinite(n)) return t
-  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+  return Number.isInteger(n) ? String(n) : is2RoundFixed(n, 2)
 }
 
 function NablScopeQrMark({
@@ -531,7 +532,8 @@ function formatCertRawCell(value: string | null | undefined): string {
   if (!/^-?\d+(\.\d+)?$/.test(normalized)) return t
   const n = Number.parseFloat(normalized)
   if (!Number.isFinite(n)) return t
-  return n.toFixed(2)
+  // IS 2:1960 rounding of the written value (exact half to the even digit).
+  return is2RoundFixed(normalized, 2)
 }
 
 function parseNumericMagnitude(raw: string | null | undefined): number | null {
@@ -550,7 +552,7 @@ function parseNumericMagnitude(raw: string | null | undefined): number | null {
 }
 
 function formatMagnitudeDisplay(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+  return Number.isInteger(n) ? String(n) : is2RoundFixed(n, 2)
 }
 
 /** Parse instrument max capacity from strings like "0 - 1000 kN" or "1000 kN". */
@@ -1752,8 +1754,7 @@ export function CertificateDraftDialog({
       /\b(kN|kn|N|kgf|kg|MPa|psi|bar|ton|t)\b/i,
     )
     const unit = unitMatch ? unitMatch[1]!.replace(/^kn$/i, 'kN') : 'kN'
-    const fmt = (n: number) =>
-      Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)))
+    const fmt = (n: number) => (Number.isInteger(n) ? String(n) : is2RoundCompact(n, 2))
     return `Range = ${fmt(min)} ${unit} - ${fmt(max)} ${unit}`
   }, [loadColumn, rows])
 

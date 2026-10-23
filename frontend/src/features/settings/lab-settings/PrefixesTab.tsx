@@ -24,6 +24,27 @@ import { cn } from '@/lib/utils'
 import type { PrefixItem } from './types'
 import { LabSettingsPanel } from './labSettingsUi'
 import { DocumentSeriesPanel } from './DocumentSeriesPanel'
+import {
+  TEST_REPORT_MIN_SERIAL_DIGITS,
+  TEST_REPORT_TOTAL_LENGTH,
+  testReportSerialDigitsForPrefix,
+} from '@/features/sample-handling/report-preparation/formattedTestReportNumber'
+import { pickTestReportPrefixFromRows } from '@/features/sample-handling/report-preparation/testReportNumberPrefix'
+
+/** Hint under the Test Report prefix when it leaves too few serial digits in the report number. */
+function ReportPrefixSerialHint({ prefix }: { prefix: string }) {
+  const digits = testReportSerialDigitsForPrefix(prefix)
+  if (digits >= TEST_REPORT_MIN_SERIAL_DIGITS) return null
+  const maxPrefix = TEST_REPORT_TOTAL_LENGTH - 1 - TEST_REPORT_MIN_SERIAL_DIGITS
+  return (
+    <p role="status" className="border border-amber-500 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+      This report prefix leaves {Math.max(0, digits)} serial digit{digits === 1 ? '' : 's'} in the{' '}
+      {TEST_REPORT_TOTAL_LENGTH}-character report number. Report numbers will grow longer than{' '}
+      {TEST_REPORT_TOTAL_LENGTH} characters once the serial needs more digits. Keep the prefix to {maxPrefix}{' '}
+      characters or fewer (letters, digits and /).
+    </p>
+  )
+}
 
 type PrefixesTabProps = {
   saveMessage: string | null
@@ -47,6 +68,7 @@ type PrefixesTabProps = {
 }
 
 export function PrefixesTab(props: PrefixesTabProps) {
+  const reportPrefix = pickTestReportPrefixFromRows(props.prefixes)
   return (
     <LabSettingsPanel>
       <div className="space-y-4">
@@ -157,6 +179,9 @@ export function PrefixesTab(props: PrefixesTabProps) {
                   }
                   placeholder="Enter Prefix"
                 />
+                {reportPrefix !== null && p.prefix.trim() === reportPrefix ? (
+                  <ReportPrefixSerialHint prefix={p.prefix} />
+                ) : null}
               </div>
             ))}
           </div>

@@ -75,7 +75,7 @@ function readAppVersion() {
     // Uncommitted edits in the files under test: the evidence then belongs to
     // the working copy, not to the commit.
     uncommittedChangesInTestedFiles: dirtyList
-      ? dirtyList.split('\n').map((l) => l.slice(3).trim()).filter(Boolean)
+      ? dirtyList.split('\n').map((l) => l.replace(/^\s*\S{1,2}\s+/, '').trim()).filter(Boolean)
       : [],
   }
 }

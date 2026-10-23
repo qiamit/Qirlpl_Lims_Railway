@@ -40,7 +40,7 @@ import {
   buildComposedReported,
   computeCompareResult,
   computeTestResultStats,
-  formatNumber,
+  formatReadingForInput,
   formatStatDisplay,
   formatTestResultDisplay,
   formatTestResultForTable,
@@ -103,7 +103,7 @@ export function TestResultsEntryCell({
         structured.entries.length > 0
           ? structured.entries.map((e) => ({
               label: e.label ?? '',
-              value: formatNumber(e.value),
+              value: formatReadingForInput(e.value),
               unit: e.unit ?? defaultUnit,
             }))
           : [emptyReadingRow(defaultUnit)],
@@ -127,7 +127,7 @@ export function TestResultsEntryCell({
       legacy.entries.length > 0
         ? legacy.entries.map((e) => ({
             label: e.label ?? '',
-            value: formatNumber(e.value),
+            value: formatReadingForInput(e.value),
             unit: e.unit ?? defaultUnit,
           }))
         : [emptyReadingRow(defaultUnit)],

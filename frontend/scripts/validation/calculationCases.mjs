@@ -19,7 +19,15 @@
  *             can be removed. Any other answer is a FAIL.
  *
  * Module handles (see run-calculation-validation.mjs):
- *   m.mu, m.rds, m.point, m.testResult, m.conformity, m.ulr, m.reportNo, m.series
+ *   m.mu, m.rds, m.point, m.testResult, m.conformity, m.ulr, m.reportNo, m.series, m.is2
+ *
+ * Rounding (lab decision, Amit, 23 Oct 2026): reported values are rounded by
+ * IS 2:1960 "Rules for rounding off numerical values" — the digits dropped are
+ * judged as written in decimal; more than half a unit rounds up, less leaves
+ * the kept digit; exactly half (a 5 followed by nothing or zeros) rounds to the
+ * even digit; negative values round by magnitude. The rounded value keeps its
+ * declared number of decimals (10.2 to 2 decimals is 10.20). The same half-even
+ * rule is ISO 80000-1:2009 Annex B rule B.
  */
 
 export const MODULE_FILES = {
@@ -31,6 +39,7 @@ export const MODULE_FILES = {
   ulr: 'src/features/sample-handling/report-preparation/nablUlrNumber.ts',
   reportNo: 'src/features/sample-handling/report-preparation/formattedTestReportNumber.ts',
   series: 'src/features/finance/sale/shared/documentSeriesApi.ts',
+  is2: 'src/lib/is2Rounding.ts',
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +58,7 @@ export const MODULE_FILES = {
 // The sheet rounds every calculated column to its decimals before the next
 // column uses it (as on the printed MU sheet), so the figures above use the
 // rounded intermediate values; the unrounded chain gives the same results.
+// None of the dropped parts is exactly half, so IS 2 and half-up agree here.
 // ---------------------------------------------------------------------------
 
 function formulaCol(key, expression, decimals) {
@@ -158,23 +168,20 @@ export const CASES = [
   {
     id: 'MU-05',
     module: 'rds',
-    title: 'Formula column rounds to its decimals (raw data sheet / certificate figures)',
-    source: 'Hand rounding: 2/3 = 0.6667 (4 dp); 10.0 − 9.9875 = 0.0125 → 0.013 (3 dp, exact half rounds up)',
-    run: (m) => [
-      m.rds.computeFormulaValue(formulaCol('x', '=2/3', 4), {}, 2),
-      m.rds.computeFormulaValue(formulaCol('e', '=[A]-[B]', 3), { A: '10.0', B: '9.9875' }, 2, [
-        numberCol('A'),
-        numberCol('B'),
-        formulaCol('e', '=[A]-[B]', 3),
-      ]),
-    ],
-    expected: ['0.6667', '0.013'],
-    known: {
-      knownActual: ['0.6667', '0.012'],
-      note:
-        '10.0 − 9.9875 is 0.012499999… in binary floating point, so toFixed(3) gives 0.012 instead of 0.013. ' +
-        'Results that land exactly on a rounding half can be one step low. Decide whether to round with a decimal method.',
+    title: 'Formula column rounds to its decimals by IS 2 (raw data sheet / certificate figures)',
+    source:
+      'IS 2:1960, hand rounding: 2/3 = 0.6667 (4 dp); 10.0 − 9.9875 = 0.0125 → 0.012 (exact half, 2 is even); ' +
+      '5 − 4.9865 = 0.0135 → 0.014 (exact half, 3 is odd; binary 0.01349999… must not give 0.013)',
+    run: (m) => {
+      const diff = (a, b) =>
+        m.rds.computeFormulaValue(formulaCol('e', '=[A]-[B]', 3), { A: a, B: b }, 2, [
+          numberCol('A'),
+          numberCol('B'),
+          formulaCol('e', '=[A]-[B]', 3),
+        ])
+      return [m.rds.computeFormulaValue(formulaCol('x', '=2/3', 4), {}, 2), diff('10.0', '9.9875'), diff('5', '4.9865')]
     },
+    expected: ['0.6667', '0.012', '0.014'],
   },
 
   // ------------------------------------------------------------- calibration point formula
@@ -238,25 +245,25 @@ export const CASES = [
   {
     id: 'TR-02',
     module: 'testResult',
-    title: 'Reported statistic text: mean (2 dp), CV (2 dp)',
-    source: 'Hand: 10.2 → "10.2"; 0.980392 % → "0.98%"',
+    title: 'Reported statistic text: mean (2 dp), CV (2 dp), declared decimals kept',
+    source: 'Hand, IS 2:1960 (declared decimals kept): 10.2 → "10.20"; 0.980392 % → "0.98%"',
     run: (m) => {
       const s = m.testResult.computeTestResultStats([10.1, 10.3, 10.2])
       return [m.testResult.formatStatDisplay(s, 'average', 2), m.testResult.formatStatDisplay(s, 'cv', 2)]
     },
-    expected: ['10.2', '0.98%'],
+    expected: ['10.20', '0.98%'],
   },
   {
     id: 'TR-03',
     module: 'testResult',
     title: 'Compare actions: ratio 45/50, |12.34 − 12.5|, divide by zero',
-    source: 'Hand: 90 %; 0.16; division by zero shows "—"',
+    source: 'Hand, 2 declared decimals: 90.00 %; 0.16; division by zero shows "—"',
     run: (m) => [
       m.testResult.computeCompareResult('ratio', 45, 50, 2),
       m.testResult.computeCompareResult('difference', 12.34, 12.5, 2),
       m.testResult.computeCompareResult('divide', 5, 0, 2),
     ],
-    expected: ['90%', '0.16', '—'],
+    expected: ['90.00%', '0.16', '—'],
   },
   {
     id: 'TR-04',
@@ -270,41 +277,27 @@ export const CASES = [
     id: 'TR-05',
     module: 'testResult',
     title: 'Rounding to 2 dp keeps the declared decimals (10.20, not 10.2)',
-    source: 'IS 2:2022 / ISO 80000-1 Annex B: the rounded value keeps the stated number of decimals',
+    source: 'IS 2:1960 and lab decision 23 Oct 2026: the rounded value keeps its declared decimals (trailing zeros are significant)',
     run: (m) => m.testResult.formatNumber(10.2, 2),
     expected: '10.20',
-    known: {
-      knownActual: '10.2',
-      note:
-        'formatNumber() drops trailing zeros, so a result rounded to 2 decimals prints as 10.2. ' +
-        'Decide whether reports must show the declared number of decimals.',
-    },
   },
   {
     id: 'TR-06',
     module: 'testResult',
-    title: 'Rounding of an exact half: 2.5 to 0 dp',
-    source: 'IS 2:2022 rule (round half to even): 2.5 → 2',
-    run: (m) => m.testResult.formatNumber(2.5, 0),
-    expected: '2',
-    known: {
-      knownActual: '3',
-      note: 'The app rounds an exact half up (2.5 → 3); IS 2 rounds to the even digit (2.5 → 2, 3.5 → 4). Lab policy to decide.',
-    },
+    title: 'Rounding of an exact half: 2.5 and 3.5 to 0 dp',
+    source: 'IS 2:1960 (exact half to the even digit): 2.5 → 2, 3.5 → 4',
+    run: (m) => [m.testResult.formatNumber(2.5, 0), m.testResult.formatNumber(3.5, 0)],
+    expected: ['2', '4'],
   },
   {
     id: 'TR-07',
     module: 'testResult',
     title: 'Rounding 1.015 and 2.675 to 2 dp',
-    source: 'Hand (half-up and IS 2 agree here): 1.015 → 1.02; 2.675 → 2.68',
+    source:
+      'IS 2:1960 on the written value (exact half, kept digit odd → up): 1.015 → 1.02; 2.675 → 2.68. ' +
+      'Binary floating point stores them as 1.01499999… and 2.67499999…, which must not round down',
     run: (m) => [m.testResult.formatNumber(1.015, 2), m.testResult.formatNumber(2.675, 2)],
     expected: ['1.02', '2.68'],
-    known: {
-      knownActual: ['1.01', '2.67'],
-      note:
-        'Binary floating point stores 1.015 as 1.01499999…, so toFixed() rounds down. ' +
-        'Values written with a trailing 5 can be reported one step low.',
-    },
   },
   {
     id: 'TR-08',
@@ -506,20 +499,112 @@ export const CASES = [
   {
     id: 'RN-03',
     module: 'reportNo',
-    title: 'Serial capacity: a 14-character prefix leaves one digit, serials 9 and 10 must differ',
-    source: 'Requirement URS-RPT-03: report numbers are never repeated',
+    title: 'Serial capacity: a 14-character prefix leaves one digit; serial 19 grows the number, never cut to 9',
+    source:
+      'Requirement URS-RPT-03 (report numbers are never repeated): QIRLPL/TR/2026 + 9 + A; + 19 + A (17 characters); ' +
+      'serial read back, amendment letter added after the scope letter',
     run: (m) => {
-      const a = m.reportNo.formatTestReportNumber('QIRLPL/TR/2026', 9)
-      const b = m.reportNo.formatTestReportNumber('QIRLPL/TR/2026', 19)
-      return a !== b
+      const p = 'QIRLPL/TR/2026'
+      const a = m.reportNo.formatTestReportNumber(p, 9)
+      const b = m.reportNo.formatTestReportNumber(p, 19)
+      return {
+        a,
+        b,
+        differ: a !== b,
+        serialB: m.reportNo.parseTestReportSequence(b, p),
+        amendedB: m.reportNo.withReceivingReportTypeSuffix(b, 'Amendment Report'),
+        nonNablB: m.reportNo.toReportNumberForScope(b, 'non_nabl'),
+      }
     },
-    expected: true,
-    known: {
-      knownActual: false,
-      note:
-        'With a prefix of 14 characters only 1 serial digit is left and serial 19 prints like serial 9 (QIRLPL/TR/20269A). ' +
-        'No unique index on samples.test_report_number was found. Keep the report-number prefix to 9–10 characters.',
+    expected: {
+      a: 'QIRLPL/TR/20269A',
+      b: 'QIRLPL/TR/202619A',
+      differ: true,
+      serialB: 19,
+      amendedB: 'QIRLPL/TR/202619AA',
+      nonNablB: 'QIRLPL/TR/202619B',
     },
+  },
+
+  // ------------------------------------------------------------- IS 2 rounding (src/lib/is2Rounding.ts)
+  {
+    id: 'IS-01',
+    module: 'is2',
+    title: 'Exact half rounds to the even digit: 2.25 → 2.2, 2.35 → 2.4, 2.45 → 2.4 (1 dp)',
+    source: 'IS 2:1960: dropped digit exactly 5 → kept digit made even',
+    run: (m) => [m.is2.is2RoundFixed(2.25, 1), m.is2.is2RoundFixed(2.35, 1), m.is2.is2RoundFixed(2.45, 1)],
+    expected: ['2.2', '2.4', '2.4'],
+  },
+  {
+    id: 'IS-02',
+    module: 'is2',
+    title: 'More / less than half: 2.251 → 2.3, 2.249 → 2.2, 2.2500001 → 2.3 (1 dp)',
+    source: 'IS 2:1960: a 5 followed by any non-zero digit is more than half → round up',
+    run: (m) => [m.is2.is2RoundFixed(2.251, 1), m.is2.is2RoundFixed(2.249, 1), m.is2.is2RoundFixed('2.2500001', 1)],
+    expected: ['2.3', '2.2', '2.3'],
+  },
+  {
+    id: 'IS-03',
+    module: 'is2',
+    title: 'Written halves are not spoilt by binary floating point: 1.015, 8.335, 8.345 (2 dp); 0.0125 (3 dp)',
+    source: 'IS 2:1960 on the decimal value: 1.015 → 1.02; 8.335 → 8.34; 8.345 → 8.34; 0.0125 → 0.012',
+    run: (m) => [
+      m.is2.is2RoundFixed(1.015, 2),
+      m.is2.is2RoundFixed(8.335, 2),
+      m.is2.is2RoundFixed(8.345, 2),
+      m.is2.is2RoundFixed(0.0125, 3),
+    ],
+    expected: ['1.02', '8.34', '8.34', '0.012'],
+  },
+  {
+    id: 'IS-04',
+    module: 'is2',
+    title: 'Negative values round by magnitude: −2.25 → −2.2, −2.35 → −2.4; −0.004 (2 dp) → 0.00',
+    source: 'IS 2:1960 applied to the magnitude; a result of zero carries no sign',
+    run: (m) => [m.is2.is2RoundFixed(-2.25, 1), m.is2.is2RoundFixed(-2.35, 1), m.is2.is2RoundFixed(-0.004, 2)],
+    expected: ['-2.2', '-2.4', '0.00'],
+  },
+  {
+    id: 'IS-05',
+    module: 'is2',
+    title: 'Declared decimals kept: 10.2 → "10.20", 9.995 → "10.00", 5 → "5.000", "10.20" → "10.20"',
+    source: 'Lab decision 23 Oct 2026: trailing zeros are significant; 9.995 is an exact half, 9 odd → up',
+    run: (m) => [
+      m.is2.is2RoundFixed(10.2, 2),
+      m.is2.is2RoundFixed(9.995, 2),
+      m.is2.is2RoundFixed(5, 3),
+      m.is2.is2RoundFixed('10.20', 2),
+    ],
+    expected: ['10.20', '10.00', '5.000', '10.20'],
+  },
+  {
+    id: 'IS-06',
+    module: 'is2',
+    title: 'Rounding to an interval: 2.25 and 2.75 to 0.5; 12.5 and 17.5 to 5',
+    source: 'IS 2:1960: nearest multiple, the even multiple when exactly half way (2.0, 3.0, 10, 20)',
+    run: (m) => [
+      m.is2.is2RoundToInterval(2.25, 0.5),
+      m.is2.is2RoundToInterval(2.75, 0.5),
+      m.is2.is2RoundToInterval(12.5, 5),
+      m.is2.is2RoundToInterval(17.5, 5),
+    ],
+    expected: ['2.0', '3.0', '10', '20'],
+  },
+  {
+    id: 'IS-07',
+    module: 'rds',
+    title: 'Raw data sheet output text: "0.125" and "1.35±0.025" to 2 dp',
+    source: 'IS 2:1960: 0.125 → 0.12 (2 even); 0.025 → 0.02 (2 even); 1.35 kept',
+    run: (m) => [m.rds.formatFormulaOutput('0.125', 2), m.rds.formatFormulaOutput('1.35±0.025', 2)],
+    expected: ['0.12', '1.35±0.02'],
+  },
+  {
+    id: 'IS-08',
+    module: 'mu',
+    title: 'MU figure display: 0.0125 and 0.0135 to 3 dp; 0.02 to 3 dp',
+    source: 'IS 2:1960: 0.012 (2 even), 0.014 (3 odd → up); declared decimals kept: 0.020',
+    run: (m) => [m.mu.formatMuNumber(0.0125, 3), m.mu.formatMuNumber(0.0135, 3), m.mu.formatMuNumber(0.02, 3)],
+    expected: ['0.012', '0.014', '0.020'],
   },
 
   // ------------------------------------------------------------- finance document series

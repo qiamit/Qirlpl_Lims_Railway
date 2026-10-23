@@ -1,3 +1,5 @@
+import { is2RoundFixed, toDecimalString } from '@/lib/is2Rounding'
+
 export type TestResultStatKey =
   | 'sum'
   | 'average'
@@ -400,10 +402,19 @@ export function parseReadingInput(value: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Reported value rounded to `decimals` places by IS 2:1960 (exact half to the
+ * even digit, decimal not binary rounding) keeping the declared decimals:
+ * formatNumber(10.2, 2) → "10.20", formatNumber(2.25, 1) → "2.2".
+ */
 export function formatNumber(n: number, decimals = 4): string {
   if (!Number.isFinite(n)) return ''
-  const rounded = Number(n.toFixed(decimals))
-  return String(rounded)
+  return is2RoundFixed(n, decimals)
+}
+
+/** A reading as typed / stored, at full precision (for putting back into an input). */
+export function formatReadingForInput(n: number): string {
+  return toDecimalString(n)
 }
 
 export function computeTestResultStats(readings: number[]): TestResultStats | null {

@@ -159,7 +159,9 @@ export function formatNablUlrNumber(
 ): string {
   const header = normalizeNablUlrHeaderPrefix(prefix, fallbackCab)
   const seq = Math.max(1, Math.floor(sequence))
-  const serial = String(seq).padStart(NABL_ULR_SERIAL_DIGITS, '0').slice(-NABL_ULR_SERIAL_DIGITS)
+  // Never cut serial digits: a serial above 99,999,999 gives a 20-character
+  // value that fails matchesNablUlrStructure instead of repeating an earlier ULR.
+  const serial = String(seq).padStart(NABL_ULR_SERIAL_DIGITS, '0')
   return `${header}${serial}${NABL_ULR_LAST_CHAR}`
 }
 

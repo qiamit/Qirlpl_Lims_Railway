@@ -67,6 +67,7 @@ import {
 import { findReportNumberClash } from './reportNumberAvailability'
 import {
   fetchNextTestReportNumber,
+  isTestReportNumberConflictError,
   toCanonicalReportNumber,
   withReceivingReportTypeSuffix,
 } from './formattedTestReportNumber'
@@ -591,10 +592,13 @@ export default function TestReportPreparationMasterPage() {
     setPage(1)
   }, [search, pageSize, sortKey, sortDir])
 
-  /** Plain-language message when the database rejects a ULR that another sample took meanwhile. */
+  /** Plain-language message when the database rejects a ULR / report number that another sample took meanwhile. */
   const describeSaveError = (e: unknown, fallback: string) => {
     if (isNablUlrConflictError(e as { code?: string; message?: string })) {
       return `ULR number ${sanitizeNablUlrInput(nablUlrNumber)} was just used by another report. Please change the ULR number and try again.`
+    }
+    if (isTestReportNumberConflictError(e as { code?: string; message?: string })) {
+      return `Report number ${toCanonicalReportNumber(fullReportNumber)} was just used by another report. Please change the report number and try again.`
     }
     return e instanceof Error || (e && typeof e === 'object' && 'message' in e)
       ? `${(e as { message: string }).message} ${fallback}`

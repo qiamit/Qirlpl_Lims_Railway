@@ -1,5 +1,7 @@
 /** Certificate Preparation draft stored on calibration_jobs.certificate_draft */
 
+import { is2RoundCompact } from '@/lib/is2Rounding'
+
 export type CertificateAmendmentType = 'amendment' | 'revised' | 'supplementary'
 
 /**
@@ -197,7 +199,7 @@ export function formatCertificateMinLoadDisplay(
   unit: string,
 ): string {
   const u = unit.trim() || 'kN'
-  const fmt = Number.isInteger(min) ? String(min) : String(Number(min.toFixed(2)))
+  const fmt = Number.isInteger(min) ? String(min) : is2RoundCompact(min, 2)
   return `${fmt} ${u}`
 }
 
