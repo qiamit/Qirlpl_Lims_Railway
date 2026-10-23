@@ -208,6 +208,7 @@ export function UncertaintyStepByStepDialog({
   muCalculationTemplate,
   equipmentRange,
   onApplyUncertainty,
+  onApplyRowUncertainties,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -220,6 +221,12 @@ export function UncertaintyStepByStepDialog({
   equipmentRange?: MuEquipmentRangeContext | null
   /** Optional: push expanded U into Generate Report uncertainty field. */
   onApplyUncertainty?: (expandedU: string) => void
+  /** Save every point's expanded U with the raw data; the certificate reports it. */
+  onApplyRowUncertainties?: (result: {
+    coverageFactorK: number
+    label: string
+    rows: Array<{ rowId: string; expanded: string; combined: string }>
+  }) => void
 }) {
   const template = useMemo(
     () => muCalculationTemplateFromRaw(muCalculationTemplate ?? null),
@@ -723,6 +730,25 @@ export function UncertaintyStepByStepDialog({
             Back
           </Button>
           <div className="flex flex-wrap items-center gap-2">
+            {hasTemplate && onApplyRowUncertainties && allRowKeyOutputs.some((r) => r.expandedValue.trim()) ? (
+              <Button
+                type="button"
+                variant="outline"
+                className={cn('h-9', limsOutlineBtnClass)}
+                onClick={() => {
+                  onApplyRowUncertainties({
+                    coverageFactorK: Number(template.coverageFactorK) || 2,
+                    label: allRowKeyOutputs.find((r) => r.expandedValue.trim())?.expandedLabel ?? 'Expanded U',
+                    rows: allRowKeyOutputs
+                      .filter((r) => r.expandedValue.trim())
+                      .map((r) => ({ rowId: r.rowId, expanded: r.expandedValue, combined: r.combinedValue })),
+                  })
+                  onOpenChange(false)
+                }}
+              >
+                Use U on the certificate
+              </Button>
+            ) : null}
             {currentStep?.kind === 'calculation' && expandedPick && onApplyUncertainty ? (
               <Button
                 type="button"

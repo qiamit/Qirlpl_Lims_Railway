@@ -681,6 +681,61 @@ export const CASES = [
     expected: ['QI/CC/2026/0003', 'QI/CC/2026/0007', 'QI/CC/2026/0004', 'QI/CC/2026/0010', 'QI/CC/2027/0001'],
   },
 
+  {
+    id: 'CN-02',
+    module: 'cert',
+    title: 'Certificate notes by instrument type and the place-of-calibration remark',
+    source:
+      'OQ-02 staging run 23 Oct 2026: a vernier caliper certificate printed the IS 1828 machine notes and ' +
+      '"done at the Site of Customer" for an In Lab job. Hand: UTM / tensile / compression machines are force testing machines, ' +
+      'a vernier caliper or tensionmeter is not; In Lab → laboratory, On Site → customer\'s site, numbering kept',
+    run: (m) => [
+      m.cert.isForceTestingMachine('Universal Testing Machine'),
+      m.cert.isForceTestingMachine('Compression Tasting Machine'),
+      m.cert.isForceTestingMachine('Vernier Caliper'),
+      m.cert.isForceTestingMachine('Tensionmeter'),
+      m.cert.applyCertificateLocationRemark('1) The above Calibration is done at the Site of Customer.\n2) Results valid.', 'In Lab'),
+      m.cert.applyCertificateLocationRemark('1) The above calibration was carried out in the laboratory.', 'On Site'),
+      m.cert.DEFAULT_CERTIFICATE_NOTES.includes('machine'),
+    ],
+    expected: [
+      true,
+      true,
+      false,
+      false,
+      '1) The above calibration was carried out in the laboratory.\n2) Results valid.',
+      "1) The above calibration was carried out at the customer's site.",
+      false,
+    ],
+  },
+  {
+    id: 'RD-06',
+    module: 'rds',
+    title: 'Certificate U is the largest saved expanded U of the points on the sheet',
+    source:
+      'OQ-02 staging run 23 Oct 2026: the certificate printed the master\'s certificate U (±0.01 mm). Hand: saved U 0.018, 0.021 ' +
+      'and 0.050 on a row that was deleted → 0.021; nothing saved → none; k defaults to 2',
+    run: (m) => {
+      const mu = m.rds.parseRawDataMuResults({
+        coverageFactorK: 2,
+        label: 'U',
+        rows: [
+          { rowId: 'r1', expanded: '0.018', combined: '0.009' },
+          { rowId: 'r2', expanded: '±0.021', combined: '0.0105' },
+          { rowId: 'gone', expanded: '0.050', combined: '0.025' },
+          { rowId: 'r4', expanded: '', combined: '' },
+        ],
+      })
+      return [
+        m.rds.maxSavedExpandedUncertainty(mu, ['r1', 'r2', 'r3']),
+        m.rds.maxSavedExpandedUncertainty(m.rds.parseRawDataMuResults({ rows: [] }), ['r1']),
+        mu.rows.length,
+        m.rds.parseRawDataMuResults({ rows: [{ rowId: 'a', expanded: '1' }] }).coverageFactorK,
+      ]
+    },
+    expected: [0.021, null, 3, 2],
+  },
+
   // ------------------------------------------------------------- test report number
   {
     id: 'RN-01',

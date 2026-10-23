@@ -95,6 +95,7 @@ for Amit).
 42. `20261102100400_ulr_cross_check.sql` (a test report and a calibration certificate never share a ULR; generators read every ULR in use; existing clashes are listed, not changed)
 43. `20261102100500_certificate_number_unique.sql` (a calibration certificate number, amended or replaced ones included, is never given to another job)
 44. `20261102100600_calibration_review_not_by_performer.sql` (the person who calibrated cannot approve its raw data; lab decision 23 Oct)
+45. `20261102100700_calibration_certificate_issue.sql` (issuing a calibration certificate needs a password confirmed within 15 minutes and a U; the database records the issuer)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 

@@ -326,6 +326,60 @@ export type RawDataSheetPayload = {
   entryBy?: RawDataSheetActor
   /** Who reviewed Raw Data (Authorized Signatory on certificate). */
   reviewedBy?: RawDataSheetActor
+  /** Expanded U per point from the MU sheet; the certificate reports these. */
+  muResults?: RawDataMuResults
+}
+
+/**
+ * Measurement uncertainty saved from Uncertainty Step by Step ("Use U on the
+ * certificate"), one entry per raw data row. The certificate's reported U
+ * comes from here (or an expanded-U column), never from a master's own
+ * certificate uncertainty (OQ-02 staging run, 23 Oct 2026).
+ */
+export type RawDataMuResults = {
+  coverageFactorK: number
+  label: string
+  savedAt: string
+  rows: Array<{ rowId: string; expanded: string; combined: string }>
+}
+
+export function parseRawDataMuResults(raw: unknown): RawDataMuResults | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const o = raw as Record<string, unknown>
+  const rows = (Array.isArray(o.rows) ? o.rows : [])
+    .map((r) => {
+      const x = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>
+      return {
+        rowId: String(x.rowId ?? '').trim(),
+        expanded: String(x.expanded ?? '').trim(),
+        combined: String(x.combined ?? '').trim(),
+      }
+    })
+    .filter((r) => r.rowId && r.expanded)
+  if (rows.length === 0) return undefined
+  const k = Number(o.coverageFactorK)
+  return {
+    coverageFactorK: Number.isFinite(k) && k > 0 ? k : 2,
+    label: String(o.label ?? '').trim() || 'Expanded U',
+    savedAt: String(o.savedAt ?? '').trim(),
+    rows,
+  }
+}
+
+/** Largest expanded U over the rows still on the sheet, or null when none is saved. */
+export function maxSavedExpandedUncertainty(
+  mu: RawDataMuResults | null | undefined,
+  rowIds?: ReadonlyArray<string>,
+): number | null {
+  if (!mu) return null
+  const keep = rowIds ? new Set(rowIds) : null
+  let max: number | null = null
+  for (const r of mu.rows) {
+    if (keep && !keep.has(r.rowId)) continue
+    const n = Number(String(r.expanded).replace(/^[±+]/, '').trim().split(/\s+/)[0])
+    if (Number.isFinite(n) && (max == null || Math.abs(n) > max)) max = Math.abs(n)
+  }
+  return max
 }
 
 export type RawDataTemperatureCorrectionConfig = {
@@ -1304,6 +1358,7 @@ export function parseRawDataSheetPayload(raw: unknown): RawDataSheetPayload | nu
     ),
     entryBy: parseRawDataSheetActor(obj.entryBy ?? obj.entry_by),
     reviewedBy: parseRawDataSheetActor(obj.reviewedBy ?? obj.reviewed_by),
+    muResults: parseRawDataMuResults(obj.muResults ?? obj.mu_results),
   }
 }
 

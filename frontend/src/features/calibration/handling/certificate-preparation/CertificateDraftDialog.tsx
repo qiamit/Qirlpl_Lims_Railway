@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { ArrowRight, Download, FileCheck, Printer, RefreshCw, Save } from 'lucide-react'
 import QRCode from 'qrcode'
+import { useAuth } from '@/hooks/useAuth'
+import { ConfirmLoginPasswordDialog } from '@/features/sample-handling/shared/ConfirmLoginPasswordDialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -41,6 +43,7 @@ import {
   allRawDataSheetColumns,
   parseRawDataSheetPayload,
   getEnvironmentAverageParamValue,
+  maxSavedExpandedUncertainty,
   isRawDataColumnRequiredInCertificate,
   type RawDataEnvironmentConditions,
   type RawDataSheetPayload,
@@ -95,6 +98,9 @@ import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/repo
 import {
   DEFAULT_CERTIFICATE_NOTES,
   DEFAULT_CERTIFICATE_REMARKS,
+  TESTING_MACHINE_CERTIFICATE_NOTES,
+  applyCertificateLocationRemark,
+  isForceTestingMachine,
   EMPTY_CERTIFICATE_DRAFT,
   applyCertificateNotesMinLoad,
   certificateAmendmentStatement,
@@ -1173,9 +1179,11 @@ export function CertificateDraftDialog({
   snapshot?: CertificateSnapshotView | null
   layer?: 'nested' | 'stacked' | 'top'
 }) {
+  const { user, designation, profileName } = useAuth()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [issuing, setIssuing] = useState(false)
+  const [issuePasswordOpen, setIssuePasswordOpen] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [autoNumbering, setAutoNumbering] = useState(false)
   const [autoUlrNumbering, setAutoUlrNumbering] = useState(false)
@@ -1334,7 +1342,11 @@ export function CertificateDraftDialog({
         email: contactEmail,
       })
 
-      const defaultNotes = template.defaultNotes.trim() || DEFAULT_CERTIFICATE_NOTES
+      const defaultNotes =
+        template.defaultNotes.trim() ||
+        (isForceTestingMachine(equipment?.equipment_name || activeJob.equipment_label)
+          ? TESTING_MACHINE_CERTIFICATE_NOTES
+          : DEFAULT_CERTIFICATE_NOTES)
       const defaultRemarks = template.defaultRemarks.trim() || DEFAULT_CERTIFICATE_REMARKS
 
       const sheetColumns = parsedSheet ? allRawDataSheetColumns(parsedSheet.template) : []
@@ -1441,7 +1453,13 @@ export function CertificateDraftDialog({
         dateOfCalibration: calDate,
         dueDateOfCalibration: due,
         notes: applyCertificateNotesMinLoad(seedNotes, seededMinLoad),
-        remarks: existing.remarks.trim() ? existing.remarks : defaultRemarks,
+        // Place of calibration from the job (the default said "Site of Customer" for every job).
+        remarks: issued
+          ? existing.remarks
+          : applyCertificateLocationRemark(
+              existing.remarks.trim() ? existing.remarks : defaultRemarks,
+              activeJob.calibration_location,
+            ),
         calibratedByName: calibratedName,
         calibratedByDesignation: calibratedDesig,
         authorizedSignatoryName: authorizedName,
@@ -1678,13 +1696,13 @@ export function CertificateDraftDialog({
     }
   }, [job?.id, letterhead?.nablCertificateNo])
 
-  const saveDraft = async (): Promise<boolean> => {
+  const saveDraft = async (override?: CertificateDraftPayload): Promise<boolean> => {
     if (!job || readOnly) return false
     setSaving(true)
     setError(null)
     setMessage(null)
     try {
-      const serialized = serializeCertificateDraft(draft)
+      const serialized = serializeCertificateDraft(override ?? draft)
       await updateCalibrationJobCertificateDraft(
         job.id,
         serialized as unknown as Record<string, unknown>,
@@ -1704,12 +1722,43 @@ export function CertificateDraftDialog({
     }
   }
 
-  const handleIssueAndForward = async () => {
+  /** What still stops this certificate from being issued (ISO/IEC 17025 7.8.2, 7.8.4.1). */
+  const issueBlocker = (): string | null => {
+    if (!draft.certificateNumber.trim()) return 'Enter the certificate number.'
+    if (!computedCertSummary.uncertaintyReported) {
+      return 'Measurement uncertainty is missing. In the raw data sheet open Uncertainty Step by Step, click "Use U on the certificate" and save the sheet.'
+    }
+    if (!envTemperatureAvg || !envHumidityAvg) {
+      return 'Environmental conditions (temperature and humidity) are missing in the raw data sheet.'
+    }
+    return null
+  }
+
+  // Checks first, then the issuer's password (as for test reports).
+  const handleIssueAndForward = () => {
+    if (!job || !onIssueAndForward) return
+    const blocker = issueBlocker()
+    if (blocker) {
+      setError(blocker)
+      return
+    }
+    setError(null)
+    setIssuePasswordOpen(true)
+  }
+
+  const completeIssueAndForward = async (reauthenticatedAt: string) => {
     if (!job || !onIssueAndForward) return
     setIssuing(true)
     setError(null)
     try {
-      const ok = await saveDraft()
+      const issuedBy = {
+        userId: user?.id ?? '',
+        name: profileName.trim() || user?.email || '',
+        designation: designation.trim(),
+        issuedAt: new Date().toISOString(),
+        reauthenticatedAt,
+      }
+      const ok = await saveDraft({ ...draft, issuedBy })
       if (!ok) return
       await onIssueAndForward(job)
       onOpenChange(false)
@@ -1910,19 +1959,22 @@ export function CertificateDraftDialog({
         ? (relResMaxForPct / instrumentCapacity) * 100
         : null
 
+    // The reported U is the DUC's expanded uncertainty from the MU sheet
+    // (saved with the raw data) or an expanded-U column of the raw data. A
+    // master's own certificate uncertainty is only one input to that budget
+    // and is never reported as the result (OQ-02 staging run, 23 Oct 2026).
     const uCandidates: number[] = []
     if (expandedUCol) {
-      // All row values under "Actual Expanded Uncertainty" → take max later with masters.
       for (const row of rows) {
         const n = parseNumericMagnitude(row.values[expandedUCol.key])
         if (n != null) uCandidates.push(n)
       }
     }
-    for (const master of masters) {
-      const u = parseNumericMagnitude(master.calibration_certificate_uncertainty)
-      if (u != null) uCandidates.push(u)
-    }
+    const savedMu = payload?.muResults ?? null
+    const savedMuMax = maxSavedExpandedUncertainty(savedMu, rows.map((r) => r.id))
+    if (savedMuMax != null) uCandidates.push(savedMuMax)
     const maxU = uCandidates.length > 0 ? Math.max(...uCandidates) : null
+    const uK = savedMuMax != null && savedMu ? savedMu.coverageFactorK : null
     const uUnitFromCol = (() => {
       if (!expandedUCol) return ''
       const fromLabel = `${expandedUCol.label} ${expandedUCol.key}`.match(
@@ -1966,10 +2018,10 @@ export function CertificateDraftDialog({
             : '',
       uncertaintyReported:
         maxU != null
-          ? `±${formatMagnitudeDisplay(maxU)}${uUnit ? ` ${uUnit}` : ''}`
+          ? `±${formatMagnitudeDisplay(maxU)}${uUnit ? ` ${uUnit}` : ''}${uK ? ` (k = ${uK})` : ''}`
           : '',
     }
-  }, [columns, rows, masters, loadColumn, eqFields?.range])
+  }, [columns, rows, masters, loadColumn, eqFields?.range, payload?.muResults])
 
   // Prefill / refresh summary fields from Raw Data Sheet columns.
   useEffect(() => {
@@ -1999,23 +2051,28 @@ export function CertificateDraftDialog({
           changed = true
         }
       }
+      const autoLikeU = /^[±+]?\s*\d+(\.\d+)?(\s*[A-Za-zµ%°]+)?(\s*\(k\s*=\s*[\d.]+\))?$/i.test(
+        prev.uncertaintyReported.trim(),
+      )
       if (
         computedCertSummary.uncertaintyReported &&
-        (!prev.uncertaintyReported.trim() ||
-          /^[±+]?\s*\d+(\.\d+)?(\s*(kN|N|kgf|kg|%))?$/i.test(
-            prev.uncertaintyReported.trim(),
-          ))
+        (!prev.uncertaintyReported.trim() || autoLikeU)
       ) {
         if (prev.uncertaintyReported.trim() !== computedCertSummary.uncertaintyReported) {
           next.uncertaintyReported = computedCertSummary.uncertaintyReported
           changed = true
         }
+      } else if (!computedCertSummary.uncertaintyReported && autoLikeU && !readOnly) {
+        // An earlier draft filled U from a master's certificate: clear it.
+        next.uncertaintyReported = ''
+        changed = true
       }
       return changed ? next : prev
     })
-  }, [computedCertSummary, loading])
+  }, [computedCertSummary, loading, readOnly])
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-certificate-draft-preview=""
@@ -2849,5 +2906,21 @@ export function CertificateDraftDialog({
         </div>
       </DialogContent>
     </Dialog>
+    <ConfirmLoginPasswordDialog
+      open={issuePasswordOpen}
+      onOpenChange={setIssuePasswordOpen}
+      title={draft.amendment ? 'Issue Amendment' : 'Issue Certificate'}
+      confirmLabel={draft.amendment ? 'Issue Amendment' : 'Issue & Forward'}
+      statement="I authorize release of this calibration certificate."
+      onConfirmed={({ reauthenticatedAt }) => {
+        setIssuePasswordOpen(false)
+        void completeIssueAndForward(reauthenticatedAt)
+      }}
+    >
+      <p className="text-sm text-stone-700">
+        {draft.certificateNumber || 'Certificate'} · ULR {draft.ulrNumber || '—'} · U {draft.uncertaintyReported || '—'}
+      </p>
+    </ConfirmLoginPasswordDialog>
+    </>
   )
 }

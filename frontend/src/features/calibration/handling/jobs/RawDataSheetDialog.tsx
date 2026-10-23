@@ -115,6 +115,7 @@ import {
   parseRawDataSheetPayload,
   parseRawDataSheetTemplate,
   parseTableSettings,
+  getEnvironmentAverageParamValue,
   leastCountDecimalPlaces,
   formatTypedReading,
   resolveEnvParameterColumns,
@@ -2731,6 +2732,14 @@ export function RawDataSheetDialog({
       })
 
       if (asComplete) {
+        // ISO/IEC 17025 7.8.4.1 a / 6.3.3: the certificate states the
+        // conditions of calibration, so they are recorded with the readings.
+        if (
+          !getEnvironmentAverageParamValue(env ?? null, 'temperature').trim() ||
+          !getEnvironmentAverageParamValue(env ?? null, 'humidity').trim()
+        ) {
+          throw new Error('Enter the environmental conditions (temperature and humidity) under Environment Condition.')
+        }
         for (const item of payload.template.verification.items) {
           if (item.required && !payload.verificationAnswers[item.id]) {
             throw new Error(`Complete required verification: ${item.label}`)
@@ -5061,6 +5070,16 @@ export function RawDataSheetDialog({
                     ? undefined
                     : () => {
                         setError(null)
+                      }
+                }
+                onApplyRowUncertainties={
+                  forceReadOnly
+                    ? undefined
+                    : (result) => {
+                        setError(null)
+                        setPayload((prev) =>
+                          prev ? { ...prev, muResults: { ...result, savedAt: new Date().toISOString() } } : prev,
+                        )
                       }
                 }
               />
