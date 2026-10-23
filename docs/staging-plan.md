@@ -364,9 +364,23 @@ Suggested correction, for the lab to decide: amend both certificates (Calibratio
 
 Also seen in this test:
 
-- **Certificate numbers repeat after an amendment.** SRF-2026-0006 got QI/CC/2026/0003, the original number of SRF-2026-0005's certificate (now QI/CC/2026/0003/A1). The number generator does not count numbers replaced by an amendment. Production has no certificate amendment yet.
+- **Certificate numbers repeat after an amendment.** SRF-2026-0006 got QI/CC/2026/0003, the original number of SRF-2026-0005's certificate (now QI/CC/2026/0003/A1). The number generator does not count numbers replaced by an amendment. Production has no certificate amendment yet. **Fixed (415b19f, migration 43), see below.**
 - **An engineer can approve their own raw data.** The test calibration engineer, who has Edit on Review Data like the real Thermal engineer, could forward their own job; only the authorization-matrix reason was asked. The test was cancelled at that dialog.
 - "Access Denied" right after sign-in also happened for the Director; a reload shows the page.
+
+**Certificate numbers never reused (415b19f, migration 43 applied on staging, 23 Oct).**
+
+- The generator now strips the amendment suffix (/A1, /R1, /S1) before reading the serial. It counts every number in use through `app_used_certificate_numbers()`: current drafts, plus the original and new number of every amendment, all jobs, staff only. Before, it read only 500 drafts the user could see, and skipped `…/0003/A1`.
+- Migration 43 `20261102100500_certificate_number_unique.sql` refuses a number whose base another job already holds (23505, with an advisory lock). Amendments on the same job keep their base.
+
+Staging tests:
+
+- 6 of 6 database cases pass (rolled back): another job's number, its amended form and QI/CC/2026/0001 are refused; a free number, the next amendment on the same job and other edits of an already-clashing job are allowed.
+- New job SRF-2026-0007 (Vernier Caliper, full flow) was offered and issued **QI/CC/2026/0004** with ULR CC0303926000000002F. Before the fix it would have been 0003 again.
+- Through the API, giving QI/CC/2026/0004 to SRF-2026-0004 is refused (409, "already used by the calibration certificate of SRF-2026-0007").
+- Validation case CN-01; 63 of 63 pass.
+
+The staging test certificates SRF-2026-0005 (QI/CC/2026/0003/A1) and SRF-2026-0006 (QI/CC/2026/0003) still share a base. They are test data made before the fix and exist on staging only.
 
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
 
