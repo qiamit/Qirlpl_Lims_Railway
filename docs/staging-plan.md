@@ -475,3 +475,6 @@ Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be sk
 - X7: a testing engineer's delete of a file someone else uploaded removed nothing; the file is still there.
 
 Test records from this run are named OQ TEST / OQTEST and stay on staging (invoice numbers INV-2026-0007 and 0008).
+
+**Go-live runbook and dry run (23 Oct).** One ordered runbook: `docs/go-live-runbook.md` (backup, freeze, merge, migrations 1–49, data fixes, 35 and 38 again, checks, Railway settings, smoke test, after go-live, rollback). It was rehearsed on a fresh read-only copy of production loaded into staging; every step passed (results and timings in the runbook). The staging database is now that copy plus the full go-live sequence. The previous staging database, with the earlier test records, is kept as `railway_pre_dryrun` until it is no longer needed. The OQ test accounts were copied over with the same ids and passwords. An SSH key (`qirlpl-dryrun-mac`) was registered with Railway for this; remove it with `railway ssh keys remove` when no more copies are needed.
+
