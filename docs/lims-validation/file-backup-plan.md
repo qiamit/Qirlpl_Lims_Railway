@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | QIRLPL-LIMS-BKP-FILES |
-| Version | 0.2 (23 Oct 2026): plan approved; steps 1–2 done and tested on staging; production not scheduled |
+| Version | 0.3 (23 Oct 2026): steps 1–3 done (staging test, one manual production run); production not scheduled |
 | Clause | ISO/IEC 17025:2017 7.11.3 c (data protected against loss), 7.5, 8.4 |
 | Closes | B-2 open item "uploaded files have no backup" (`restore-test-B2.md` section 6) |
 | Approver | Laboratory Director |
@@ -138,7 +138,7 @@ Nothing below has been done. Each step waits for the Director's go-ahead.
 |---|---|---|---|
 | 1 | Add `backend/backup-job/` (Dockerfile + `backup.sh`) to the branch; dry run of the script against staging only | Code on the branch | **Done 23 Oct** (84fbf33) |
 | 2 | Create `qirlpl-lims-backup` bucket and the `files-backup` service; **run in staging first** (staging bucket + staging database), check the copy and one restore | Railway: new bucket + service | **Done 23 Oct** (section 8) |
-| 3 | Production: set the job's production variables, run once by hand (`railway cron run`), check the copy (453 objects, 519 MiB) and the dump | Production: new service run, reads only | Yes |
+| 3 | Production: set the job's production variables, run once by hand, check the copy (453 objects, 519 MiB) and the dump | Production: new service run, reads only | **Done 23 Oct** (section 9) |
 | 4 | Production: turn on the schedule `30 20 * * *` | Production | Yes |
 | 5 | MinIO option B steps 1–2 (compare, archive) | Reads MinIO, writes the backup bucket | Yes |
 | 6 | MinIO option B steps 3–5 after the lab confirms | Stops and later deletes the MinIO service | Yes |
@@ -177,6 +177,21 @@ production, a deleted file's row would have to be rebuilt from the object
 alone (bucket, path and version are in the key; owner and metadata would be
 missing).
 
-Next (needs approval): step 3, production variables and one manual run;
-step 4, the production schedule `30 20 * * *`.
+## 9. Step 3 done: one manual run in production (23 Oct 2026)
+
+Approved by Amit in chat ("step 3 karo … Schedule abhi mat lagana, pehle
+mujhe dikhao"). Each staged change was read before it was committed.
+
+| Item | State |
+|---|---|
+| Backup bucket | Deployed in production: `qirlpl-lims-backup-n3w6eo` (staged change held only this bucket) |
+| Variables | Set on `files-backup` in production from stdin, none printed: live bucket `qirlpl-lims-storage-bf0ydy`, backup bucket `qirlpl-lims-backup-n3w6eo`, `DATABASE_URL` = production Postgres reference |
+| Source | This branch, root `backend/backup-job` (to be switched to `main` after the merge), restart policy NEVER, **no cron schedule** |
+| Run (16:11 UTC) | 453 objects, 518.8 MiB mirrored to `current/`; check: no differences; `history/2026-10-23/` empty; database dump 3.1 MB, readable (`pg_restore --list`); 134 s |
+| Dump check | The dump was read back from the backup bucket and restored into a scratch database on staging (`dump_check`, then dropped): 0 errors; samples 335, issued 270, clients 146, results 5,731, calibration jobs 8, equipment 489, logins 27, file records 385, audit rows 11,153, latest SRF SR261022/216-002, latest report QI/REP/20260358A: all equal to production at the same moment (read-only) |
+| Production otherwise | Postgres, frontend, api, functions, pdf-service, storage-api, auth and rest: no new deployment; nothing staged; API health 200 |
+
+Next (needs approval): step 4, the production schedule `30 20 * * *`
+(02:00 IST). After the merge, switch the job's production source from this
+branch to `main`.
 
