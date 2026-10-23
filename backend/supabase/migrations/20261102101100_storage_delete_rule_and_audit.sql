@@ -9,7 +9,8 @@
 --     (a restrictive policy, added to the existing ones);
 --   * every upload, change and delete of a file, in every bucket, is written
 --     to audit_log (table_name 'storage.objects', row_id 'bucket/path',
---     actor = signed-in user, old and new metadata).
+--     actor = signed-in user, for an upload the uploader; old and new
+--     metadata).
 -- Buckets with their own role rules (personnel-records, pt-reports,
 -- sampling-files, method-validation-files, result-attachments) keep them.
 -- The app uploads each file under a new name, so no flow overwrites another
@@ -85,9 +86,11 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- storage-api writes the new object row as the database owner, so an
+  -- upload is attributed to the object's owner (the uploader).
   INSERT INTO public.audit_log (actor, table_name, row_id, action, old_row, new_row)
   VALUES (
-    auth.uid(),
+    CASE WHEN TG_OP = 'INSERT' THEN coalesce(auth.uid(), NEW.owner) ELSE auth.uid() END,
     'storage.objects',
     coalesce(NEW.bucket_id, OLD.bucket_id) || '/' || coalesce(NEW.name, OLD.name),
     TG_OP,

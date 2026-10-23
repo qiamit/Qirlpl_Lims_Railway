@@ -38,6 +38,7 @@ export const MODULE_FILES = {
   point: 'src/features/calibration/equipment-for-calibration/pointFormula.ts',
   testResult: 'src/features/sample-handling/sample-under-testing/testResultValues.ts',
   conformity: 'src/features/sample-handling/report-preparation/evaluateResultConformity.ts',
+  partD: 'src/features/sample-handling/report-preparation/testReportPartDRemarks.ts',
   ulr: 'src/features/sample-handling/report-preparation/nablUlrNumber.ts',
   reportNo: 'src/features/sample-handling/report-preparation/formattedTestReportNumber.ts',
   series: 'src/features/finance/sale/shared/documentSeriesApi.ts',
@@ -503,6 +504,24 @@ export const CASES = [
       m.conformity.canonicalConformityRemark('Okay'),
     ],
     expected: ['Conforms', 'Does Not Conform', 'fail', null],
+  },
+  {
+    id: 'CF-08',
+    module: 'conformity',
+    title: 'Part D line 1: open reports say "Conforms to"; reports issued with the old wording print "Confirms to" as issued',
+    source: 'ISO/IEC 17025 7.8.2.1 / 8.4: an issued report reprints as issued; wording change 23 Oct 2026',
+    run: (m) => [
+      m.partD.splitPartDRemarks('', 'IS 1786: 2008').line1,
+      m.partD.splitPartDRemarks('', 'IS 1786: 2008', m.conformity.isLegacyConformityRemark('Confirm')).line1,
+      m.partD.splitPartDRemarks('1. The Sample Confirms to IS 1786: 2008 with Respect to Above Tests.\n2. Retest', 'IS 1786: 2008'),
+      m.partD.modernizePartDRemarks('1. The Sample Confirms to IS 1786: 2008 with Respect to Above Tests.\n2. Retest'),
+    ],
+    expected: [
+      '1. The Sample Conforms to IS 1786: 2008 with Respect to Above Tests.',
+      '1. The Sample Confirms to IS 1786: 2008 with Respect to Above Tests.',
+      { line1: '1. The Sample Confirms to IS 1786: 2008 with Respect to Above Tests.', line2: '2. Retest' },
+      '1. The Sample Conforms to IS 1786: 2008 with Respect to Above Tests.\n2. Retest',
+    ],
   },
 
   // ------------------------------------------------------------- conformity, guard band
