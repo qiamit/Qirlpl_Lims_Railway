@@ -251,7 +251,7 @@ Next: lab runs the OQ scripts with these accounts (the Director resets each pass
 | 7 Report | P: report number with A, ULR TC1544226000000400F (19 characters), pages "01 of 03", NABL 133 scope warning |
 | 8–9 Issue | P: wrong password refused; correct password issues, issuer OQ Quality Manager stamped, archive with SHA-256 that verifies |
 | 10 Re-print | P: printed from the archived copy; old client address kept after the master change |
-| 11 Amendment | **F**: "Referback failed" (409). `cloneIssuedSampleForAmendment` copies the NABL ULR to the new row and the unique index `samples_nabl_ulr_uidx` refuses it. Same code on production: no amendment has worked there since the index was added (9 Oct); the earlier `-R2` ULRs were typed by hand. The amendment reason is also optional. Needs a lab decision: amended report gets ULR + `-R1`, or keeps the same ULR (index then allows one per amendment chain). |
+| 11 Amendment | **F**: "Referback failed" (409). `cloneIssuedSampleForAmendment` copies the NABL ULR to the new row and the unique index `samples_nabl_ulr_uidx` refuses it. Same code on production: no amendment has worked there since the index was added (9 Oct); the earlier `-R2` ULRs were typed by hand. The amendment reason is also optional. Needs a lab decision: amended report gets ULR + `-R1`, or keeps the same ULR (index then allows one per amendment chain). **Fixed and re-run 23 Oct: P** (see below). |
 | 12 Engineer and issued report | P (API test C11) |
 
 Also seen in OQ-01: signatories printed on the report come from Print Setting defaults, not from who tested and reviewed (ISO 7.8.2.1, already so on production); the sample status stays "registered" after issue; Part D prints "Confirms" for "Conforms"; the Proof Stress parameter has no MU set.
@@ -290,6 +290,27 @@ Still for the lab:
 - The draft sheet of SRF-2026-0003 keeps its old formula copy until it is saved again.
 - The sheet lists all caliper checker points, not only those in the job's range.
 - A rename does not yet update MU formulas that name raw data columns.
+
+**OQ-01 step 11 fixed (b66c076, migration 41 applied on staging, 23 Oct; lab decision: ULR + `-R1`).**
+
+- An amended, revised or supplementary report keeps the original ULR with the next revision: `TC…F-R1`, then `-R2`. The number counts revisions already used on that ULR, including deleted samples' ULRs and the hand-typed `-R2` ones. So amending a report that already has `-R2` gives `-R3`.
+- Report Preparation, the ULR inputs (report and calibration certificate, now up to 23 characters) and the next-serial count accept the suffix. A revised ULR is not swapped for a new serial, and existing `-R2` ULRs now pass the format check too.
+- The reason for amendment is required:
+  - the dialog shows "Reason for amendment *" and Refer back stays disabled without one;
+  - the referback refuses a blank reason, and no generated text stands in for it any more (all 11 earlier amendments have only that text);
+  - migration 41 `20261102100300_amendment_reason_required.sql` makes the database refuse a blank reason.
+- Validation cases ULR-04 and ULR-05 added; 61 of 61 pass.
+
+Staging test, as the Director on SR261023/217-001 (issued, ULR TC1544226000000400F):
+
+- Refer back stays disabled until a reason is typed.
+- An API insert with a blank reason is refused (23514, `issued_report_amendments_remark_required`).
+- With a reason, it creates **SR261023/217-001A**: Amendment Report, refers to SR261023/217-001, report number QI/REP/20260357AA, ULR **TC1544226000000400F-R1**, reason saved on the amendment record.
+- The original stays issued and unchanged.
+- As the QM, Test Report Preparation for 217-001A keeps TC1544226000000400F-R1.
+- The amended report was not issued in this test.
+
+The lab typed `-R2` for first amendments before; from now on the first amendment is `-R1`.
 
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
 
