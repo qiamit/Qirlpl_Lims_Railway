@@ -245,43 +245,77 @@ export function nablUlrPlaceholder(prefix?: string): string {
   return `${NABL_ULR_FIXED_PREFIX}${'0'.repeat(NABL_ULR_CERT_DIGITS)}${year}0${'0'.repeat(NABL_ULR_SERIAL_DIGITS - 1)}1${NABL_ULR_LAST_CHAR}`
 }
 
+/**
+ * Every ULR already used in the lab: test reports (samples, deleted ones
+ * included), calibration certificates and the ULRs of amended certificates.
+ * Read through `app_used_ulr_numbers` (migration 42), which sees all rows
+ * whatever the user's module access, so the testing and calibration series
+ * never hand out a number the other already holds. Before that migration the
+ * tables are read directly (only what the user may see).
+ */
+async function fetchUsedUlrNumbers(): Promise<string[]> {
+  const deletedPromise = fetchDeletedKeys('samples', 'test_report_nabl_ulr_number')
+  const rpc = await supabase.rpc('app_used_ulr_numbers')
+  if (!rpc.error && Array.isArray(rpc.data)) {
+    return [...(rpc.data as unknown[]).map((u) => String(u ?? '')), ...(await deletedPromise)]
+  }
+  const [samplesRes, jobsRes, deleted] = await Promise.all([
+    supabase.from('samples').select('test_report_nabl_ulr_number').not('test_report_nabl_ulr_number', 'is', null),
+    supabase.from('calibration_jobs').select('certificate_draft').neq('certificate_draft', '{}'),
+    deletedPromise,
+  ])
+  if (samplesRes.error) console.warn('[fetchUsedUlrNumbers] samples', samplesRes.error.message)
+  if (jobsRes.error) console.warn('[fetchUsedUlrNumbers] calibration_jobs', jobsRes.error.message)
+  return [
+    ...(Array.isArray(samplesRes.data) ? samplesRes.data : []).map((r) =>
+      String((r as { test_report_nabl_ulr_number?: string | null }).test_report_nabl_ulr_number ?? ''),
+    ),
+    ...(Array.isArray(jobsRes.data) ? jobsRes.data : []).map((r) => {
+      const draft = (r as { certificate_draft?: Record<string, unknown> | null }).certificate_draft ?? {}
+      return String(draft.ulrNumber ?? draft.ulr_number ?? '')
+    }),
+    ...deleted,
+  ]
+}
+
+function highestUlrSerial(used: string[], prefix: string, fallbackCab: NablUlrCabType): number {
+  let maxSeq = 0
+  for (const num of used) {
+    if (!num?.trim()) continue
+    const parsed = parseNablUlrSequence(num, prefix, fallbackCab)
+    if (parsed !== null && parsed > maxSeq) maxSeq = parsed
+  }
+  return maxSeq
+}
+
+/**
+ * Next test report ULR (TC series, Lab Settings → Prefix "ULR Number").
+ * Counts calibration certificates too: before, a certificate that took a TC
+ * serial was not seen here and the next test report reused it.
+ */
 export async function fetchNextNablUlrNumber(excludeSampleId?: string): Promise<{
   prefix: string
   ulr: string
   sequence: number
 }> {
   const prefix = await fetchUlrPrefix()
-
-  let query = supabase
-    .from('samples')
-    .select('id, test_report_nabl_ulr_number')
-    .not('test_report_nabl_ulr_number', 'is', null)
-
+  let used: string[] = []
+  try {
+    used = await fetchUsedUlrNumbers()
+  } catch (err) {
+    console.warn('[fetchNextNablUlrNumber]', err instanceof Error ? err.message : err)
+  }
+  // The open sample's own ULR does not block it (it keeps that number).
   if (excludeSampleId) {
-    query = query.neq('id', excludeSampleId)
+    const { data } = await supabase
+      .from('samples')
+      .select('test_report_nabl_ulr_number')
+      .eq('id', excludeSampleId)
+      .maybeSingle()
+    const own = splitNablUlrRevision(String((data as { test_report_nabl_ulr_number?: string | null } | null)?.test_report_nabl_ulr_number ?? '')).base
+    if (own) used = used.filter((u) => splitNablUlrRevision(u).base !== own)
   }
-
-  // ULRs of deleted samples are never reused.
-  const [{ data, error }, deletedUlrs] = await Promise.all([
-    query,
-    fetchDeletedKeys('samples', 'test_report_nabl_ulr_number'),
-  ])
-  if (error) {
-    console.warn('[fetchNextNablUlrNumber]', error.message)
-    return { prefix, ulr: formatNablUlrNumber(prefix, 1), sequence: 1 }
-  }
-
-  let maxSeq = 0
-  for (const num of [
-    ...(Array.isArray(data) ? data : []).map((row) => row.test_report_nabl_ulr_number as string | null),
-    ...deletedUlrs,
-  ]) {
-    if (!num?.trim()) continue
-    const parsed = parseNablUlrSequence(num, prefix)
-    if (parsed !== null && parsed > maxSeq) maxSeq = parsed
-  }
-
-  const sequence = maxSeq + 1
+  const sequence = highestUlrSerial(used, prefix, 'TC') + 1
   return {
     prefix,
     ulr: formatNablUlrNumber(prefix, sequence),
@@ -296,79 +330,59 @@ export function isNablUlrConflictError(error: { code?: string; message?: string;
   return error.code === '23505' && /nabl_ulr/i.test(text)
 }
 
+/** The lab's calibration accreditation as published (NABL CC-3039), used when Lab Settings has none. */
+export const LAB_CALIBRATION_ACCREDITATION_DEFAULT = 'CC-3039'
+
 /**
- * Next ULR for Calibration Certificates (NABL CC scope).
- * Uses Lab Settings ULR prefix when set; otherwise builds from accreditation cert (CC-xxxx).
- * Serial is lab-wide across test-report ULRs + calibration certificate drafts for the same header year.
+ * Calibration accreditation number for certificate ULRs: a CC accreditation
+ * from Lab Settings → Accreditations, else `preferred` when it is a CC number,
+ * else the lab's published CC-3039. Never the testing (TC) number or the Lab
+ * Settings ULR prefix, which belong to test reports.
+ */
+export async function fetchCalibrationAccreditationNo(preferred?: string | null): Promise<string> {
+  const { data, error } = await supabase.from('lab_accreditations').select('accreditation_number')
+  if (!error) {
+    for (const row of Array.isArray(data) ? data : []) {
+      const no = String((row as { accreditation_number?: string | null }).accreditation_number ?? '')
+      if (parseNablAccreditationCert(no)?.cab === 'CC' && /^\s*CC/i.test(no)) return no
+    }
+  }
+  if (preferred && /^\s*CC/i.test(preferred)) return preferred
+  return LAB_CALIBRATION_ACCREDITATION_DEFAULT
+}
+
+/** True when `ulr` is a calibration certificate ULR (CC series). */
+export function isCalibrationUlr(ulr: string | null | undefined): boolean {
+  return /^CC/.test(splitNablUlrRevision(ulr ?? '').base)
+}
+
+/**
+ * Next ULR for Calibration Certificates: CC + calibration accreditation
+ * number + year + location, with its own serial (OQ-02, 23 Oct 2026: the
+ * certificates had taken the testing TC prefix and two serials of test
+ * reports). Counts every ULR in use, test reports included.
  */
 export async function fetchNextCalibrationNablUlrNumber(opts?: {
   accreditationCertificateNo?: string | null
   excludeJobId?: string
 }): Promise<{ prefix: string; ulr: string; sequence: number }> {
-  const settingPrefix = await fetchUlrPrefix()
-  const fromAccreditation = buildCalibrationUlrHeaderPrefix(opts?.accreditationCertificateNo)
-  const parsedAcc = parseNablAccreditationCert(opts?.accreditationCertificateNo)
-  const cab: NablUlrCabType = parsedAcc?.cab ?? DEFAULT_CALIBRATION_ULR_CAB
-
-  // Prefer an explicit Lab Settings ULR prefix when it is not just the bare testing default.
-  const useSettings =
-    settingPrefix.trim().length > 0 &&
-    normalizeUlrAlphanumeric(settingPrefix) !== DEFAULT_ULR_PREFIX
-
-  const prefix = useSettings ? settingPrefix : fromAccreditation
-  const fallbackCab = useSettings ? 'TC' : cab
-
-  const [samplesRes, jobsRes, deletedUlrs] = await Promise.all([
-    supabase
-      .from('samples')
-      .select('test_report_nabl_ulr_number')
-      .not('test_report_nabl_ulr_number', 'is', null),
-    (() => {
-      let q = supabase
-        .from('calibration_jobs')
-        .select('id, certificate_draft')
-        .neq('certificate_draft', '{}')
-        .limit(500)
-      if (opts?.excludeJobId) q = q.neq('id', opts.excludeJobId)
-      return q
-    })(),
-    // ULRs of deleted samples are never reused.
-    fetchDeletedKeys('samples', 'test_report_nabl_ulr_number'),
-  ])
-
-  if (samplesRes.error) {
-    console.warn('[fetchNextCalibrationNablUlrNumber] samples', samplesRes.error.message)
+  const accreditationNo = await fetchCalibrationAccreditationNo(opts?.accreditationCertificateNo)
+  const prefix = buildCalibrationUlrHeaderPrefix(accreditationNo)
+  let used = await fetchUsedUlrNumbers()
+  if (opts?.excludeJobId) {
+    const { data } = await supabase
+      .from('calibration_jobs')
+      .select('certificate_draft')
+      .eq('id', opts.excludeJobId)
+      .maybeSingle()
+    const draft = (data as { certificate_draft?: Record<string, unknown> | null } | null)?.certificate_draft ?? {}
+    const own = splitNablUlrRevision(String(draft.ulrNumber ?? '')).base
+    if (own) used = used.filter((u) => splitNablUlrRevision(u).base !== own)
   }
-  if (jobsRes.error) {
-    console.warn('[fetchNextCalibrationNablUlrNumber] jobs', jobsRes.error.message)
-  }
-
-  let maxSeq = 0
-  const consider = (raw: string | null | undefined) => {
-    if (!raw?.trim()) return
-    const parsed = parseNablUlrSequence(raw, prefix, fallbackCab)
-    if (parsed !== null && parsed > maxSeq) maxSeq = parsed
-  }
-
-  for (const row of Array.isArray(samplesRes.data) ? samplesRes.data : []) {
-    consider(row.test_report_nabl_ulr_number as string | null)
-  }
-  for (const num of deletedUlrs) consider(num)
-  for (const row of Array.isArray(jobsRes.data) ? jobsRes.data : []) {
-    const draft = (row as { certificate_draft?: unknown }).certificate_draft
-    if (!draft || typeof draft !== 'object') continue
-    const num = String(
-      (draft as Record<string, unknown>).ulrNumber ??
-        (draft as Record<string, unknown>).ulr_number ??
-        '',
-    ).trim()
-    consider(num)
-  }
-
-  const sequence = maxSeq + 1
+  const sequence = highestUlrSerial(used, prefix, 'CC') + 1
   return {
     prefix,
-    ulr: formatNablUlrNumber(prefix, sequence, fallbackCab),
+    ulr: formatNablUlrNumber(prefix, sequence, 'CC'),
     sequence,
   }
 }

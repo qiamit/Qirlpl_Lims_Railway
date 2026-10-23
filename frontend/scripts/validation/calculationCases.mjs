@@ -643,6 +643,26 @@ export const CASES = [
     expected: [true, 400, 'TC1544226000000400F-R1', 'TC1544226000000400F', 'TC1544226000000400F', 'TC1544226000000400F', false],
   },
 
+  {
+    id: 'ULR-06',
+    module: 'ulr',
+    title: 'Calibration certificate ULR: CC + calibration accreditation, its own series apart from TC',
+    source:
+      'NABL ULR format; lab accreditations TC-15442 (testing) and CC-3039 (calibration). OQ-02 staging run 23 Oct 2026: ' +
+      'certificates had taken TC serials of test reports. Hand: CC-3039 → CC03039 + YY + 0 + 8-digit serial + F; ' +
+      'a TC ULR has no serial in the CC series, so the series never take each other\'s numbers',
+    run: (m) => [
+      m.ulr.isCalibrationUlr('CC0303926000000001F'),
+      m.ulr.isCalibrationUlr('TC1544226000000401F'),
+      m.ulr.isCalibrationUlr('cc0303926000000002f-r1'),
+      m.ulr.formatNablUlrNumber('CC0303926', 7, 'CC'),
+      m.ulr.parseNablUlrSequence('TC1544226000000401F', 'CC03039260', 'CC'),
+      m.ulr.parseNablUlrSequence('CC0303926000000012F', 'CC03039260', 'CC'),
+      m.ulr.parseNablAccreditationCert(m.ulr.LAB_CALIBRATION_ACCREDITATION_DEFAULT),
+    ],
+    expected: [true, false, true, 'CC0303926000000007F', null, 12, { cab: 'CC', digits: '03039' }],
+  },
+
   // ------------------------------------------------------------- test report number
   {
     id: 'RN-01',

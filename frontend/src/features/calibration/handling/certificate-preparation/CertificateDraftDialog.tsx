@@ -81,6 +81,8 @@ import {
   buildCalibrationUlrHeaderPrefix,
   fetchNextCalibrationNablUlrNumber,
   formatNablUlrNumber,
+  isCalibrationUlr,
+  LAB_CALIBRATION_ACCREDITATION_DEFAULT,
   NABL_ULR_MAX_INPUT_LENGTH,
   sanitizeNablUlrInput,
 } from '@/features/sample-handling/report-preparation/nablUlrNumber'
@@ -1412,7 +1414,13 @@ export function CertificateDraftDialog({
           (srfRow?.srf_number ?? '').trim() ||
           '',
         certificateNumber: existing.certificateNumber || suggestedCert || '',
-        ulrNumber: existing.ulrNumber || ulrPrefill || '',
+        // A draft not yet issued that still holds a testing (TC) ULR from the
+        // old generator gets the calibration ULR; an issued certificate and
+        // an amendment keep the ULR as issued.
+        ulrNumber:
+          issued || existing.amendment || isCalibrationUlr(existing.ulrNumber)
+            ? existing.ulrNumber || ulrPrefill || ''
+            : ulrPrefill || existing.ulrNumber || '',
         formatNumber: existing.formatNumber || template.formatNumber || '',
         customerName:
           existing.customerName ||
@@ -2296,7 +2304,11 @@ export function CertificateDraftDialog({
                       certificateNumber={draft.certificateNumber}
                       ulrNumber={draft.ulrNumber}
                       ulrPlaceholder={formatNablUlrNumber(
-                        buildCalibrationUlrHeaderPrefix(letterhead?.nablCertificateNo),
+                        buildCalibrationUlrHeaderPrefix(
+                          /^\s*CC/i.test(letterhead?.nablCertificateNo ?? '')
+                            ? letterhead?.nablCertificateNo
+                            : LAB_CALIBRATION_ACCREDITATION_DEFAULT,
+                        ),
                         1,
                         'CC',
                       )}
@@ -2532,7 +2544,11 @@ export function CertificateDraftDialog({
                     certificateNumber={draft.certificateNumber}
                     ulrNumber={draft.ulrNumber}
                     ulrPlaceholder={formatNablUlrNumber(
-                      buildCalibrationUlrHeaderPrefix(letterhead?.nablCertificateNo),
+                      buildCalibrationUlrHeaderPrefix(
+                          /^\s*CC/i.test(letterhead?.nablCertificateNo ?? '')
+                            ? letterhead?.nablCertificateNo
+                            : LAB_CALIBRATION_ACCREDITATION_DEFAULT,
+                        ),
                       1,
                       'CC',
                     )}
