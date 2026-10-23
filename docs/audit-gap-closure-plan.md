@@ -30,7 +30,7 @@ for Amit).
 | C-1 … L-6 | Apply `20261022120000_security_hardening.sql`, then smoke-test | Needs approval |
 | DEP-1 | Merge the branch to `main` (PWA, responsive, security code, finance Phase 1 code) | Needs approval |
 | L-8 | Set `PDF_ALLOWED_ORIGINS` on the PDF service | Needs approval |
-| B-2 | Record one restore test (restore a backup into a new service, check, delete) | Planned |
+| B-2 | Record one restore test (restore a backup into a new service, check, delete) | Done on staging 23 Oct, result partial (database recovery proven, about 1 minute; uploaded files have no backup yet): `docs/lims-validation/restore-test-B2.md` |
 | U-1 | Clean up duplicate logins and the orphan module-access rule | Planned (needs Amit's list of who keeps which login) |
 | DEP-2 | Production frontend sends no security headers (served as a static site by Railpack's automatic SPA/Caddy mode). To serve through `frontend/server.mjs` (CSP, HSTS, X-Frame-Options): set `RAILPACK_NO_SPA=1`, remove `RAILPACK_SPA_OUTPUT_DIR`, and set the start command to `node server.mjs`. Verified on staging on 23 Oct 2026 (headers present). | Needs approval |
 | S-20 | Rest service: set `PGRST_DB_SCHEMAS=public` (production has `public,storage`, which serves the storage tables to anyone with the anon key). Set on staging on 23 Oct 2026 with migration 46; anon storage requests then get 406. | Needs approval |

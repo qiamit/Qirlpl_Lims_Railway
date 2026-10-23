@@ -66,7 +66,7 @@ Amit in chat:
 | A4 | **(G2)** Backups → the A2 backup → **Restore**. Read the staged change: it must say **staging** environment and the **Postgres** service. If it says production, **cancel**. Click **Deploy**. Start the clock | Amit in the dashboard | Postgres redeploys with the restored volume | ☐ |
 | A5 | Wait until Postgres is running; stop the clock | Railway → staging → Postgres → Deployments | Minutes = recovery time | ☐ |
 | A6 | Checks 1–8 of section 5 on staging | Claude | All pass | ☐ |
-| A7 | The old staging volume shows as unmounted; delete it once A6 passes | Amit | Old volume gone | ☐ |
+| A7 | The old staging volume shows as unmounted. **Do not delete it as a volume**: staging was duplicated from production, so the old staging volume has the same volume id as production's Postgres volume (`postgres-volume`), and deleting the volume could reach production's instance. Leave it; it goes when the staging environment is deleted | Amit | Old volume left unmounted | ☐ |
 
 If A4 or A6 fails: the old staging volume is still there (unmounted); swap
 it back in the dashboard, or reload staging from production as in the go-live
@@ -172,3 +172,41 @@ Quality → Backup Restore Tests → Record restore test:
 
 Then mark B-2 as done in `docs/audit-gap-closure-plan.md` and P-checklist of
 `docs/go-live-runbook.md`.
+
+## 11. Result of the first test (23 Oct 2026, 14:39–14:59 UTC)
+
+Approved by Amit in chat (gates G1, G2, G3). Production was not changed: its
+Postgres volume stayed mounted on the production service (150 MB), nothing
+was staged in production, and production was only read in read-only sessions.
+
+| Step | Result |
+|---|---|
+| A1 | Staging figures: samples 340, issued 271, archived reports 1, clients 142, results 5,732, calibration jobs 1, equipment 489, logins 37, file records 385, audit rows 11,946 (last 14:21:09 UTC), latest SRF OQTEST/MVL1V5CV-DEL-qm, latest report QI/REP/OQMVL1V5CVA; databases `postgres`, `railway`, `railway_pre_dryrun`; no marker |
+| A2 (G1) | Backup "B-2 restore test 2026-10-23", id `f0d273fe-449b-414b-ad9f-e7d4f540806a`, taken 14:40:08 UTC, 1,062 MB referenced |
+| A3 | Marker `restore_test.marker` written 14:40:36 UTC |
+| A4 (G2) | Restore requested 14:41:21 UTC. Staged change in **staging only**: Postgres service gets new volume "postgres-2026-10-23 14:40 UTC", old staging volume unmounted. Production staged changes empty. Deployed 14:42:01 UTC |
+| A5 | Postgres running 14:42:30 UTC. **Recovery time: about 1 minute 10 seconds** from restore request to running database (150 MB–1 GB data) |
+| Checks 1–6 | Pass: database answers; marker gone; every figure equal to A1; latest SRF and report equal; audit trail ends 14:21:09, before the backup; both databases present |
+| Check 7 | Pass: staging app as OQ Director, Issued Test Report and Audit Trail open with no failed call. Re-print not checked on screen (the print dialog cannot be automated) |
+| Check 8 | Pass after one retry: the first run right after the restart got HTTP 500 on the Director's sign-in (GoTrue still holding a connection to the restarted database), so all Director checks failed with 401; the second run gave 78 of 79, the same as before (the one failure is the once-a-year declaration already signed before the backup) |
+| A7 | Old staging volume left unmounted (same volume id as production's; not deleted) |
+| B1–B4 (G3) | Pass: production read only (14:58:29 UTC): samples 335, issued 270, clients 146, results 5,731, calibration jobs 8, equipment 489, logins 27, file records 385, audit rows 11,153, latest SRF SR261022/216-002, latest report QI/REP/20260358A. Dump 3.1 MB restored into `restore_check` with 0 errors in 3 s; every figure equal; `restore_check` dropped |
+| C1 | Pass: daily backup 23 Oct 05:30 UTC |
+| C2 | Not yet: the first weekly backup is due Saturday 25 Oct 16:51 UTC |
+| C3 | Daily kept 6 days, weekly 27 days: for the lab to confirm |
+| C4 | Pass: "Manual 2026-10-22 after grants, before finance migrations" and "Before staging copy 2026-10-23" |
+| F1 | Not done: needs the production bucket keys; no file backup exists to compare against |
+| F2 | Open item recorded: no backup of uploaded files |
+
+**Result: partial.** The database can be recovered: Railway's backup → restore
+works and takes about a minute, and production's data reads out complete.
+Partial because uploaded files have no backup (section 6) and the weekly
+schedule has not run yet. Recording: the Backup Restore Tests register
+exists on production only after go-live (migration 18); enter this test there
+after go-live, with backup kind `manual`, restored to "Railway staging
+environment, Postgres service (volume restore) + logical copy of production
+into staging database restore_check", restore minutes 1.
+
+Also seen: right after the restore the first sign-in failed once (HTTP 500,
+GoTrue reconnecting). In a real production restore, sign in a second time, or
+restart the `auth` service if it persists.
