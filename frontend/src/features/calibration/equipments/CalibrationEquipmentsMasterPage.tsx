@@ -432,10 +432,14 @@ export default function CalibrationEquipmentsMasterPage() {
     }
   }, [])
 
-  const makeNextAssetCode = useCallback(
-    () => nextCalibrationAssetCode(labName, [...rows.map((r) => r.asset_code), ...deletedAssetCodes]),
-    [labName, rows, deletedAssetCodes],
-  )
+  // Read the codes fresh when a form opens: autosave inserts a new row without
+  // reloading the list, other people add equipment too, and testing equipment
+  // in the same table shares the one unique asset code.
+  const makeNextAssetCode = useCallback(async () => {
+    const { data, error } = await supabase.from('equipment_master').select('asset_code')
+    const fromDb = error ? [] : ((data ?? []) as Array<{ asset_code: string | null }>).map((r) => r.asset_code ?? '')
+    return nextCalibrationAssetCode(labName, [...fromDb, ...rows.map((r) => r.asset_code), ...deletedAssetCodes])
+  }, [labName, rows, deletedAssetCodes])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -477,8 +481,8 @@ export default function CalibrationEquipmentsMasterPage() {
     [filteredRows, search],
   )
 
-  const rowToForm = (row: CalibrationEquipmentRow, asCopy = false): CalibrationEquipmentForm => ({
-    assetCode: asCopy ? makeNextAssetCode() : (row.asset_code ?? ''),
+  const rowToForm = (row: CalibrationEquipmentRow, asCopy = false, nextCode = ''): CalibrationEquipmentForm => ({
+    assetCode: asCopy ? nextCode : (row.asset_code ?? ''),
     equipmentName: asCopy
       ? `${row.equipment_name || ''} - Copy`
       : (row.equipment_name ?? ''),
@@ -499,10 +503,10 @@ export default function CalibrationEquipmentsMasterPage() {
     methodUsed: resolveEquipmentMethodUsed(rangesFromRow(row), ''),
   })
 
-  const openNew = () => {
+  const openNew = async () => {
     const next = {
       ...emptyCalibrationEquipmentForm(),
-      assetCode: makeNextAssetCode(),
+      assetCode: await makeNextAssetCode(),
     }
     lastSavedJsonRef.current = JSON.stringify(next)
     setEditingId(null)
@@ -522,8 +526,8 @@ export default function CalibrationEquipmentsMasterPage() {
     setShowForm(true)
   }
 
-  const openCopy = (row: CalibrationEquipmentRow) => {
-    const next = rowToForm(row, true)
+  const openCopy = async (row: CalibrationEquipmentRow) => {
+    const next = rowToForm(row, true, await makeNextAssetCode())
     lastSavedJsonRef.current = JSON.stringify(next)
     setEditingId(null)
     setForm(next)
@@ -775,7 +779,7 @@ export default function CalibrationEquipmentsMasterPage() {
         onSearchChange={setSearch}
         pageSize={pageSize}
         onPageSizeChange={setPageSize}
-        onNew={openNew}
+        onNew={() => void openNew()}
         assistantContext={assistantContext}
         onAssistantDataChanged={() => void loadRows()}
       />
@@ -835,7 +839,7 @@ export default function CalibrationEquipmentsMasterPage() {
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}
         onEdit={openEdit}
-        onCopy={openCopy}
+        onCopy={(row) => void openCopy(row)}
       />
 
       <CalibrationEquipmentsFooterBar
