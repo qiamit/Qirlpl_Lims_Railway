@@ -210,3 +210,9 @@ set, a push no longer runs the job, but it does change the code the nightly
 run uses. Until the merge, either turn off automatic deploys for
 `files-backup` in production or accept that branch pushes reach it.
 
+**First scheduled run: 24 Oct 02:01 IST (20:31 UTC), exited OK in 42 s.**
+453 objects, 518.8 MiB; check: no differences; nothing moved to history;
+database dump 3.1 MB. Folder and file dates are UTC dates, so the 02:00 IST run
+of 24 Oct writes `db/2026-10-23.dump` and `history/2026-10-23/` (it replaced the
+manual run's dump of the same UTC date).
+
