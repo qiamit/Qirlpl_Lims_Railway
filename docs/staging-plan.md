@@ -1,7 +1,7 @@
 # Staging copy on Railway: plan
 
 Goal: test everything on the branch `claude/priceless-ramanujan-5f501a`
-(33 new migrations plus the frontend, gateway, functions and PDF changes)
+(37 new migrations plus the frontend, gateway, functions and PDF changes)
 against a copy of real production data, with real logins for every role,
 before anything touches production. Nothing in this plan has been done yet;
 each step marked **(approval)** changes Railway and needs Amit's go-ahead.
@@ -68,7 +68,7 @@ Then, before anything deploys from the branch:
 
 ### D. Apply the migrations on staging (approval)
 
-Apply the 33 migrations in the order listed in `docs/audit-gap-closure-plan.md`, one transaction each, recording the output. After each group, run the read-only checks from the security report on staging. Expected notices are documented in each migration header (for example: equipment with an open breakdown goes Out of Service; module access starts in log mode).
+Apply the 37 migrations in the order listed in `docs/audit-gap-closure-plan.md`, one transaction each, recording the output. After each group, run the read-only checks from the security report on staging. Expected notices are documented in each migration header (for example: equipment with an open breakdown goes Out of Service; module access starts in log mode).
 
 ### E. Test (about 1–2 weeks of part-time testing)
 
@@ -89,7 +89,7 @@ Apply the 33 migrations in the order listed in `docs/audit-gap-closure-plan.md`,
 
 1. Fresh production backup.
 2. Merge the branch to `main` (deploys the frontend, gateway, functions and PDF changes; all of them work before the migrations).
-3. Apply the 33 migrations to production in the same order, while the lab is idle.
+3. Apply the 37 migrations to production in the same order, while the lab is idle.
 4. Apply the Railway settings tested on staging (GoTrue, `GOTRUE_DISABLE_SIGNUP`, `PDF_ALLOWED_ORIGINS`, frontend start command).
 5. Smoke-test with the Director login; leave module access in log mode for two weeks before enforcing.
 6. Delete the staging environment once production is signed off.

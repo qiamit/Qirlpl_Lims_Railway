@@ -84,6 +84,10 @@ for Amit).
 31. `20261030100300_document_series_typed_tables.sql`
 32. `20261031100000_p3_good_practice.sql`
 33. `20261031100100_equipment_history_tables.sql`
+34. `20261101100000_finance_cancel_keeps_number.sql`
+35. `20261101100100_report_number_unique.sql` (only lists duplicate report numbers if any exist; resolve them, then re-run)
+36. `20261101100200_sampling.sql` (module stays off until switched on in Lab Settings)
+37. `20261101100300_retention_minimum.sql`
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 
@@ -120,9 +124,9 @@ Every migration is idempotent and the frontend works before and after each one, 
 | P2-9 | Internal audit coverage matrix, auditor independence check | 8.8 | Built |
 | P2-10 | Records retention schedule | 8.4 | Built |
 | P2-11 | Entered-by per result, raw-data attachments, sample custody log | 7.4, 7.5.1 | Built |
-| P3-1 | Sampling plan and record | 7.3, 7.8.5 | Not started: only needed if the lab does sampling (otherwise state the exclusion in the Quality Manual) |
-| P3-2, 3, 5, 6, 7, 9 | MU by range band, org chart + NABL ULR scope check, CRM opened-on/expiry, public complaints process + KPIs, objective KPIs, SRF contract change log | various | In progress |
-| P3-4, 8 | Equipment QR status labels; append-only maintenance and intermediate-check history | 6.4.8, 6.4.10 | In progress |
+| P3-1 | Sampling plan and record | 7.3, 7.8.5 | Built, switched off until the lab starts sampling |
+| P3-2, 3, 5, 6, 7, 9 | MU by range band, org chart + NABL ULR scope check, CRM opened-on/expiry, public complaints process + KPIs, objective KPIs, SRF contract change log | various | Built |
+| P3-4, 8 | Equipment QR status labels; append-only maintenance and intermediate-check history | 6.4.8, 6.4.10 | Built |
 | CF-04 | Results exactly on a tolerance limit now conform (floating-point fix) | 7.8.6 | Done |
 | EV-1 | Calibration/IQC formulas evaluated without `new Function` (needed for the CSP) | 7.11 | Done |
 
@@ -168,3 +172,10 @@ Every migration is idempotent and the frontend works before and after each one, 
 - Complaints are acknowledged within **5 working days** (public complaints page).
 - Plan a Railway staging copy for full testing before production
   (`docs/staging-plan.md`).
+
+Open after these decisions:
+- Spreadsheet `ROUND`/`MROUND` inside raw-data-sheet formulas still round
+  half up (Excel behaviour); decide whether they should follow IS 2 too.
+- Calibration raw data sheets and certificates have no frozen display copy,
+  so reopening an old sheet whose value sits exactly on a half shows the
+  IS 2 result.
