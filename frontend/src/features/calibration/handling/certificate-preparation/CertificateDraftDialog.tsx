@@ -560,6 +560,13 @@ function parseNumericMagnitude(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** Unit as written on certificates: "MM" → "mm", "KN" → "kN". */
+function normalizeCertificateUnit(unit: string): string {
+  const u = unit.trim()
+  const known: Record<string, string> = { mm: 'mm', µm: 'µm', um: 'µm', m: 'm', kn: 'kN', n: 'N', kgf: 'kgf', '°c': '°C' }
+  return known[u.toLowerCase()] ?? u
+}
+
 function formatMagnitudeDisplay(n: number): string {
   return Number.isInteger(n) ? String(n) : is2RoundFixed(n, 2)
 }
@@ -1963,18 +1970,31 @@ export function CertificateDraftDialog({
     // (saved with the raw data) or an expanded-U column of the raw data. A
     // master's own certificate uncertainty is only one input to that budget
     // and is never reported as the result (OQ-02 staging run, 23 Oct 2026).
-    const uCandidates: number[] = []
+    // U is printed as the MU sheet / raw data gives it (0.018 stays 0.018;
+    // rounding it to 2 decimals printed 0.02).
+    const uCandidates: Array<{ n: number; text: string }> = []
+    const uText = (raw: unknown) => String(raw ?? '').trim().replace(/^[±+]\s*/, '').split(/\s+/)[0] ?? ''
     if (expandedUCol) {
       for (const row of rows) {
         const n = parseNumericMagnitude(row.values[expandedUCol.key])
-        if (n != null) uCandidates.push(n)
+        if (n != null) uCandidates.push({ n, text: uText(row.values[expandedUCol.key]) })
       }
     }
     const savedMu = payload?.muResults ?? null
     const savedMuMax = maxSavedExpandedUncertainty(savedMu, rows.map((r) => r.id))
-    if (savedMuMax != null) uCandidates.push(savedMuMax)
-    const maxU = uCandidates.length > 0 ? Math.max(...uCandidates) : null
-    const uK = savedMuMax != null && savedMu ? savedMu.coverageFactorK : null
+    if (savedMuMax != null && savedMu) {
+      const keep = new Set(rows.map((r) => r.id))
+      const hit = savedMu.rows.find(
+        (r) => keep.has(r.rowId) && Math.abs(Number(uText(r.expanded))) === savedMuMax,
+      )
+      uCandidates.push({ n: savedMuMax, text: hit ? uText(hit.expanded) : String(savedMuMax) })
+    }
+    const maxUEntry = uCandidates.reduce<{ n: number; text: string } | null>(
+      (best, c) => (best == null || c.n > best.n ? c : best),
+      null,
+    )
+    const maxU = maxUEntry?.n ?? null
+    const uK = savedMuMax != null && savedMu && maxU === savedMuMax ? savedMu.coverageFactorK : null
     const uUnitFromCol = (() => {
       if (!expandedUCol) return ''
       const fromLabel = `${expandedUCol.label} ${expandedUCol.key}`.match(
@@ -1984,12 +2004,13 @@ export function CertificateDraftDialog({
       if (fromLabel?.[2]) return fromLabel[2].replace(/^kn$/i, 'kN')
       return ''
     })()
-    const uUnit =
-      masters
-        .map((m) => (m.calibration_uncertainty_unit ?? '').trim())
-        .find(Boolean) ||
+    const uUnit = normalizeCertificateUnit(
       uUnitFromCol ||
-      loadUnit
+        masters
+          .map((m) => (m.calibration_uncertainty_unit ?? '').trim())
+          .find(Boolean) ||
+        loadUnit,
+    )
 
     // Relative Resolution @ Fi max — keep unit from column label, else Load unit (kN).
     const maxZeroFromRelativeResolution = relativeResolutionCol != null
@@ -2018,7 +2039,7 @@ export function CertificateDraftDialog({
             : '',
       uncertaintyReported:
         maxU != null
-          ? `±${formatMagnitudeDisplay(maxU)}${uUnit ? ` ${uUnit}` : ''}${uK ? ` (k = ${uK})` : ''}`
+          ? `±${maxUEntry?.text || formatMagnitudeDisplay(maxU)}${uUnit ? ` ${uUnit}` : ''}${uK ? ` (k = ${uK})` : ''}`
           : '',
     }
   }, [columns, rows, masters, loadColumn, eqFields?.range, payload?.muResults])
