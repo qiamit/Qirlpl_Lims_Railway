@@ -215,7 +215,7 @@ Manual part: the tester guide (test accounts per role created by the Director in
 
 Equipment codes applied on staging (lab accepted the suggestions): `backend/supabase/data-fixes/20261023_equipment_asset_codes.sql` gives 95 equipment master and 8 equipment-for-calibration records their new codes (each checked by id and old code, new code must be free; second run changes nothing; every change in `audit_log` with its reason). Other records refer to equipment by id, not by code (one calibration job and one SRF mention a changed record, by id only), so nothing else changes. Migration 38 then added both asset code keys: **44 of 44 unique keys present**. All 7 upsert saves now work, and `app_deleted_keys` returns 200 on every equipment page.
 
-At go-live the order is: merge (new asset code generator), migrations, `20261023_duplicate_cleanup.sql`, `20261023_equipment_asset_codes.sql`, then migrations 35 and 38 again. If equipment is added on production before then, a suggested code may already be taken; the script then stops without changing anything and the list is regenerated.
+At go-live the order is: merge (new asset code generator), migrations, `20261023_duplicate_cleanup.sql`, `20261023_equipment_asset_codes.sql`, `20261023_calibration_template_formulas.sql`, then migrations 35 and 38 again. If equipment is added on production before then, a suggested code may already be taken; the script then stops without changing anything and the list is regenerated.
 
 **API role tests (23 Oct).** Ten test accounts on staging (`oq.<role>@qirlpl.test`: Director, QM, TM mechanical, testing engineers mechanical and electrical, calibration engineer thermal, calibration TM electrical, sample incharge, receptionist, auditor), created the way the app's create-user function does it, each given the module access rules of a real colleague in the same role. A script signs in as each one through the staging API and works through the rules the database enforces. Result: **70 of 72 checks pass**; test records are named `OQ TEST` / `OQTEST` and stay on staging (they also used invoice numbers INV-2026-0001…0004 and one validation run there).
 
@@ -266,6 +266,30 @@ Also seen in OQ-01: signatories printed on the report come from Print Setting de
 | 6–9 Review, certificate, amendment, engineer edit | Not run: the sheet cannot be saved |
 
 **Fault 3b fixed (35dd718, tested on staging 23 Oct).** A typed reading now keeps every digit typed and is padded to the decimals of the least count of the range being calibrated (job range, then job, then equipment master); formula columns are unchanged. On SRF-2026-0005 (LC 0.01) as the calibration engineer: 50.01, 50.02, 49.99 stay as typed (were 50, 50, 50), 100 becomes 100.00, 100.0035 stays 100.0035. Validation cases RD-01 and RD-02 added; 56 of 56 pass. The sheet was closed without saving because fault 3c still blocks saving.
+
+**Fault 3c fixed (582a8e0, 87e856b, 67c3476; data fix applied on staging 23 Oct).**
+
+- Renaming a column in the raw data template editor now updates every formula that named it, when the label field is left. Only formulas that meant that column change: a same label in another table, a new name already taken, or an empty name leave formulas alone.
+- Formulas with a comma outside a function's arguments, or with brackets that do not match, are refused in the editor and give no value in the sheet. Before, `=AVERAGE [I1],[I2],[I3]` returned the last reading (9.99 instead of 10.007) and the editor accepted it; this was also OQ-02 step 5. Of the 85 distinct formulas saved on the staging copy, the 13 now refused were all malformed; none of the 72 correct ones changes.
+- Saving a sheet now uses the same formulas the grid shows (the job's copy merged with the current equipment formulas) and stores that template with the values. Before, the grid showed Average while the save still found it empty.
+- The last row of a sheet can now be deleted (it only had Add row). A seeded point without a master value could not be removed, so the sheet could never be saved.
+- `backend/supabase/data-fixes/20261023_calibration_template_formulas.sql` repairs 29 formulas:
+  - Vernier Caliper QI-EQ-0002: the equipment template and 7 of 8 ranges (renamed columns, damaged range 0–300 text).
+  - Vernier Caliper 300 QI-EQ-0196: Internal and Depth errors took the External Jaws average because all three tables had a column "Average"; those columns become "Average I" / "Average D". The Max/Min parallelism formula is also fixed.
+  - Observed error = Average − Master reading, as in the lab's own newer formulas.
+  - The fix checks every row first and stops if anything changed; a second run changed nothing. The audit trail carries the reason.
+  - A checker over all 77 template formulas now finds 0 problems.
+- Validation cases RD-03, RD-04, RD-05 added; 59 of 59 pass.
+
+Tested on staging as the calibration engineer on SRF-2026-0005 (0–150 mm, LC 0.01). Rows outside the range and the 4 rows without a master point were deleted; readings 50.01, 50.02, 49.99 at 50 mm gave Average 50.01 and Error 0.01 (hand: 150.02/3 = 50.007; 50.01 − 50.00). The sheet saved as `under_review`, entry by the engineer, with the new formulas stored.
+
+Still for the lab:
+- Vernier Caliper range 0–200 LC 0.02 still uses Master − Average (opposite sign).
+- The Internal and Depth tables of QI-EQ-0002 have Average and Error as typed columns, not formulas.
+- The MU templates of both calipers hold placeholder entries.
+- The draft sheet of SRF-2026-0003 keeps its old formula copy until it is saved again.
+- The sheet lists all caliper checker points, not only those in the job's range.
+- A rename does not yet update MU formulas that name raw data columns.
 
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
 
