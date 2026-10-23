@@ -368,3 +368,37 @@ export const CERTIFICATE_NUMBER_PREFIX_NAMES = [
   'Calibration Cert',
   'CC',
 ] as const
+
+/**
+ * Certificate number without its amendment suffix: "QI/CC/2026/0003/A1" →
+ * "QI/CC/2026/0003" (the /A1, /R1, /S1 that calibration_amended_certificate_number writes).
+ */
+export function certificateNumberBase(no: string | null | undefined): string {
+  return String(no ?? '').trim().replace(/\/[ARS]\d+$/i, '')
+}
+
+/**
+ * Next certificate number `{prefix}/{year}/{NNNN}` after every number in
+ * `used`, amended ones (…/0003/A1) and the numbers they replaced included.
+ * Before, an amended number did not match and its serial was handed out again
+ * (OQ staging run, 23 Oct 2026: QI/CC/2026/0003 issued twice).
+ */
+export function nextCalibrationCertificateNumber(
+  prefix: string,
+  year: number,
+  used: Array<string | null | undefined>,
+): string {
+  const yearToken = String(year)
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`^${escaped}[/\\-]?${yearToken}[/\\-]?(\\d{1,6})$`, 'i')
+  // Also accept a bare serial after the year when drafts used another separator.
+  const looseRe = new RegExp(`(?:^|[\\/\\-])${yearToken}[\\/\\-](\\d{1,6})$`, 'i')
+  let maxSerial = 0
+  for (const raw of used) {
+    const num = certificateNumberBase(raw)
+    if (!num) continue
+    const m = num.match(re) ?? (num.toUpperCase().includes(prefix.toUpperCase()) ? num.match(looseRe) : null)
+    if (m?.[1]) maxSerial = Math.max(maxSerial, Number.parseInt(m[1], 10) || 0)
+  }
+  return `${prefix}/${yearToken}/${String(maxSerial + 1).padStart(4, '0')}`
+}

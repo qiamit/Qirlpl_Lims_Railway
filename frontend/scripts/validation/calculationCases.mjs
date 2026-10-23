@@ -33,6 +33,7 @@
 export const MODULE_FILES = {
   mu: 'src/features/calibration/equipments/muCalcEngine.ts',
   rds: 'src/features/calibration/rawDataSheetTypes.ts',
+  cert: 'src/features/calibration/handling/certificate-preparation/certificateDraftTypes.ts',
   point: 'src/features/calibration/equipment-for-calibration/pointFormula.ts',
   testResult: 'src/features/sample-handling/sample-under-testing/testResultValues.ts',
   conformity: 'src/features/sample-handling/report-preparation/evaluateResultConformity.ts',
@@ -661,6 +662,23 @@ export const CASES = [
       m.ulr.parseNablAccreditationCert(m.ulr.LAB_CALIBRATION_ACCREDITATION_DEFAULT),
     ],
     expected: [true, false, true, 'CC0303926000000007F', null, 12, { cab: 'CC', digits: '03039' }],
+  },
+
+  {
+    id: 'CN-01',
+    module: 'cert',
+    title: 'Next calibration certificate number counts amended and replaced numbers',
+    source:
+      'OQ staging run 23 Oct 2026: after QI/CC/2026/0003 became QI/CC/2026/0003/A1 the next new certificate got 0003 again. ' +
+      'Hand: used 0001, 0002, 0003/A1 (+ replaced 0003) → 0004; R2/S1 suffixes count too; other years and prefixes are ignored',
+    run: (m) => [
+      m.cert.certificateNumberBase('QI/CC/2026/0003/A1'),
+      m.cert.certificateNumberBase('QI/CC/2026/0007/r2'),
+      m.cert.nextCalibrationCertificateNumber('QI/CC', 2026, ['QI/CC/2026/0001', 'QI/CC/2026/0002', 'QI/CC/2026/0003/A1']),
+      m.cert.nextCalibrationCertificateNumber('QI/CC', 2026, ['QI/CC/2026/0002', 'QI/CC/2026/0009/S1', 'QI/CC/2025/0050', 'XX/2026/0099']),
+      m.cert.nextCalibrationCertificateNumber('QI/CC', 2027, ['QI/CC/2026/0003/A1']),
+    ],
+    expected: ['QI/CC/2026/0003', 'QI/CC/2026/0007', 'QI/CC/2026/0004', 'QI/CC/2026/0010', 'QI/CC/2027/0001'],
   },
 
   // ------------------------------------------------------------- test report number

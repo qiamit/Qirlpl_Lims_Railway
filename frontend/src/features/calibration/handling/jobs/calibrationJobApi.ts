@@ -10,6 +10,7 @@ import {
   type CalibrationJobStage,
 } from '../types'
 import { EQUIPMENT_KIND_CALIBRATION } from '@/lib/equipmentKind'
+import { nextCalibrationCertificateNumber } from '../certificate-preparation/certificateDraftTypes'
 import {
   fetchOpenCertificateAmendmentIds,
   issueCertificateAmendment,
@@ -934,39 +935,32 @@ export async function suggestCalibrationCertificateNumber(): Promise<string> {
   }
   if (!prefix) prefix = FALLBACK_PREFIX
 
-  const year = new Date().getFullYear()
-  const yearToken = String(year)
-  const { data: jobs, error: jobsErr } = await supabase
-    .from('calibration_jobs')
-    .select('certificate_draft')
-    .neq('certificate_draft', '{}')
-    .limit(500)
-  if (jobsErr) {
-    console.warn('[suggestCalibrationCertificateNumber]', jobsErr.message)
-    return `${prefix}/${yearToken}/0001`
-  }
+  return nextCalibrationCertificateNumber(prefix, new Date().getFullYear(), await fetchUsedCertificateNumbers())
+}
 
-  let maxSerial = 0
-  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const re = new RegExp(`^${escaped}[/\\-]?${yearToken}[/\\-]?(\\d{1,6})$`, 'i')
-  // Also accept bare serial after year when drafts used QI/CC/YYYY/NNNN
-  const looseRe = new RegExp(
-    `(?:^|[\\/\\-])${yearToken}[\\/\\-](\\d{1,6})$`,
-    'i',
-  )
-  for (const row of jobs ?? []) {
-    const draft = (row as { certificate_draft?: unknown }).certificate_draft
-    if (!draft || typeof draft !== 'object') continue
-    const num = String(
-      (draft as Record<string, unknown>).certificateNumber ??
-        (draft as Record<string, unknown>).certificate_number ??
-        '',
-    ).trim()
-    if (!num) continue
-    const m = num.match(re) ?? (num.toUpperCase().includes(prefix.toUpperCase()) ? num.match(looseRe) : null)
-    if (m?.[1]) maxSerial = Math.max(maxSerial, Number.parseInt(m[1], 10) || 0)
-  }
-
-  const next = String(maxSerial + 1).padStart(4, '0')
-  return `${prefix}/${yearToken}/${next}`
+/**
+ * Every calibration certificate number in use: current drafts, and the
+ * original and new numbers of every amendment. Read through
+ * app_used_certificate_numbers (migration 43), which sees all jobs for staff;
+ * before that migration the tables are read directly.
+ */
+async function fetchUsedCertificateNumbers(): Promise<string[]> {
+  const rpc = await supabase.rpc('app_used_certificate_numbers')
+  if (!rpc.error && Array.isArray(rpc.data)) return (rpc.data as unknown[]).map((n) => String(n ?? ''))
+  const [jobsRes, amendRes] = await Promise.all([
+    supabase.from('calibration_jobs').select('certificate_draft').neq('certificate_draft', '{}'),
+    supabase.from('calibration_certificate_amendments').select('original_certificate_number, new_certificate_number'),
+  ])
+  if (jobsRes.error) console.warn('[suggestCalibrationCertificateNumber]', jobsRes.error.message)
+  if (amendRes.error) console.warn('[suggestCalibrationCertificateNumber]', amendRes.error.message)
+  return [
+    ...(jobsRes.data ?? []).map((row) => {
+      const draft = ((row as { certificate_draft?: unknown }).certificate_draft ?? {}) as Record<string, unknown>
+      return String(draft.certificateNumber ?? draft.certificate_number ?? '')
+    }),
+    ...(amendRes.data ?? []).flatMap((row) => {
+      const r = row as { original_certificate_number?: string | null; new_certificate_number?: string | null }
+      return [String(r.original_certificate_number ?? ''), String(r.new_certificate_number ?? '')]
+    }),
+  ]
 }
