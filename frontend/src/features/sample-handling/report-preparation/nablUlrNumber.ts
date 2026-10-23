@@ -80,7 +80,49 @@ export function normalizeUlrAlphanumeric(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
+/**
+ * An amended / revised report keeps the original ULR with a revision suffix:
+ * `TC1544226000000400F-R1`, then `-R2`, … (lab decision 23 Oct 2026; the lab
+ * typed `-R2` by hand before). Room for up to `-R99` in inputs.
+ */
+export const NABL_ULR_REVISION_SEPARATOR = '-R'
+export const NABL_ULR_MAX_INPUT_LENGTH = NABL_ULR_CHAR_LENGTH + NABL_ULR_REVISION_SEPARATOR.length + 2
+
+/** `TC…F-R2` → base `TC…F` and revision 2; a ULR without a suffix has revision null. */
+export function splitNablUlrRevision(ulr: string): { base: string; revision: number | null } {
+  const m = /^(.*?)\s*-\s*R\s*(\d+)\s*$/i.exec(ulr)
+  if (!m) return { base: normalizeUlrAlphanumeric(ulr), revision: null }
+  const revision = parseInt(m[2]!, 10)
+  return { base: normalizeUlrAlphanumeric(m[1]!), revision: revision >= 1 ? revision : null }
+}
+
+/**
+ * ULR for the next amended / revised report of `sourceUlr`: its base plus
+ * `-R` and one more than the highest revision already used for that base
+ * (`existingUlrs` should include deleted samples' ULRs, never reused).
+ */
+export function nextRevisedNablUlrNumber(sourceUlr: string, existingUlrs: Array<string | null | undefined>): string {
+  const { base, revision } = splitNablUlrRevision(sourceUlr)
+  let highest = revision ?? 0
+  for (const other of existingUlrs) {
+    if (!other?.trim()) continue
+    const parts = splitNablUlrRevision(other)
+    if (parts.base === base && parts.revision != null && parts.revision > highest) highest = parts.revision
+  }
+  return `${base}${NABL_ULR_REVISION_SEPARATOR}${highest + 1}`
+}
+
+/**
+ * ULR as typed or stored: alphanumeric, uppercase, 19 characters, plus a
+ * complete revision suffix when there is one (`-R1`, set on amendment). A
+ * partial suffix (`-`, `-R`) is dropped so it can never be saved as a
+ * different ULR.
+ */
 export function sanitizeNablUlrInput(value: string): string {
+  const { base, revision } = splitNablUlrRevision(value)
+  if (revision != null && revision <= 99 && base.length === NABL_ULR_CHAR_LENGTH) {
+    return `${base}${NABL_ULR_REVISION_SEPARATOR}${revision}`
+  }
   return normalizeUlrAlphanumeric(value).slice(0, NABL_ULR_CHAR_LENGTH)
 }
 
@@ -170,13 +212,13 @@ export function matchesNablUlrStructure(ulr: string): boolean {
   return raw.length === NABL_ULR_CHAR_LENGTH && NABL_ULR_PATTERN.test(raw)
 }
 
-/** Extract serial from stored ULR if it matches prefix + NABL structure */
+/** Extract serial from stored ULR if it matches prefix + NABL structure (a `-Rn` revision keeps its serial) */
 export function parseNablUlrSequence(
   ulr: string,
   prefix: string,
   fallbackCab: NablUlrCabType = 'TC',
 ): number | null {
-  const raw = normalizeUlrAlphanumeric(ulr)
+  const raw = splitNablUlrRevision(ulr).base
   if (!matchesNablUlrStructure(raw)) return null
 
   const header = normalizeNablUlrHeaderPrefix(prefix, fallbackCab)

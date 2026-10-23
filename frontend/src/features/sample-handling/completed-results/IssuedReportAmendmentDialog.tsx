@@ -368,7 +368,13 @@ export function IssuedReportAmendmentDialog({
     ]
   })
 
-  const canSubmit = Boolean(row && selectedSections.length > 0 && builtSections.length === selectedSections.length && issueKind)
+  const canSubmit = Boolean(
+    row &&
+      selectedSections.length > 0 &&
+      builtSections.length === selectedSections.length &&
+      issueKind &&
+      remark.trim(),
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -627,13 +633,15 @@ export function IssuedReportAmendmentDialog({
           })}
 
           <div className="space-y-2">
-            <Label htmlFor="issued-amend-remark">Remark</Label>
+            <Label htmlFor="issued-amend-remark">Reason for amendment *</Label>
             <Textarea
               id="issued-amend-remark"
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
-              placeholder="Optional reason (saved on the amendment record)"
+              placeholder="What is wrong in the issued report and what changes (required, saved on the amendment record)"
               rows={2}
+              required
+              aria-required="true"
               className="min-h-16 resize-y"
             />
           </div>

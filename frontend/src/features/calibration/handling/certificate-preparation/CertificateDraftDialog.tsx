@@ -81,6 +81,7 @@ import {
   buildCalibrationUlrHeaderPrefix,
   fetchNextCalibrationNablUlrNumber,
   formatNablUlrNumber,
+  NABL_ULR_MAX_INPUT_LENGTH,
   sanitizeNablUlrInput,
 } from '@/features/sample-handling/report-preparation/nablUlrNumber'
 import {
@@ -465,7 +466,7 @@ function CertificateNumberUlrBar({
               value={ulrNumber}
               onChange={(e) => onUlrNumberChange(sanitizeNablUlrInput(e.target.value))}
               placeholder={ulrPlaceholder}
-              maxLength={19}
+              maxLength={NABL_ULR_MAX_INPUT_LENGTH}
               className={cn(
                 certCellSingleLineClass,
                 'm-0 h-7 w-[19ch] min-w-0 border-0 bg-transparent p-0 text-left text-xs font-bold shadow-none focus-visible:ring-0 sm:text-sm',

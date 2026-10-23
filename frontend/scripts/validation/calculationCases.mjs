@@ -598,6 +598,51 @@ export const CASES = [
     expected: [false, false],
   },
 
+  {
+    id: 'ULR-04',
+    module: 'ulr',
+    title: 'Amended report ULR: original ULR + -R and the next revision number',
+    source:
+      'Lab decision 23 Oct 2026 (OQ-01 step 11): amended report keeps the ULR with -R1, then -R2, … ' +
+      'Hand: first amendment of TC1544226000000400F → -R1; amending again (from the original or from -R1) → -R2; ' +
+      'base with a hand-typed -R2 already present → -R3; another ULR\'s revisions and deleted ones count only for their own base',
+    run: (m) => {
+      const u = 'TC1544226000000400F'
+      return [
+        m.ulr.nextRevisedNablUlrNumber(u, [u]),
+        m.ulr.nextRevisedNablUlrNumber(u, [u, `${u}-R1`]),
+        m.ulr.nextRevisedNablUlrNumber(`${u}-R1`, [u, `${u}-R1`]),
+        m.ulr.nextRevisedNablUlrNumber('TC1544226000000261F', ['TC1544226000000261F-R2']),
+        m.ulr.nextRevisedNablUlrNumber(u, ['TC1544226000000401F-R5', `${u.toLowerCase()}-r1`]),
+      ]
+    },
+    expected: [
+      'TC1544226000000400F-R1',
+      'TC1544226000000400F-R2',
+      'TC1544226000000400F-R2',
+      'TC1544226000000261F-R3',
+      'TC1544226000000400F-R2',
+    ],
+  },
+  {
+    id: 'ULR-05',
+    module: 'ulr',
+    title: 'A revised ULR passes the format check with its serial; partial suffixes are dropped',
+    source:
+      'Report Preparation keeps a stored ULR only when it passes the format check (else it assigns a new ULR). ' +
+      'Hand: TC1544226000000400F-R1 → serial 400, valid; a trailing "-" or "-R" is removed; 20 characters without a suffix are cut to 19',
+    run: (m) => [
+      m.ulr.isValidNablUlrFormat('TC1544226000000400F-R1', 'TC15442260'),
+      m.ulr.parseNablUlrSequence('TC1544226000000400F-R1', 'TC15442260'),
+      m.ulr.sanitizeNablUlrInput('tc1544226000000400f-r1'),
+      m.ulr.sanitizeNablUlrInput('TC1544226000000400F-'),
+      m.ulr.sanitizeNablUlrInput('TC1544226000000400F-R'),
+      m.ulr.sanitizeNablUlrInput('TC1544226000000400FX'),
+      m.ulr.isValidNablUlrFormat('TC1544226000000400X-R1', 'TC15442260'),
+    ],
+    expected: [true, 400, 'TC1544226000000400F-R1', 'TC1544226000000400F', 'TC1544226000000400F', 'TC1544226000000400F', false],
+  },
+
   // ------------------------------------------------------------- test report number
   {
     id: 'RN-01',

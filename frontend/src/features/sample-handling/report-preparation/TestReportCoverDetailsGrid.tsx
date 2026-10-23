@@ -12,7 +12,7 @@ import {
   withReceivingReportTypeSuffix,
 } from './formattedTestReportNumber'
 import {
-  NABL_ULR_CHAR_LENGTH,
+  NABL_ULR_MAX_INPUT_LENGTH,
   nablUlrPlaceholder,
   sanitizeNablUlrInput,
   ULR_PREFIX_SETTING_NAMES,
@@ -207,7 +207,7 @@ export function TestReportCoverDetailsGrid({
                   value={nablUlrNumber}
                   onChange={(e) => onNablUlrNumberChange(sanitizeNablUlrInput(e.target.value))}
                   placeholder={ulrPlaceholder}
-                  maxLength={NABL_ULR_CHAR_LENGTH}
+                  maxLength={NABL_ULR_MAX_INPUT_LENGTH}
                   disabled={disabled || ulrPrefixLoading}
                   title={`NABL 18-position ULR (19 chars) · Part A · ${ULR_PREFIX_SETTING_NAMES.join(' / ')}`}
                   aria-label="ULR Number"

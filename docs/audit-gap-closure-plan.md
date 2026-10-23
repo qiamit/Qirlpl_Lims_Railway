@@ -91,6 +91,7 @@ for Amit).
 38. `20261102100000_unique_key_reconciliation.sql` (adds the unique keys production never got; keys whose rows hold duplicates are listed and skipped, so clean the listed records and run it again)
 39. `20261102100100_constraint_reconciliation.sql` (adds the 12 foreign keys and 62 CHECK rules production never got; rules that existing rows break are listed and skipped)
 40. `20261102100200_sample_delete_roles.sql` (only the Laboratory Director, Quality Manager and Sample Cell staff can delete a sample; lab decision 23 Oct)
+41. `20261102100300_amendment_reason_required.sql` (an amendment record must carry its reason; lab decision 23 Oct)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 
