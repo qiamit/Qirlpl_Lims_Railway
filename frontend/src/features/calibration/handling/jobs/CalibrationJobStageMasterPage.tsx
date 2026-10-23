@@ -289,6 +289,20 @@ export function CalibrationJobStageMasterPage({
       window.alert(blockMsg)
       return
     }
+    // ISO/IEC 17025 7.7 / 7.8.1: the raw data is reviewed by someone other
+    // than the person who calibrated (the database refuses it as well).
+    if (isReviewData) {
+      const own = rows.filter(
+        (r) => idsToMove.includes(r.id) && jobAssignedToCurrentUser(r, user?.id, profileName),
+      )
+      if (own.length > 0) {
+        window.alert(
+          `You carried out this calibration (${[...new Set(own.map((r) => r.srf_number ?? r.equipment_label))].join(', ')}). ` +
+            'Another authorised person must review and approve its raw data.',
+        )
+        return
+      }
+    }
     // ISO/IEC 17025 6.2.6: the reviewer becomes the certificate's Authorized
     // Signatory, so they must be authorized to sign certificates.
     const signGate =
