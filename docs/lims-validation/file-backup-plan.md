@@ -139,7 +139,7 @@ Nothing below has been done. Each step waits for the Director's go-ahead.
 | 1 | Add `backend/backup-job/` (Dockerfile + `backup.sh`) to the branch; dry run of the script against staging only | Code on the branch | **Done 23 Oct** (84fbf33) |
 | 2 | Create `qirlpl-lims-backup` bucket and the `files-backup` service; **run in staging first** (staging bucket + staging database), check the copy and one restore | Railway: new bucket + service | **Done 23 Oct** (section 8) |
 | 3 | Production: set the job's production variables, run once by hand, check the copy (453 objects, 519 MiB) and the dump | Production: new service run, reads only | **Done 23 Oct** (section 9) |
-| 4 | Production: turn on the schedule `30 20 * * *` | Production | Yes |
+| 4 | Production: turn on the schedule `30 20 * * *` | Production | **Done 23 Oct** (section 10) |
 | 5 | MinIO option B steps 1–2 (compare, archive) | Reads MinIO, writes the backup bucket | Yes |
 | 6 | MinIO option B steps 3–5 after the lab confirms | Stops and later deletes the MinIO service | Yes |
 | 7 | Update `backup-restore-procedure.md` (files now backed up, file restore in the 90-day test); record a restore test with the files part | Docs, LIMS register | — |
@@ -191,7 +191,22 @@ mujhe dikhao"). Each staged change was read before it was committed.
 | Dump check | The dump was read back from the backup bucket and restored into a scratch database on staging (`dump_check`, then dropped): 0 errors; samples 335, issued 270, clients 146, results 5,731, calibration jobs 8, equipment 489, logins 27, file records 385, audit rows 11,153, latest SRF SR261022/216-002, latest report QI/REP/20260358A: all equal to production at the same moment (read-only) |
 | Production otherwise | Postgres, frontend, api, functions, pdf-service, storage-api, auth and rest: no new deployment; nothing staged; API health 200 |
 
-Next (needs approval): step 4, the production schedule `30 20 * * *`
-(02:00 IST). After the merge, switch the job's production source from this
-branch to `main`.
+After the merge, switch the job's production source from this branch to
+`main`.
+
+## 10. Step 4: nightly schedule in production (23 Oct 2026)
+
+Approved by Amit in chat ("step 4 karo … 30 20 * * * … staged change
+dikhana"). The staged change held only `files-backup` →
+`deploy.cronSchedule = "30 20 * * *"`; committed 16:17 UTC. Railway: "Schedule:
+30 20 * * * (at 20:30), next run in 4 hours". First scheduled run: 23 Oct 20:30
+UTC = 24 Oct 02:00 IST.
+
+Found while doing it: production `files-backup` follows this branch, so every
+push to the branch redeploys it. Before the schedule was set, the push of
+e5bbb10 (16:15 UTC) therefore ran the job once more (453 objects, no
+differences, dump 3.1 MB, 40 s; it only reads production). With the schedule
+set, a push no longer runs the job, but it does change the code the nightly
+run uses. Until the merge, either turn off automatic deploys for
+`files-backup` in production or accept that branch pushes reach it.
 
