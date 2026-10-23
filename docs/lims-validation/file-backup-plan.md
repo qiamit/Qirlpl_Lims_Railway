@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | QIRLPL-LIMS-BKP-FILES |
-| Version | 0.1 (23 Oct 2026, plan for approval; nothing created yet) |
+| Version | 0.2 (23 Oct 2026): plan approved; steps 1–2 done and tested on staging; production not scheduled |
 | Clause | ISO/IEC 17025:2017 7.11.3 c (data protected against loss), 7.5, 8.4 |
 | Closes | B-2 open item "uploaded files have no backup" (`restore-test-B2.md` section 6) |
 | Approver | Laboratory Director |
@@ -104,7 +104,7 @@ environment is deleted).
 
 | Case | Command (run from the job's shell or a one-off service; Director decides) |
 |---|---|
-| One file deleted by mistake | Find it in the audit trail (`storage.objects` DELETE, bucket/path), then `rclone copyto backup:qirlpl-lims-backup/history/<date>/<path> live:<bucket>/<path>` |
+| One file deleted by mistake | 1) Find it in the audit trail: `storage.objects` DELETE with row id `<bucket_id>/<name>`; its old row holds owner, version and metadata. 2) In the backup bucket it is at `history/<date>/stub/<bucket_id>/<name>/<version>` (storage-api's key layout). 3) `rclone copyto backup:<backup bucket>/history/<date>/stub/<bucket_id>/<name>/<version> live:<live bucket>/stub/<bucket_id>/<name>/<version>`. 4) Put the `storage.objects` row back from that audit row (bucket_id, name, owner, owner_id, version, metadata, created_at), without a signed-in user. 5) Open the file in the app. Tested on staging 23 Oct (section 8) |
 | Whole bucket lost | `rclone copy backup:qirlpl-lims-backup/current live:<new bucket>`, point `storage-api` at it, then compare with `storage.objects` |
 | Database older than Railway keeps | `pg_restore` the chosen `db/<date>.dump` into a **new** database first, check, then decide |
 
@@ -136,8 +136,8 @@ Nothing below has been done. Each step waits for the Director's go-ahead.
 
 | # | Step | Changes | Approval |
 |---|---|---|---|
-| 1 | Add `backend/backup-job/` (Dockerfile + `backup.sh`) to the branch; dry run of the script against staging only | Code on the branch | Plan approval |
-| 2 | Create `qirlpl-lims-backup` bucket and the `files-backup` service; **run in staging first** (staging bucket + staging database), check the copy and one restore | Railway: new bucket + service (instances in both environments; production instance not scheduled yet) | Yes |
+| 1 | Add `backend/backup-job/` (Dockerfile + `backup.sh`) to the branch; dry run of the script against staging only | Code on the branch | **Done 23 Oct** (84fbf33) |
+| 2 | Create `qirlpl-lims-backup` bucket and the `files-backup` service; **run in staging first** (staging bucket + staging database), check the copy and one restore | Railway: new bucket + service | **Done 23 Oct** (section 8) |
 | 3 | Production: set the job's production variables, run once by hand (`railway cron run`), check the copy (453 objects, 519 MiB) and the dump | Production: new service run, reads only | Yes |
 | 4 | Production: turn on the schedule `30 20 * * *` | Production | Yes |
 | 5 | MinIO option B steps 1–2 (compare, archive) | Reads MinIO, writes the backup bucket | Yes |
@@ -153,3 +153,30 @@ Nothing below has been done. Each step waits for the Director's go-ahead.
 | Cron job (a few minutes a night, small memory) | under $0.50 |
 | Service egress into the backup bucket (only new files each night; first copy ≈ 0.5 GB ≈ $0.03 once) | a few cents |
 | Saved by removing MinIO (option B) | its memory plus 248 MB volume (≈ $0.04 for the volume) |
+
+## 8. Steps 1–2 done on staging (23 Oct 2026)
+
+Approved by Amit in chat ("Plan manzoor. Step 1 aur 2 karo … Production pe
+schedule mat lagana").
+
+| Item | State |
+|---|---|
+| Code | `backend/backup-job/` (Dockerfile on `postgres:18` with rclone, `backup.sh`, `railway.json` with restart policy NEVER and no schedule), commit 84fbf33 |
+| Bucket | `qirlpl-lims-backup` created in the project and deployed **in staging only** (`qirlpl-lims-backup-6vwvos`, region sin). Production has no instance of it |
+| Service | `files-backup` created without a source, so it exists in both environments but deploys nowhere by itself. Staging: source = this branch, root `backend/backup-job`, **no cron schedule**; variables set in staging only (live bucket = staging bucket `…-92rz-k`, backup bucket, `DATABASE_URL` = staging Postgres reference). Production: no source, no variables, no schedule, 0 deployments |
+| Run 1 (15:15 UTC) | 454 objects, 518.8 MiB mirrored to `current/`; check: no differences; `history/2026-10-23/` empty; database dump 4.9 MB; 122 s |
+| Restore check | Test file `laboratory-files/zz-backup-test/restore-test-1792768474816.pdf` (68 bytes, SHA-256 9502…4ea9) uploaded as OQ Director before run 1, then deleted in the app |
+| Run 2 (15:18 UTC) | 453 objects in `current/`; the deleted file moved to `history/2026-10-23/` (1 object, 68 bytes); check: no differences; dump 4.9 MB; 39 s |
+| Restore | File copied from `history/2026-10-23/stub/laboratory-files/…/<version>` back to the staging live bucket under the same key; its `storage.objects` row put back from the audit trail's DELETE row; downloaded through the app as OQ Director: HTTP 200, 68 bytes, SHA-256 equal to the original. The test file was then deleted again |
+| Production | Unchanged: Postgres, frontend and storage-api deployments as before; nothing staged; no backup bucket, no job source, no schedule |
+
+Learned: a file restore needs the `storage.objects` row as well as the object
+(the app lists and serves files from that row); the audit trail added by
+migration 49 keeps everything needed to rebuild it. Before migration 49 is on
+production, a deleted file's row would have to be rebuilt from the object
+alone (bucket, path and version are in the key; owner and metadata would be
+missing).
+
+Next (needs approval): step 3, production variables and one manual run;
+step 4, the production schedule `30 20 * * *`.
+
