@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
-import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
+import { fetchTestReportPrintSettingsForSample } from '@/features/sample-handling/report-preparation/reportSignatories'
 import { fetchTestReportCoverDetails } from '@/features/sample-handling/report-preparation/fetchTestReportCoverDetails'
 import { fetchReportPrepLetterheads } from '@/features/sample-handling/report-preparation/reportPrepLetterhead'
 import { fetchReportResultRowsForSample } from '@/features/sample-handling/report-preparation/reportResultRows'
@@ -52,7 +52,8 @@ export async function loadIssuedReportSources(
       fallbacks: { clientName: row.clientName, isCodeLabel: row.isCodeLabel },
     }),
     fetchReportPrepLetterheads(row.id, scopes),
-    fetchTestReportPrintSettings(),
+    // Signatories are the sample's tester(s), reviewer(s) and issuer (ISO/IEC 17025 7.8.2.1 o).
+    fetchTestReportPrintSettingsForSample(row.id),
     notesPromise,
     fetchSampleDecisionRule(row.id),
     // ISO 17025 7.8.3.1 a): conditions saved with each result ({} before migration 20261026100300).

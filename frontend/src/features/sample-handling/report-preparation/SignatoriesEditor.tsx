@@ -119,6 +119,11 @@ export function SignatoriesEditor({
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
         Signatories
       </p>
+      <p className="text-xs text-stone-600">
+        Each report prints the people who did the work: whoever entered the results (Tested By), the results
+        reviewer (Reviewed / Checked By) and the issuer (Approved / Authorized By). Here you choose the role
+        labels and after which parts they sign; the names below are not printed on reports.
+      </p>
 
       {usersLoading ? (
         <p className="text-xs text-stone-500">Loading users from User Management…</p>

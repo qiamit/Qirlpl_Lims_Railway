@@ -74,6 +74,7 @@ import {
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 import { buildSampleRetentionIssuePayload } from '@/features/sample-handling/retain-disposed/sampleRetention'
 import { ConfirmLoginPasswordDialog } from '@/features/sample-handling/shared/ConfirmLoginPasswordDialog'
+import { fetchTestReportPrintSettingsForSample } from './reportSignatories'
 import {
   archiveIssuedTestReport,
   ISSUE_SIGNATURE_COLUMNS,
@@ -81,7 +82,6 @@ import {
   ISSUE_SIGNATURE_STATEMENT,
   isMissingIssueSignatureColumnError,
 } from '@/features/sample-handling/completed-results/issuedReportArchive'
-import { fetchTestReportPrintSettings } from '@/features/settings/lab-settings/printSettingsConfig'
 import { visibleTestReportSignatures } from '@/features/settings/lab-settings/printSettingsTypes'
 import type { ReportScopeKind } from './reportScope'
 import { fetchIssueHoldNcs, ISSUE_HOLD_OVERRIDE_COLUMN, type IssueHoldNc } from './reportIssueHold'
@@ -695,7 +695,13 @@ export default function TestReportPreparationMasterPage() {
     // their password; the issue continues in completeIssueReport.
     let signatories: PendingIssue['signatories'] = []
     try {
-      const printSettings = await fetchTestReportPrintSettings()
+      // The real tester(s), reviewer(s) and, as issuer, the signed-in user.
+      const printSettings = await fetchTestReportPrintSettingsForSample(active.id, {
+        userId: user?.id ?? '',
+        name: profileName.trim() || user?.email || '',
+        designation: designation.trim(),
+        department: (departmentName ?? '').trim(),
+      })
       signatories = visibleTestReportSignatures(printSettings).map((sig) => ({
         roleLabel: sig.roleLabel.trim(),
         name: sig.name.trim(),

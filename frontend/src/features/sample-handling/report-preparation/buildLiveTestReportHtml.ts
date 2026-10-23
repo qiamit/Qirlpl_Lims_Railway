@@ -21,6 +21,7 @@ import {
   type ReportEnvironmentLine,
 } from '@/features/environment/resultEnvironmentSnapshot'
 import { fetchSampleOpinionsForPrint, type ReportOpinions } from './reportOpinions'
+import { applyReportPeopleToSignatures, fetchSampleReportPeople } from './reportSignatories'
 import { fetchSamplingForReport } from '@/features/sampling/samplingForSample'
 
 export type BuildLiveTestReportHtmlInput = {
@@ -58,9 +59,14 @@ export type BuildLiveTestReportHtmlInput = {
 export async function buildLiveTestReportHtml(
   input: BuildLiveTestReportHtmlInput,
 ): Promise<string> {
+  // Signatories are this sample's tester(s), reviewer(s) and issuer (the
+  // signed-in user until it is issued); Print Setting gives only the layout.
+  const printSettings = applyReportPeopleToSignatures(
+    input.printSettings,
+    await fetchSampleReportPeople(input.active.id).catch(() => ({ testers: [], reviewers: [], issuer: null })),
+  )
   const {
     scope,
-    printSettings,
     letterheadsByScope,
     active,
     reportNumber,

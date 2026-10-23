@@ -34,6 +34,7 @@ export const MODULE_FILES = {
   mu: 'src/features/calibration/equipments/muCalcEngine.ts',
   rds: 'src/features/calibration/rawDataSheetTypes.ts',
   cert: 'src/features/calibration/handling/certificate-preparation/certificateDraftTypes.ts',
+  sig: 'src/features/sample-handling/report-preparation/reportSignatories.ts',
   point: 'src/features/calibration/equipment-for-calibration/pointFormula.ts',
   testResult: 'src/features/sample-handling/sample-under-testing/testResultValues.ts',
   conformity: 'src/features/sample-handling/report-preparation/evaluateResultConformity.ts',
@@ -734,6 +735,39 @@ export const CASES = [
       ]
     },
     expected: [0.021, null, 3, 2],
+  },
+
+  {
+    id: 'SG-01',
+    module: 'sig',
+    title: 'Test report signatories are the sample\'s tester, reviewer and issuer, in the Print Setting layout',
+    source:
+      'ISO/IEC 17025 7.8.2.1 o. OQ-01 staging run 23 Oct 2026: reports printed the Print Setting names (two testing ' +
+      'engineers and a TM) whoever did the work. Hand: layout Tested By x2 after Part D, Approved By after A, B, D; ' +
+      'people: one tester, one reviewer, the issuer → Tested By (tester, D), Reviewed By (reviewer, D), Approved By (issuer, A B D)',
+    run: (m) => {
+      const slot = (roleLabel, name, parts) => ({ roleLabel, userId: name, name, designation: '', department: '', enabled: true, required: true, showAfterParts: parts })
+      const settings = {
+        showSignatures: true,
+        signatures: [
+          slot('Tested By', 'Vishal Rahangdale', ['part_d']),
+          slot('Tested By', 'Rajat Maurya', ['part_d']),
+          slot('Approved By', 'Kunal Patle', ['part_a', 'part_b', 'part_d']),
+        ],
+      }
+      const p = (name, designation) => ({ userId: name, name, designation, department: '' })
+      const out = m.sig.applyReportPeopleToSignatures(settings, {
+        testers: [p('OQ Testing Engineer Mech', 'Testing Engineer'), p('OQ Testing Engineer Mech', 'Testing Engineer')],
+        reviewers: [p('OQ Technical Manager Mech', 'Technical Manager')],
+        issuer: p('OQ Quality Manager', 'Quality Manager'),
+      })
+      return out.signatures.map((sg) => `${sg.roleLabel}: ${sg.name} [${sg.showAfterParts.join(' ')}]`)
+    },
+    expected: [
+      'Tested By: OQ Testing Engineer Mech [part_d]',
+      'Reviewed By: OQ Technical Manager Mech [part_d]',
+      'Approved By: OQ Quality Manager [part_a part_b part_d]',
+    ],
   },
 
   // ------------------------------------------------------------- test report number
