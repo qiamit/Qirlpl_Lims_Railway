@@ -338,6 +338,36 @@ Other observations:
 - Review Data shows 4 empty rows after the 4 saved ones; the certificate printed only the 4.
 - The test calibration engineer (rules copied from the real Thermal calibration engineer) also has Edit on Review Data and Certificate Preparation; whether an engineer can review their own job was not tried.
 
+**Calibration certificate ULR fixed (a41052a, migration 42 applied on staging, 23 Oct).**
+
+- Certificates get CC + the calibration accreditation number + year + location + their own serial. The number comes from a CC accreditation in Lab Settings, else the lab's published CC-3039; on staging the first is `CC0303926000000001F`.
+- Both generators read every ULR in use (test reports with deleted ones, calibration certificates, superseded certificates) through `app_used_ulr_numbers()`. This function sees all rows for staff only.
+- An unissued draft still holding a TC ULR gets a CC one; issued certificates and amendments keep theirs.
+- Migration 42 `20261102100400_ulr_cross_check.sql` refuses a ULR whose base is already used by a test report, or by another calibration job (23505, with an advisory lock). Rows that already clash are left alone.
+
+Staging tests:
+
+- 8 of 8 database cases pass in a rolled-back transaction: sample ↔ certificate, certificate ↔ test report (also lowercase), certificate ↔ certificate are refused; a free CC ULR, a report revision on its own base and other edits of already-clashing rows are allowed.
+- SRF-2026-0006 (Vernier Caliper) went through SRF, allocation, conduct, review and certificate. The draft and the issued certificate have ULR **CC0303926000000001F**.
+- Report Preparation for SR261017/211-001 now suggests **TC1544226000000402F**: 401 is taken by a certificate. Before the fix it would have suggested 401.
+- Through the API as Director: `app_used_ulr_numbers` returns 277 ULRs; putting CC0303926000000001F on a test report is refused (409, "already used by the calibration certificate of SRF-2026-0006").
+- Validation case ULR-06; 62 of 62 pass.
+
+**Production certificates whose ULR clashes with a test report (listed for the lab; not changed):**
+
+| Certificate | SRF | Customer | Equipment | Issued | ULR | Same ULR on test report |
+|---|---|---|---|---|---|---|
+| QI/CC/2026/0001 | SRF-2026-0001 | BR Stainless India Limited | Universal Testing Machine | 12-Aug-26 (signatory Yogeshwar Krishna) | TC1544226000000248F | SR260714/104-001, QI/REP/20260206A, Refmart Industries, issued 12-Aug-26 |
+| QI/CC/2026/0002 | SRF-2026-0002 | Ajay Ingot Rolling Mill Private Limited | Universal Testing Machine | 13-Aug-26 (signatory Yogeshwar Krishna) | TC1544226000000252F | SR260806/121-001, QI/REP/20260210A, Aishwaryam Steels Private Limited, issued 14-Aug-26; and its amendment SR260806/121-001A, QI/REP/20260210AA (ULR …252F-R2), issued 21-Sep-26 |
+
+Suggested correction, for the lab to decide: amend both certificates (Calibration Certificates → Amend, with the reason "ULR corrected to the calibration series"), click the ULR auto button in the amendment draft so it takes the next CC number, and issue. Inform both customers. Until then, a new amendment of test report SR260806/121-001 is refused by the guard, because its ULR base is still held by QI/CC/2026/0002.
+
+Also seen in this test:
+
+- **Certificate numbers repeat after an amendment.** SRF-2026-0006 got QI/CC/2026/0003, the original number of SRF-2026-0005's certificate (now QI/CC/2026/0003/A1). The number generator does not count numbers replaced by an amendment. Production has no certificate amendment yet.
+- **An engineer can approve their own raw data.** The test calibration engineer, who has Edit on Review Data like the real Thermal engineer, could forward their own job; only the authorization-matrix reason was asked. The test was cancelled at that dialog.
+- "Access Denied" right after sign-in also happened for the Director; a reload shows the page.
+
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
