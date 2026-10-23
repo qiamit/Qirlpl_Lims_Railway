@@ -217,6 +217,24 @@ Equipment codes applied on staging (lab accepted the suggestions): `backend/supa
 
 At go-live the order is: merge (new asset code generator), migrations, `20261023_duplicate_cleanup.sql`, `20261023_equipment_asset_codes.sql`, then migrations 35 and 38 again. If equipment is added on production before then, a suggested code may already be taken; the script then stops without changing anything and the list is regenerated.
 
-Next: lab runs the OQ scripts.
+**API role tests (23 Oct).** Ten test accounts on staging (`oq.<role>@qirlpl.test`: Director, QM, TM mechanical, testing engineers mechanical and electrical, calibration engineer thermal, calibration TM electrical, sample incharge, receptionist, auditor), created the way the app's create-user function does it, each given the module access rules of a real colleague in the same role. A script signs in as each one through the staging API and works through the rules the database enforces. Result: **70 of 72 checks pass**; test records are named `OQ TEST` / `OQTEST` and stay on staging (they also used invoice numbers INV-2026-0001…0004 and one validation run there).
+
+| Area | Checked | Result |
+|---|---|---|
+| Sign-in | all 10 accounts; wrong password; self sign-up; TOTP enrolment; signed-out access | Pass |
+| What each role sees | samples, clients, allocations, calibration SRFs and jobs, equipment, quotations, complaints, NC, documents, audit trail | Pass (engineers cannot read the audit trail) |
+| Sample to report | client, SRF (duplicate refused), allocation, test, results, issue with password (issuer stamped), issued sample locked, issuer cannot be changed, archive cannot be changed or deleted, issued sample cannot be deleted | Pass |
+| Recycle Bin | Director deletes, SRF number not reused, restore | Pass |
+| Audit trail | entries present, hidden from engineers, cannot be edited | Pass |
+| Declarations | sign, one per year, no edits, others cannot see, Director sees | Pass |
+| Calibration | SRF with due-date flag, job, engineer sees it, unknown stage refused | Pass |
+| Finance | invoice numbering, duplicate refused, delete = cancel keeping the number, next number new, engineer cannot invoice, GST intra (Chhattisgarh) / inter (Maharashtra) | Pass |
+| Change control | approve, deploy refused before validation, validation result cannot be changed, deploy after a passed run | Pass |
+
+The 2 failures: F1 failed only on the second run (the account had already signed its 2026 declaration in the first run, which is the rule working). **D1: a testing engineer can delete a sample that is not issued.** It goes to the Recycle Bin (the Director can restore it) instead of being lost as in production today, and Enforce mode would still allow it, because in Module Access every testing engineer has Edit on Sample Receiving. OQ-04 step 2 expects engineers not to be able to delete: either set Sample Receiving to View for engineers in Module Access, or restrict sample deletion in the database to the Director, Quality Manager and Sample Cell.
+
+Real staff, simulated on the database (all 27 profiles, in transactions that were rolled back): 26 are recognised as staff and see the lab's records. The Workshop Incharge has no module access rules and sees nothing (the same rule already applies on production). Every module access rule is per user, so a new employee sees nothing until the Director sets their Module Access.
+
+Next: lab runs the OQ scripts with these accounts (the Director resets each password in Lab Settings → User Management and hands it over); decide D1.
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
