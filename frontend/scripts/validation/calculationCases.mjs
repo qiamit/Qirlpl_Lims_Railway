@@ -214,6 +214,70 @@ export const CASES = [
     expected: ['50.01', '49.99', '50.00', '10.0016', '50.01', '-0.500', '', 'OK'],
   },
 
+  {
+    id: 'RD-03',
+    module: 'rds',
+    title: 'Renaming a raw data column keeps the formulas that use it working',
+    source:
+      'OQ-02 staging run 23 Oct 2026: the Vernier Caliper template still named "DUC Reading 1 mm" after the ' +
+      'column became "DUC Reading E1 mm", so Average stayed empty. Hand: readings 50.01, 50.02, 49.99 → ' +
+      'average 150.02 / 3 = 50.006667 → 50.007 (3 dp); error = 50.007 − 50.0016 = 0.0054 → 0.005',
+    run: (m) => {
+      const cols = [
+        numberCol('m'),
+        numberCol('e1'),
+        numberCol('e2'),
+        numberCol('e3'),
+        formulaCol('avg', '=AVERAGE([DUC Reading 1 mm],[DUC Reading 2 mm],[DUC Reading 3 mm])', 3),
+        formulaCol('err', '=[Average]-[Master]', 3),
+      ]
+      const labels = { m: 'Master', e1: 'DUC Reading 1 mm', e2: 'DUC Reading 2 mm', e3: 'DUC Reading 3 mm', avg: 'Average', err: 'Error' }
+      let tpl = { version: 1, seedFrom: 'none', verification: { items: [] }, columns: cols.map((c) => ({ ...c, label: labels[c.key] })) }
+      const rename = (key, to) => {
+        const from = [...tpl.columns].find((c) => c.key === key).label
+        tpl = { ...tpl, columns: tpl.columns.map((c) => (c.key === key ? { ...c, label: to } : c)) }
+        tpl = m.rds.renameColumnRefsInTemplate(tpl, key, from, to)
+      }
+      rename('e1', 'DUC Reading E1 mm')
+      rename('e2', 'DUC Reading E2 mm')
+      rename('e3', 'DUC Reading E3 mm')
+      rename('avg', 'Average Reading External Jaws mm')
+      const values = { m: '50.0016', e1: '50.01', e2: '50.02', e3: '49.99' }
+      const out = m.rds.applyFormulaColumns(tpl.columns, values, 2)
+      return [tpl.columns[4].formula.expression, tpl.columns[5].formula.expression, out.avg, out.err]
+    },
+    expected: [
+      '=AVERAGE([DUC Reading E1 mm],[DUC Reading E2 mm],[DUC Reading E3 mm])',
+      '=[Average Reading External Jaws mm]-[Master]',
+      '50.007',
+      '0.005',
+    ],
+  },
+  {
+    id: 'RD-04',
+    module: 'rds',
+    title: 'Rename with a label shared by another table: only formulas that meant the renamed column change',
+    source:
+      'Reference resolution takes the first column with the label. Renaming the second "Master" (internal jaws) ' +
+      'leaves [Master] meaning the first one; renaming the first moves [Master] to its new name; ' +
+      'a new name already used by an earlier column, or an empty name, changes nothing',
+    run: (m) => {
+      const tpl = {
+        version: 1,
+        seedFrom: 'none',
+        verification: { items: [] },
+        columns: [{ ...numberCol('m1'), label: 'Master' }, { ...formulaCol('x', '=[Master]*2', 2), label: 'X' }],
+        extraTables: [{ id: 't2', name: 'Internal', columns: [{ ...numberCol('m2'), label: 'Master' }] }],
+      }
+      const second = m.rds.renameColumnRefsInTemplate(tpl, 'm2', 'Master', 'Master Internal')
+      const first = m.rds.renameColumnRefsInTemplate(tpl, 'm1', 'Master', 'Master External')
+      const clash = m.rds.renameColumnRefsInTemplate(tpl, 'm2', 'Master', 'X')
+      const empty = m.rds.renameColumnRefsInTemplate(tpl, 'm1', 'Master', ' ')
+      return [second, first, clash, empty].map((t) => t.columns[1].formula.expression)
+    },
+    expected: ['=[Master]*2', '=[Master External]*2', '=[Master]*2', '=[Master]*2'],
+  },
+
   // ------------------------------------------------------------- calibration point formula
   {
     id: 'PF-01',

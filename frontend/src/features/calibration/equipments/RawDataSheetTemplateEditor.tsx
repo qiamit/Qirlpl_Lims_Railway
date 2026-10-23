@@ -64,6 +64,7 @@ import {
   resolveEnvParameterColumns,
   resolveEnvRowFieldType,
   analyzeColumnFormulaExpression,
+  renameColumnRefsInTemplate,
   COLUMN_FORMULA_HELP_ROWS,
   type FormulaValidationIssue,
   type EnvParameterColumn,
@@ -1744,6 +1745,8 @@ export function RawDataSheetTemplateEditor({
   onVerificationDialogOpenChange?: (open: boolean) => void
 }) {
   const [calculationColumnKey, setCalculationColumnKey] = useState<string | null>(null)
+  /** Column label when its field got focus; on blur, formulas naming it follow the rename. */
+  const labelAtFocusRef = useRef<{ key: string; label: string } | null>(null)
   const [fetchedPointsTables, setFetchedPointsTables] = useState<
     Array<{ columns: Array<{ header: string }> }>
   >([])
@@ -2191,6 +2194,21 @@ export function RawDataSheetTemplateEditor({
                               onChange={(e) =>
                                 updateColumn(table.id, col.key, { label: e.target.value })
                               }
+                              onFocus={() => {
+                                labelAtFocusRef.current = { key: col.key, label: col.label }
+                              }}
+                              onBlur={() => {
+                                const start = labelAtFocusRef.current
+                                labelAtFocusRef.current = null
+                                if (!start || start.key !== col.key || start.label === col.label) return
+                                const next = renameColumnRefsInTemplate(
+                                  value,
+                                  col.key,
+                                  start.label,
+                                  col.label,
+                                )
+                                if (next !== value) onChange(next)
+                              }}
                               placeholder={isFormula ? 'e.g. Average Reading' : 'e.g. As Found'}
                               className="h-9"
                               aria-label={`Column label ${index + 1}`}

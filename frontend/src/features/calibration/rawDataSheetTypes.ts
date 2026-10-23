@@ -1721,6 +1721,8 @@ export function extractExpressionSourceKeys(
 function validateExpressionBody(body: string): string | null {
   // Strip quoted text literals before checking tokens
   let rest = body.replace(/"(?:\\.|[^"\\])*"/g, ' ')
+  const structureError = expressionStructureError(rest)
+  if (structureError) return structureError
   // After refs replaced with numbers, only math + allowed fn names + & should remain.
   rest = rest.replace(/\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, ' ')
   rest = rest.replace(/[+\-*/().,&<>=!\s]/g, ' ')
@@ -1730,6 +1732,28 @@ function validateExpressionBody(body: string): string | null {
       return `Unknown symbol "${tok}". Use names in [brackets], numbers, + − × ÷, & "text", or AVERAGE/SUM/MIN/MAX/MEDIAN/MODE/STDEV/VAR/ABS/SQRT.`
     }
   }
+  return null
+}
+
+/**
+ * Brackets must match, and a comma may only separate a function's arguments.
+ * Anywhere else the comma is JavaScript's comma operator, which silently keeps
+ * the last value: `=AVERAGE [A],[B],[C]` gave [C] instead of the average
+ * (OQ-02 staging run, 23 Oct 2026). Text literals are already blanked out.
+ */
+function expressionStructureError(body: string): string | null {
+  const calls: boolean[] = []
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i]
+    if (ch === '(') {
+      calls.push(/[A-Za-z_]\w*\s*$/.test(body.slice(0, i)))
+    } else if (ch === ')') {
+      if (calls.pop() === undefined) return 'Brackets ( ) do not match: a ")" has no "(".'
+    } else if (ch === ',' && !calls[calls.length - 1]) {
+      return 'A comma can only separate function arguments, e.g. AVERAGE([A],[B],[C]); check the brackets.'
+    }
+  }
+  if (calls.length > 0) return 'Brackets ( ) do not match: a "(" is not closed.'
   return null
 }
 
@@ -2473,6 +2497,64 @@ export function validateEnvParameterFormula(
   } catch (err) {
     if (err instanceof Error && err.message === 'incomplete') return null
     return err instanceof Error ? err.message : 'Invalid formula'
+  }
+}
+
+/**
+ * `[Old]` → `[New]` in one formula. The name inside the brackets matches like
+ * a column reference does (case and surrounding spaces ignored); the rest of
+ * the formula is left exactly as written.
+ */
+export function renameFormulaColumnRef(expr: string, oldLabel: string, newLabel: string): string {
+  const needle = oldLabel.trim().toLowerCase()
+  const next = newLabel.trim()
+  if (!needle || !next) return expr
+  return expr.replace(/\[([^\]]+)\]/g, (whole, ref: string) =>
+    ref.trim().toLowerCase() === needle ? `[${next}]` : whole,
+  )
+}
+
+/**
+ * A raw data template column was renamed from `oldLabel`: point every formula
+ * in the template (all tables) that meant that column at its new name, so a
+ * rename never leaves formulas naming a column that no longer exists.
+ * `[Old]` is rewritten only when it resolved to the renamed column; when the
+ * old name belongs to another column (the same label in another table, which
+ * a reference resolves to first) those formulas keep meaning that column.
+ */
+export function renameColumnRefsInTemplate(
+  template: RawDataSheetTemplate,
+  columnKey: string,
+  oldLabel: string,
+  newLabel: string,
+): RawDataSheetTemplate {
+  if (!oldLabel.trim() || !newLabel.trim()) return template
+  if (oldLabel.trim().toLowerCase() === newLabel.trim().toLowerCase()) return template
+  const before = allRawDataSheetColumns(template).map((c) =>
+    c.key === columnKey ? { ...c, label: oldLabel } : c,
+  )
+  if (resolveColumnRef(oldLabel, before)?.key !== columnKey) return template
+  // A new name already used by an earlier column would make `[New]` mean
+  // that column; leave the formulas for the editor to flag instead.
+  const after = allRawDataSheetColumns(template).map((c) =>
+    c.key === columnKey ? { ...c, label: newLabel } : c,
+  )
+  if (resolveColumnRef(newLabel, after)?.key !== columnKey) return template
+  const renameIn = (columns: RawDataSheetColumn[]) =>
+    columns.map((c) => {
+      const expr = c.formula?.expression
+      if (!c.formula || !expr) return c
+      const nextExpr = renameFormulaColumnRef(expr, oldLabel, newLabel)
+      return nextExpr === expr ? c : { ...c, formula: { ...c.formula, expression: nextExpr } }
+    })
+  return {
+    ...template,
+    columns: renameIn(template.columns),
+    ...(template.extraTables
+      ? {
+          extraTables: template.extraTables.map((t) => ({ ...t, columns: renameIn(t.columns) })),
+        }
+      : {}),
   }
 }
 
