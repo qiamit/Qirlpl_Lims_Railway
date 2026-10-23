@@ -190,14 +190,17 @@ signs off.
 
 ### 10. After go-live
 
-1. Issue amendments for the 6 reports renumbered …AA (SR260716/107-001…006,
-   SR260801/118-001, SR260818/134-001; ISO/IEC 17025 7.8.8).
-2. Module access stays in `log` mode for two weeks; review the denials, then
-   `enforce_writes`, then `enforce`.
-3. Directors enrol TOTP MFA.
-4. Record a restore test (B-2) within a week.
-5. Delete the staging environment once production is signed off
-   (`railway environment delete staging`).
+Lab decisions of 23 Oct 2026 are marked *(lab)*.
+
+| # | When | What | Who |
+|---|---|---|---|
+| 1 | Go-live day, after step 9 | Switch `files-backup`'s production source from the branch to `main` (Railway → production → files-backup → Settings → Source: branch `main`, root `backend/backup-job`); keep the schedule `30 20 * * *`. The next morning, check the night's run (`railway cron list`) | Operator |
+| 2 | First week | Issue the amendments for the 6 issued reports renumbered …AA (SR260716/107-001…006, SR260801/118-001, SR260818/134-001; ISO/IEC 17025 7.8.8) and send them to the customers *(lab: they will be sent)* | QM |
+| 3 | Go-live + 14 days | Module access stays in `log` mode for two weeks *(lab)*. Then: review what Enforce would have blocked (Lab Settings → Module Access Enforcement → dry run), fix the rules, switch to `enforce_writes`; one more week, then `enforce`. Each switch with the Director's go-ahead | Director, QM |
+| 4 | — | MFA: **not required** *(lab)*. TOTP stays available in GoTrue (GT-1) for anyone who wants it; nothing enforces it | — |
+| 5 | Every 90 days | Restore test as `docs/lims-validation/restore-test-B2.md` plus 3 files from the file backup *(lab: OK)*; first one recorded in the LIMS register after go-live (B-2 of 23 Oct), next due by 21 Jan 2027 | Director, QM |
+| 6 | Weekly | QM checks the last 7 nightly backup runs and the weekly database backup | QM |
+| 7 | After sign-off | Delete the staging environment (`railway environment delete staging`); it also removes the old staging volume and the `railway_pre_dryrun` database. Remove the SSH key `qirlpl-dryrun-mac` (`railway ssh keys remove`) | Operator |
 
 ## Rollback
 

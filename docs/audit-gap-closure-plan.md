@@ -149,7 +149,7 @@ Every migration is idempotent and the frontend works before and after each one, 
 |---|---|---|
 | S-4 | Password policy of 10+ characters, same in UI, functions and GoTrue | Built (GoTrue setting needs approval) |
 | S-5/6/7 | Change password, Director reset with must-change, forgot password by email | Built (reset email needs GoTrue SMTP) |
-| S-8/9 | Rate limits, 30-minute idle timeout, MFA for Director and signatories | Built (MFA optional until enforced) |
+| S-8/9 | Rate limits, 30-minute idle timeout, MFA for Director and signatories | Built. Lab decision 23 Oct: MFA not required (available, not enforced) |
 | S-10/11/12 | All profile edits through one server function; keep at least one active Director; deactivate instead of delete | Built |
 | S-14/15 | Database-level module access (view = read-only) | Built (starts in log mode) |
 | S-16/17 | `lab_settings` writes through Director-only functions; sanitise letterhead and template HTML | Built |
