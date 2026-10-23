@@ -4,6 +4,7 @@ import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
 import { assertAllowedUpload } from '@/lib/validateUpload'
+import { storageFileExists } from '@/lib/storageFileExists'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IsCodesHeaderBar } from './IsCodesHeaderBar'
@@ -220,8 +221,12 @@ export default function IsCodesMasterPage() {
 
   const deletePopupFile = async (file: { id: string; file_name: string; storage_path: string }) => {
     if (!file.storage_path) return
-    const { error: stErr } = await supabase.storage.from(BUCKET).remove([file.storage_path])
+    const { data: removed, error: stErr } = await supabase.storage.from(BUCKET).remove([file.storage_path])
     if (stErr) throw stErr
+    if (!removed?.length && (await storageFileExists(BUCKET, file.storage_path))) {
+      // Migration 20261102101100: only the uploader, the QM or the Director may delete a file.
+      throw new Error('Only the person who uploaded this file, the Quality Manager or the Laboratory Director can delete it.')
+    }
     if (file.id && !file.id.startsWith('storage:')) {
       const { error: dbErr } = await supabase.from('is_code_files').delete().eq('id', file.id)
       if (dbErr) throw dbErr

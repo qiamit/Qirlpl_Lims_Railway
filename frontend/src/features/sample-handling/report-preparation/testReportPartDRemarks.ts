@@ -1,10 +1,20 @@
 /** Line 1 — auto from SRF IS code (read-only in UI) */
 export function formatPartDRemarksLine1(isCodeLabel?: string | null): string {
   const isRef = isCodeLabel?.trim() || 'the Applicable IS Standard'
-  return `1. The Sample Confirms to ${isRef} with Respect to Above Tests.`
+  return `1. The Sample Conforms to ${isRef} with Respect to Above Tests.`
 }
 
-const LINE1_PREFIX = '1. The Sample Confirms to'
+const LINE1_PREFIX = '1. The Sample Conforms to'
+/** Line 1 as worded until 23 Oct 2026; still in drafts and issued reports. */
+const LEGACY_LINE1_PREFIX = '1. The Sample Confirms to'
+
+/** Draft remarks with the old line 1 wording, reworded (used when a draft is opened). */
+export function modernizePartDRemarks(stored: string): string {
+  const lead = stored.length - stored.trimStart().length
+  return stored.trimStart().startsWith(LEGACY_LINE1_PREFIX)
+    ? stored.slice(0, lead) + LINE1_PREFIX + stored.slice(lead + LEGACY_LINE1_PREFIX.length)
+    : stored
+}
 
 export function splitPartDRemarks(
   stored: string,
@@ -12,6 +22,15 @@ export function splitPartDRemarks(
 ): { line1: string; line2: string } {
   const line1 = formatPartDRemarksLine1(isCodeLabel)
   if (!stored.trim()) return { line1, line2: '' }
+
+  // Saved with the old wording (issued before 23 Oct 2026): print line 1 as saved.
+  const legacy = stored.trimStart()
+  if (legacy.startsWith(LEGACY_LINE1_PREFIX)) {
+    const newlineIdx = legacy.indexOf('\n')
+    return newlineIdx > 0
+      ? { line1: legacy.slice(0, newlineIdx), line2: legacy.slice(newlineIdx + 1) }
+      : { line1: legacy, line2: '' }
+  }
 
   if (stored.startsWith(LINE1_PREFIX) || stored.trimStart().startsWith(LINE1_PREFIX)) {
     const body = stored.startsWith(LINE1_PREFIX) ? stored : stored.trimStart()

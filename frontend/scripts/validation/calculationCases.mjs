@@ -445,7 +445,7 @@ export const CASES = [
     title: 'No rule: 9.8 vs "10 max" conforms; 10.2 does not',
     source: 'Simple acceptance, ILAC-G8:09/2019 §4.2.1 (w = 0)',
     run: (m) => [conf(m, '9.8', '10 max'), conf(m, '10.2', '10 max')],
-    expected: ['Confirm', 'Not Confirm'],
+    expected: ['Conforms', 'Does Not Conform'],
   },
   {
     id: 'CF-02',
@@ -453,7 +453,7 @@ export const CASES = [
     title: 'Strict and inclusive limits: 10 vs "< 10" and 10 vs "≤ 10"',
     source: 'Hand: < excludes the limit, ≤ includes it',
     run: (m) => [conf(m, '10', '< 10'), conf(m, '10', '≤ 10')],
-    expected: ['Not Confirm', 'Confirm'],
+    expected: ['Does Not Conform', 'Conforms'],
   },
   {
     id: 'CF-03',
@@ -461,7 +461,7 @@ export const CASES = [
     title: 'Range "10 - 20": 20 (on the limit) conforms, 20.1 does not',
     source: 'Hand: range limits are inclusive',
     run: (m) => [conf(m, '20', '10 - 20'), conf(m, '20.1', '10 - 20')],
-    expected: ['Confirm', 'Not Confirm'],
+    expected: ['Conforms', 'Does Not Conform'],
   },
   {
     id: 'CF-04',
@@ -469,7 +469,7 @@ export const CASES = [
     title: 'Tolerance "5 ± 0.2": 5.25 does not conform; 5.2 and 4.8 (on the limit) conform',
     source: 'Hand: |5.2 − 5| = 0.2 ≤ 0.2 (tolerance limits are inclusive)',
     run: (m) => [conf(m, '5.25', '5 ± 0.2'), conf(m, '5.2', '5 ± 0.2'), conf(m, '4.8', '5 ± 0.2')],
-    expected: ['Not Confirm', 'Confirm', 'Confirm'],
+    expected: ['Does Not Conform', 'Conforms', 'Conforms'],
   },
   {
     id: 'CF-05',
@@ -477,7 +477,7 @@ export const CASES = [
     title: 'Simple-acceptance rule ignores U: 9.9 vs "10 max" with U = 0.3',
     source: 'ILAC-G8:09/2019 §4.2.1 (w = 0)',
     run: (m) => conf(m, '9.9', '10 max', { rule: SIMPLE, uncertainty: '± 0.3' }),
-    expected: 'Confirm',
+    expected: 'Conforms',
   },
   {
     id: 'CF-06',
@@ -489,7 +489,20 @@ export const CASES = [
       conf(m, 'Absent', 'Absent / 25 g', { rule: GUARD1, uncertainty: '0.3' }),
       conf(m, 'Present', 'Absent / 25 g', { rule: GUARD1, uncertainty: '0.3' }),
     ],
-    expected: ['Not Applicable', 'Confirm', 'Not Confirm'],
+    expected: ['Not Applicable', 'Conforms', 'Does Not Conform'],
+  },
+  {
+    id: 'CF-07',
+    module: 'conformity',
+    title: 'Remarks saved as "Confirm" / "Not Confirm" read as Conforms / Does Not Conform',
+    source: 'Wording change 23 Oct 2026 (ISO/IEC 17025 7.8.6 statement of conformity); saved results keep their outcome',
+    run: (m) => [
+      m.conformity.canonicalConformityRemark('Confirm'),
+      m.conformity.canonicalConformityRemark('Not Confirm'),
+      m.conformity.conformityOutcomeFromRemark('Not Confirm'),
+      m.conformity.canonicalConformityRemark('Okay'),
+    ],
+    expected: ['Conforms', 'Does Not Conform', 'fail', null],
   },
 
   // ------------------------------------------------------------- conformity, guard band
@@ -499,7 +512,7 @@ export const CASES = [
     title: 'Guard band w = 1·U, U = 0.3, "10 max": 9.6 accept, 9.8 reject, 9.7 (= AL) accept',
     source: 'ILAC-G8:09/2019 §4.2.2: acceptance limit AL = TL − w = 9.7; accept when result ≤ AL',
     run: (m) => ['9.6', '9.8', '9.7'].map((v) => conf(m, v, '10 max', { rule: GUARD1, uncertainty: '± 0.3' })),
-    expected: ['Confirm', 'Not Confirm', 'Confirm'],
+    expected: ['Conforms', 'Does Not Conform', 'Conforms'],
   },
   {
     id: 'GB-02',
@@ -507,7 +520,7 @@ export const CASES = [
     title: 'Guard band with relative U "± 2 %" on range 40–51: 50 accept, 50.5 reject',
     source: 'Hand: U = 2 % of 50 = 1.00, margin to 51 = 1.0 ≥ 1.0; at 50.5 U = 1.01, margin 0.5 < 1.01',
     run: (m) => ['50', '50.5'].map((v) => conf(m, v, '40 - 51', { rule: GUARD1, uncertainty: '± 2 %' })),
-    expected: ['Confirm', 'Not Confirm'],
+    expected: ['Conforms', 'Does Not Conform'],
   },
   {
     id: 'GB-03',
@@ -515,7 +528,7 @@ export const CASES = [
     title: 'Guard band on a lower limit "≥ 3", U = 0.5: 3.4 reject, 3.6 accept',
     source: 'ILAC-G8 §4.2.2: AL = 3 + 0.5 = 3.5',
     run: (m) => ['3.4', '3.6'].map((v) => conf(m, v, '≥ 3', { rule: GUARD1, uncertainty: '0.5' })),
-    expected: ['Not Confirm', 'Confirm'],
+    expected: ['Does Not Conform', 'Conforms'],
   },
   {
     id: 'GB-04',
@@ -526,7 +539,7 @@ export const CASES = [
       const d = m.conformity.evaluateResultConformityDetailed('9.8', '10 max', { rule: GUARD1, uncertainty: 'N/A' })
       return { remark: d.remark, uncertaintyMissing: d.uncertaintyMissing }
     },
-    expected: { remark: 'Confirm', uncertaintyMissing: true },
+    expected: { remark: 'Conforms', uncertaintyMissing: true },
   },
   {
     id: 'GB-05',
@@ -535,7 +548,7 @@ export const CASES = [
     source: 'ILAC-G8 §4.2.2: w = 0.2, AL = 9.8',
     run: (m) =>
       ['9.85', '9.75'].map((v) => conf(m, v, '10 max', { rule: { ruleType: 'guard_band', guardBandFactor: 2 }, uncertainty: '0.1' })),
-    expected: ['Not Confirm', 'Confirm'],
+    expected: ['Does Not Conform', 'Conforms'],
   },
 
   // ------------------------------------------------------------- conformity, non-binary

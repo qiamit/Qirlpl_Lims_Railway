@@ -45,7 +45,7 @@ export async function loadIssuedReportSources(
 
   // MU bands (ISO 17025 7.6) are chosen as on the issue date, so a later band
   // change does not alter a reprint; today when the issue time is unknown.
-  const resultRowsPromise = fetchReportResultRowsForSample(row.id, { muOnDate: issueDateForMu(row) })
+  const resultRowsPromise = fetchReportResultRowsForSample(row.id, { muOnDate: issueDateForMu(row), keepStoredWording: true })
   const [resultRows, coverDetails, letterheadData, printSettings, notes, rule, environmentByParameterId, opinions, sampling] = await Promise.all([
     resultRowsPromise,
     fetchTestReportCoverDetails(row.id, {

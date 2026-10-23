@@ -3,8 +3,8 @@ export const TEST_REPORT_END_MARKER = '------ End Report-----'
 
 export const TEST_REPORT_END_NOTES: readonly string[] = [
   'Test Results Related only to the Parameter Tested.',
-  'This Report shall not be Reproduced Except in Full without Prior Permission of the Laboartory.',
-  'The Report can not be used as Evidance in the Court of Law without Written Approval of Laboratory.',
+  'This Report shall not be Reproduced Except in Full without Prior Permission of the Laboratory.',
+  'The Report can not be used as Evidence in the Court of Law without Written Approval of Laboratory.',
 ] as const
 
 /**

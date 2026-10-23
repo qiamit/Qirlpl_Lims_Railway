@@ -49,10 +49,11 @@ import {
   fetchReportResultRowsForSample,
   getApplicableReportScopes,
   patchReportResultRowsSectionCode,
+  resultsWithoutUncertainty,
   saveReportResultRemarks,
   type ReportResultRow,
 } from './reportResultRows'
-import { evaluateResultConformity } from './evaluateResultConformity'
+import { evaluateResultConformityDetailed } from './evaluateResultConformity'
 import {
   fetchSampleDecisionRule,
   type DecisionRule,
@@ -86,6 +87,7 @@ import { visibleTestReportSignatures } from '@/features/settings/lab-settings/pr
 import type { ReportScopeKind } from './reportScope'
 import { fetchIssueHoldNcs, ISSUE_HOLD_OVERRIDE_COLUMN, type IssueHoldNc } from './reportIssueHold'
 import { checkUlrScope, formatUlrScopeWarnings, type UlrScopeWarning } from './ulrScopeCheck'
+import { modernizePartDRemarks } from './testReportPartDRemarks'
 import { Textarea } from '@/components/ui/textarea'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import {
@@ -123,6 +125,11 @@ type PendingIssue = {
    * acknowledge it. [] for non-NABL reports or before migration 20261031100000.
    */
   ulrScopeWarnings: UlrScopeWarning[]
+  /**
+   * Results the SRF's guard band / non-binary rule could not judge for want of
+   * a U (ISO/IEC 17025 7.8.6). Warning only, the issuer must acknowledge it.
+   */
+  resultsWithoutU: string[]
 }
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
@@ -181,6 +188,7 @@ export default function TestReportPreparationMasterPage() {
   const [issuePasswordOpen, setIssuePasswordOpen] = useState(false)
   const [holdOverrideReason, setHoldOverrideReason] = useState('')
   const [ulrScopeAcknowledged, setUlrScopeAcknowledged] = useState(false)
+  const [missingUAcknowledged, setMissingUAcknowledged] = useState(false)
   const actorIsDirector = isLaboratoryDirector(designation)
   const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
   const [referbackDialogOpen, setReferbackDialogOpen] = useState(false)
@@ -391,7 +399,7 @@ export default function TestReportPreparationMasterPage() {
 
   const openPrepare = (r: ListRow) => {
     setActive(r)
-    setDraftNotes(r.draftNotes ?? '')
+    setDraftNotes(modernizePartDRemarks(r.draftNotes ?? ''))
     setNablUlrNumber('')
     setReportNumber('')
     setUlrPrefix('')
@@ -725,6 +733,7 @@ export default function TestReportPreparationMasterPage() {
     }
     setHoldOverrideReason('')
     setUlrScopeAcknowledged(false)
+    setMissingUAcknowledged(false)
     setPendingIssue({
       sampleId: active.id,
       scopes,
@@ -734,6 +743,7 @@ export default function TestReportPreparationMasterPage() {
       signatories,
       openNcs,
       ulrScopeWarnings,
+      resultsWithoutU: prepareDecisionRule ? resultsWithoutUncertainty(prepareResultRows) : [],
     })
     setIssuePasswordOpen(true)
   }
@@ -1064,14 +1074,16 @@ export default function TestReportPreparationMasterPage() {
             rows.map((r) => {
               if (r.rowKey !== rowKey) return r
               const display = nextValue.trim() || '—'
+              const evaluated = evaluateResultConformityDetailed(
+                r.observedValue === '—' ? '' : r.observedValue,
+                nextValue,
+                { rule: prepareDecisionRule, uncertainty: r.uncertainty },
+              )
               return {
                 ...r,
                 specifiedRequirement: display,
-                remark: evaluateResultConformity(
-                  r.observedValue === '—' ? '' : r.observedValue,
-                  nextValue,
-                  { rule: prepareDecisionRule, uncertainty: r.uncertainty },
-                ),
+                remark: evaluated.remark,
+                uncertaintyMissing: evaluated.uncertaintyMissing,
               }
             }),
           )
@@ -1152,7 +1164,8 @@ export default function TestReportPreparationMasterPage() {
         statement={ISSUE_SIGNATURE_STATEMENT}
         confirmDisabled={
           (Boolean(pendingIssue?.openNcs.length) && (!actorIsDirector || !holdOverrideReason.trim())) ||
-          (Boolean(pendingIssue?.ulrScopeWarnings.length) && !ulrScopeAcknowledged)
+          (Boolean(pendingIssue?.ulrScopeWarnings.length) && !ulrScopeAcknowledged) ||
+          (Boolean(pendingIssue?.resultsWithoutU.length) && !missingUAcknowledged)
         }
         onConfirmed={({ reauthenticatedAt }) => {
           const pending = pendingIssue
@@ -1221,6 +1234,33 @@ export default function TestReportPreparationMasterPage() {
                 onChange={(e) => setUlrScopeAcknowledged(e.target.checked)}
               />
               <span>I have reviewed these parameters and accept issuing the NABL report as it is.</span>
+            </label>
+          </div>
+        ) : null}
+        {pendingIssue && pendingIssue.resultsWithoutU.length > 0 ? (
+          <div className="space-y-2 border border-red-700/40 bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+            <p className="font-semibold">Results judged without measurement uncertainty (ISO/IEC 17025 7.8.6)</p>
+            <p>
+              The decision rule on this SRF needs U, but{' '}
+              {pendingIssue.resultsWithoutU.length === 1
+                ? '1 result has none and was'
+                : `${pendingIssue.resultsWithoutU.length} results have none and were`}{' '}
+              judged by simple acceptance, while the report states the rule:
+            </p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {pendingIssue.resultsWithoutU.map((line, index) => (
+                <li key={`${line}-${index}`}>{line}</li>
+              ))}
+            </ul>
+            <p>Add the MU in the Test Parameter master (or MU bands) and reopen the report, or issue knowingly.</p>
+            <label className="flex items-start gap-2 font-medium">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-red-700"
+                checked={missingUAcknowledged}
+                onChange={(e) => setMissingUAcknowledged(e.target.checked)}
+              />
+              <span>I have reviewed these results and accept issuing the report as it is.</span>
             </label>
           </div>
         ) : null}

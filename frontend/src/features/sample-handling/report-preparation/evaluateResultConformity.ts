@@ -7,9 +7,9 @@
  *
  * With a decision rule (ILAC-G8:09/2019) and the result's expanded
  * uncertainty U, numeric results are judged against the acceptance limit:
- *   simple_acceptance  w = 0, same answers as no rule (Confirm / Not Confirm)
+ *   simple_acceptance  w = 0, same answers as no rule (Conforms / Does Not Conform)
  *   guard_band         w = factor x U; conforming only when the result is
- *                      inside the limit by at least w (Confirm / Not Confirm)
+ *                      inside the limit by at least w (Conforms / Does Not Conform)
  *   non_binary         zone width z = factor x U on each side of the limit:
  *                      Pass / Conditional Pass / Conditional Fail / Fail
  * Qualitative results (Absent, Pass, ...) and text matches ignore U.
@@ -34,8 +34,8 @@ export type ConformityOutcome =
   | 'not_applicable'
 
 export type ConformityRemark =
-  | 'Confirm'
-  | 'Not Confirm'
+  | 'Conforms'
+  | 'Does Not Conform'
   | 'Not Applicable'
   | 'Pass'
   | 'Conditional Pass'
@@ -44,8 +44,8 @@ export type ConformityRemark =
 
 /** Remarks for no rule, simple acceptance and guard band (the default wording). */
 export const RESULT_REMARK_OPTIONS: ConformityRemark[] = [
-  'Confirm',
-  'Not Confirm',
+  'Conforms',
+  'Does Not Conform',
   'Not Applicable',
 ]
 
@@ -60,8 +60,8 @@ export const NON_BINARY_REMARK_OPTIONS: ConformityRemark[] = [
 
 /** Every remark the report can hold. */
 export const ALL_RESULT_REMARKS: readonly ConformityRemark[] = [
-  'Confirm',
-  'Not Confirm',
+  'Conforms',
+  'Does Not Conform',
   'Not Applicable',
   'Pass',
   'Conditional Pass',
@@ -73,13 +73,30 @@ export function isConformityRemark(value: string | null | undefined): value is C
   return (ALL_RESULT_REMARKS as readonly string[]).includes(String(value ?? ''))
 }
 
+/**
+ * Wording used until 23 Oct 2026 ("Confirm" / "Not Confirm"). Results saved
+ * and reports issued before then still hold it; issued reports keep it, open
+ * reports show and save the current wording.
+ */
+const LEGACY_REMARKS: Readonly<Record<string, ConformityRemark>> = {
+  Confirm: 'Conforms',
+  'Not Confirm': 'Does Not Conform',
+}
+
+/** The current remark for a stored value in either wording; null when it is not a remark. */
+export function canonicalConformityRemark(value: string | null | undefined): ConformityRemark | null {
+  const t = String(value ?? '').trim()
+  if (isConformityRemark(t)) return t
+  return LEGACY_REMARKS[t] ?? null
+}
+
 export function resultRemarkOptionsForRule(
   ruleType: DecisionRuleType | null | undefined,
 ): ConformityRemark[] {
   return ruleType === 'non_binary' ? NON_BINARY_REMARK_OPTIONS : RESULT_REMARK_OPTIONS
 }
 
-/** Printed wording for an outcome. Confirm / Not Confirm unless the rule is non-binary. */
+/** Printed wording for an outcome. Conforms / Does Not Conform unless the rule is non-binary. */
 export function conformityRemarkLabel(
   outcome: ConformityOutcome,
   ruleType: DecisionRuleType | null | undefined,
@@ -91,20 +108,20 @@ export function conformityRemarkLabel(
     if (outcome === 'conditional_fail') return 'Conditional Fail'
     return 'Fail'
   }
-  return outcome === 'pass' || outcome === 'conditional_pass' ? 'Confirm' : 'Not Confirm'
+  return outcome === 'pass' || outcome === 'conditional_pass' ? 'Conforms' : 'Does Not Conform'
 }
 
 /** Outcome of a stored or edited remark (any wording). */
 export function conformityOutcomeFromRemark(remark: string | null | undefined): ConformityOutcome {
-  switch ((remark ?? '').trim()) {
-    case 'Confirm':
+  switch (canonicalConformityRemark(remark) ?? '') {
+    case 'Conforms':
     case 'Pass':
       return 'pass'
     case 'Conditional Pass':
       return 'conditional_pass'
     case 'Conditional Fail':
       return 'conditional_fail'
-    case 'Not Confirm':
+    case 'Does Not Conform':
     case 'Fail':
       return 'fail'
     default:
@@ -167,27 +184,27 @@ function includesTerm(haystack: string, terms: string[]): boolean {
   return terms.some((t) => haystack.includes(t))
 }
 
-type BinaryRemark = 'Confirm' | 'Not Confirm'
+type BinaryRemark = 'Conforms' | 'Does Not Conform'
 
 function evaluateQualitative(observed: string, requirement: string): BinaryRemark | null {
   const o = norm(observed)
   const r = norm(requirement)
 
-  if (includesTerm(o, NOT_CONFIRM_TERMS)) return 'Not Confirm'
+  if (includesTerm(o, NOT_CONFIRM_TERMS)) return 'Does Not Conform'
   if (includesTerm(o, CONFIRM_TERMS)) {
-    if (r.includes('fail') || r.includes('not confirm')) return 'Not Confirm'
-    return 'Confirm'
+    if (r.includes('fail') || r.includes('not confirm')) return 'Does Not Conform'
+    return 'Conforms'
   }
 
   const absentReq = /\b(absent|nil|nd|not detected|negative)\b/i.test(requirement)
   if (absentReq && /\b(absent|nil|nd|not detected|negative)\b/i.test(observed)) {
-    return 'Confirm'
+    return 'Conforms'
   }
   if (absentReq && /\b(present|positive|detected)\b/i.test(observed)) {
-    return 'Not Confirm'
+    return 'Does Not Conform'
   }
 
-  if (o === r) return 'Confirm'
+  if (o === r) return 'Conforms'
 
   return null
 }
@@ -482,7 +499,7 @@ export function evaluateResultConformityDetailed(
 
   const qualitative = evaluateQualitative(observedValue, specifiedRequirement)
   if (qualitative) {
-    return result(qualitative === 'Confirm' ? 'pass' : 'fail', 'qualitative')
+    return result(qualitative === 'Conforms' ? 'pass' : 'fail', 'qualitative')
   }
 
   const observedNum = parseFirstNumber(observedValue)
@@ -507,8 +524,8 @@ export function evaluateResultConformityDetailed(
 }
 
 /**
- * Remark for the report. Without options: Confirm when the observed value meets
- * the specified requirement, otherwise Not Confirm (Not Applicable when either
+ * Remark for the report. Without options: Conforms when the observed value meets
+ * the specified requirement, otherwise Does Not Conform (Not Applicable when either
  * is blank), exactly as before decision rules existed.
  */
 export function evaluateResultConformity(

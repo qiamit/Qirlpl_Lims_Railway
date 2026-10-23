@@ -32,9 +32,10 @@ export function RequireModuleAccess({ children }: { children: React.ReactNode })
   }
 
   const ctx = { designation, departmentName }
-  // While module-access matrix is loading, fall back to static path rules — never skip the check.
+  // While the module-access matrix is loading, or if it could not be loaded,
+  // fall back to the static path rules — never skip the check.
   const allowed =
-    moduleAccess && !moduleAccess.loading
+    moduleAccess && !moduleAccess.loading && !moduleAccess.error
       ? moduleAccess.canAccessPath(location.pathname)
       : canAccessPath(location.pathname, ctx)
 

@@ -1,6 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { REPORT_SCOPE_TITLE, type ReportScopeKind } from './reportScope'
-import { filterReportRowsByScope, type ReportResultRow } from './reportResultRows'
+import { filterReportRowsByScope, resultsWithoutUncertainty, type ReportResultRow } from './reportResultRows'
 import { ReportResultsTable } from './ReportResultsTable'
 import { formatTestReportEndNotesText, TEST_REPORT_END_MARKER } from './testReportEndNotes'
 import { resultRemarkOptionsForRule } from './evaluateResultConformity'
@@ -54,6 +54,7 @@ export function TestReportResultsSection({
   decisionRule?: DecisionRule | null
 }) {
   const remarkOptions = resultRemarkOptionsForRule(decisionRule?.ruleType)
+  const withoutU = decisionRule ? resultsWithoutUncertainty(resultRows) : []
   return (
     <div className="overflow-hidden border-2 border-stone-500 bg-white p-2 shadow-sm ring-1 ring-amber-700/15 sm:p-3">
       {decisionRule ? (
@@ -63,6 +64,18 @@ export function TestReportResultsSection({
           {decisionRule.ruleType !== 'simple_acceptance' ? `, w = ${decisionRule.guardBandFactor} × U` : ''}).
           Remarks not yet saved are judged with the parameter MU.
         </p>
+      ) : null}
+      {withoutU.length > 0 ? (
+        <div className="mb-2 border border-red-700/40 bg-red-50 px-2 py-1.5 text-[12px] text-red-900" role="alert">
+          <p className="font-semibold">
+            {withoutU.length === 1 ? '1 result has' : `${withoutU.length} results have`} no measurement uncertainty
+          </p>
+          <p>
+            The decision rule needs U, so {withoutU.length === 1 ? 'it was' : 'they were'} judged by simple acceptance, not
+            by the rule printed on the report: {withoutU.join('; ')}. Add the MU in the Test Parameter master (or MU bands)
+            before issuing.
+          </p>
+        </div>
       ) : null}
       {resultsLoading ? (
         <p className="py-2 text-sm text-stone-600">Loading test results…</p>

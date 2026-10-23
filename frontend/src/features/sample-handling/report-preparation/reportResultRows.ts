@@ -4,10 +4,9 @@ import { sanitizeSectionCodeInput } from '@/features/sample-handling/allocation/
 import { getReportedTestResult } from '@/features/sample-handling/sample-under-testing/testResultValues'
 import { compareClauseNumbers } from './clauseNumberSort'
 import {
-  evaluateResultConformity,
-  isConformityRemark,
+  canonicalConformityRemark,
+  evaluateResultConformityDetailed,
   resultRemarkOptionsForRule,
-  type ConformityRemark,
 } from './evaluateResultConformity'
 import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { normalizeResultRemark } from './resultRemarkUi'
@@ -33,6 +32,11 @@ export type ReportResultRow = {
   uncertainty: string
   remark: string
   scope: string
+  /**
+   * The SRF's guard band / non-binary rule needs U but this result has none:
+   * judged by simple acceptance (ISO/IEC 17025 7.8.6; warned before issue).
+   */
+  uncertaintyMissing?: boolean
 }
 
 function buildResultRowKey(p: {
@@ -129,10 +133,12 @@ async function fetchMuBandsForReport(tpIds: string[]): Promise<MuBand[]> {
 /**
  * @param opts.muOnDate date (YYYY-MM-DD) for choosing MU bands; default today.
  *   Issued reports pass their issue date.
+ * @param opts.keepStoredWording issued reports: print saved remarks as saved
+ *   ("Confirm" before 23 Oct 2026), not in the current wording.
  */
 export async function fetchReportResultRowsForSample(
   sampleId: string,
-  opts: { muOnDate?: string } = {},
+  opts: { muOnDate?: string; keepStoredWording?: boolean } = {},
 ): Promise<ReportResultRow[]> {
   const { data: allocs, error: aErr } = await supabase
     .from('sample_allocations')
@@ -249,17 +255,15 @@ export async function fetchReportResultRowsForSample(
       tp?.uncertainty_mu ?? null,
       opts.muOnDate,
     )
-    const storedRemark = p.report_remark?.trim()
+    const storedRemark = p.report_remark?.trim() ?? ''
+    const stored = canonicalConformityRemark(storedRemark)
+    const evaluated = evaluateResultConformityDetailed(observed, requirement, {
+      rule: decisionRule,
+      uncertainty: uncertaintyText,
+    })
     // Stored remark wins; the non-binary wording is accepted only under a non-binary rule.
-    const storedOk =
-      isConformityRemark(storedRemark) &&
-      resultRemarkOptionsForRule(decisionRule?.ruleType).includes(storedRemark)
-    const remark: ConformityRemark = storedOk
-      ? (storedRemark as ConformityRemark)
-      : evaluateResultConformity(observed, requirement, {
-          rule: decisionRule,
-          uncertainty: uncertaintyText,
-        })
+    const storedOk = stored !== null && resultRemarkOptionsForRule(decisionRule?.ruleType).includes(stored)
+    const remark: string = storedOk ? (opts.keepStoredWording ? storedRemark : stored) : evaluated.remark
     const meta = sectionMetaByTaId.get(p.test_allocation_id)
     return {
       parameterId: p.id,
@@ -277,6 +281,7 @@ export async function fetchReportResultRowsForSample(
       uncertainty: fmt(uncertaintyText),
       remark,
       scope: resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),
+      uncertaintyMissing: evaluated.uncertaintyMissing,
     }
   })
 
@@ -323,6 +328,16 @@ export async function saveReportResultRemarks(rows: ReportResultRow[]): Promise<
     }
     throw firstErr
   }
+}
+
+/**
+ * Results the SRF's guard band / non-binary rule could not judge for want of a
+ * U (ISO/IEC 17025 7.8.6): one line each, "Test name: observed value".
+ */
+export function resultsWithoutUncertainty(rows: ReportResultRow[]): string[] {
+  return rows
+    .filter((r) => r.uncertaintyMissing)
+    .map((r) => `${r.testName}${r.observedValue && r.observedValue !== '—' ? `: ${r.observedValue}` : ''}`)
 }
 
 export function filterReportRowsByScope(rows: ReportResultRow[], scope: ReportScopeKind): ReportResultRow[] {

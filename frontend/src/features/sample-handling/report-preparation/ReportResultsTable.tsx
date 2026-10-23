@@ -346,7 +346,7 @@ export function ReportResultsTable({
   onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
   /** When set, first thead row shows this title (e.g. PART C. TEST RESULTS). */
   partTitle?: string
-  /** Remark choices (default Confirm / Not Confirm / Not Applicable; non-binary rule adds conditional ones). */
+  /** Remark choices (default Conforms / Does Not Conform / Not Applicable; non-binary rule adds conditional ones). */
   remarkOptions?: ConformityRemark[]
 }) {
   const colSpan = columnCount(showScope)
