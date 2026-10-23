@@ -98,3 +98,25 @@ Apply the 37 migrations in the order listed in `docs/audit-gap-closure-plan.md`,
 
 - Staging: `railway environment delete staging` removes everything it created.
 - Production: each migration header lists what it changes. If a migration has to be undone wholesale, restore the volume backup taken in F.1 (Railway → Postgres → Backups → Restore; this replaces the current data, so anything entered after the backup is lost).
+
+## Status (23 Oct 2026)
+
+**A. Done.** Branch `claude/priceless-ramanujan-5f501a` pushed to GitHub (no secrets in the diff; `main` untouched, so production did not deploy).
+
+**B. Done.** Environment `staging` (`47a210ca-525b-4796-95b5-50ee4198bf19`) created by duplicating production, with the safeguards set at creation time:
+
+| Safeguard | State |
+|---|---|
+| JWT secret, anon and service-role keys | New for staging on auth, rest, storage-api, functions, pdf-service and frontend (not the production values) |
+| Email | GoTrue SMTP host/password set to `disabled-in-staging`; `RESEND_API_KEY` empty on functions and disabled on Resend Starter |
+| API and site URLs | Frontend → `https://api-staging-64cf.up.railway.app` and `https://pdf-service-staging-28ae.up.railway.app/pdf`; GoTrue external URL, site URL and allow list → staging domains; checked that the built bundle contains no `api.qirlpl.com` |
+| CORS | Gateway `EXTRA_FRONTEND_ORIGIN=https://frontend-staging-1898.up.railway.app` (preflight from it allowed, from other origins not); `PDF_ALLOWED_ORIGINS` set on staging pdf-service |
+| File storage | storage-api points at placeholders (`disabled-in-staging`), so staging can never reach the production bucket. Wire a staging bucket in step C. |
+| Sign-up | Blocked (gateway 403, `GOTRUE_DISABLE_SIGNUP=true`) |
+| GoTrue hardening | Password minimum 10, TOTP MFA enabled, refresh-token rotation on |
+| Security headers | Staging frontend served by `node server.mjs`: CSP without `'unsafe-inline'`, HSTS, X-Frame-Options; no CSP violations on /home |
+| Production | Variables, start command and deployments unchanged (checked after each step) |
+
+Staging URLs: frontend `https://frontend-staging-1898.up.railway.app`, API `https://api-staging-64cf.up.railway.app`.
+
+The staging database is a new, empty Postgres (production data was not copied), so `auth` and `rest` keep restarting until step C loads the data. Next: step C (fresh production backup, copy database and files into staging, wire a staging bucket), which needs approval.
