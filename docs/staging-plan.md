@@ -200,6 +200,19 @@ Saves into these tables still need step E testing with real logins; a value outs
 
 Also seen: after a deploy, a browser tab that was already open shows a blank page when it opens a screen whose code file changed (the old file name returns 404, "Failed to fetch dynamically imported module"), until the page is reloaded. Every build embeds its commit, so every deploy renames all screen files. Fixed on the branch (`frontend/src/lib/reloadOnStaleChunk.ts`): on `vite:preloadError` the page reloads once, with a 30-second guard so a file that is really missing cannot cause a reload loop. Tested on staging, 23 Oct: a tab on the build before the fix stayed blank on Sampling Plans after a deploy (bug reproduced); a tab on the fixed build (387fe93), after the next deploy (ba7ab9a), reloaded once by itself and showed Sampling Plans from the new build, still signed in and on the same address; a second error 15 seconds later did not reload again.
 
-Next: equipment codes, then step E (testing with each role).
+**E. Started (23 Oct).** Automated part done on staging (version b1b64af):
+
+| Check | Result |
+|---|---|
+| `npm run validate:calculations` | 54 of 54 cases pass (evidence JSON in `frontend/scripts/validation/out/`, to be imported into LIMS Validation Runs) |
+| 105 menu pages at 375 px width, plus 5 Lab Settings pages | No horizontal overflow, 0 CSP violations, no script errors; only the known `app_deleted_keys` error on the 3 equipment pages |
+| PWA | Manifest (standalone, 192/512 icons incl. maskable), service worker, offline page served |
+| Dashboard | Loads in roughly 4–11 s on staging |
+
+Equipment asset codes: the duplicates came from the Calibration Equipments page, which worked out the next code from the list loaded with the page; autosave inserts without reloading it, so the next new form got the same code (pairs created a minute apart). Fixed (b1b64af): the next code is read from the database when the form opens, counting testing equipment too; verified on staging (request made on open, next code QI-EQ-0196, nothing saved). A suggestion sheet gives each duplicate a new code (95 in equipment master, 8 in equipment for calibration; the record linked to jobs / masters / breakdowns, else the oldest, keeps its code); after the lab approves it, the codes are applied on staging, then at go-live (re-checked against codes created meanwhile).
+
+Manual part: the tester guide (test accounts per role created by the Director in staging, OQ-01…07, further checks, recording in LIMS Validation Runs) is shared with the lab.
+
+Next: lab runs the OQ scripts; equipment code approval.
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
