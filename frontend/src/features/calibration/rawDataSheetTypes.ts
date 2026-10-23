@@ -7,7 +7,7 @@ import {
   masterPointsFormulaRefValues,
   type MasterFormulaRefSource,
 } from './masterEquipmentFormulaRefs'
-import { is2RoundFixed } from '@/lib/is2Rounding'
+import { is2RoundFixed, is2RoundToInterval } from '@/lib/is2Rounding'
 import { evaluateSafeExpression } from '@/lib/safeExpression'
 
 export type RawDataColumnType = 'text' | 'number' | 'formula'
@@ -1848,6 +1848,31 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
   })
 }
 
+/** Decimal places in the shortest text of a finite number (1.25 → 2, 1e-7 → 7, 1200 → 0). */
+function decimalPlacesOf(x: number): number {
+  const m = /^-?\d+(?:\.(\d+))?(?:e([+-]\d+))?$/i.exec(String(x))
+  if (!m) return 0
+  return Math.max(0, (m[1]?.length ?? 0) - (m[2] ? Number(m[2]) : 0))
+}
+
+/** Text from the IS 2 helpers back to a number ("" — not a number — gives NaN). */
+function decimalTextToNumber(text: string): number {
+  return text ? Number(text) : Number.NaN
+}
+
+/**
+ * The value handed to the IS 2 helpers for rounding at `decimals` places
+ * (negative = tens, hundreds, …). The helpers read a number through its
+ * 12-significant-digit form, which strips binary noise (0.1 + 0.2 → 0.3); when
+ * the kept digits alone would need more than 11 significant digits that form
+ * would drop real digits, so the shortest exact text of the number is used.
+ */
+function roundingInput(x: number, decimals: number): number | string {
+  if (x === 0) return 0
+  const intDigits = Math.floor(Math.log10(Math.abs(x))) + 1
+  return intDigits + decimals > 11 ? String(x) : x
+}
+
 /** Evaluate a number-only math expression (no [column] refs). */
 export function evaluateMathExpression(expr: string): number | null {
   const body = normalizeColumnFormulaExpression(expr)
@@ -1958,10 +1983,20 @@ function runValidatedMathExpression(body: string): number | null {
     if (k < 1 || k > vals.length) throw new Error('incomplete')
     return vals[k - 1]!
   }
-  const roundFn = (x: number, digits?: number) => {
-    if (digits == null) return Math.round(x)
-    const f = 10 ** Math.round(digits)
-    return Math.round(x * f) / f
+  // ROUND / MROUND follow IS 2:1960 (lab decision, Amit, 23 Oct 2026): an
+  // exact half goes to the even digit, judged on the decimal digits (1.015 to
+  // 2 dp is 1.02, never the binary 1.01). See roundingInput for big numbers.
+  const roundFn = (value: number, digits?: number) => {
+    const x = Number(value) // a comparison gives true / false, read as 1 / 0
+    if (!Number.isFinite(x)) return x
+    const d = digits == null ? 0 : Math.round(digits)
+    if (!Number.isFinite(d)) return Number.NaN
+    if (decimalPlacesOf(x) <= d) return x
+    // The place rounded to as an interval: 2 → 0.01, 0 → 1, −2 → 100
+    // (negative digits round to tens, hundreds, …: ROUND(1250,-2) = 1200).
+    const places = Math.max(-400, Math.min(400, d))
+    const unit = places > 0 ? `0.${'0'.repeat(places - 1)}1` : `1${'0'.repeat(-places)}`
+    return decimalTextToNumber(is2RoundToInterval(roundingInput(x, places), unit))
   }
   const rms = (...nums: number[]) => {
     if (nums.length === 0) throw new Error('incomplete')
@@ -1993,9 +2028,21 @@ function runValidatedMathExpression(body: string): number | null {
     if (v == null) throw new Error('incomplete')
     return Math.sqrt(v) / avg
   }
-  const mround = (x: number, multiple: number) => {
-    if (multiple === 0) throw new Error('incomplete')
-    return Math.round(x / multiple) * multiple
+  // Nearest multiple by IS 2 (exactly half way → the even multiple):
+  // MROUND(12.5,5) = 10, MROUND(7.5,5) = 10. Rounded by magnitude with the
+  // sign of x, as before (no Excel #NUM! when x and multiple differ in sign).
+  const mround = (value: number, multipleValue: number) => {
+    if (multipleValue === 0) throw new Error('incomplete')
+    const x = Number(value)
+    const multiple = Number(multipleValue)
+    if (!Number.isFinite(x) || !Number.isFinite(multiple) || multiple === 0) {
+      return Math.round(x / multiple) * multiple
+    }
+    const step = Math.abs(multiple)
+    // A typed multiple (0.05, 0.5, 5) is read as written; a computed one that
+    // needs more than 12 significant digits keeps all of them.
+    const stepInput = Number(step.toPrecision(12)) === step ? step : String(step)
+    return decimalTextToNumber(is2RoundToInterval(roundingInput(x, decimalPlacesOf(step)), stepInput))
   }
   const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi)
   const xorFn = (...nums: number[]) => (nums.filter((n) => Boolean(n)).length % 2 === 1 ? 1 : 0)
@@ -2584,7 +2631,7 @@ export const COLUMN_FORMULA_HELP_ROWS: {
     name: 'ROUND',
     syntax: 'ROUND(x[,digits])',
     example: '=ROUND([Error],3)',
-    use: 'Round to nearest (optional decimal places)',
+    use: 'Round to nearest (optional decimal places; exact half to the even digit, IS 2)',
   },
   {
     name: 'ROUNDUP / ROUNDDOWN',
@@ -2716,7 +2763,7 @@ export const COLUMN_FORMULA_HELP_ROWS: {
     name: 'MROUND',
     syntax: 'MROUND(x,multiple)',
     example: '=MROUND([Reading],0.5)',
-    use: 'Round to nearest multiple',
+    use: 'Round to nearest multiple (exactly half way: the even multiple, IS 2)',
   },
   {
     name: 'CLAMP',

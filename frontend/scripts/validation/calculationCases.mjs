@@ -607,6 +607,86 @@ export const CASES = [
     expected: ['0.012', '0.014', '0.020'],
   },
 
+  // ---------------------------------------- spreadsheet ROUND / MROUND inside formulas (IS 2)
+  {
+    id: 'IS-09',
+    module: 'rds',
+    title: 'Formula ROUND(x,n): exact half to the even digit, judged on the decimal digits',
+    source:
+      'IS 2:1960 (lab decision 23 Oct 2026): 2.25 → 2.2 (2 even); 2.35 → 2.4 (3 odd → up); 1.015 → 1.02 ' +
+      '(decimal half, 1 odd → up; binary 1.01499… must not give 1.01); −2.25 → −2.2 (magnitude); ' +
+      '2.5 → 2, 3.5 → 4 (no digits = whole number); 2.251 → 2.3 (more than half); 1/3 → 0.3333',
+    run: (m) =>
+      [
+        'ROUND(2.25,1)',
+        'ROUND(2.35,1)',
+        'ROUND(1.015,2)',
+        'ROUND(-2.25,1)',
+        'ROUND(2.5)',
+        'ROUND(3.5)',
+        'ROUND(2.251,1)',
+        'ROUND(1/3,4)',
+      ].map((f) => m.rds.evaluateMathExpression(f)),
+    expected: [2.2, 2.4, 1.02, -2.2, 2, 4, 2.3, 0.3333],
+  },
+  {
+    id: 'IS-10',
+    module: 'rds',
+    title: 'Formula ROUND(x,−n) rounds to tens / hundreds by IS 2',
+    source:
+      'IS 2:1960 rounding to a multiple of 100 / 10: 1250 → 1200 (12 even); 1350 → 1400 (13 odd → up); ' +
+      '1251 → 1300 (more than half); −1250 → −1200; 25 → 20 (2 even)',
+    run: (m) =>
+      ['ROUND(1250,-2)', 'ROUND(1350,-2)', 'ROUND(1251,-2)', 'ROUND(-1250,-2)', 'ROUND(25,-1)'].map((f) =>
+        m.rds.evaluateMathExpression(f),
+      ),
+    expected: [1200, 1400, 1300, -1200, 20],
+  },
+  {
+    id: 'IS-11',
+    module: 'rds',
+    title: 'Formula MROUND(x,m): nearest multiple, the even multiple when exactly half way',
+    source:
+      'IS 2:1960 rounding to an interval: 7.5/5 = 1.5 → 2 → 10; 12.5/5 = 2.5 → 2 → 10; ' +
+      '0.125/0.05 = 2.5 → 2 → 0.10; 2.25/0.5 = 4.5 → 4 → 2.0; 2.75/0.5 = 5.5 → 6 → 3.0; ' +
+      '17.4/5 = 3.48 → 3 → 15; −12.5 with −5 → −10; 0.7 to 0.1 is 0.7 exactly (no binary 0.7000000000000001); ' +
+      'multiple 0 gives no result',
+    run: (m) =>
+      [
+        'MROUND(7.5,5)',
+        'MROUND(12.5,5)',
+        'MROUND(0.125,0.05)',
+        'MROUND(2.25,0.5)',
+        'MROUND(2.75,0.5)',
+        'MROUND(17.4,5)',
+        'MROUND(-12.5,-5)',
+        'MROUND(0.7,0.1)',
+        'MROUND(3,0)',
+      ].map((f) => m.rds.evaluateMathExpression(f)),
+    expected: [10, 10, 0.1, 2, 3, 15, -10, 0.7, null],
+  },
+  {
+    id: 'IS-12',
+    module: 'point',
+    title: 'ROUND / MROUND in point and column formulas; ROUNDUP / ROUNDDOWN stay directional',
+    source:
+      'IS 2:1960: point formula ROUND(x/4,1) at x = 9 → 2.25 → 2.2; MROUND(x,0.5) at x = 2.25 → 2.0; ' +
+      'column =ROUND([A]-[B],2) with 10.0 − 9.995 = 0.005 → 0.00 (0 even); ' +
+      'ROUNDUP / ROUNDDOWN are not IS 2 rounding (away from / toward zero): 2.1 → 3, −2.1 → −3, −2.9 → −2',
+    run: (m) => [
+      m.point.evaluatePointFormula('ROUND(x/4,1)', 9),
+      m.point.evaluatePointFormula('MROUND(x,0.5)', 2.25),
+      m.rds.evaluateColumnFormulaExpression('=ROUND([A]-[B],2)', [numberCol('A'), numberCol('B')], {
+        A: '10.0',
+        B: '9.995',
+      }),
+      m.rds.evaluateMathExpression('ROUNDUP(2.1)'),
+      m.rds.evaluateMathExpression('ROUNDUP(-2.1)'),
+      m.rds.evaluateMathExpression('ROUNDDOWN(-2.9)'),
+    ],
+    expected: [2.2, 2, 0, 3, -3, -2],
+  },
+
   // ------------------------------------------------------------- finance document series
   {
     id: 'DS-01',

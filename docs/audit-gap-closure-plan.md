@@ -32,7 +32,7 @@ for Amit).
 | L-8 | Set `PDF_ALLOWED_ORIGINS` on the PDF service | Needs approval |
 | B-2 | Record one restore test (restore a backup into a new service, check, delete) | Planned |
 | U-1 | Clean up duplicate logins and the orphan module-access rule | Planned (needs Amit's list of who keeps which login) |
-| DEP-2 | Production frontend sends no security headers (served as a static site, `server: railway-hikari`); `frontend/server.mjs` with CSP/HSTS/X-Frame-Options only takes effect once Railway starts the frontend with `node server.mjs`. Do this after the staging test, since the new CSP blocks inline scripts and eval (all known uses removed). | Needs approval |
+| DEP-2 | Production frontend sends no security headers (served as a static site by Railpack's automatic SPA/Caddy mode). To serve through `frontend/server.mjs` (CSP, HSTS, X-Frame-Options): set `RAILPACK_NO_SPA=1`, remove `RAILPACK_SPA_OUTPUT_DIR`, and set the start command to `node server.mjs`. Verified on staging on 23 Oct 2026 (headers present). | Needs approval |
 | GT-1 | GoTrue settings: SMTP (password reset emails), password minimum 10, MFA TOTP enable, refresh-token rotation, rate limits, site URL and `/auth/reset` in the allow list | Needs approval |
 
 ## Stage 1: integrity of records (Sprint 1–2)
@@ -164,6 +164,8 @@ Every migration is idempotent and the frontend works before and after each one, 
 - SAC code for testing and calibration services: **9983**.
 - Cancelled finance documents keep their number (cancel, never delete or reuse).
 - Rounding follows **IS 2:1960** (round half to even; keep the declared decimals).
+  This includes the spreadsheet functions `ROUND` and `MROUND` inside raw data
+  sheet, column and point formulas (`ROUNDUP`/`ROUNDDOWN` stay directional).
 - The lab does not sample today; the sampling module is built but switched off
   (Lab Settings → sampling in use) until needed. Until then the Quality Manual
   states the exclusion of 7.3.
@@ -174,8 +176,6 @@ Every migration is idempotent and the frontend works before and after each one, 
   (`docs/staging-plan.md`).
 
 Open after these decisions:
-- Spreadsheet `ROUND`/`MROUND` inside raw-data-sheet formulas still round
-  half up (Excel behaviour); decide whether they should follow IS 2 too.
 - Calibration raw data sheets and certificates have no frozen display copy,
   so reopening an old sheet whose value sits exactly on a half shows the
   IS 2 result.
