@@ -278,6 +278,37 @@ export const CASES = [
     expected: ['=[Master]*2', '=[Master External]*2', '=[Master]*2', '=[Master]*2'],
   },
 
+  {
+    id: 'RD-05',
+    module: 'rds',
+    title: 'Malformed formulas are refused instead of giving a wrong number',
+    source:
+      'OQ-02 staging run 23 Oct 2026: =AVERAGE [I1],[I2],[I3] (brackets missing) gave 9.99, the last reading, ' +
+      'instead of the average 10.007; the editor accepted it. Hand: readings 10.01, 10.02, 9.99 → 30.02 / 3 = 10.007; ' +
+      'IF and ROUND keep their argument commas',
+    run: (m) => {
+      const cols = [
+        { key: 'a', label: 'I1', type: 'number' },
+        { key: 'b', label: 'I2', type: 'number' },
+        { key: 'c', label: 'I3', type: 'number' },
+      ]
+      const v = { a: '10.01', b: '10.02', c: '9.99' }
+      const calc = (e) =>
+        m.rds.computeFormulaValue(formulaCol('f', e, 3), v, 3, [...cols, formulaCol('f', e, 3)])
+      const ok = (e) => m.rds.analyzeColumnFormulaExpression(e, cols) == null
+      return [
+        calc('=AVERAGE [I1],[I2],[I3]'),
+        ok('=AVERAGE [I1],[I2],[I3]'),
+        ok('=MAX([I1],[I2],[I3]-MIN([I1],[I2],[I3])'),
+        ok('=[I1])'),
+        calc('=AVERAGE([I1],[I2],[I3])'),
+        calc('=IF([I1]>[I3],ROUND([I1]-[I3],2),0)'),
+        ok('=MAX([I1],[I2],[I3])-MIN([I1],[I2],[I3])'),
+      ]
+    },
+    expected: ['', false, false, false, '10.007', '0.020', true],
+  },
+
   // ------------------------------------------------------------- calibration point formula
   {
     id: 'PF-01',

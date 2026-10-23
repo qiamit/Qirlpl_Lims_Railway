@@ -2694,7 +2694,15 @@ export function RawDataSheetDialog({
     try {
       await persistLocationOfCalibration()
 
-      const columns = allRawDataSheetColumns(payload.template)
+      // The formulas the grid shows: the job's copy of the template with the
+      // current Calibration Equipment formulas. The copy alone can hold
+      // formulas fixed since the sheet was started, which left formula
+      // columns empty and the sheet impossible to save.
+      const savedTemplate = mergeFormulasFromEquipmentTemplate(
+        payload.template,
+        equipmentMaster ? resolvedRawDataSheetTemplate : null,
+      )
+      const columns = allRawDataSheetColumns(savedTemplate)
       const dp = parseTableSettings(payload.tableSettings).decimalPlaces
       const env = payload.environmentConditions
       // Formula columns show computed values in the UI but may be empty in storage.
@@ -2747,6 +2755,7 @@ export function RawDataSheetDialog({
 
       const nextPayload: RawDataSheetPayload = {
         ...payload,
+        template: savedTemplate,
         rows: rowsWithFormulas,
         ...(entryBy ? { entryBy } : {}),
       }
