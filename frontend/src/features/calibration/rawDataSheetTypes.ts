@@ -1855,6 +1855,35 @@ function decimalPlacesOf(x: number): number {
   return Math.max(0, (m[1]?.length ?? 0) - (m[2] ? Number(m[2]) : 0))
 }
 
+/**
+ * Decimal places of a least count / resolution: "0.01" → 2, "0.002 mm" → 3,
+ * "0.5 kN" → 1, "2" → 0. Multi-range text ("0.02 | 0.01") uses the first
+ * value above zero; null when there is none.
+ */
+export function leastCountDecimalPlaces(raw: string | null | undefined): number | null {
+  for (const segment of String(raw ?? '').split(/[|;]+/)) {
+    const m = /\d*\.?\d+(?:e[+-]?\d+)?/i.exec(segment)
+    const n = m ? Number(m[0]) : Number.NaN
+    if (Number.isFinite(n) && n > 0) return decimalPlacesOf(n)
+  }
+  return null
+}
+
+/**
+ * A reading typed in a raw data sheet, tidied when the field is left: padded
+ * to `minDecimals` (the least count's decimals), never rounded. Digits the
+ * engineer typed are the observation and are kept (ISO/IEC 17025 7.5.1):
+ * 50.01 stays 50.01 even when the sheet setting says 0 decimals.
+ */
+export function formatTypedReading(value: string, minDecimals: number): string {
+  const t = value.trim()
+  if (!t) return ''
+  const n = Number(t)
+  if (!Number.isFinite(n)) return value
+  const typed = /e/i.test(t) ? decimalPlacesOf(n) : (/\.(\d*)$/.exec(t)?.[1].length ?? 0)
+  return n.toFixed(Math.min(20, Math.max(0, minDecimals, typed)))
+}
+
 /** Text from the IS 2 helpers back to a number ("" — not a number — gives NaN). */
 function decimalTextToNumber(text: string): number {
   return text ? Number(text) : Number.NaN

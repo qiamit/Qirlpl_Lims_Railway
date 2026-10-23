@@ -184,6 +184,36 @@ export const CASES = [
     expected: ['0.6667', '0.012', '0.014'],
   },
 
+  {
+    id: 'RD-01',
+    module: 'rds',
+    title: 'Raw data sheet: decimals of the least count (single, with unit, multi-range, none)',
+    source: 'Hand: 0.01 → 2; 0.002 mm → 3; 0.5 kN → 1; 2 → 0; "0.02 | 0.01" → first value 0.02 → 2; "" → none',
+    run: (m) =>
+      ['0.01', '0.002 mm', '0.5 kN', '2', '0.02 | 0.01', ''].map((lc) => m.rds.leastCountDecimalPlaces(lc)),
+    expected: [2, 3, 1, 0, 2, null],
+  },
+  {
+    id: 'RD-02',
+    module: 'rds',
+    title: 'Raw data sheet: a typed reading is padded to the least count, never rounded',
+    source:
+      'ISO/IEC 17025 7.5.1 (the observation is recorded as read). OQ-02 staging run 23 Oct 2026: ' +
+      '50.01 and 49.99 became 50 when the field was left. Hand: LC 0.01 → 50.01, 49.99, 50 → 50.00; ' +
+      'more digits than the LC are kept (10.0016); 0 places keeps 50.01; text that is not a number is left as typed',
+    run: (m) => [
+      m.rds.formatTypedReading('50.01', 2),
+      m.rds.formatTypedReading('49.99', 2),
+      m.rds.formatTypedReading('50', 2),
+      m.rds.formatTypedReading('10.0016', 2),
+      m.rds.formatTypedReading('50.01', 0),
+      m.rds.formatTypedReading('-0.5', 3),
+      m.rds.formatTypedReading(' ', 2),
+      m.rds.formatTypedReading('OK', 2),
+    ],
+    expected: ['50.01', '49.99', '50.00', '10.0016', '50.01', '-0.500', '', 'OK'],
+  },
+
   // ------------------------------------------------------------- calibration point formula
   {
     id: 'PF-01',

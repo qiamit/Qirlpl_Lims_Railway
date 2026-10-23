@@ -115,6 +115,8 @@ import {
   parseRawDataSheetPayload,
   parseRawDataSheetTemplate,
   parseTableSettings,
+  leastCountDecimalPlaces,
+  formatTypedReading,
   resolveEnvParameterColumns,
   DEFAULT_TEMP_CORRECTION,
   type FormulaCalculationExplanation,
@@ -2804,6 +2806,13 @@ export function RawDataSheetDialog({
   const showGenerateReport =
     companyGenerateReportEnabled && !forceReadOnly && !readOnly
   const jobSelectedRangeFields = parseJobSelectedRangeFields(job)
+  // Typed readings are padded to the least count of the range being
+  // calibrated (0.01 → 2 places) and never rounded below what was typed.
+  const readingDecimalPlaces =
+    leastCountDecimalPlaces(matchedEquipmentRange?.resolutionLeastCount) ??
+    leastCountDecimalPlaces(jobSelectedRangeFields.leastCount) ??
+    leastCountDecimalPlaces(equipmentMaster?.resolution_least_count) ??
+    tableSettings.decimalPlaces
   const jobRangeSplit = splitRangeCapacityToMinMax(jobSelectedRangeFields.range)
   const equipmentRangesForJob = equipmentMaster
     ? parseMeasurementRanges(
@@ -4415,13 +4424,7 @@ export function RawDataSheetDialog({
                                 >
                                   <Input
                                     type={col.type === 'number' ? 'number' : 'text'}
-                                    step={
-                                      col.type === 'number'
-                                        ? tableSettings.decimalPlaces === 0
-                                          ? '1'
-                                          : `0.${'1'.padStart(tableSettings.decimalPlaces, '0')}`
-                                        : undefined
-                                    }
+                                    step={col.type === 'number' ? 'any' : undefined}
                                     className="h-9 text-center tabular-nums"
                                     value={rowValues[col.key] ?? ''}
                                     disabled={readOnly}
@@ -4431,9 +4434,9 @@ export function RawDataSheetDialog({
                                     }
                                     onBlur={(e) => {
                                       if (col.type !== 'number') return
-                                      const formatted = formatNumberInput(
+                                      const formatted = formatTypedReading(
                                         e.target.value,
-                                        tableSettings.decimalPlaces,
+                                        readingDecimalPlaces,
                                       )
                                       if (formatted !== e.target.value) {
                                         updateCellValue(row.id, col.key, formatted)
@@ -4576,6 +4579,7 @@ export function RawDataSheetDialog({
                                     ) : (
                                       <Input
                                         type={col.type === 'number' ? 'number' : 'text'}
+                                        step={col.type === 'number' ? 'any' : undefined}
                                         className="h-9 text-center tabular-nums"
                                         value={rowValues[col.key] ?? ''}
                                         disabled={readOnly}
