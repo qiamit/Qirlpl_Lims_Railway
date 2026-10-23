@@ -215,7 +215,7 @@ Manual part: the tester guide (test accounts per role created by the Director in
 
 Equipment codes applied on staging (lab accepted the suggestions): `backend/supabase/data-fixes/20261023_equipment_asset_codes.sql` gives 95 equipment master and 8 equipment-for-calibration records their new codes (each checked by id and old code, new code must be free; second run changes nothing; every change in `audit_log` with its reason). Other records refer to equipment by id, not by code (one calibration job and one SRF mention a changed record, by id only), so nothing else changes. Migration 38 then added both asset code keys: **44 of 44 unique keys present**. All 7 upsert saves now work, and `app_deleted_keys` returns 200 on every equipment page.
 
-At go-live the order is: merge (new asset code generator), migrations, `20261023_duplicate_cleanup.sql`, `20261023_equipment_asset_codes.sql`, `20261023_calibration_template_formulas.sql`, then migrations 35 and 38 again. If equipment is added on production before then, a suggested code may already be taken; the script then stops without changing anything and the list is regenerated.
+At go-live the order is: merge (new asset code generator), migrations, `20261023_duplicate_cleanup.sql`, `20261023_equipment_asset_codes.sql`, `20261023_calibration_template_formulas.sql`, `20261023_certificate_notes.sql`, then migrations 35 and 38 again. If equipment is added on production before then, a suggested code may already be taken; the script then stops without changing anything and the list is regenerated.
 
 **API role tests (23 Oct).** Ten test accounts on staging (`oq.<role>@qirlpl.test`: Director, QM, TM mechanical, testing engineers mechanical and electrical, calibration engineer thermal, calibration TM electrical, sample incharge, receptionist, auditor), created the way the app's create-user function does it, each given the module access rules of a real colleague in the same role. A script signs in as each one through the staging API and works through the rules the database enforces. Result: **70 of 72 checks pass**; test records are named `OQ TEST` / `OQTEST` and stay on staging (they also used invoice numbers INV-2026-0001…0004 and one validation run there).
 
@@ -394,6 +394,30 @@ Staging tests:
   - On screen the engineer's Forward in Review Data showed the message and nothing moved.
   - Through the API the engineer's sheet approval and job move were both refused (403, 42501).
   - The Director then approved it on screen: sheet `approved`, reviewed by OQ Director, entry by the engineer, job in Certificate Preparation.
+
+**Calibration certificate content fixed (fe94365, a20bff6, migration 45 and data fix applied on staging, 23 Oct; lab decision).**
+
+| Item | Before | Now |
+|---|---|---|
+| U | Largest of an expanded-U column and the masters' own certificate uncertainties (printed ±0.01 mm, the caliper checker's U) | Uncertainty Step by Step → "Use U on the certificate" saves each point's expanded U with k in the raw data sheet. The certificate prints the largest of those or of an expanded-U column, as given, with k (e.g. ±0.018 mm (k = 2)). A master's U is never used; an old master U on an unissued draft is cleared. |
+| Issue | No password; issuer not recorded | Needs a certificate number, a U and the average temperature and humidity, then the issuer's password (as for test reports). Migration 45 `20261102100700_calibration_certificate_issue.sql` refuses the issue without a password check of the last 15 minutes or without U, and stamps `issuedBy` (signed-in user, name and designation from the profile, times). |
+| Environment | Sheet saved without conditions | Completing a raw data sheet needs the average temperature and humidity |
+| Notes | UTM (IS 1828 machine) notes on every instrument | Default notes hold only the conformity line; force testing machines keep IS 1828. Data fix `20261023_certificate_notes.sql` changed the 285 unedited formats of 272 non-machine instruments (6 machines kept; second run changes nothing). |
+| Remarks | "done at the Site of Customer" on every job | Line 1 follows the job: "carried out in the laboratory" / "at the customer's site" |
+
+Staging tests:
+
+- 4 of 4 database cases pass (rolled back): issue without a password check, with a 20-minute-old one, or without U is refused; with both it is allowed and the issuer is stamped "OQ Director" although the browser sent another name.
+- On screen on SRF-2026-0008, as Director:
+  - U was blank and the master U was not used; environment "—"; general notes; laboratory remark.
+  - Issue & Forward was refused with the U message.
+  - Test values were then written into the sheet on staging: U 0.018 mm per point and environment readings. The Vernier Caliper MU template on the copy has placeholder entries, so its MU sheet cannot give a real U.
+  - After that the draft showed U ±0.018 mm (k = 2), 20.20 °C and 51 %RH.
+  - Issue asked for the password; a wrong password gave "Invalid login credentials" and nothing was issued; the right one issued QI/CC/2026/0005, ULR CC0303926000000003F, with `issuedBy` OQ Director (Laboratory Director).
+- As the engineer, completing SRF-2026-0004's sheet without conditions was refused: "Enter the environmental conditions (temperature and humidity) under Environment Condition."
+- Validation cases CN-02, RD-06; 65 of 65 pass.
+
+Still for the lab: build the MU templates (the Vernier Caliper ones hold placeholders), so the MU sheet gives the U that the certificate now requires; until then such a certificate cannot be issued.
 
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
 
