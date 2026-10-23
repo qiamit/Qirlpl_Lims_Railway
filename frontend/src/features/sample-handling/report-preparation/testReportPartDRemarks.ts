@@ -1,7 +1,10 @@
-/** Line 1 — auto from SRF IS code (read-only in UI) */
-export function formatPartDRemarksLine1(isCodeLabel?: string | null): string {
+/**
+ * Line 1 — auto from SRF IS code (read-only in UI). legacyWording: reports
+ * issued with the wording used until 23 Oct 2026 ("Confirms") print it again.
+ */
+export function formatPartDRemarksLine1(isCodeLabel?: string | null, legacyWording = false): string {
   const isRef = isCodeLabel?.trim() || 'the Applicable IS Standard'
-  return `1. The Sample Conforms to ${isRef} with Respect to Above Tests.`
+  return `1. The Sample ${legacyWording ? 'Confirms' : 'Conforms'} to ${isRef} with Respect to Above Tests.`
 }
 
 const LINE1_PREFIX = '1. The Sample Conforms to'
@@ -19,8 +22,9 @@ export function modernizePartDRemarks(stored: string): string {
 export function splitPartDRemarks(
   stored: string,
   isCodeLabel?: string | null,
+  legacyWording = false,
 ): { line1: string; line2: string } {
-  const line1 = formatPartDRemarksLine1(isCodeLabel)
+  const line1 = formatPartDRemarksLine1(isCodeLabel, legacyWording)
   if (!stored.trim()) return { line1, line2: '' }
 
   // Saved with the old wording (issued before 23 Oct 2026): print line 1 as saved.

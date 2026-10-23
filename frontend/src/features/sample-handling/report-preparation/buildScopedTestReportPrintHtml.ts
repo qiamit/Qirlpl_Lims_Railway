@@ -2,6 +2,7 @@ import type { TestReportCoverDetails } from './fetchTestReportCoverDetails'
 import { groupReportRowsBySectionCode, type ReportResultRow } from './reportResultRows'
 import { PART_D_HEADING } from './TestReportRemarksSection'
 import { formatPartDRemarksLine1, splitPartDRemarks } from './testReportPartDRemarks'
+import { isLegacyConformityRemark } from './evaluateResultConformity'
 import {
   formatTestReportEndNotesText,
   TEST_REPORT_END_MARKER,
@@ -377,9 +378,9 @@ function buildPartCPrintHtml(
 </section>`
 }
 
-function buildPartDPrintHtml(notes: string, isLabel: string): string {
-  const { line1, line2 } = splitPartDRemarks(notes, isLabel)
-  const line1Text = line1 || formatPartDRemarksLine1(isLabel)
+function buildPartDPrintHtml(notes: string, isLabel: string, legacyWording: boolean): string {
+  const { line1, line2 } = splitPartDRemarks(notes, isLabel, legacyWording)
+  const line1Text = line1 || formatPartDRemarksLine1(isLabel, legacyWording)
   const line2Text = line2.trim()
   const line2Html = line2Text
     ? escapeHtml(line2Text).replace(/\n/g, '<br/>')
@@ -554,7 +555,12 @@ export function buildScopedTestReportPrintHtml(opts: {
     opts.opinions,
     opts.samplingInformation,
   )
-  const partDHtml = buildPartDPrintHtml(opts.notes, isLabel)
+  // Issued with the old remark wording ("Confirm"): Part D line 1 as it was printed then.
+  const partDHtml = buildPartDPrintHtml(
+    opts.notes,
+    isLabel,
+    opts.rows.some((r) => isLegacyConformityRemark(r.remark)),
+  )
   const partAWithSignatures = withSignaturesAfterPart(
     partAHtml,
     'part_a',

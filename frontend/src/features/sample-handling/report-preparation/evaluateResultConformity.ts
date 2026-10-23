@@ -83,6 +83,11 @@ const LEGACY_REMARKS: Readonly<Record<string, ConformityRemark>> = {
   'Not Confirm': 'Does Not Conform',
 }
 
+/** A remark saved in the wording used until 23 Oct 2026. */
+export function isLegacyConformityRemark(value: string | null | undefined): boolean {
+  return String(value ?? '').trim() in LEGACY_REMARKS
+}
+
 /** The current remark for a stored value in either wording; null when it is not a remark. */
 export function canonicalConformityRemark(value: string | null | undefined): ConformityRemark | null {
   const t = String(value ?? '').trim()
