@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
-import { fetchDeletedKeys } from '@/lib/softDelete'
+import { fetchDeletedKeys, setDeleteReason } from '@/lib/softDelete'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
+import { isCancelledDocument } from '../shared/financeRules'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
@@ -114,6 +116,7 @@ export default function QuotationMasterPage() {
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const askReason = useReasonForChange()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
@@ -211,7 +214,7 @@ export default function QuotationMasterPage() {
         const { data, error } = await supabase
           .from('products_services_master')
           .select(
-            'id, item_code, item_name, item_description, make, hsn_code, unit_of_measurement, sale_price, gst_percent',
+            'id, item_code, item_name, item_description, make, hsn_code, item_type, unit_of_measurement, sale_price, gst_percent',
           )
           .order('item_name', { ascending: true })
         if (error) throw error
@@ -226,6 +229,7 @@ export default function QuotationMasterPage() {
             item_description?: string | null
             make?: string | null
             hsn_code?: string | null
+            item_type?: string | null
             unit_of_measurement?: string | null
             sale_price?: number | null
             gst_percent?: number | null
@@ -252,6 +256,7 @@ export default function QuotationMasterPage() {
             itemDescription,
             make: String(r.make ?? '').trim(),
             hsnCode: String(r.hsn_code ?? '').trim(),
+            itemType: String(r.item_type ?? '').trim(),
             unit: String(r.unit_of_measurement ?? '').trim(),
             salePrice: Number(r.sale_price ?? 0) || 0,
             gstPercent: Number(r.gst_percent ?? 0) || 0,
@@ -422,6 +427,10 @@ export default function QuotationMasterPage() {
   }
 
   const openEdit = (row: QuotationRow) => {
+    if (isCancelledDocument(row.status)) {
+      setSaveMessage(`${row.quotation_number} is cancelled and cannot be changed.`)
+      return
+    }
     setEditingId(row.id)
     setForm(rowToForm(row, false))
     setSaveMessage(null)
@@ -566,16 +575,52 @@ export default function QuotationMasterPage() {
     })
   }
 
-  const handleDeleteSelected = async () => {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    if (!window.confirm(`Delete ${ids.length} quotation(s)?`)) return
+  /**
+   * Cancel, not delete: the quotation keeps its number and stays listed with
+   * status Cancelled (migration 20261101100000 allows that status). Before
+   * that migration the database refuses the status (23514); the quotation is
+   * then deleted into the Recycle Bin instead, which also keeps its number.
+   */
+  const handleCancelSelected = async () => {
+    const ids = rows
+      .filter((r) => selectedIds.has(r.id) && !isCancelledDocument(r.status))
+      .map((r) => r.id)
+    if (ids.length === 0) {
+      setSaveMessage(selectedIds.size > 0 ? 'The selected quotations are already cancelled.' : 'Select a quotation to cancel.')
+      return
+    }
+    const reason = await askReason({
+      title: 'Reason for cancelling (Quotation)',
+      recordLabel: rows
+        .filter((r) => ids.includes(r.id))
+        .map((r) => r.quotation_number)
+        .join(', '),
+      description: 'A cancelled quotation keeps its number and stays on record. It cannot be edited afterwards.',
+      confirmLabel: 'Cancel quotation',
+      quickPicks: ['Client withdrew the enquiry', 'Raised in error', 'Duplicate quotation', 'Replaced by a revised quotation'],
+    })
+    if (!reason) return
     setSaveMessage(null)
     try {
-      const { error } = await supabase.from('quotations').delete().in('id', ids)
-      if (error) throw error
+      const { data: updated, error } = await supabase
+        .from('quotations')
+        .update({ status: 'Cancelled' })
+        .in('id', ids)
+        .select('id')
+      if (error && error.code === '23514') {
+        const { error: delError } = await supabase.from('quotations').delete().in('id', ids)
+        if (delError) throw delError
+        await setDeleteReason('quotations', ids, reason)
+        setSaveMessage(`Moved ${ids.length} quotation(s) to the Recycle Bin; numbers kept.`)
+      } else {
+        if (error) throw error
+        if (!Array.isArray(updated) || updated.length === 0) {
+          throw new Error('No quotation was cancelled (no Edit access on the Quotation page?).')
+        }
+        await recordReason('quotations', ids, reason)
+        setSaveMessage(`Cancelled ${ids.length} quotation(s); numbers kept.`)
+      }
       setSelectedIds(new Set())
-      setSaveMessage(`Deleted ${ids.length} quotation(s).`)
       await loadRows()
     } catch (err) {
       setSaveMessage(formatSupabaseError(err))
@@ -594,7 +639,7 @@ export default function QuotationMasterPage() {
   }
 
   const handleStatusChange = (row: QuotationRow, status: QuotationStatus) => {
-    if (row.status === status) return
+    if (row.status === status || isCancelledDocument(row.status)) return
     void (async () => {
       setStatusUpdatingId(row.id)
       setSaveMessage(null)
@@ -681,7 +726,7 @@ export default function QuotationMasterPage() {
         pageCount={pageCount}
         onTemplates={() => setShowTemplates(true)}
         onPrintSelected={handlePrint}
-        onDeleteSelected={() => void handleDeleteSelected()}
+        onDeleteSelected={() => void handleCancelSelected()}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

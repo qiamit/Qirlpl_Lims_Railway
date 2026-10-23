@@ -3,7 +3,7 @@ import { getCurrencySymbol } from '@/lib/appCurrency'
 import { documentMetaFieldLabels } from '@/features/settings/lab-settings/documentTemplateTypes'
 import { cn } from '@/lib/utils'
 import { amountInIndianRupeesWords } from './amountInIndianRupeesWords'
-import { gstSupplyModeLabel, printGstRows } from '../shared/financeRules'
+import { gstSupplyModeLabel, isCancelledDocument, printGstRows } from '../shared/financeRules'
 import {
   formatDate,
   formatMoney,
@@ -292,8 +292,47 @@ export function QuotationDocumentView({
         paddingBottom: tpl.showLetterFooter ? 0 : `${tpl.pageMarginBottomMm}mm`,
         paddingLeft: `${tpl.pageMarginLeftMm}mm`,
         boxSizing: 'border-box',
+        position: 'relative',
       }}
     >
+      {isCancelledDocument(row.status) ? (
+        // Cancelled documents keep their number; every print says so.
+        <div
+          data-cancelled-stamp="1"
+          aria-label="Cancelled"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            zIndex: 20,
+          }}
+        >
+          <div
+            style={{
+              transform: 'rotate(-30deg)',
+              border: '6px solid rgba(185, 28, 28, 0.75)',
+              color: 'rgba(185, 28, 28, 0.75)',
+              padding: '4mm 10mm',
+              fontSize: '42pt',
+              fontWeight: 800,
+              letterSpacing: '0.2em',
+              textAlign: 'center',
+              lineHeight: 1.1,
+              fontFamily: 'Arial, Helvetica, sans-serif',
+            }}
+          >
+            CANCELLED
+            {row.cancelled_at ? (
+              <div style={{ fontSize: '11pt', letterSpacing: '0.05em', fontWeight: 700 }}>
+                {formatDate(row.cancelled_at.slice(0, 10))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {tpl.showLetterHeader ? (
         <div
           className="flex w-full shrink-0 items-stretch justify-center overflow-hidden border-b border-black"
@@ -423,7 +462,7 @@ export function QuotationDocumentView({
                     <th className="border border-black px-1 py-1 text-center">Make</th>
                   ) : null}
                   {tpl.lineShowHsn ? (
-                    <th className="border border-black px-1 py-1 text-center">HSN</th>
+                    <th className="border border-black px-1 py-1 text-center">HSN/SAC</th>
                   ) : null}
                   {tpl.lineShowQty ? (
                     <th className="border border-black px-1 py-1 text-center">Qty</th>

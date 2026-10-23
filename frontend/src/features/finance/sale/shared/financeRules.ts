@@ -13,8 +13,23 @@ import {
  * Not ported on purpose: the consultancy SAC default (998393) and the rule
  * that zeroes GST on quotations and proforma invoices. In the LIMS each line
  * keeps the HSN/SAC and GST % it got from the product master (or that the
- * user typed), on every document kind.
+ * user typed), on every document kind. The lab's own SAC for testing and
+ * calibration services is LAB_SERVICE_SAC (9983, Amit 23 Oct 2026): a service
+ * line without an HSN/SAC gets it; goods keep their own HSN (e.g. 9027).
  */
+
+/** SAC of the lab's testing and calibration services (lab decision, 23 Oct 2026). */
+export const LAB_SERVICE_SAC = '9983'
+
+/**
+ * HSN/SAC for a line taken from the product master: the item's own code, or
+ * LAB_SERVICE_SAC for a Service without one. Goods without an HSN stay blank.
+ */
+export function defaultHsnSac(itemType: string | null | undefined, hsnSac: string | null | undefined): string {
+  const own = String(hsnSac ?? '').trim()
+  if (own) return own
+  return String(itemType ?? '').trim().toLowerCase() === 'service' ? LAB_SERVICE_SAC : ''
+}
 
 export type GstSupplyMode = 'intra' | 'inter'
 
@@ -86,9 +101,19 @@ export type FinanceDbStatus = 'pending' | 'accepted' | 'cancelled'
 
 export function dbStatusFor(status: string): FinanceDbStatus {
   const s = status.trim().toLowerCase()
-  if (s === 'rejected' || s === 'expired') return 'cancelled'
+  if (s === 'cancelled' || s === 'rejected' || s === 'expired') return 'cancelled'
   if (s === 'finalized' || s === 'accepted' || s === 'converted') return 'accepted'
   return 'pending'
+}
+
+/**
+ * A document cancelled with the Cancel action (status 'Cancelled'). It keeps
+ * its number (GST practice: no reuse, no gaps without trace), stays listed
+ * greyed out, prints with a CANCELLED stamp, cannot be edited and does not
+ * count in balances. Rejected / Expired are ordinary statuses.
+ */
+export function isCancelledDocument(status: string | null | undefined): boolean {
+  return String(status ?? '').trim().toLowerCase() === 'cancelled'
 }
 
 /** TDS deducted on a gross amount at a percent. 0 for a blank or out-of-range percent. */

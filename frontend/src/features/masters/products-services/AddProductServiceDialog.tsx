@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { ProductsServicesForm } from './ProductsServicesForm'
 import {
   emptyProductServiceForm,
+  hsnForItemType,
   isValidNumberOrEmpty,
   nextItemCode,
   normalizeText,
@@ -23,6 +24,7 @@ export type SavedProductService = {
   itemCode?: string
   make?: string
   hsnCode: string
+  itemType?: string
   unit: string
   salePrice: number
   gstPercent: number
@@ -81,6 +83,7 @@ export function AddProductServiceDialog({
       itemCode: nextItemCode(itemType, codesForType),
       openingStock: itemType === 'Service' ? '0' : prev.openingStock,
       lowStockAlert: itemType === 'Service' ? '0' : prev.lowStockAlert,
+      hsnCode: hsnForItemType(itemType, prev.hsnCode),
     }))
   }
 
@@ -134,6 +137,7 @@ export function AddProductServiceDialog({
         itemCode: String(row.item_code ?? payload.item_code).trim(),
         make: String(row.make ?? payload.make ?? '').trim(),
         hsnCode: String(row.hsn_code ?? '').trim(),
+        itemType: payload.item_type,
         unit: String(row.unit_of_measurement ?? '').trim(),
         salePrice: Number(row.sale_price ?? payload.sale_price) || 0,
         gstPercent: Number(row.gst_percent ?? payload.gst_percent) || 0,

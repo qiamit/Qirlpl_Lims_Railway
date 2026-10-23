@@ -37,13 +37,14 @@ import {
   printQuotationsWithTemplate,
 } from '../quotation/outputQuotationDocument'
 import {
-  deleteSaleDocuments,
+  cancelSaleDocuments,
   fetchSaleDocuments,
   rememberSaleDocumentRows,
   saveSaleDocument,
 } from './saleDocumentsApi'
 import { numberForNewDocument, peekDocumentNumber } from './documentSeriesApi'
-import { tdsAmount } from './financeRules'
+import { isCancelledDocument, tdsAmount } from './financeRules'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 
 export type SaleDocumentModuleConfig = {
   title: string
@@ -221,6 +222,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   const [productById, setProductById] = useState<Record<string, QuotationProductDetails>>({})
 
   const isPaymentReceipt = config.documentKind === 'paymentReceipt'
+  const askReason = useReasonForChange()
 
   const canSave =
     !saveLoading &&
@@ -323,7 +325,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
         const { data, error } = await supabase
           .from('products_services_master')
           .select(
-            'id, item_code, item_name, item_description, make, hsn_code, unit_of_measurement, sale_price, gst_percent',
+            'id, item_code, item_name, item_description, make, hsn_code, item_type, unit_of_measurement, sale_price, gst_percent',
           )
           .order('item_name', { ascending: true })
         if (error) throw error
@@ -338,6 +340,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
             item_description?: string | null
             make?: string | null
             hsn_code?: string | null
+            item_type?: string | null
             unit_of_measurement?: string | null
             sale_price?: number | null
             gst_percent?: number | null
@@ -361,6 +364,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
             itemDescription,
             make: String(r.make ?? '').trim(),
             hsnCode: String(r.hsn_code ?? '').trim(),
+            itemType: String(r.item_type ?? '').trim(),
             unit: String(r.unit_of_measurement ?? '').trim(),
             salePrice: Number(r.sale_price ?? 0) || 0,
             gstPercent: Number(r.gst_percent ?? 0) || 0,
@@ -452,6 +456,10 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   }
 
   const openEdit = (row: QuotationRow) => {
+    if (isCancelledDocument(row.status)) {
+      setMessage(`${row.quotation_number} is cancelled and cannot be changed.`)
+      return
+    }
     setEditingId(row.id)
     setForm(rowToForm(row, false))
     setSaveMessage(null)
@@ -538,25 +546,44 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     })
   }
 
-  const handleDeleteSelected = () => {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    if (!window.confirm(`Delete ${ids.length} ${config.title.toLowerCase()} record(s)?`)) return
+  /**
+   * Cancel, not delete (GST practice): the document keeps its number, stays
+   * listed greyed out with status Cancelled and no longer counts in balances.
+   */
+  const handleCancelSelected = () => {
+    const targets = rows.filter((row) => selectedIds.has(row.id) && !isCancelledDocument(row.status))
+    if (targets.length === 0) {
+      setMessage(selectedIds.size > 0 ? 'The selected records are already cancelled.' : 'Select a record to cancel.')
+      return
+    }
     void (async () => {
+      const reason = await askReason({
+        title: `Reason for cancelling (${config.title})`,
+        recordLabel: targets.map((row) => row.quotation_number).join(', '),
+        description: 'A cancelled document keeps its number and stays on record (it is not deleted). It cannot be edited afterwards.',
+        confirmLabel: 'Cancel document',
+        quickPicks: ['Raised in error', 'Wrong client or GSTIN', 'Duplicate document', 'Replaced by a new document'],
+      })
+      if (!reason) return
       try {
-        await deleteSaleDocuments(config.documentKind, ids)
-        const next = rows.filter((row) => !selectedIds.has(row.id))
+        const { rows: cancelled, table } = await cancelSaleDocuments(config.documentKind, targets, reason)
+        const byId = new Map(cancelled.map((row) => [row.id, row]))
+        const next = rows.map((row) => byId.get(row.id) ?? row)
         rememberSaleDocumentRows(config.documentKind, next)
         setRows(next)
         setSelectedIds(new Set())
-        setMessage(`Deleted ${ids.length} record(s).`)
+        setMessage(`Cancelled ${cancelled.length} record(s); numbers kept.`)
+        await recordReason(table, cancelled.map((row) => row.id), reason)
       } catch (err) {
-        setMessage(err instanceof Error ? err.message : 'Could not delete.')
+        setMessage(err instanceof Error ? err.message : 'Could not cancel.')
+        // Some rows may already be cancelled: show the stored state.
+        void fetchSaleDocuments(config.documentKind).then(setRows, () => undefined)
       }
     })()
   }
 
   const handleStatusChange = (row: QuotationRow, status: QuotationStatus) => {
+    if (isCancelledDocument(row.status)) return
     setStatusUpdatingId(row.id)
     void (async () => {
       try {
@@ -656,7 +683,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
         pageCount={pageCount}
         onTemplates={() => setShowTemplates(true)}
         onPrintSelected={handlePrintSelected}
-        onDeleteSelected={handleDeleteSelected}
+        onDeleteSelected={handleCancelSelected}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

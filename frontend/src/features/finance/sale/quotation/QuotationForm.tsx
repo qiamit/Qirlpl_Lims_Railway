@@ -80,6 +80,7 @@ import { parseLabSettingsRow } from '@/features/settings/lab-settings/labSetting
 import { computeClientSaleBalance, refreshSaleDocumentCache } from '@/features/finance/sale/shared/clientSaleBalance'
 import { cachedInvoiceNumbers } from '@/features/finance/sale/shared/saleDocumentsApi'
 import {
+  defaultHsnSac,
   gstSupplyModeForClient,
   gstSupplyModeLabel,
   tdsAmount,
@@ -106,6 +107,8 @@ export type QuotationProductDetails = {
   itemDescription?: string
   make?: string
   hsnCode: string
+  /** products_services_master.item_type ('Service' / 'Product'). */
+  itemType?: string
   unit: string
   salePrice: number
   gstPercent: number
@@ -589,7 +592,11 @@ export function QuotationFormView({
       'itemDescription' in product && typeof product.itemDescription === 'string'
         ? product.itemDescription
         : ''
-    const hsnCode = 'hsnCode' in product ? product.hsnCode : ''
+    // A Service without its own code gets the lab SAC (9983); goods keep their HSN.
+    const hsnCode = defaultHsnSac(
+      'itemType' in product ? product.itemType : undefined,
+      'hsnCode' in product ? product.hsnCode : '',
+    )
     const itemCode =
       'itemCode' in product && typeof product.itemCode === 'string' ? product.itemCode : ''
     const make =

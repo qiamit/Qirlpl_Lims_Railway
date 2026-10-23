@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
-import { ChevronLeft, ChevronRight, LayoutTemplate, Printer, Trash2 } from 'lucide-react'
+import { Ban, ChevronLeft, ChevronRight, LayoutTemplate, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { LaboratoryDirectorOnly } from '@/components/lims/LaboratoryDirectorOnly'
@@ -80,10 +80,10 @@ export function QuotationFooterBar({
             )}
             onClick={onDeleteSelected}
             disabled={loading || selectionDisabled}
-            title="Delete"
+            title="Cancel the selected documents (they keep their numbers and stay on record)"
           >
-            <Trash2 className="size-3.5 shrink-0 sm:size-4" />
-            <span className="hidden lg:inline">Delete</span>
+            <Ban className="size-3.5 shrink-0 sm:size-4" />
+            <span className="hidden lg:inline">Cancel</span>
           </Button>
           </LaboratoryDirectorOnly>
           {selectedCount > 0 ? (
@@ -95,7 +95,9 @@ export function QuotationFooterBar({
             <p
               className={cn(
                 'min-w-0 max-w-[8rem] truncate text-[10px] sm:max-w-[12rem] sm:text-xs md:max-w-[16rem]',
-                message.toLowerCase().includes('saved') || message.toLowerCase().includes('deleted')
+                message.toLowerCase().includes('saved') ||
+                  message.toLowerCase().includes('deleted') ||
+                  /^(cancelled|moved) \d/i.test(message)
                   ? 'text-emerald-300'
                   : 'text-red-300',
               )}

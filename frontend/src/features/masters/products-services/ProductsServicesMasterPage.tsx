@@ -13,6 +13,7 @@ import { ProductsServicesFooterBar } from './ProductsServicesFooterBar'
 import { ProductsServicesForm } from './ProductsServicesForm'
 import {
   emptyProductServiceForm,
+  hsnForItemType,
   formatMoney,
   formatMoneyInput,
   isValidNumberOrEmpty,
@@ -286,6 +287,7 @@ export default function ProductsServicesMasterPage() {
         : nextItemCode(itemType, codesForType(itemType)),
       openingStock: itemType === 'Service' ? '0' : prev.openingStock,
       lowStockAlert: itemType === 'Service' ? '0' : prev.lowStockAlert,
+      hsnCode: hsnForItemType(itemType, prev.hsnCode),
     }))
   }
 

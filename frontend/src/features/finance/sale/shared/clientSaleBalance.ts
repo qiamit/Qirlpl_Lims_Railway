@@ -6,8 +6,9 @@ import { loadSaleDocumentRows } from './saleDocumentsApi'
  * The rows come from the sale document cache, which after finance Phase 2
  * is read from finance_tax_invoices, finance_credit_notes and transactions
  * (payment_flow 'in'); before the Phase 2 migrations from sale_documents.
- * Cancelled documents (Rejected / Expired) do not count, and a receipt
- * settles its amount plus the TDS the customer deducted.
+ * Cancelled documents (the Cancel action, which keeps the number, and the
+ * Rejected / Expired statuses) do not count, and a receipt settles its amount
+ * plus the TDS the customer deducted.
  */
 
 export { loadSaleDocumentRows, refreshSaleDocumentCache } from './saleDocumentsApi'

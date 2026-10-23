@@ -8,7 +8,7 @@ import {
   type QuotationRow,
   type QuotationStatus,
 } from '../quotation/types'
-import { dbStatusFor, parseGstSupplyMode, tdsAmount, type FinanceDbStatus } from './financeRules'
+import { dbStatusFor, isCancelledDocument, parseGstSupplyMode, tdsAmount, type FinanceDbStatus } from './financeRules'
 
 /**
  * Proforma invoices, tax invoices, credit notes and payment receipts.
@@ -273,6 +273,8 @@ function headerFromRaw(kind: HeaderKind, raw: RawRow): QuotationRow {
     gst_supply_mode_manual: extra.gst_supply_mode_manual === true,
     invoice_id: strOrNull(raw.invoice_id),
     invoice_reference_no: strOrNull(extra.invoice_reference_no),
+    cancelled_at: strOrNull(extra.cancelled_at),
+    cancel_reason: strOrNull(extra.cancel_reason),
   }
 }
 
@@ -328,6 +330,8 @@ function receiptFromRaw(raw: RawRow): QuotationRow {
     tds_section: strOrNull(raw.tds_section),
     tds_amount: num(raw.tds_amount),
     tds_taxable_amount: num(raw.tds_taxable_amount),
+    cancelled_at: strOrNull(extra.cancelled_at),
+    cancel_reason: strOrNull(extra.cancel_reason),
   }
 }
 
@@ -597,6 +601,38 @@ async function deleteTyped(kind: SaleDocumentKind, ids: string[]): Promise<void>
   if (error) throw error
 }
 
+/** extra keys of a cancelled document (the database stamps cancelled_at / cancelled_by again). */
+function cancelExtra(row: QuotationRow, reason: string, at: string): Extra {
+  return {
+    ui_status: 'Cancelled',
+    cancelled_at: at,
+    cancel_reason: reason,
+    status_before_cancel: row.status,
+  }
+}
+
+function noRowCancelled(row: QuotationRow): Error {
+  return new Error(`${row.quotation_number || 'The document'} could not be cancelled (no Edit access on this page?).`)
+}
+
+/**
+ * Cancel = an UPDATE that keeps the row and its number (status cancelled,
+ * extra.ui_status 'Cancelled', cancelled_at, cancel_reason). Migration
+ * 20261101100000 also turns any DELETE on these tables into the same cancel.
+ */
+async function cancelTyped(kind: SaleDocumentKind, row: QuotationRow, reason: string, at: string): Promise<QuotationRow> {
+  const table = kind === 'paymentReceipt' ? 'transactions' : HEADER_TABLES[kind].table
+  const extra = { ...(await existingExtra(table, row.id)), ...cancelExtra(row, reason, at) }
+  const query =
+    kind === 'paymentReceipt'
+      ? supabase.from(table).update({ status: 'cancelled', extra }).eq('id', row.id).eq('payment_flow', 'in')
+      : supabase.from(table).update({ [HEADER_TABLES[kind].statusCol]: 'cancelled', extra }).eq('id', row.id)
+  const { data, error } = await query.select('id')
+  if (error) throw error
+  if (!Array.isArray(data) || data.length === 0) throw noRowCancelled(row)
+  return { ...row, status: 'Cancelled', cancelled_at: at, cancel_reason: reason }
+}
+
 // ---------------------------------------------------------------------------
 // Legacy store: sale_documents (before the Phase 2 migrations)
 // ---------------------------------------------------------------------------
@@ -670,6 +706,19 @@ async function saveLegacy(kind: SaleDocumentKind, row: QuotationRow): Promise<Qu
 async function deleteLegacy(kind: SaleDocumentKind, ids: string[]): Promise<void> {
   const { error } = await supabase.from('sale_documents').delete().eq('document_kind', kind).in('id', ids)
   if (error) throw error
+}
+
+async function cancelLegacy(kind: SaleDocumentKind, row: QuotationRow, reason: string, at: string): Promise<QuotationRow> {
+  const next: QuotationRow = { ...row, status: 'Cancelled', cancelled_at: at, cancel_reason: reason }
+  const { data, error } = await supabase
+    .from('sale_documents')
+    .update({ status: 'Cancelled', payload: next })
+    .eq('document_kind', kind)
+    .eq('id', row.id)
+    .select('id')
+  if (error) throw error
+  if (!Array.isArray(data) || data.length === 0) throw noRowCancelled(row)
+  return next
 }
 
 // ---------------------------------------------------------------------------
@@ -786,9 +835,38 @@ export async function deleteSaleDocuments(kind: DocumentTemplateKind, ids: strin
   )
 }
 
-/** Invoice numbers the user may pick for a receipt or credit note. Empty before Phase 2. */
+/**
+ * Cancels documents instead of deleting them: each keeps its number (GST
+ * practice) and stays listed as 'Cancelled'. Rows already cancelled are left
+ * as they are. Resolves with the updated rows and the table whose audit entry
+ * should carry the reason (recordReason(table, ids, reason)).
+ */
+export async function cancelSaleDocuments(
+  kind: DocumentTemplateKind,
+  rows: QuotationRow[],
+  reason: string,
+): Promise<{ rows: QuotationRow[]; table: string }> {
+  if (!isSaleKind(kind)) throw new Error('This sale document is not stored in the database.')
+  const typed = (await detectStore()) === 'typed'
+  const table = !typed ? 'sale_documents' : kind === 'paymentReceipt' ? 'transactions' : HEADER_TABLES[kind].table
+  const at = new Date().toISOString()
+  const done: QuotationRow[] = []
+  for (const row of rows) {
+    if (isCancelledDocument(row.status)) continue
+    done.push(typed ? await cancelTyped(kind, row, reason, at) : await cancelLegacy(kind, row, reason, at))
+  }
+  const byId = new Map(done.map((row) => [row.id, row]))
+  cache.set(
+    kind,
+    (cache.get(kind) ?? []).map((row) => byId.get(row.id) ?? row),
+  )
+  return { rows: done, table }
+}
+
+/** Invoice numbers the user may pick for a receipt or credit note (cancelled ones left out). Empty before Phase 2. */
 export function cachedInvoiceNumbers(): string[] {
   return (cache.get('invoice') ?? [])
+    .filter((row) => dbStatusFor(row.status) !== 'cancelled')
     .map((row) => row.quotation_number.trim())
     .filter(Boolean)
 }

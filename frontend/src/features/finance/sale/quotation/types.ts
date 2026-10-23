@@ -1,5 +1,7 @@
 /** Finance Management · Sale · Quotation types */
 
+import { LAB_SERVICE_SAC } from '../shared/financeRules'
+
 export type QuotationStatus =
   | 'Draft'
   | 'Sent'
@@ -11,6 +13,8 @@ export type QuotationStatus =
   | 'Rejected'
   | 'Expired'
   | 'Converted'
+  /** Set only by the Cancel action: the document keeps its number (GST practice). */
+  | 'Cancelled'
 
 /** Primary status choices shown in UI dropdowns. */
 export const QUOTATION_STATUS_OPTIONS: Array<{ value: QuotationStatus; label: string }> = [
@@ -33,6 +37,7 @@ export const QUOTATION_STATUS_LABELS: Record<QuotationStatus, string> = {
   Rejected: 'Rejected',
   Expired: 'Expired',
   Converted: 'Convert to Invoice',
+  Cancelled: 'Cancelled',
 }
 
 export function quotationStatusLabel(status: string): string {
@@ -102,6 +107,9 @@ export type QuotationRow = {
   tds_section?: string | null
   tds_amount?: number | null
   tds_taxable_amount?: number | null
+  /** Cancel action: when, and the reason given (typed finance books keep them in extra). */
+  cancelled_at?: string | null
+  cancel_reason?: string | null
 }
 
 export type QuotationLineForm = {
@@ -209,7 +217,8 @@ export function emptyQuotationLine(): QuotationLineForm {
     description: '',
     details: '',
     make: '',
-    hsnSac: '',
+    // A new line is a lab service until a product says otherwise.
+    hsnSac: LAB_SERVICE_SAC,
     itemCode: '',
     quantity: '1',
     unit: 'Nos',

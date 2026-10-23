@@ -8,7 +8,7 @@ import {
 import { fetchLabDocumentTemplates } from '@/features/settings/lab-settings/documentTemplatesConfig'
 import { supabase } from '@/lib/supabaseClient'
 import { amountInIndianRupeesWords } from './amountInIndianRupeesWords'
-import { gstSupplyModeLabel, printGstRows } from '../shared/financeRules'
+import { gstSupplyModeLabel, isCancelledDocument, printGstRows } from '../shared/financeRules'
 import { resolveSignatureSignedUrl, fetchLabCompanySignContext } from './quotationSignatureStorage'
 import {
   formatDate,
@@ -193,8 +193,17 @@ function quotationStylesCss(tpl: FinanceDocumentTemplate): string {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
   .page-body { flex: 1 1 auto; min-height: 0; }
+  .cancelled-stamp {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; z-index: 20;
+  }
+  .cancelled-stamp span {
+    transform: rotate(-30deg); border: 6px solid rgba(185, 28, 28, 0.75); color: rgba(185, 28, 28, 0.75);
+    padding: 12px 36px; font: 800 42pt Arial, Helvetica, sans-serif; letter-spacing: 0.2em;
+  }
   .letter-footer-wrap {
     margin-top: auto;
     flex-shrink: 0;
@@ -446,6 +455,7 @@ function buildOneQuotationHtml(
 
   return `
   <div class="page">
+    ${isCancelledDocument(row.status) ? '<div class="cancelled-stamp"><span>CANCELLED</span></div>' : ''}
     ${
       tpl.showLetterHeader
         ? `<table width="100%" cellspacing="0" cellpadding="0"><tr><td class="letter-header">${
@@ -502,7 +512,7 @@ function buildOneQuotationHtml(
           <th class="c" style="width:6%;">#</th>
           <th>Description</th>
           ${tpl.lineShowMake ? '<th class="c" style="width:10%;">Make</th>' : ''}
-          ${tpl.lineShowHsn ? '<th class="c" style="width:8%;">HSN</th>' : ''}
+          ${tpl.lineShowHsn ? '<th class="c" style="width:8%;">HSN/SAC</th>' : ''}
           ${tpl.lineShowQty ? '<th class="c" style="width:7%;">Qty</th>' : ''}
           ${tpl.lineShowUnit ? '<th class="c" style="width:7%;">Unit</th>' : ''}
           ${tpl.lineShowRate ? '<th class="r" style="width:28mm;">Rate</th>' : ''}
