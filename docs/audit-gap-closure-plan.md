@@ -33,6 +33,7 @@ for Amit).
 | B-2 | Record one restore test (restore a backup into a new service, check, delete) | Planned |
 | U-1 | Clean up duplicate logins and the orphan module-access rule | Planned (needs Amit's list of who keeps which login) |
 | DEP-2 | Production frontend sends no security headers (served as a static site by Railpack's automatic SPA/Caddy mode). To serve through `frontend/server.mjs` (CSP, HSTS, X-Frame-Options): set `RAILPACK_NO_SPA=1`, remove `RAILPACK_SPA_OUTPUT_DIR`, and set the start command to `node server.mjs`. Verified on staging on 23 Oct 2026 (headers present). | Needs approval |
+| S-20 | Rest service: set `PGRST_DB_SCHEMAS=public` (production has `public,storage`, which serves the storage tables to anyone with the anon key). Set on staging on 23 Oct 2026 with migration 46; anon storage requests then get 406. | Needs approval |
 | GT-1 | GoTrue settings: SMTP (password reset emails), password minimum 10, MFA TOTP enable, refresh-token rotation, rate limits, site URL and `/auth/reset` in the allow list | Needs approval |
 
 ## Stage 1: integrity of records (Sprint 1–2)
@@ -96,6 +97,9 @@ for Amit).
 43. `20261102100500_certificate_number_unique.sql` (a calibration certificate number, amended or replaced ones included, is never given to another job)
 44. `20261102100600_calibration_review_not_by_performer.sql` (the person who calibrated cannot approve its raw data; lab decision 23 Oct)
 45. `20261102100700_calibration_certificate_issue.sql` (issuing a calibration certificate needs a password confirmed within 15 minutes and a U; the database records the issuer)
+46. `20261102100800_storage_schema_lockdown.sql` (storage tables: RLS on all, no anon privileges, signed-in users only read buckets; together with the rest setting `PGRST_DB_SCHEMAS=public`, item S-20)
+47. `20261102100900_test_report_issue_guard.sql` (issuing a test report needs a password sign-in of the last 15 minutes, taken from the token, and the right to sign: Director; Authorization Matrix holders once the matrix is in use for signing; until then the QM or Edit access to Test Report Preparation)
+48. `20261102101000_pgcrypto_revoke.sql` (pgcrypto functions except gen_random_uuid no longer callable by anon or signed-in users through the API)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 

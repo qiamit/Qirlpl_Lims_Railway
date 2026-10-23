@@ -89,8 +89,8 @@ Apply the 37 migrations in the order listed in `docs/audit-gap-closure-plan.md`,
 
 1. Fresh production backup.
 2. Merge the branch to `main` (deploys the frontend, gateway, functions and PDF changes; all of them work before the migrations).
-3. Apply the 40 migrations to production in the same order, while the lab is idle.
-4. Apply the Railway settings tested on staging (GoTrue, `GOTRUE_DISABLE_SIGNUP`, `PDF_ALLOWED_ORIGINS`, frontend start command).
+3. Apply the 48 migrations to production in the same order, while the lab is idle.
+4. Apply the Railway settings tested on staging (GoTrue, `GOTRUE_DISABLE_SIGNUP`, `PDF_ALLOWED_ORIGINS`, frontend start command, rest `PGRST_DB_SCHEMAS=public`).
 5. Smoke-test with the Director login; leave module access in log mode for two weeks before enforcing.
 6. Delete the staging environment once production is signed off.
 
@@ -440,3 +440,18 @@ Staging test as QM on amendment SR261023/217-001A (the OQ-01 amendment):
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use. **Lab decision (23 Oct): the feature stays as it is.** It is meant for filling dummy readings to estimate the MU, and the lab shows or hides its button with the existing Lab Settings switch. The two UTM certificates where it was used (SRF-2026-0001, 0002) are dummy test data (lab, 23 Oct).
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
+
+**Security fixes from the go-live re-check (23 Oct; ISO/IEC 17025, security and operations review).**
+
+- **Storage tables were open to the anon key.** The rest service served the `storage` schema (`PGRST_DB_SCHEMAS=public,storage`); `storage.buckets` and the other storage tables had RLS off with ALL privileges for anon and authenticated. Without signing in, `GET /rest/v1/buckets` with `Accept-Profile: storage` listed every bucket, and the grants allowed making one public.
+  - Staging rest service: `PGRST_DB_SCHEMAS=public` (production: plan item S-20).
+  - Migration 46 `20261102100800_storage_schema_lockdown.sql`: RLS on every storage table, no anon privileges, signed-in users read-only on `buckets`, objects keep their policies without TRUNCATE.
+  - Staging test: the same anon request now gets 406 "The schema must be one of the following: public". As the QM in the browser: file list, signed URL download (506,002 bytes), authenticated download, upload, read back and delete of a test PDF in laboratory-files all 200; the test file was removed.
+- **Test report issue was not checked by the database.** The password time was checked only if the browser sent it, and nothing checked who issued, so any signed-in staff member could set a sample to `completed` through the API.
+  - Migration 47 `20261102100900_test_report_issue_guard.sql`: a signed-in issuer needs a password sign-in of the last 15 minutes (the `amr` time in the token; the Confirm password step signs in again) and the right to sign: the Director; once the Authorization Matrix is in use for "Sign test reports", only its holders; until then the QM or Edit access to Test Report Preparation in Module Access. `issued_reauthenticated_at` is set to the token's password time.
+  - Only the QM (Yamini Nayak), the Director and OQ QM have issued reports on the copy; all three have Edit access. On the copy OQ Sample Incharge also has Edit access to Test Report Preparation, so the rule lets Sample Cell users with that access issue; the lab may want to change that in Module Access.
+  - Database test (`report_issue_guard_test.mjs`, rolled back), 11 of 11 pass: Testing Engineer and View-only Technical Manager refused; QM without a password sign-in or with one 20 minutes old refused; QM, Director and Sample Cell with Edit allowed; with a sign_report grant for the QM only, Sample Cell refused, QM and Director allowed; scripts unaffected.
+  - Browser test as OQ QM: SR261017/211-001 issued with the password (NABL scope warning acknowledged), ULR TC1544226000000402F; `issued_reauthenticated_at` 11:18:41 UTC, the password time from the token.
+- **pgcrypto callable by anyone.** pgcrypto lives in `public`, so `crypt`, `gen_salt`, `pgp_*` and the rest were RPCs open to the anon key. Migration 48 `20261102101000_pgcrypto_revoke.sql` revokes them from PUBLIC, anon and authenticated (service_role keeps them); `gen_random_uuid` stays, as 75 column defaults use it. Staging: anon `rpc/gen_salt` now "permission denied"; the public brand RPC on the sign-in page still 200.
+- **DOMPurify 3.4.16 → 3.4.17** (critical advisories on 3.4.16). `npm audit --omit=dev`: 0 critical; the 5 high left are the Tailwind build chain, not shipped. Build passes; validation 66 of 66.
+
