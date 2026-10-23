@@ -64,6 +64,10 @@ export function parseLabSettingsRow(row: LabSettingsRow) {
     theme: String(row.theme ?? '').trim(),
     generateReportEnabled:
       row.generate_report_enabled == null ? true : Boolean(row.generate_report_enabled),
+    /** ISO 17025 7.3 module switch (migration 20261101100200); off by default. */
+    samplingEnabled: row.sampling_enabled === true,
+    /** False before migration 20261101100200: the toggle is hidden and never saved. */
+    samplingSettingAvailable: Object.prototype.hasOwnProperty.call(row, 'sampling_enabled'),
   }
 }
 
@@ -148,6 +152,8 @@ export function labSystemPayload(input: {
   timeFormat: string
   theme: string
   generateReportEnabled: boolean
+  /** Omitted (undefined) while the column is not on the database. */
+  samplingEnabled?: boolean
 }): LabSettingsRow {
   return {
     id: LAB_SETTINGS_SINGLETON_ID,
@@ -156,6 +162,7 @@ export function labSystemPayload(input: {
     time_format: input.timeFormat,
     theme: input.theme,
     generate_report_enabled: input.generateReportEnabled,
+    ...(input.samplingEnabled === undefined ? {} : { sampling_enabled: input.samplingEnabled }),
   }
 }
 

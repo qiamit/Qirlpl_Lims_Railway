@@ -102,6 +102,8 @@ const MyDocumentAcknowledgementsPage = lazy(() => import('@/features/management-
 const DecisionRulesPage = lazy(() => import('@/features/masters/decision-rules/DecisionRulesPage'))
 const PtPlanPage = lazy(() => import('@/features/proficiency-testing/PtPlanPage'))
 const ControlChartsPage = lazy(() => import('@/features/quality/control-charts/ControlChartsPage'))
+const SamplingPlansPage = lazy(() => import('@/features/sampling/SamplingPlansPage'))
+const SamplingRecordsPage = lazy(() => import('@/features/sampling/SamplingRecordsPage'))
 const PtParticipationsPage = lazy(() => import('@/features/proficiency-testing/PtParticipationsPage'))
 const MethodVerificationsPage = lazy(() => import('@/features/method-validation/MethodVerificationsPage'))
 const ScopeVerificationStatusPage = lazy(() => import('@/features/method-validation/ScopeVerificationStatusPage'))
@@ -486,6 +488,14 @@ export function PtPlanRoute() {
 
 export function ControlChartsRoute() {
   return <ControlChartsPage />
+}
+
+export function SamplingPlansRoute() {
+  return <SamplingPlansPage />
+}
+
+export function SamplingRecordsRoute() {
+  return <SamplingRecordsPage />
 }
 
 export function PtParticipationsRoute() {

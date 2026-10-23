@@ -107,6 +107,8 @@ import {
   DecisionRulesRoute,
   PtPlanRoute,
   ControlChartsRoute,
+  SamplingPlansRoute,
+  SamplingRecordsRoute,
   PtParticipationsRoute,
   MethodVerificationsRoute,
   ScopeVerificationStatusRoute,
@@ -214,6 +216,8 @@ export default function App() {
           <Route path="masters/decision-rules" element={<DecisionRulesRoute />} />
           <Route path="quality/pt-plan" element={<PtPlanRoute />} />
           <Route path="quality/control-charts" element={<ControlChartsRoute />} />
+          <Route path="sampling/plans" element={<SamplingPlansRoute />} />
+          <Route path="sampling/records" element={<SamplingRecordsRoute />} />
           <Route path="quality/pt-participations" element={<PtParticipationsRoute />} />
           <Route path="quality/method-verifications" element={<MethodVerificationsRoute />} />
           <Route path="quality/scope-verification-status" element={<ScopeVerificationStatusRoute />} />

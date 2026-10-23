@@ -21,6 +21,7 @@ import {
   type ReportEnvironmentLine,
 } from '@/features/environment/resultEnvironmentSnapshot'
 import { fetchSampleOpinionsForPrint, type ReportOpinions } from './reportOpinions'
+import { fetchSamplingForReport } from '@/features/sampling/samplingForSample'
 
 export type BuildLiveTestReportHtmlInput = {
   scope: ReportScopeKind
@@ -76,7 +77,7 @@ export async function buildLiveTestReportHtml(
   }
 
   const letterheads = letterheadsByScope[scope]
-  const [scopeConfig, decisionRuleStatement, environmentConditions, opinions] = await Promise.all([
+  const [scopeConfig, decisionRuleStatement, environmentConditions, opinions, samplingInformation] = await Promise.all([
     fetchReportScopeTemplatesConfig(),
     input.decisionRuleStatement !== undefined
       ? Promise.resolve(input.decisionRuleStatement)
@@ -88,6 +89,8 @@ export async function buildLiveTestReportHtml(
           // Conditions are additive: a read failure must not block the preview.
           .catch(() => null),
     input.opinions !== undefined ? Promise.resolve(input.opinions) : fetchSampleOpinionsForPrint(active.id),
+    // ISO 17025 7.8.5: same block as the issued report (null while sampling is off).
+    fetchSamplingForReport(active.id),
   ])
   const binding = bindingFromLetterheadSelection(scope, scopeConfig, letterheads)
   const template = await resolveReportScopeTemplate(scope, scopeConfig, binding)
@@ -130,5 +133,6 @@ export async function buildLiveTestReportHtml(
     decisionRuleStatement,
     environmentConditions,
     opinions,
+    samplingInformation,
   })
 }

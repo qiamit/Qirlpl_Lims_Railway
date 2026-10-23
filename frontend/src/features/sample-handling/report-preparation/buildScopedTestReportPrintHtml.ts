@@ -33,6 +33,10 @@ import {
   type ReportEnvironmentLine,
 } from '@/features/environment/resultEnvironmentSnapshot'
 import { OPINIONS_HEADING, type ReportOpinions } from './reportOpinions'
+import {
+  buildSamplingInformationHtml,
+  type ReportSamplingInfo,
+} from '@/features/sampling/samplingReportBlock'
 import { formatDate } from '@/lib/utils'
 
 function escapeHtml(s: string) {
@@ -273,6 +277,7 @@ function buildPartCResultsHtml(
     decisionRuleStatement?: string | null
     environmentConditions?: ReportEnvironmentLine[] | null
     opinions?: ReportOpinions | null
+    samplingInformation?: ReportSamplingInfo | null
   },
 ): { tableHtml: string; endNotesBlock: string } {
   const showEndNotes = options?.showEndNotes !== false
@@ -280,7 +285,9 @@ function buildPartCResultsHtml(
   const environmentHtml = buildEnvironmentConditionsHtml(options?.environmentConditions)
   // Opinions (7.8.7) print before the conditions, inside the same end-notes box.
   const opinionsHtml = buildOpinionsHtml(options?.opinions)
-  const preNotesHtml = opinionsHtml + environmentHtml
+  // Sampling information (7.8.5) prints first; empty when the sample has none.
+  const samplingHtml = buildSamplingInformationHtml(options?.samplingInformation)
+  const preNotesHtml = samplingHtml + opinionsHtml + environmentHtml
   const showSectionRows = options?.showSectionRows !== false
   const visibleCols = visiblePartCReportColumns(columns)
   const colCount = Math.max(visibleCols.length, 1)
@@ -354,6 +361,7 @@ function buildPartCPrintHtml(
   decisionRuleStatement?: string | null,
   environmentConditions?: ReportEnvironmentLine[] | null,
   opinions?: ReportOpinions | null,
+  samplingInformation?: ReportSamplingInfo | null,
 ): string {
   const { tableHtml, endNotesBlock } = buildPartCResultsHtml(rows, columns, {
     showEndNotes: printSettings?.showPartCEndNotes !== false,
@@ -361,6 +369,7 @@ function buildPartCPrintHtml(
     decisionRuleStatement,
     environmentConditions,
     opinions,
+    samplingInformation,
   })
   return `<section class="report-part part-c">
   ${tableHtml}
@@ -479,6 +488,8 @@ export function buildScopedTestReportPrintHtml(opts: {
   environmentConditions?: ReportEnvironmentLine[] | null
   /** Opinions and interpretations (ISO 17025 7.8.7); printed in Part C when present. */
   opinions?: ReportOpinions | null
+  /** Sampling information (ISO 17025 7.8.5); printed in Part C when present. */
+  samplingInformation?: ReportSamplingInfo | null
 }): string {
   const printSettings = opts.printSettings ?? DEFAULT_TEST_REPORT_PRINT_SETTINGS
   const signatureIssuedAt =
@@ -541,6 +552,7 @@ export function buildScopedTestReportPrintHtml(opts: {
     opts.decisionRuleStatement,
     opts.environmentConditions,
     opts.opinions,
+    opts.samplingInformation,
   )
   const partDHtml = buildPartDPrintHtml(opts.notes, isLabel)
   const partAWithSignatures = withSignaturesAfterPart(

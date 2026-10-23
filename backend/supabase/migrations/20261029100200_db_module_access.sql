@@ -329,6 +329,8 @@ SELECT v.module_key, v.label, v.section
   ('/quality/pt-plan', 'PT Plan (4-year)', 'Quality Assurance'),
   ('/quality/pt-participations', 'PT / ILC Participation', 'Quality Assurance'),
   ('/quality/control-charts', 'Control Charts', 'Quality Assurance'),
+  ('/sampling/plans', 'Sampling Plans', 'Quality Assurance'),
+  ('/sampling/records', 'Sampling Records', 'Quality Assurance'),
   ('/quality/method-verifications', 'Method Verification & Validation', 'Quality Assurance'),
   ('/quality/scope-verification-status', 'Scope Verification Status', 'Quality Assurance'),
   ('/quality/software-changes', 'Software Change Control', 'Quality Assurance'),

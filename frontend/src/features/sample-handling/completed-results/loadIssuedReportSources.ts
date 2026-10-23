@@ -12,6 +12,7 @@ import type { IssuedReportDecisionRule, IssuedReportSources } from './issuedRepo
 import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
 import { fetchSampleOpinionsForPrint } from '@/features/sample-handling/report-preparation/reportOpinions'
+import { fetchSamplingForReport } from '@/features/sampling/samplingForSample'
 import type { IssuedTestReportListRow } from './types'
 import { isoDate } from '@/features/masters/test-parameter/muBands'
 
@@ -45,7 +46,7 @@ export async function loadIssuedReportSources(
   // MU bands (ISO 17025 7.6) are chosen as on the issue date, so a later band
   // change does not alter a reprint; today when the issue time is unknown.
   const resultRowsPromise = fetchReportResultRowsForSample(row.id, { muOnDate: issueDateForMu(row) })
-  const [resultRows, coverDetails, letterheadData, printSettings, notes, rule, environmentByParameterId, opinions] = await Promise.all([
+  const [resultRows, coverDetails, letterheadData, printSettings, notes, rule, environmentByParameterId, opinions, sampling] = await Promise.all([
     resultRowsPromise,
     fetchTestReportCoverDetails(row.id, {
       fallbacks: { clientName: row.clientName, isCodeLabel: row.isCodeLabel },
@@ -58,6 +59,8 @@ export async function loadIssuedReportSources(
     resultRowsPromise.then((rows) => fetchResultEnvironmentSnapshots(rows.map((r) => r.parameterId))),
     // ISO 17025 7.8.7: opinions and interpretations (null before migration 20261029100300).
     fetchSampleOpinionsForPrint(row.id),
+    // ISO 17025 7.8.5: sampling information (null while sampling is off in Lab Settings).
+    fetchSamplingForReport(row.id),
   ])
   const decisionRule: IssuedReportDecisionRule | null = rule
     ? {
@@ -96,5 +99,6 @@ export async function loadIssuedReportSources(
     decisionRule,
     environmentByParameterId,
     opinions,
+    sampling,
   }
 }

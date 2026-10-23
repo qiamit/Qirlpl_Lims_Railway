@@ -40,6 +40,7 @@ import {
   type ResultEnvironmentSnapshot,
 } from '@/features/environment/resultEnvironmentSnapshot'
 import type { ReportOpinions } from '@/features/sample-handling/report-preparation/reportOpinions'
+import type { ReportSamplingInfo } from '@/features/sampling/samplingReportBlock'
 import type { IssuedTestReportListRow } from './types'
 
 export const SNAPSHOT_FORMAT = 'qirlpl-issued-test-report'
@@ -47,7 +48,7 @@ export const SNAPSHOT_FORMAT = 'qirlpl-issued-test-report'
  * 1: commit 8bf0fcf (no print settings, no letterhead files).
  * 2: adds clientName, printSettings and per-report template (file paths + text).
  *    Later optional keys (older v2 snapshots print without them): decisionRule,
- *    reports[].environmentConditions, opinions.
+ *    reports[].environmentConditions, opinions, sampling.
  */
 export const SNAPSHOT_VERSION = 2
 
@@ -92,6 +93,11 @@ export type IssuedReportPrintData = {
    * "Opinions and interpretations". Absent = none (and for older snapshots).
    */
   opinions?: ReportOpinions
+  /**
+   * Sampling information (ISO 17025 7.8.5), printed in Part C. Absent = the
+   * sample has no sampling record, sampling is off, or an older snapshot.
+   */
+  samplingInformation?: ReportSamplingInfo
 }
 
 /** Decision rule as recorded for an issued report. JSON-safe. */
@@ -128,6 +134,8 @@ export type IssuedReportSources = {
   environmentByParameterId?: Record<string, ResultEnvironmentSnapshot>
   /** Opinions and interpretations on the sample, null when none. */
   opinions?: ReportOpinions | null
+  /** Sampling record of the sample (7.8.5), null when none or sampling is off. */
+  sampling?: ReportSamplingInfo | null
 }
 
 /** Part C conditions block for a scope's rows; undefined when no row has conditions. */
@@ -180,6 +188,7 @@ export function printDataFromSources(
     decisionRuleStatement: sources.decisionRule?.statementText || null,
     environmentConditions: environmentForRows(rows, sources.environmentByParameterId),
     opinions: sources.opinions ?? undefined,
+    samplingInformation: sources.sampling ?? undefined,
   })
 }
 
@@ -222,6 +231,7 @@ export function renderIssuedReportContinuousHtml(
     decisionRuleStatement: data.decisionRuleStatement ?? null,
     environmentConditions: data.environmentConditions ?? null,
     opinions: data.opinions ?? null,
+    samplingInformation: data.samplingInformation ?? null,
   })
 }
 
@@ -314,6 +324,8 @@ export type IssuedReportSnapshot = {
   decisionRule?: IssuedReportDecisionRule | null
   /** Opinions and interpretations as issued (absent = none, or snapshot taken before they existed). */
   opinions?: ReportOpinions
+  /** Sampling information as issued (absent = none, sampling off, or snapshot taken before it existed). */
+  sampling?: ReportSamplingInfo
 }
 
 function signatoryForSnapshot(sig: TestReportSignature): SnapshotSignatory {
@@ -422,6 +434,7 @@ export function buildIssuedReportSnapshotFromSources(
     printSettings,
     decisionRule: sources.decisionRule ?? null,
     ...(sources.opinions ? { opinions: sources.opinions } : {}),
+    ...(sources.sampling ? { sampling: sources.sampling } : {}),
   }
 }
 
@@ -566,5 +579,6 @@ export function printDataFromSnapshot(
         ? report.environmentConditions
         : undefined,
     opinions: snapshot.opinions ?? undefined,
+    samplingInformation: snapshot.sampling ?? undefined,
   })
 }
