@@ -1,7 +1,7 @@
 # Staging copy on Railway: plan
 
 Goal: test everything on the branch `claude/priceless-ramanujan-5f501a`
-(37 new migrations plus the frontend, gateway, functions and PDF changes)
+(38 new migrations plus the frontend, gateway, functions and PDF changes)
 against a copy of real production data, with real logins for every role,
 before anything touches production. Nothing in this plan has been done yet;
 each step marked **(approval)** changes Railway and needs Amit's go-ahead.
@@ -89,7 +89,7 @@ Apply the 37 migrations in the order listed in `docs/audit-gap-closure-plan.md`,
 
 1. Fresh production backup.
 2. Merge the branch to `main` (deploys the frontend, gateway, functions and PDF changes; all of them work before the migrations).
-3. Apply the 37 migrations to production in the same order, while the lab is idle.
+3. Apply the 38 migrations to production in the same order, while the lab is idle.
 4. Apply the Railway settings tested on staging (GoTrue, `GOTRUE_DISABLE_SIGNUP`, `PDF_ALLOWED_ORIGINS`, frontend start command).
 5. Smoke-test with the Director login; leave module access in log mode for two weeks before enforcing.
 6. Delete the staging environment once production is signed off.
@@ -156,8 +156,19 @@ Staging auth, rest, storage and frontend all respond.
 2. Nothing stops two records getting the same asset code, complaint ID, NC ID, SRF number or plan code.
 3. Soft delete's "numbers of deleted records are not reused" guard (`app_deleted_keys`) refuses columns without a unique key, so on 18 pages it returns 400 and the app falls back to visible rows only.
 
-Fix (not yet done): a reconciliation migration that lists duplicates per key and adds each missing unique key only where the data has none, run on staging first.
+**Fix: migration 38, `20261102100000_unique_key_reconciliation.sql`** (applied on staging 23 Oct). It compares against the 44 unique keys the repository defines but production lacks (samples.test_report_number stays with migration 35). For each one it adds the key under the repository's name, unless the key is already there, the table or column is missing, or the rows hold duplicates, in which case it lists the duplicate values and skips that key. Nothing is renamed or deleted. Tested on a drifted PGlite copy (keys dropped, duplicates seeded: added, skipped with a list, second run a no-op, an equal index under another name recognised) and on staging:
 
-Next: decide on the 8 duplicate report numbers and the schema drift fix, then step E (testing with each role).
+| Result on staging | |
+|---|---|
+| Added | 37 keys, for example complaint ID, NC ID, plan code, GR register IDs, audit ID, consent letter no., IQC asset code, management documents (level, doc number), product item code, audit NC action |
+| Skipped: duplicates in the data | `equipment_master.asset_code` 92 codes on 187 records (for example QI-EQ-0001 on four instruments, QI/CVL/TS-18…30 twice each); `equipment_for_calibration.asset_code` 8 codes (QI/INS/14, 23, 25, 27, 33, 39, QI/DBC-03, QI/DTM-02); `clients.company_name` 4 names (Beamex ×3, Fortune Metaliks Limited, Mitlhard, Quality International Research & Laboratories Private Limited); `calibration_service_requests.srf_number` SRF-2026-0001 ×2; `test_parameter_units.name` (µm ×6, mm, °C, Joule); `client_master_options` 6 labels (pin codes 401404, 110012, 422010; South Korea; Murbad; Odisha); `nabl_scope_lookups` Paver Blocks ×2 |
+| Second run | 0 added, 37 present, 7 skipped |
+| Saves (ON CONFLICT check, rolled back) | IQC master, management documents, products and services, audit NC action now work. New client, equipment master bulk save and calibration SRF still fail with 42P10 until their duplicates are cleaned |
+| Pages | `app_deleted_keys` errors gone on 14 of 18 pages; still on equipment for calibration, IQC (it also reads equipment master codes), calibration SRF and calibration equipments |
+| Checks | Data unchanged, RLS on everywhere, no `anon` write grants, no invalid indexes |
+
+To finish: the lab cleans the listed duplicates (give each instrument its own asset code, merge or rename the duplicate clients, units, options and SRF), then migration 38 is run again and adds the remaining 7 keys. PGlite regression: 37 of 38 suites pass; the safe-expression parity suite differs from the old evaluator only on ROUND/MROUND (51 cases), which is the intended IS 2 rounding change.
+
+Next: decide on the 8 duplicate report numbers and clean the duplicates listed above, then step E (testing with each role).
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.

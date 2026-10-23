@@ -88,6 +88,7 @@ for Amit).
 35. `20261101100100_report_number_unique.sql` (only lists duplicate report numbers if any exist; resolve them, then re-run)
 36. `20261101100200_sampling.sql` (module stays off until switched on in Lab Settings)
 37. `20261101100300_retention_minimum.sql`
+38. `20261102100000_unique_key_reconciliation.sql` (adds the unique keys production never got; keys whose rows hold duplicates are listed and skipped, so clean the listed records and run it again)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 
