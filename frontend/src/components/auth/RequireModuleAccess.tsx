@@ -30,6 +30,12 @@ export function RequireModuleAccess({ children }: { children: React.ReactNode })
   if (waitingForProfile && !keepOutletMounted) {
     return null
   }
+  // First load for this user: wait for their module rules instead of judging
+  // by the designation rules (a page granted only in Module Access showed
+  // "Access Denied" until the rules arrived).
+  if (user && moduleAccess && !moduleAccess.ready) {
+    return null
+  }
 
   const ctx = { designation, departmentName }
   // While the module-access matrix is loading, or if it could not be loaded,

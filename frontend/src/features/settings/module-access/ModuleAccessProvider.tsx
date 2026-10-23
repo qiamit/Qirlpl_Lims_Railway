@@ -25,6 +25,8 @@ import type { ModuleAccessLevel } from './moduleCatalog'
 type ModuleAccessState = {
   rules: ModuleAccessRuleRow[]
   loading: boolean
+  /** The signed-in user's rules have been loaded (or failed) at least once. */
+  ready: boolean
   error: string | null
   refresh: () => Promise<void>
   ctx: ModuleAccessUserContext
@@ -81,7 +83,8 @@ export function ModuleAccessProvider({ children }: { children: ReactNode }) {
     void refresh()
   }, [userId, profileReady, refresh])
 
-  const rulesLoading = userId ? loading || rulesUserId !== userId : false
+  const ready = !userId || rulesUserId === userId
+  const rulesLoading = userId ? loading || !ready : false
 
   const ctx = useMemo<ModuleAccessUserContext>(
     () => ({
@@ -97,6 +100,7 @@ export function ModuleAccessProvider({ children }: { children: ReactNode }) {
     () => ({
       rules,
       loading: rulesLoading,
+      ready,
       error,
       refresh,
       ctx,
@@ -106,7 +110,7 @@ export function ModuleAccessProvider({ children }: { children: ReactNode }) {
         canAccessNavItemWithRules(requiredDesignations, to, ctx, rules),
       accessLevelFor: (pathname: string) => resolveModuleAccessLevel(pathname, ctx, rules),
     }),
-    [rules, rulesLoading, error, refresh, ctx],
+    [rules, rulesLoading, ready, error, refresh, ctx],
   )
 
   return createElement(ModuleAccessContext.Provider, { value }, children)
