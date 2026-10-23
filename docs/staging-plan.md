@@ -239,4 +239,32 @@ Real staff, simulated on the database (all 27 profiles, in transactions that wer
 
 Next: lab runs the OQ scripts with these accounts (the Director resets each password in Lab Settings → User Management and hands it over).
 
+**OQ-01 and OQ-02 run on the staging screens (23 Oct, frontend code as b1b64af, test accounts per role).** Test records: sample SR261023/217-001 (report QI/REP/20260357A, issued), calibration SRF-2026-0004 and SRF-2026-0005, client `Oq Test Client 1`; all stay on staging.
+
+| OQ-01 step | Result |
+|---|---|
+| 1–2 SRF, client required | P: number given automatically; save disabled without a client |
+| 3 Allocation | P: allocation and test allocation; the authorization matrix asked for a reason (engineer not on the matrix) |
+| 4 Results | P: average 570.20, s = 0.10 as worked by hand; equipment In Repair blocked (no overdue equipment exists on the copy to try) |
+| 5 Submit | P: after submission the engineer sees the results read-only |
+| 6 Review | P: remark "Confirm" matches the hand result; decision rule DR-GB shown |
+| 7 Report | P: report number with A, ULR TC1544226000000400F (19 characters), pages "01 of 03", NABL 133 scope warning |
+| 8–9 Issue | P: wrong password refused; correct password issues, issuer OQ Quality Manager stamped, archive with SHA-256 that verifies |
+| 10 Re-print | P: printed from the archived copy; old client address kept after the master change |
+| 11 Amendment | **F**: "Referback failed" (409). `cloneIssuedSampleForAmendment` copies the NABL ULR to the new row and the unique index `samples_nabl_ulr_uidx` refuses it. Same code on production: no amendment has worked there since the index was added (9 Oct); the earlier `-R2` ULRs were typed by hand. The amendment reason is also optional. Needs a lab decision: amended report gets ULR + `-R1`, or keeps the same ULR (index then allows one per amendment chain). |
+| 12 Engineer and issued report | P (API test C11) |
+
+Also seen in OQ-01: signatories printed on the report come from Print Setting defaults, not from who tested and reviewed (ISO 7.8.2.1, already so on production); the sample status stays "registered" after issue; Part D prints "Confirms" for "Conforms"; the Proof Stress parameter has no MU set.
+
+| OQ-02 step | Result |
+|---|---|
+| 1 SRF | P: SRF-2026-0004, "customer requests due date" unticked by default and stored as `false` |
+| 2 Job allocation | P: Cal TM assigns the engineer (authorization matrix asks for a reason); the engineer sees only that job |
+| 3 Raw data | **F**, three faults: (a) only 3 of 489 equipment have raw data columns (Vernier Caliper QI-EQ-0002, Vernier Caliper 300, UTM); the dial gauge in the script has none, so SRF-2026-0005 used the Vernier Caliper; (b) every typed reading is rounded to whole numbers when the field is left (`DEFAULT_RAW_DATA_TABLE_SETTINGS.decimalPlaces = 0`, no setting on screen; 50.01 → 50, 49.99 → 50; every sheet on production has 0); (c) the Vernier Caliper formulas still name columns that were renamed (`[DUC Reading 1 mm]`, `[Master Reading Observed mm]`), so Average and Error stay empty and the sheet cannot be saved ("Fill required column Average Reading External Jaws mm"). Also: the sheet lists all 17 points of the caliper checker (to 600 mm) for a 0–150 mm job, and the first two reading columns are pre-filled (nominal value, and the gauge's actual size from the master). |
+| 4 MU | Blocked: the Vernier Caliper MU template holds placeholder entries ("asasdf", a component labelled "0.0002") and an empty budget |
+| 5 Formula error | Partly: the formula editor refuses unknown columns when a formula is typed, but renaming a column later leaves formulas that use it broken without warning (fault 3c) |
+| 6–9 Review, certificate, amendment, engineer edit | Not run: the sheet cannot be saved |
+
+**Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
+
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
