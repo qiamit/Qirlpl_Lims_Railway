@@ -119,4 +119,18 @@ Apply the 37 migrations in the order listed in `docs/audit-gap-closure-plan.md`,
 
 Staging URLs: frontend `https://frontend-staging-1898.up.railway.app`, API `https://api-staging-64cf.up.railway.app`.
 
-The staging database is a new, empty Postgres (production data was not copied), so `auth` and `rest` keep restarting until step C loads the data. Next: step C (fresh production backup, copy database and files into staging, wire a staging bucket), which needs approval.
+**C. Done.** Production data copied into staging; production only read.
+
+| Item | State |
+|---|---|
+| Backup | On-demand production backup "Before staging copy 2026-10-23" taken first |
+| Database | Read-only `pg_dump` of production (transaction read-only, through the TCP proxy) restored into staging Postgres by a temporary staging-only service. Counts match production: samples 335, clients 146, quotations 3, staff logins 27, user profiles 27, audit log 10,256, equipment 489, 78 public tables, 9 storage buckets, 385 file records |
+| Files | Staging has its own bucket instance (`qirlpl-lims-storage-92rz-k`; production is `…-bf0ydy`), wired to staging storage-api. All 453 production objects (518.8 MiB) copied with `rclone copy`; `rclone check`: 0 differences. A file download through the staging API works |
+| Passwords | Staging services no longer use production database passwords: auth and storage-api use staging Postgres references, and the `authenticator` role has a staging-only password. Staff logins are the copied ones, so the same staff passwords work on staging |
+| AI | Off in staging (`ai_enabled=false`, provider API keys cleared), so staging never sends client data to an AI provider |
+| Clean-up | The temporary copy service (which held production credentials) is deleted |
+| Production | No deployment after 22 Oct, bucket still 453 objects, services unchanged |
+
+Staging auth, rest, storage and frontend all respond. Next: step D (apply the 37 migrations on staging), which needs approval.
+
+Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
