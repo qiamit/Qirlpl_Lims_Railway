@@ -198,7 +198,7 @@ Before production: the 6 issued reports that now carry …AA were sent to custom
 
 Saves into these tables still need step E testing with real logins; a value outside a list is now refused with error 23514 instead of being stored.
 
-Also seen: after a deploy, a browser tab that was already open shows a blank page when it opens a screen whose code file changed (the old file name returns 404, "Failed to fetch dynamically imported module"), until the page is reloaded. Production users will see this after every deploy.
+Also seen: after a deploy, a browser tab that was already open shows a blank page when it opens a screen whose code file changed (the old file name returns 404, "Failed to fetch dynamically imported module"), until the page is reloaded. Every build embeds its commit, so every deploy renames all screen files. Fixed on the branch (`frontend/src/lib/reloadOnStaleChunk.ts`): on `vite:preloadError` the page reloads once, with a 30-second guard so a file that is really missing cannot cause a reload loop.
 
 Next: equipment codes, then step E (testing with each role).
 
