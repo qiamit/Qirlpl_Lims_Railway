@@ -419,6 +419,24 @@ Staging tests:
 
 Still for the lab: build the MU templates (the Vernier Caliper ones hold placeholders), so the MU sheet gives the U that the certificate now requires; until then such a certificate cannot be issued.
 
+**Test report signatories from the people who did the work (b476232, 23 Oct; lab decision).**
+
+- Reports printed the names saved in Print Setting (Vishal Rahangdale, Rajat Maurya "Tested By", Kunal Patle "Approved By") whoever tested, reviewed or issued them (ISO/IEC 17025 7.8.2.1 o).
+- Preview, print / PDF, the issue confirmation and the archived copy made at issue now use the sample's people:
+  - Tested By: whoever entered each result (`entered_by`), else the engineer the test was assigned to.
+  - Reviewed By: the results reviewer.
+  - Approved / Authorized By: the issuer, or the signed-in user until the report is issued.
+- Print Setting keeps the layout: role labels and the parts each role signs after. The editor says the names there are not printed.
+- Reports already issued keep their archived copy.
+- Validation case SG-01; 66 of 66 pass.
+
+Staging test as QM on amendment SR261023/217-001A (the OQ-01 amendment):
+
+- The preview printed "Approved By OQ Quality Manager" after Parts A and B, and after Part D "Tested By OQ Testing Engineer Mech · Reviewed By OQ Technical Manager Mech · Approved By OQ Quality Manager", with none of the Print Setting names.
+- The issue confirmation listed the same three.
+- The report was then issued with the password (ULR TC1544226000000400F-R1). Its archive holds these three people; the original SR261023/217-001, issued before the fix, keeps Kunal Patle / Rajat Maurya / Vishal Rahangdale in its archive.
+- This also completes OQ-01 step 11 (amendment created and issued).
+
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
