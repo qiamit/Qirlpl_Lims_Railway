@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | QIRLPL-LIMS-BKP |
-| Version | 1.0 (draft for QM review) |
+| Version | 1.1 (23 Oct 2026, draft for QM review): Railway's restore rules, file storage, first test B-2 |
 | Clause | ISO/IEC 17025:2017 7.11.3 c (data protected against loss), 7.5, 8.4 |
 | Frequency | Restore test every **90 days**, after any change to the database service or backup settings, and after any `backup` or `data_integrity` IT incident |
 | Done by | Laboratory Director (or IT person with Railway access), witnessed by the QM |
@@ -15,9 +15,13 @@
 - Since **22 Oct 2026**: Railway **daily** and **weekly** volume backups are
   switched on for the Postgres service, and an on-demand backup is taken
   before every migration or risky change (see `change-control-procedure.md`).
-- Uploaded files (storage bucket objects) and the app code are not in the
-  volume backup. The code is in git (GitHub); check separately how uploaded
-  files are kept (open item).
+  Schedules (23 Oct 2026): daily at 05:30 UTC kept 6 days, weekly on
+  Saturday at 16:51 UTC kept 27 days.
+- Uploaded files are in a Railway **bucket** (`qirlpl-lims-storage-bf0ydy`),
+  which volume backups do not cover: there is no backup of the files yet
+  (open item; see `restore-test-B2.md` section 6). The `lims-storage` MinIO
+  volume (248 MB) is not used by the app and has no backup either.
+- The app code is in git (GitHub).
 
 A backup that has never been restored is not proof that data can be recovered.
 This procedure proves it, without touching production.
@@ -47,10 +51,16 @@ This procedure proves it, without touching production.
 
 ## 4. Restore into a new service (30–60 minutes)
 
-Railway's dashboard changes from time to time. The aim is always the same:
-the backup's data ends up in a **new** Postgres service, not in production.
+Railway's documentation (checked 23 Oct 2026) says a volume backup can be
+restored **only into the same project and environment, onto its own
+service**: the restore mounts a new volume made from the backup in place of
+the current one (the old volume is kept, unmounted) and waits for Deploy. A
+production backup therefore cannot be restored into a separate service
+without replacing the production database, so **Method A below is not
+available; use Method B.** The first test, B-2, follows Method B step by
+step: `restore-test-B2.md`.
 
-**Method A (preferred): restore the volume backup into a separate environment.**
+**Method A (not available on Railway as of 23 Oct 2026): restore the volume backup into a separate environment.**
 
 1. In the Railway project create a new environment called `restore-test`
    (Environments → New environment; an empty environment or a copy of
@@ -135,8 +145,11 @@ Only the Laboratory Director decides this.
 2. Record an IT incident (category data_integrity or outage).
 3. Take an on-demand backup of the current (damaged) state first, for
    investigation.
-4. Restore the chosen backup into production following Railway's dialog;
-   deploy.
+4. Restore the chosen backup into production following Railway's dialog
+   (Backups → backup → Restore → check the staged change names the
+   production Postgres service → Deploy). The damaged volume stays in the
+   project, unmounted: records written after the backup can still be read
+   from it later (attach it to a temporary service, or ask Railway support).
 5. Run checks 1–7 of section 5 on production.
 6. Re-enter on the LIMS the work done on paper and the records created
    between the backup time and the failure (from paper records, emails,
