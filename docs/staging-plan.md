@@ -179,14 +179,15 @@ To finish: the lab cleans the listed duplicates (give each instrument its own as
 | Units: keep one | 8 exact copies of °C, Joule, mm, µm removed (units are stored as text elsewhere) |
 | SRF-2026-0001 of Quality Engineering: remove | SRF, its 3 calibration jobs (calibration conduct, no certificate) and 3 raw data sheets removed; BR Stainless keeps SRF-2026-0001 |
 | Report numbers: amendment number | The report issued first keeps its number; the other sample of each pair gets …AA (the app's Amendment Report format; its ULR already ends -R2): SR260716/107-001…006 → QI/REP/20260179AA…20260184AA, SR260801/118-001 → QI/REP/20260185AA, SR260818/134-001 → QI/REP/20260296AA |
+| Client options, Paver Blocks: keep one | 7 exact copies in the client option lists (South Korea, Murbad, Odisha, PIN 110012, 401404 ×2, 422010) and 1 Paver Blocks NABL lookup removed; the first entry of each kept. Option lists are not in the audit trail by design (dropdown lists); the NABL lookup removal is |
 | Equipment asset codes | Not changed: different instruments; the lab updates the codes in the app |
 
 Issued samples are frozen by `samples_guard_issued_update` unless a Laboratory Director is signed in. The script switches that one trigger off inside its own transaction and back on at the end, instead of running under a Director's identity (which would put their name on the audit rows).
 
-Afterwards migration 35 added `samples_test_report_number_uidx`, and migration 38 added 3 more keys (client name, unit name, SRF number): 40 of 44 now present. Still skipped: `equipment_master.asset_code`, `equipment_for_calibration.asset_code` (codes to be updated by the lab), `client_master_options` (6 labels) and `nabl_scope_lookups` (Paver Blocks), which have no decision yet. Saves: new client and calibration SRF now work; only the equipment master bulk save still fails (42P10). `app_deleted_keys` errors remain only on the 3 equipment pages.
+Afterwards migration 35 added `samples_test_report_number_uidx`, and migration 38 added 5 more keys (client name, unit name, SRF number, client options, NABL lookups): 42 of 44 now present. Still skipped: `equipment_master.asset_code` and `equipment_for_calibration.asset_code`, until the lab updates the codes; then migration 38 runs again. Saves: new client and calibration SRF now work; only the equipment master bulk save still fails (42P10). `app_deleted_keys` errors remain only on the 3 equipment pages.
 
 Before production: the 6 issued reports that now carry …AA were sent to customers with the old number, so each needs an amendment issued through the app (ISO/IEC 17025 7.8.8). On production the script runs after a fresh backup, followed by migrations 35 and 38.
 
-Next: equipment codes and the two option lists, then step E (testing with each role).
+Next: equipment codes, then step E (testing with each role).
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.

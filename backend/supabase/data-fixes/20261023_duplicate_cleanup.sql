@@ -26,8 +26,12 @@
 --               first keeps its number, the other sample gets the amendment
 --               number (…A -> …AA, as the app's Amendment Report does; its ULR
 --               already has -R2).
+--   Options     Client option lists (South Korea, Murbad, Odisha, PIN 110012,
+--               401404, 422010) and the NABL scope lookup Paver Blocks: keep
+--               the first entry, remove the exact copies (stored as text
+--               elsewhere, nothing links to them by id).
 --   Not changed Equipment asset codes (different instruments; the lab updates
---               the codes in the app), client option lists, NABL lookups.
+--               the codes in the app).
 --
 -- Removals are physical deletes, so the unique keys can be added; each one
 -- is kept in audit_log (old row + reason).
@@ -249,13 +253,55 @@ BEGIN
     RAISE NOTICE '% : % -> % (% keeps %)', k.srf, k.old_no, k.new_no, k.kept_by, k.old_no;
   END LOOP;
 
-  -- Reason on the remaining audit rows this transaction wrote (units, SRF).
+  -- Option lists -------------------------------------------------------------
+  FOR k IN
+    SELECT * FROM (VALUES
+      ('client_master_options', '12a266ac-a866-454e-846f-421db3cf9655'::uuid, 'country',  'South Korea', '90f696c4-ff44-4129-b251-30d1584f2a0a'::uuid),
+      ('client_master_options', 'e58ecaac-6ab1-4795-a154-3860f5e86f5b'::uuid, 'district', 'Murbad',      '13843442-346e-4699-ac3f-81f0ce1f48cf'::uuid),
+      ('client_master_options', 'da7a8c46-8be7-45f1-9b82-3f0066cee462'::uuid, 'pin_code', '110012',      '4af2ac54-9c0a-45a9-a0fe-89abb5868e38'::uuid),
+      ('client_master_options', 'eac74d1a-ae33-4db0-a3d4-b26670888161'::uuid, 'pin_code', '401404',      'e2e672b3-3b45-442f-803a-48243b0f5456'::uuid),
+      ('client_master_options', '0868c961-917c-4ed2-9884-70bbaa639aed'::uuid, 'pin_code', '401404',      'e2e672b3-3b45-442f-803a-48243b0f5456'::uuid),
+      ('client_master_options', '537451b6-6986-47a2-85cc-e7bfb45ee579'::uuid, 'pin_code', '422010',      '6477687c-2eac-445a-a82e-85ba1c1545e4'::uuid),
+      ('client_master_options', '4623ab30-cb03-44de-ad35-c99391aa2d91'::uuid, 'state',    'Odisha',      '19ed1ab5-3aa7-440c-94c0-3f81c6a82d82'::uuid),
+      ('nabl_scope_lookups',    '4cc524d0-17a8-470d-81aa-f1ad6b9e8c4c'::uuid, 'materials_products', 'Paver Blocks', '2aa70c89-0373-49dc-9166-426054349df0'::uuid)
+    ) AS v(tbl, id, kind, name, keep_id)
+  LOOP
+    -- client_master_options: (category, label, value); nabl_scope_lookups: (kind, name).
+    EXECUTE format(
+      'SELECT count(*) FROM public.%I WHERE id = $1', k.tbl) INTO v_n USING k.id;
+    IF v_n = 0 THEN
+      CONTINUE;
+    END IF;
+    IF k.tbl = 'client_master_options' THEN
+      SELECT count(*) INTO v_n
+        FROM public.client_master_options a
+        JOIN public.client_master_options b ON b.id = k.keep_id
+       WHERE a.id = k.id AND a.category = k.kind AND a.label = k.name
+         AND b.category = a.category AND b.label = a.label AND b.value IS NOT DISTINCT FROM a.value;
+    ELSE
+      SELECT count(*) INTO v_n
+        FROM public.nabl_scope_lookups a
+        JOIN public.nabl_scope_lookups b ON b.id = k.keep_id
+       WHERE a.id = k.id AND a.kind = k.kind AND a.name = k.name
+         AND b.kind = a.kind AND b.name = a.name;
+    END IF;
+    IF v_n <> 1 THEN
+      RAISE EXCEPTION '% % is not an exact copy of % / %', k.tbl, k.id, k.kind, k.name;
+    END IF;
+    EXECUTE format('DELETE FROM public.%I WHERE id = $1', k.tbl) USING k.id;
+    RAISE NOTICE '% % / % (%) removed, kept %', k.tbl, k.kind, k.name, k.id, k.keep_id;
+  END LOOP;
+
+  -- Reason on the remaining audit rows this transaction wrote (units, SRF,
+  -- option lists).
   UPDATE public.audit_log
      SET reason = v_reason_prefix || CASE table_name
        WHEN 'test_parameter_units' THEN 'exact duplicate unit removed'
        WHEN 'calibration_service_requests' THEN 'SRF-2026-0001 of Quality Engineering removed (number also used by BR Stainless)'
        WHEN 'calibration_jobs' THEN 'job of removed SRF-2026-0001 (Quality Engineering)'
        WHEN 'calibration_raw_data_sheets' THEN 'raw data sheet of removed SRF-2026-0001 (Quality Engineering)'
+       WHEN 'client_master_options' THEN 'exact duplicate client option removed'
+       WHEN 'nabl_scope_lookups' THEN 'exact duplicate NABL scope lookup removed'
        ELSE 'duplicate cleanup'
      END
    WHERE actor IS NULL AND reason IS NULL AND at >= now();
