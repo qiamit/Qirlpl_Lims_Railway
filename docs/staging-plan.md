@@ -330,7 +330,7 @@ The lab typed `-R2` for first amendments before; from now on the first amendment
 2. The calibration generator counts test report ULRs, but the test report generator (`fetchNextNablUlrNumber`) does not count calibration certificate ULRs. So a test report issued after a certificate took the same serial.
 3. The unique ULR index covers samples only.
 
-Needs a lab decision: calibration certificates use CC + the calibration accreditation number with their own serial; the two issued certificates are amended with a correct ULR.
+**Lab decision (23 Oct): testing and calibration ULRs stay separate.** Test reports: TC + 15442 (TC-15442) with their own serial; calibration certificates: CC + 03039 (CC-3039) with their own serial. Implemented in a41052a and migration 42. Still open: whether the two issued certificates below are amended with a CC ULR.
 
 Other observations:
 
