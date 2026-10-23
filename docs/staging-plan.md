@@ -213,6 +213,10 @@ Equipment asset codes: the duplicates came from the Calibration Equipments page,
 
 Manual part: the tester guide (test accounts per role created by the Director in staging, OQ-01…07, further checks, recording in LIMS Validation Runs) is shared with the lab.
 
-Next: lab runs the OQ scripts; equipment code approval.
+Equipment codes applied on staging (lab accepted the suggestions): `backend/supabase/data-fixes/20261023_equipment_asset_codes.sql` gives 95 equipment master and 8 equipment-for-calibration records their new codes (each checked by id and old code, new code must be free; second run changes nothing; every change in `audit_log` with its reason). Other records refer to equipment by id, not by code (one calibration job and one SRF mention a changed record, by id only), so nothing else changes. Migration 38 then added both asset code keys: **44 of 44 unique keys present**. All 7 upsert saves now work, and `app_deleted_keys` returns 200 on every equipment page.
+
+At go-live the order is: merge (new asset code generator), migrations, `20261023_duplicate_cleanup.sql`, `20261023_equipment_asset_codes.sql`, then migrations 35 and 38 again. If equipment is added on production before then, a suggested code may already be taken; the script then stops without changing anything and the list is regenerated.
+
+Next: lab runs the OQ scripts.
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
