@@ -1,7 +1,7 @@
 # Staging copy on Railway: plan
 
 Goal: test everything on the branch `claude/priceless-ramanujan-5f501a`
-(39 new migrations plus the frontend, gateway, functions and PDF changes)
+(40 new migrations plus the frontend, gateway, functions and PDF changes)
 against a copy of real production data, with real logins for every role,
 before anything touches production. Nothing in this plan has been done yet;
 each step marked **(approval)** changes Railway and needs Amit's go-ahead.
@@ -89,7 +89,7 @@ Apply the 37 migrations in the order listed in `docs/audit-gap-closure-plan.md`,
 
 1. Fresh production backup.
 2. Merge the branch to `main` (deploys the frontend, gateway, functions and PDF changes; all of them work before the migrations).
-3. Apply the 39 migrations to production in the same order, while the lab is idle.
+3. Apply the 40 migrations to production in the same order, while the lab is idle.
 4. Apply the Railway settings tested on staging (GoTrue, `GOTRUE_DISABLE_SIGNUP`, `PDF_ALLOWED_ORIGINS`, frontend start command).
 5. Smoke-test with the Director login; leave module access in log mode for two weeks before enforcing.
 6. Delete the staging environment once production is signed off.
@@ -235,6 +235,8 @@ The 2 failures: F1 failed only on the second run (the account had already signed
 
 Real staff, simulated on the database (all 27 profiles, in transactions that were rolled back): 26 are recognised as staff and see the lab's records. The Workshop Incharge has no module access rules and sees nothing (the same rule already applies on production). Every module access rule is per user, so a new employee sees nothing until the Director sets their Module Access.
 
-Next: lab runs the OQ scripts with these accounts (the Director resets each password in Lab Settings → User Management and hands it over); decide D1.
+**D1 resolved (lab decision 23 Oct): migration 40, `20261102100200_sample_delete_roles.sql`.** A trigger lets only the Laboratory Director, the Quality Manager and Sample Cell staff (Receptionist, Sample Incharge) delete a sample; anyone else gets "Only the Laboratory Director, the Quality Manager or Sample Cell staff can delete a sample (SRF)". Deletes stay soft (Recycle Bin), issued samples stay Director-only, scripts without a signed-in user and cascades are not affected. PGlite: 7 of 7 cases; staging (applied twice): API role tests 78 of 79, with engineers (mechanical, electrical), technical manager, calibration engineer and auditor refused and sample incharge, receptionist, QM and Director allowed (the one failure is the declaration test repeating on the same account, the one-per-year rule working). PGlite regression unchanged.
+
+Next: lab runs the OQ scripts with these accounts (the Director resets each password in Lab Settings → User Management and hands it over).
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
