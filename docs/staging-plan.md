@@ -169,6 +169,24 @@ Staging auth, rest, storage and frontend all respond.
 
 To finish: the lab cleans the listed duplicates (give each instrument its own asset code, merge or rename the duplicate clients, units, options and SRF), then migration 38 is run again and adds the remaining 7 keys. PGlite regression: 37 of 38 suites pass; the safe-expression parity suite differs from the old evaluator only on ROUND/MROUND (51 cases), which is the intended IS 2 rounding change.
 
-Next: decide on the 8 duplicate report numbers and clean the duplicates listed above, then step E (testing with each role).
+**Duplicate cleanup (lab decisions 23 Oct, applied on staging).** Script `backend/supabase/data-fixes/20261023_duplicate_cleanup.sql`, one transaction, every record checked by id and value before it is touched (a mismatch rolls everything back), safe to re-run, every change in `audit_log` with its reason:
+
+| Decision | Done on staging |
+|---|---|
+| Beamex, Mitlhard: remove the copies | First record of each kept; 2 Beamex and 1 Mitlhard removed (nothing was linked) |
+| Fortune Metaliks: keep GST 22AABCF3202D2ZL | 1 sample and 1 consent letter moved from the record with GST 0322AABCF3202D2ZL, which was then removed; the kept record has 3 samples |
+| QIRLPL: keep the record with GST | 2 equipment records (external calibration agency) moved from the record without GST, which was then removed |
+| Units: keep one | 8 exact copies of °C, Joule, mm, µm removed (units are stored as text elsewhere) |
+| SRF-2026-0001 of Quality Engineering: remove | SRF, its 3 calibration jobs (calibration conduct, no certificate) and 3 raw data sheets removed; BR Stainless keeps SRF-2026-0001 |
+| Report numbers: amendment number | The report issued first keeps its number; the other sample of each pair gets …AA (the app's Amendment Report format; its ULR already ends -R2): SR260716/107-001…006 → QI/REP/20260179AA…20260184AA, SR260801/118-001 → QI/REP/20260185AA, SR260818/134-001 → QI/REP/20260296AA |
+| Equipment asset codes | Not changed: different instruments; the lab updates the codes in the app |
+
+Issued samples are frozen by `samples_guard_issued_update` unless a Laboratory Director is signed in. The script switches that one trigger off inside its own transaction and back on at the end, instead of running under a Director's identity (which would put their name on the audit rows).
+
+Afterwards migration 35 added `samples_test_report_number_uidx`, and migration 38 added 3 more keys (client name, unit name, SRF number): 40 of 44 now present. Still skipped: `equipment_master.asset_code`, `equipment_for_calibration.asset_code` (codes to be updated by the lab), `client_master_options` (6 labels) and `nabl_scope_lookups` (Paver Blocks), which have no decision yet. Saves: new client and calibration SRF now work; only the equipment master bulk save still fails (42P10). `app_deleted_keys` errors remain only on the 3 equipment pages.
+
+Before production: the 6 issued reports that now carry …AA were sent to customers with the old number, so each needs an amendment issued through the app (ISO/IEC 17025 7.8.8). On production the script runs after a fresh backup, followed by migrations 35 and 38.
+
+Next: equipment codes and the two option lists, then step E (testing with each role).
 
 Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be skipped (it would overwrite the target's own password); a storage-api that starts on an empty database creates its own `storage` schema, which then blocks the restored one.
