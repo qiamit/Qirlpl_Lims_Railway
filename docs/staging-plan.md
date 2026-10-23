@@ -465,3 +465,13 @@ Notes for go-live: when the roles are restored, `ALTER ROLE postgres` must be sk
 - **Report wording.** Remarks print "Conforms" / "Does Not Conform" and Part D "1. The Sample Conforms to …". Results saved as "Confirm" / "Not Confirm" show and save the new wording while the report is open; issued reports keep the wording they were issued with (their saved remarks, and Part D line 1 "Confirms to" when the remarks are in the old wording). End notes: "Laboratory", "Evidence". Staging: SR261015/206-001 showed Conforms, "The Sample Conforms to IS 3601: 2006" and the corrected end notes. Validation CF-07, CF-08; 68 of 68 pass.
 - **Access Denied right after sign-in.** Three causes: for one render after sign-in the profile was reported ready with an empty designation; once the profile arrived the guard judged by the designation rules while the module rules were still loading; a failed profile or rules request was not retried. Now the profile counts as ready only for the signed-in user, the guard waits for that user's first rules load, failed loads are tried three times, and if the rules cannot be loaded the designation rules apply. Staging, as OQ Sample Incharge (Test Report Preparation only through Module Access), going to it the moment sign-in finished: before the fix "Access Denied" appeared briefly, after it the page opened with no denial; a page they have no access to (Samples Under Testing) still shows Access Denied.
 
+
+**Regression after migrations 46–49 (23 Oct, run MVL0AOLL).** API role tests with the ten OQ accounts: 78 of 79 pass, the same result as before the security fixes. The one failure is F1 again: that account already signed its 2026 declaration, so the one-per-year rule refuses a second one. C9, the QM issuing a report after confirming the password, passes with the new database check. New API checks for the 23 Oct fixes (`extra_checks.mjs`), 7 of 7:
+
+- X1, X2: a testing engineer and a View-only Technical Manager each tried to set SR261015/205-001 to issued. Both were refused ("You are not allowed to issue test reports…").
+- X3: the sample stayed in report preparation.
+- X4: without signing in, the storage tables return 406.
+- X5, X6: pgcrypto is refused, with and without signing in.
+- X7: a testing engineer's delete of a file someone else uploaded removed nothing; the file is still there.
+
+Test records from this run are named OQ TEST / OQTEST and stay on staging (invoice numbers INV-2026-0007 and 0008).
