@@ -263,7 +263,7 @@ Also seen in OQ-01: signatories printed on the report come from Print Setting de
 | 3 Raw data | **F**, three faults: (a) only 3 of 489 equipment have raw data columns (Vernier Caliper QI-EQ-0002, Vernier Caliper 300, UTM); the dial gauge in the script has none, so SRF-2026-0005 used the Vernier Caliper; (b) every typed reading is rounded to whole numbers when the field is left (`DEFAULT_RAW_DATA_TABLE_SETTINGS.decimalPlaces = 0`, no setting on screen; 50.01 → 50, 49.99 → 50; every sheet on production has 0); (c) the Vernier Caliper formulas still name columns that were renamed (`[DUC Reading 1 mm]`, `[Master Reading Observed mm]`), so Average and Error stay empty and the sheet cannot be saved ("Fill required column Average Reading External Jaws mm"). Also: the sheet lists all 17 points of the caliper checker (to 600 mm) for a 0–150 mm job, and the first two reading columns are pre-filled (nominal value, and the gauge's actual size from the master). |
 | 4 MU | Blocked: the Vernier Caliper MU template holds placeholder entries ("asasdf", a component labelled "0.0002") and an empty budget |
 | 5 Formula error | Partly: the formula editor refuses unknown columns when a formula is typed, but renaming a column later leaves formulas that use it broken without warning (fault 3c) |
-| 6–9 Review, certificate, amendment, engineer edit | Not run: the sheet cannot be saved |
+| 6–9 Review, certificate, amendment, engineer edit | Run on 23 Oct after the fixes: see the OQ-02 continuation below |
 
 **Fault 3b fixed (35dd718, tested on staging 23 Oct).** A typed reading now keeps every digit typed and is padded to the decimals of the least count of the range being calibrated (job range, then job, then equipment master); formula columns are unchanged. On SRF-2026-0005 (LC 0.01) as the calibration engineer: 50.01, 50.02, 49.99 stay as typed (were 50, 50, 50), 100 becomes 100.00, 100.0035 stays 100.0035. Validation cases RD-01 and RD-02 added; 56 of 56 pass. The sheet was closed without saving because fault 3c still blocks saving.
 
@@ -311,6 +311,32 @@ Staging test, as the Director on SR261023/217-001 (issued, ULR TC154422600000040
 - The amended report was not issued in this test.
 
 The lab typed `-R2` for first amendments before; from now on the first amendment is `-R1`.
+
+**OQ-02 continued (23 Oct, after the raw data fixes; SRF-2026-0005, Vernier Caliper 0–150 mm, test accounts per role).**
+
+| OQ-02 step | Result |
+|---|---|
+| 3 Raw data (re-run) | P: 50.01 / 50.02 / 49.99 kept; Average 50.01, Error 0.01; sheet saved by the engineer, then forwarded to Review Data |
+| 4 MU | **F** (blocked): the MU template has placeholder entries, so no MU is calculated. The certificate's "Uncertainty Reported" is filled with the largest of an "Actual Expanded Uncertainty" column (none here) and the masters' own certificate uncertainties, so it printed ±0.01 mm, the caliper checker's uncertainty, not the DUC's U with k |
+| 5 Formula error | P (after 582a8e0): malformed formulas refused in the editor |
+| 6 Review | P: Cal TM sees the sheet read-only; Forward asks for an authorization-matrix reason (the reviewer becomes the signatory); sheet `approved`, reviewer OQ Technical Manager Cal Elec and time stamped; job to Certificate Preparation |
+| 7 Certificate | **F**: issued as QI/CC/2026/0003 with "Due date not shown: the customer did not request one" (pass), masters with certificate numbers, due dates and calibrating lab (pass), results 50.00 → 50.01, error 0.01 (pass). Failures: ULR **TC**1544226000000401F (testing prefix from Lab Settings, not CC with the calibration accreditation number); U as in step 4; environmental conditions blank (the sheet saved without them); Notes are the UTM ones (IS 1828 machine) and Remarks say "done at the Site of Customer" for an In Lab job; no password asked at issue (test reports ask for one) and the issuer is not stored on the certificate |
+| 8 Amendment | P: Director amends with a required reason; new number QI/CC/2026/0003/A1, original ULR kept, the certificate prints "Amendment No. 1 — replaces certificate QI/CC/2026/0003 dated 23-Oct-26. Reason: …"; the original is kept as a snapshot; requested and approved by and at stored |
+| 9 Engineer edit | P: the issued job is not in the engineer's list; changing its raw data or moving the job back through the API is refused (403, "The calibration certificate … has been issued. Use Amend certificate") |
+
+**Calibration ULRs collide with test report ULRs (production data).** Certificate QI/CC/2026/0001 (SRF-2026-0001) has ULR TC1544226000000248F, which test report SR260714/104-001 also has; QI/CC/2026/0002 (SRF-2026-0002) has TC1544226000000252F, also on test report SR260806/121-001. Cause:
+
+1. The calibration ULR takes the Lab Settings "ULR Number" prefix (TC1544226, the testing accreditation). It falls back to CC + the calibration accreditation number only when that setting is the bare "TC".
+2. The calibration generator counts test report ULRs, but the test report generator (`fetchNextNablUlrNumber`) does not count calibration certificate ULRs. So a test report issued after a certificate took the same serial.
+3. The unique ULR index covers samples only.
+
+Needs a lab decision: calibration certificates use CC + the calibration accreditation number with their own serial; the two issued certificates are amended with a correct ULR.
+
+Other observations:
+
+- Right after sign-in a page opened at once can show "Access Denied" until the module rules load; a reload shows it.
+- Review Data shows 4 empty rows after the 4 saved ones; the certificate printed only the 4.
+- The test calibration engineer (rules copied from the real Thermal calibration engineer) also has Edit on Review Data and Certificate Preparation; whether an engineer can review their own job was not tried.
 
 **Raw data generator (to decide before go-live).** Raw data sheet → Generate Report can fill the DUC reading columns with values worked out from a reference column plus a random deviation ("randomness factor"), rounded to the least count. Both approved UTM sheets on production (SRF-2026-0001, SRF-2026-0002) have saved generator settings with the three observed reading columns, reference = standard reading, randomness 0.5. ISO/IEC 17025 7.5.1 and 7.11.3 need the original observations; the lab should confirm how those readings were taken, and the generator should be removed or limited to clearly marked training/demo use.
 
