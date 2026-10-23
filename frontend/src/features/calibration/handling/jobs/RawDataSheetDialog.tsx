@@ -4488,7 +4488,10 @@ export function RawDataSheetDialog({
                                   >
                                     <Plus size={16} />
                                   </Button>
-                                ) : (
+                                ) : null}
+                                {/* The last row can be deleted too: a seeded point without a
+                                    master value can never be completed and would block saving. */}
+                                {!isLast || payload.rows.length > 1 ? (
                                   <Button
                                     type="button"
                                     variant="ghost"
@@ -4504,7 +4507,7 @@ export function RawDataSheetDialog({
                                   >
                                     <Trash2 size={16} />
                                   </Button>
-                                )}
+                                ) : null}
                               </td>
                             ) : null}
                           </tr>
