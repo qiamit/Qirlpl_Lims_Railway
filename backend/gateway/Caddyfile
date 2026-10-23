@@ -19,6 +19,11 @@
   @apex header Origin https://qirlpl.com
   header @apex Access-Control-Allow-Origin "https://qirlpl.com"
 
+  # Staging only: set EXTRA_FRONTEND_ORIGIN on the staging api service to the
+  # staging frontend URL. Unset in production, so this matches nothing.
+  @extraOrigin header Origin {$EXTRA_FRONTEND_ORIGIN:https://unset.invalid}
+  header @extraOrigin Access-Control-Allow-Origin "{$EXTRA_FRONTEND_ORIGIN:https://unset.invalid}"
+
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains"
     X-Content-Type-Options "nosniff"
