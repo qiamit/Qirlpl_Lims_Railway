@@ -1,7 +1,7 @@
 # Staging copy on Railway: plan
 
 Goal: test everything on the branch `claude/priceless-ramanujan-5f501a`
-(38 new migrations plus the frontend, gateway, functions and PDF changes)
+(39 new migrations plus the frontend, gateway, functions and PDF changes)
 against a copy of real production data, with real logins for every role,
 before anything touches production. Nothing in this plan has been done yet;
 each step marked **(approval)** changes Railway and needs Amit's go-ahead.
@@ -89,7 +89,7 @@ Apply the 37 migrations in the order listed in `docs/audit-gap-closure-plan.md`,
 
 1. Fresh production backup.
 2. Merge the branch to `main` (deploys the frontend, gateway, functions and PDF changes; all of them work before the migrations).
-3. Apply the 38 migrations to production in the same order, while the lab is idle.
+3. Apply the 39 migrations to production in the same order, while the lab is idle.
 4. Apply the Railway settings tested on staging (GoTrue, `GOTRUE_DISABLE_SIGNUP`, `PDF_ALLOWED_ORIGINS`, frontend start command).
 5. Smoke-test with the Director login; leave module access in log mode for two weeks before enforcing.
 6. Delete the staging environment once production is signed off.
@@ -187,6 +187,18 @@ Issued samples are frozen by `samples_guard_issued_update` unless a Laboratory D
 Afterwards migration 35 added `samples_test_report_number_uidx`, and migration 38 added 5 more keys (client name, unit name, SRF number, client options, NABL lookups): 42 of 44 now present. Still skipped: `equipment_master.asset_code` and `equipment_for_calibration.asset_code`, until the lab updates the codes; then migration 38 runs again. Saves: new client and calibration SRF now work; only the equipment master bulk save still fails (42P10). `app_deleted_keys` errors remain only on the 3 equipment pages.
 
 Before production: the 6 issued reports that now carry …AA were sent to customers with the old number, so each needs an amendment issued through the app (ISO/IEC 17025 7.8.8). On production the script runs after a fresh backup, followed by migrations 35 and 38.
+
+**Foreign keys and CHECK rules: migration 39, `20261102100100_constraint_reconciliation.sql`** (applied on staging 23 Oct). Besides the unique keys, production lacked 74 rules the repository defines (none present under another name): 12 foreign keys from user columns (created_by, user_id, …) to `auth.users`, and 62 CHECKs (allowed status / type values, ranges such as GST rate 0–100 and planned-from ≤ planned-to, non-empty text). Before adding them: no existing staging row breaks any of them, and for every value list the app's own option list for that field is identical (the 4 fields without an option list are not written by the app, or only left empty). The user foreign keys do not change user deletion: the delete-user function removes the profile before the login. Like migration 38, a rule that existing rows break is listed with the rows and skipped.
+
+| Result | |
+|---|---|
+| PGlite (rules dropped, bad rows seeded) | 71 added; the 3 rules with bad rows skipped with the offending rows listed; second run a no-op |
+| Staging | 74 added, 0 skipped; second run 0 added. Staging now has 138 foreign keys and 328 CHECKs (repository: 137 and 328) |
+| Checks | Data unchanged, RLS on everywhere, no `anon` write grants; 15 affected pages open without errors (apart from the known equipment code error on IQC); PGlite regression unchanged (37 of 38, safe-expression parity differs only on IS 2 ROUND/MROUND) |
+
+Saves into these tables still need step E testing with real logins; a value outside a list is now refused with error 23514 instead of being stored.
+
+Also seen: after a deploy, a browser tab that was already open shows a blank page when it opens a screen whose code file changed (the old file name returns 404, "Failed to fetch dynamically imported module"), until the page is reloaded. Production users will see this after every deploy.
 
 Next: equipment codes, then step E (testing with each role).
 
