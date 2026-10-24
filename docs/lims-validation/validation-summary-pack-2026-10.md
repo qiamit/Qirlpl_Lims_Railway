@@ -237,13 +237,13 @@ file backup in place, the next 90-day test (by 21 Jan 2027) covers files too.
 | 1 | Calibration MU templates are placeholders | No calibration certificate can be issued until the instrument's MU template is complete (the software refuses without U). Calibration has not started on production | Lab (TM calibration) |
 | 2 | 277 of 320 NABL test parameters have no MU | Under a guard band rule those results are judged by simple acceptance and flagged at issue | Lab (TM testing) |
 | 3 | OQ-06 AI data guard not run | AI for client data stays off until OQ-06 passes | QM |
-| 4 | OQ-03 screen steps 1, 2, 5 | Done 24 Oct (section 13): pass | — |
+| 4 | OQ-03 screen steps 1, 2, 5 | Done 24 Oct (section 10a): pass | — |
 | 5 | Environment areas and logs not configured | Conditions not printed on test reports until areas and daily logs exist | Lab |
 | 6 | Authorization matrix empty | Anyone may act after giving a reason (recorded); enforced once grants exist | QM |
 | 7 | Module access | Log mode for two weeks after go-live, then enforced (lab decision) | Director |
 | 8 | Dashboard speed | 4–11 s; no effect on results | Developer |
 
-## 13. QM review checks run on 24 Oct 2026
+## 10a. QM review checks run on 24 Oct 2026
 
 At the lab's request (Amit, 24 Oct: "ye aap run karo, bas mujhe report me
 pass ya fail bata dena") the open review checks were run on staging. The
