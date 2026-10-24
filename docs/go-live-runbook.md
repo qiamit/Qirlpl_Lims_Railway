@@ -40,18 +40,20 @@ their work and sign out.
 
 Go / no-go: the Approver signs off P1–P7.
 
-## Go-live date: Sunday 25 Oct 2026, 19:00 IST
+## Go-live date: Sunday 25 Oct 2026, morning (lab closed all day)
 
-| Time (IST) | What | Who |
+Changed 24 Oct: the lab is closed on Sunday, so the go-live starts in the
+morning, after Claude's weekly usage limit resets (06:30 IST).
+
+| When (IST) | What | Who |
 |---|---|---|
-| Sunday daytime | Amit tells staff: LIMS closed 19:00–20:15, save work and sign out by 18:55 | Amit |
-| 15:00 | Amit messages Claude "dry run shuru karo"; dry run on a fresh read-only copy of production (data fixes checked against that day's data) | Claude |
-| 18:30 | Claude sends the go/no-go sheet (below) filled in | Claude |
-| 18:45 | Amit replies **Go** or **No-go** | Amit (for the Director) |
-| 19:00–20:15 | Steps 1–9, Claude runs them and reports after each; stops at any abort point | Claude |
-| 20:15 | Amit (or the QM) opens Dashboard, a report and the Audit Trail with their own login | Amit / QM |
-| 20:30 | Staff may work again | — |
-| Monday 02:00 | Nightly backup runs from `main`; Claude checks it in the morning | Claude |
+| Saturday | Staff told: no work in the LIMS on Sunday | Amit |
+| Sunday 07:00–08:00 | Amit messages Claude when at the computer; Claude starts the dry run on a fresh read-only copy of production | Amit, Claude |
+| After the dry run (about 30 min) | Claude fills in the go/no-go sheet below and posts it in the chat | Claude |
+| Then | Amit replies **Go** (or No-go) | Amit (for the Director) |
+| About 75 min after Go | Steps 1–9, Claude reports after each; stops at any abort point | Claude |
+| End | Amit opens Dashboard, a report and the Audit Trail with his own login | Amit |
+| Monday 02:00 | Nightly backup from `main`; Claude checks it when next asked | Claude |
 
 ### Go/no-go sheet (what "Go" means)
 
