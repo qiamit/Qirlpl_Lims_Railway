@@ -228,6 +228,7 @@ file backup in place, the next 90-day test (by 21 Jan 2027) covers files too.
 | 16 | Review | "Confirms", "Laboartory", "Evidance" on reports | Wording | Corrected; issued reports keep their wording |
 | 17 | Staging | "Access Denied" right after sign-in | Usability | Fixed (370b1d5) |
 | 18 | Staging test of fix 14 | IS Code file delete showed "File deleted" and removed the record while the file stayed | Lost link to a file | Fixed (e185b51); record restored on staging |
+| 19 | QM review, 24 Oct | 32 pages the branch adds (Audit Trail, Recycle Bin, Software Changes, Validation Runs, Backup Tests, IT Incidents, Authorization Matrix, Environment Log, suppliers, PT …) are in no staff member's module access, so only the Director could open them; the QM got "Access Denied" on the Audit Trail | QM and staff cannot use the new registers | Data fix `20261025_module_access_new_pages.sql` (per-user rules by designation; only adds), tested on staging: QM opens Audit Trail, Software Changes, Validation Runs, Backup Tests, Recycle Bin. Runs at go-live |
 
 ## 10. Restrictions and open items at sign-off
 
@@ -236,11 +237,29 @@ file backup in place, the next 90-day test (by 21 Jan 2027) covers files too.
 | 1 | Calibration MU templates are placeholders | No calibration certificate can be issued until the instrument's MU template is complete (the software refuses without U). Calibration has not started on production | Lab (TM calibration) |
 | 2 | 277 of 320 NABL test parameters have no MU | Under a guard band rule those results are judged by simple acceptance and flagged at issue | Lab (TM testing) |
 | 3 | OQ-06 AI data guard not run | AI for client data stays off until OQ-06 passes | QM |
-| 4 | OQ-03 screen steps 1, 2, 5 | Filters and reason display on the Audit Trail page to be checked by the QM | QM |
+| 4 | OQ-03 screen steps 1, 2, 5 | Done 24 Oct (section 13): pass | — |
 | 5 | Environment areas and logs not configured | Conditions not printed on test reports until areas and daily logs exist | Lab |
 | 6 | Authorization matrix empty | Anyone may act after giving a reason (recorded); enforced once grants exist | QM |
 | 7 | Module access | Log mode for two weeks after go-live, then enforced (lab decision) | Director |
 | 8 | Dashboard speed | 4–11 s; no effect on results | Developer |
+
+## 13. QM review checks run on 24 Oct 2026
+
+At the lab's request (Amit, 24 Oct: "ye aap run karo, bas mujhe report me
+pass ya fail bata dena") the open review checks were run on staging. The
+signatures in section 12 remain the QM's and the Director's own.
+
+| Check | Result |
+|---|---|
+| OQ-03 step 1: Audit Trail, filter by record | Pass: OQTEST/MVL36WJO-002 showed its 3 entries (created by OQ Sample Incharge, deleted and restored by OQ Director) with user, time and changed fields |
+| OQ-03 step 2: reason shown with the entry | Pass: "OQ test restore" shown in the Reason column |
+| OQ-03 step 5: filter by user and date | Pass: user OQ Sample Incharge + 23 Oct gave 36 entries, all by that user on that date |
+| QM access to the new registers | **Failed first** (deviation 19): QM got "Access Denied" on the Audit Trail. After the module access data fix: QM opens Audit Trail, Software Changes, Validation Runs, Backup Tests and Recycle Bin. Pass |
+| Production email for password reset | Already set on production (Resend SMTP, sender info@qirlpl.com); public sign-up already off on production |
+| OQ-06 AI data guard | Not run: staging holds a copy of real client data, so AI stays off there; restriction 3 stands |
+
+**Review result: PASS with restrictions** (section 10, items 1–3), provided
+the module access data fix runs at go-live.
 
 ## 11. Conclusion
 

@@ -40,6 +40,33 @@ their work and sign out.
 
 Go / no-go: the Approver signs off P1–P7.
 
+## Go-live date: Sunday 25 Oct 2026, 19:00 IST
+
+| Time (IST) | What | Who |
+|---|---|---|
+| Sunday daytime | Amit tells staff: LIMS closed 19:00–20:15, save work and sign out by 18:55 | Amit |
+| 15:00 | Amit messages Claude "dry run shuru karo"; dry run on a fresh read-only copy of production (data fixes checked against that day's data) | Claude |
+| 18:30 | Claude sends the go/no-go sheet (below) filled in | Claude |
+| 18:45 | Amit replies **Go** or **No-go** | Amit (for the Director) |
+| 19:00–20:15 | Steps 1–9, Claude runs them and reports after each; stops at any abort point | Claude |
+| 20:15 | Amit (or the QM) opens Dashboard, a report and the Audit Trail with their own login | Amit / QM |
+| 20:30 | Staff may work again | — |
+| Monday 02:00 | Nightly backup runs from `main`; Claude checks it in the morning | Claude |
+
+### Go/no-go sheet (what "Go" means)
+
+Saying **Go** at 18:45 means the person responsible for the lab agrees that
+all of these are true. Any "No" means No-go and the change waits.
+
+| # | Check | Filled by |
+|---|---|---|
+| 1 | Validation pack reviewed: result PASS with restrictions (no calibration certificate without a real MU template; results without MU flagged; AI for client data off) | Claude, from the pack |
+| 2 | Today's dry run passed: all 49 migrations and 6 data fixes ran on today's copy of production | Claude |
+| 3 | Last night's backups exist (database daily, files nightly) and a fresh on-demand backup is taken | Claude |
+| 4 | Staff informed and signed out | Amit |
+| 5 | Nobody is in the middle of issuing reports | Amit |
+| 6 | Rollback is ready: previous `main` commit noted, backup named | Claude |
+
 ## Steps
 
 Times are from the dry run. Keep the terminal output of every step (save it
@@ -103,7 +130,7 @@ roll back (see Rollback).
 One transaction each, without a signed-in user, in this order:
 
 ```bash
-for f in 20261023_duplicate_cleanup.sql 20261023_equipment_asset_codes.sql 20261023_calibration_template_formulas.sql 20261023_certificate_notes.sql 20261023_calibration_dummy_data.sql; do
+for f in 20261023_duplicate_cleanup.sql 20261023_equipment_asset_codes.sql 20261023_calibration_template_formulas.sql 20261023_certificate_notes.sql 20261023_calibration_dummy_data.sql 20261025_module_access_new_pages.sql; do
   echo "== $f"; psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f "backend/supabase/data-fixes/$f" || break
 done
 ```
@@ -113,7 +140,9 @@ the issued-sample guard off and on around its changes; outside one
 transaction a failure would leave the guard off.
 
 Each fix checks every record by id and value first and stops without
-changing anything on a mismatch (P2).
+changing anything on a mismatch (P2). The sixth gives staff module access to
+the 32 new pages (QM all, others by designation; only adds rules); without it
+only the Director could open the new registers.
 
 ### 6. Migrations 35 and 38 again (1 min)
 
@@ -150,8 +179,8 @@ select (select count(*) from public.samples) samples, (select count(*) from publ
 | ID | Service | Setting |
 |---|---|---|
 | S-20 | `rest` | `PGRST_DB_SCHEMAS=public` |
-| H-1 | `auth` | `GOTRUE_DISABLE_SIGNUP=true` |
-| GT-1 | `auth` | As on staging: `GOTRUE_PASSWORD_MIN_LENGTH=10`, `GOTRUE_MFA_TOTP_ENROLL_ENABLED=true`, `GOTRUE_MFA_TOTP_VERIFY_ENABLED=true`, `GOTRUE_MFA_MAX_ENROLLED_FACTORS=10`, `GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED=true`, `GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL=10`; `GOTRUE_SITE_URL` and the `/auth/reset` URL in `GOTRUE_URI_ALLOW_LIST` (production domains); SMTP for password reset emails (production mail settings; staging has it off). Rate limits stay at GoTrue's defaults (not changed on staging either) |
+| H-1 | `auth` | `GOTRUE_DISABLE_SIGNUP=true` (already set on production, checked 24 Oct) |
+| GT-1 | `auth` | As on staging: `GOTRUE_PASSWORD_MIN_LENGTH=10`, `GOTRUE_MFA_TOTP_ENROLL_ENABLED=true`, `GOTRUE_MFA_TOTP_VERIFY_ENABLED=true`, `GOTRUE_MFA_MAX_ENROLLED_FACTORS=10`, `GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED=true`, `GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL=10`; `GOTRUE_SITE_URL` and the `/auth/reset` URL in `GOTRUE_URI_ALLOW_LIST` (production domains); SMTP for password reset emails: already set on production (Resend, sender info@qirlpl.com, checked 24 Oct), leave as is. Rate limits stay at GoTrue's defaults (not changed on staging either) |
 | L-8 | `pdf-service` | `PDF_ALLOWED_ORIGINS=https://<production frontend domain>` |
 | DEP-2 | `frontend` | `RAILPACK_NO_SPA=1`, remove `RAILPACK_SPA_OUTPUT_DIR`, start command `node server.mjs` |
 | — | `api` | `EXTRA_FRONTEND_ORIGIN` stays unset |
