@@ -142,7 +142,7 @@ transaction a failure would leave the guard off.
 Each fix checks every record by id and value first and stops without
 changing anything on a mismatch (P2). The sixth gives staff module access to
 the 32 new pages (QM all, others by designation; only adds rules); without it
-only the Director could open the new registers.
+only the Director could open the new registers. Access plan approved by the lab on 24 Oct.
 
 ### 6. Migrations 35 and 38 again (1 min)
 

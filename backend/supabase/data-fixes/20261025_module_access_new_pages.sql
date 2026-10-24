@@ -4,6 +4,9 @@
 -- after go-live the Quality Manager would get "Access Denied" on the Audit
 -- Trail, Software Changes, Validation Runs, Backup Tests and the other new
 -- registers. This adds per-user rules for the new pages by designation.
+-- Approved by the lab (Amit, 24 Oct 2026: "naye 32 pages ka access isi plan
+-- se go-live par lagao"). Tested on staging 24 Oct: 501 rules added, second
+-- run 0; the QM then opens the Audit Trail and the other new registers.
 --
 -- A one-off data fix, not a migration. Run it at go-live after the
 -- migrations, as one transaction, without a signed-in user:

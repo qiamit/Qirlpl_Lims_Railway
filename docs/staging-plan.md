@@ -480,3 +480,5 @@ Test records from this run are named OQ TEST / OQTEST and stay on staging (invoi
 
 **Lab decisions on the after-go-live list (23 Oct).** The …AA amendments will be issued and sent; MFA is not required (TOTP stays available, nothing enforces it); module access stays in `log` mode for two weeks after go-live, then `enforce_writes`, then `enforce`; `files-backup` moves to `main` after the merge; restore test every 90 days. Recorded in `docs/go-live-runbook.md` step 10.
 
+**Lab decision (24 Oct): access to the 32 new pages.** Approved as proposed: the QM gets every new page; Technical Managers work in the technical registers and read the quality ones; testing and calibration engineers get the Environment Log and Control Charts (and read reference pages); Sample Cell gets the Access Log; the Auditor reads every new page except the Recycle Bin. Applied at go-live by data fix `20261025_module_access_new_pages.sql` (sixth data fix in runbook step 5); tested on staging.
+
