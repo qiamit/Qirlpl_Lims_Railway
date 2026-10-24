@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 0.1 (24 Oct 2026, plan for approval) |
+| Version | 0.2 (24 Oct 2026): lab decisions recorded (section 6) |
 | Asked by | Amit, 24 Oct: use the in-app AI less and an MCP connector more |
 | Clause | ISO/IEC 17025:2017 4.2 (confidentiality), 7.11 (LIMS), 8.4 |
 | Not part of | The go-live of 25 Oct. The connector is a separate service; it is built and validated on staging after go-live, then released as its own software change |
@@ -64,8 +64,16 @@ for them ("which samples are due this week", "is QI-EQ-0021 calibrated",
 Estimate: steps 1–3 about one working session; after the go-live, when the
 weekly usage limit allows.
 
-## 6. Decisions needed from the lab
+## 6. Lab decisions (24 Oct 2026)
 
-1. AI / MCP and client data: allow only redacted data, or full data for clients who consented (as the QI Assistant)?
-2. Who may use the connector at all (all staff, or QM / TM / Director first)?
-3. Phase 2 writes: wanted, and which entries?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Client data through the connector | **Always redacted**: client names and addresses are replaced in every answer, whatever the client's consent |
+| 2 | Who may use it first | **QM, Technical Managers and the Laboratory Director** only; other staff are refused at sign-in |
+| 3 | Phase 2 writes | **Not now**: the connector stays read-only |
+
+Effect on the design: the redaction is not switchable for MCP (no consent
+exception); the `mcp` service checks the designation at sign-in and on every
+call; the tool list in section 3 drops `my_work` for engineers (it stays for
+TMs). OQ-08 tests that an engineer and Sample Cell user are refused and that a
+consenting client is still redacted.
