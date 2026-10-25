@@ -8,7 +8,7 @@ import {
   evaluateResultConformityDetailed,
   resultRemarkOptionsForRule,
 } from './evaluateResultConformity'
-import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
+import { fetchSampleReportDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { normalizeResultRemark } from './resultRemarkUi'
 import { resolveReportScopeFromAccreditationIds, scopeKindFromLabel } from './reportScope'
 import type { ReportScopeKind } from './reportScope'
@@ -225,7 +225,7 @@ export async function fetchReportResultRowsForSample(
       : Promise.resolve({ data: [] as TestParameterSnapshot[], error: null }),
     supabase.from('accreditation_bodies').select('id, name'),
     // ISO 17025 7.8.6: decision rule agreed on the SRF (null = original simple acceptance).
-    fetchSampleDecisionRule(sampleId),
+    fetchSampleReportDecisionRule(sampleId),
     // ISO 17025 7.6 (P3-2): MU by range band; [] keeps uncertainty_mu as before.
     fetchMuBandsForReport(tpIds),
   ])

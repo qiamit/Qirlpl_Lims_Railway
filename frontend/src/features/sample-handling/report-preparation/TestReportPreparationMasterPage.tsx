@@ -55,7 +55,7 @@ import {
 } from './reportResultRows'
 import { evaluateResultConformityDetailed } from './evaluateResultConformity'
 import {
-  fetchSampleDecisionRule,
+  fetchSampleReportDecisionRule,
   type DecisionRule,
 } from '@/features/masters/decision-rules/decisionRules'
 import {
@@ -416,7 +416,7 @@ export default function TestReportPreparationMasterPage() {
     setPrepareResultsLoading(true)
     setCoverLoading(true)
     setPrepareDecisionRule(null)
-    void fetchSampleDecisionRule(r.id).then(setPrepareDecisionRule)
+    void fetchSampleReportDecisionRule(r.id).then(setPrepareDecisionRule)
     void fetchReportResultRowsForSample(r.id)
       .then(setPrepareResultRows)
       .catch(() => setPrepareResultRows([]))

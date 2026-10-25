@@ -17,7 +17,8 @@
  * simple acceptance and the detail says uncertaintyMissing.
  */
 
-export type DecisionRuleType = 'simple_acceptance' | 'guard_band' | 'non_binary'
+/** not_applied: the lab applies no decision rule (DR-NR); results are judged as with no rule. */
+export type DecisionRuleType = 'simple_acceptance' | 'guard_band' | 'non_binary' | 'not_applied'
 
 /** The part of a decision rule that conformity needs. */
 export type ConformityRule = {
@@ -425,7 +426,7 @@ export type ConformityEvaluation = {
 }
 
 function guardBandFactor(rule: ConformityRule): number {
-  if (rule.ruleType === 'simple_acceptance') return 0
+  if (rule.ruleType === 'simple_acceptance' || rule.ruleType === 'not_applied') return 0
   const f = Number(rule.guardBandFactor ?? 1)
   return Number.isFinite(f) && f >= 0 ? f : 1
 }
@@ -438,7 +439,7 @@ function decideNumeric(
 ): Pick<ConformityEvaluation, 'outcome' | 'uncertainty' | 'guardBand' | 'uncertaintyMissing'> {
   const simple = (): ConformityOutcome => (simpleAccept(observed, limit) ? 'pass' : 'fail')
 
-  if (!rule || rule.ruleType === 'simple_acceptance' || limit.kind === 'equal') {
+  if (!rule || rule.ruleType === 'simple_acceptance' || rule.ruleType === 'not_applied' || limit.kind === 'equal') {
     return { outcome: simple(), uncertainty: null, guardBand: null, uncertaintyMissing: false }
   }
 

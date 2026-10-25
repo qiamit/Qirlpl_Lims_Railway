@@ -120,9 +120,10 @@ export function SignatoriesEditor({
         Signatories
       </p>
       <p className="text-xs text-stone-600">
-        Each report prints the people who did the work: whoever entered the results (Tested By), the results
-        reviewer (Reviewed / Checked By) and the issuer (Approved / Authorized By). Here you choose the role
-        labels and after which parts they sign; the names below are not printed on reports.
+        Only the roles switched on here print, after the parts chosen here. Each report fills them with the people
+        who did the work: whoever entered the results (Tested By) and the Technical Manager who reviewed and
+        approved them (Reviewed / Checked By, Approved / Authorized By). Until the results are reviewed, the names
+        below are shown for that role.
       </p>
 
       {usersLoading ? (

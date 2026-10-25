@@ -601,11 +601,12 @@ export function SampleReceivingForm({
                   id="srf-decision-rule"
                   scope="testing"
                   value={form.decisionRuleId}
-                  onChange={(ruleId) =>
+                  onChange={(ruleId, rule) =>
                     onChange({
                       ...form,
                       decisionRuleId: ruleId,
-                      decisionRuleApplied: ruleId ? true : form.decisionRuleApplied,
+                      // DR-NR (not applied) records that no decision rule is applied.
+                      decisionRuleApplied: rule ? rule.ruleType !== 'not_applied' : form.decisionRuleApplied,
                     })
                   }
                   className="w-full sm:w-80"

@@ -506,6 +506,19 @@ export const CASES = [
     expected: ['Conforms', 'Does Not Conform', 'fail', null],
   },
   {
+    id: 'CF-09',
+    module: 'conformity',
+    title: 'DR-NR (rule not applied): judged as with no rule; no guard band, no missing-U flag',
+    source: 'Lab decision 25 Oct 2026: the lab applies no decision rule; ILAC-G8 not used',
+    run: (m) => {
+      const nr = { ruleType: 'not_applied', guardBandFactor: 0 }
+      const d1 = m.conformity.evaluateResultConformityDetailed('9.8', '10 max', { rule: nr, uncertainty: '± 0.3' })
+      const d2 = m.conformity.evaluateResultConformityDetailed('9.8', '10 max', { rule: nr })
+      return [d1.remark, d1.guardBand, d1.uncertaintyMissing, d2.remark, d2.uncertaintyMissing]
+    },
+    expected: ['Conforms', null, false, 'Conforms', false],
+  },
+  {
     id: 'CF-08',
     module: 'conformity',
     title: 'Part D line 1: open reports say "Conforms to"; reports issued with the old wording print "Confirms to" as issued',
@@ -772,11 +785,12 @@ export const CASES = [
   {
     id: 'SG-01',
     module: 'sig',
-    title: 'Test report signatories are the sample\'s tester, reviewer and issuer, in the Print Setting layout',
+    title: 'Test report signatories: Print Setting roles and parts only; tester and the approving TM, never the issuer',
     source:
       'ISO/IEC 17025 7.8.2.1 o. OQ-01 staging run 23 Oct 2026: reports printed the Print Setting names (two testing ' +
-      'engineers and a TM) whoever did the work. Hand: layout Tested By x2 after Part D, Approved By after A, B, D; ' +
-      'people: one tester, one reviewer, the issuer → Tested By (tester, D), Reviewed By (reviewer, D), Approved By (issuer, A B D)',
+      'engineers and a TM) whoever did the work. Lab 25 Oct: only the roles and parts of Print Setting; the issuer is not printed. ' +
+      'Hand: layout Tested By x2 after Part D, Approved By after A, B, D; people: one tester, one reviewer, issuer Director ' +
+      '→ Tested By (tester, D), Approved By (reviewer, A B D); no Reviewed By line, no Director',
     run: (m) => {
       const slot = (roleLabel, name, parts) => ({ roleLabel, userId: name, name, designation: '', department: '', enabled: true, required: true, showAfterParts: parts })
       const settings = {
@@ -791,14 +805,22 @@ export const CASES = [
       const out = m.sig.applyReportPeopleToSignatures(settings, {
         testers: [p('OQ Testing Engineer Mech', 'Testing Engineer'), p('OQ Testing Engineer Mech', 'Testing Engineer')],
         reviewers: [p('OQ Technical Manager Mech', 'Technical Manager')],
-        issuer: p('OQ Quality Manager', 'Quality Manager'),
+        issuer: p('Yogeshwar Krishna', 'Laboratory Director'),
       })
-      return out.signatures.map((sg) => `${sg.roleLabel}: ${sg.name} [${sg.showAfterParts.join(' ')}]`)
+      const notReviewed = m.sig.applyReportPeopleToSignatures(settings, {
+        testers: [p('OQ Testing Engineer Mech', 'Testing Engineer')],
+        reviewers: [],
+        issuer: p('Yogeshwar Krishna', 'Laboratory Director'),
+      })
+      const line = (sg) => `${sg.roleLabel}: ${sg.name} [${sg.showAfterParts.join(' ')}]`
+      return [...out.signatures.map(line), '--', ...notReviewed.signatures.map(line)]
     },
     expected: [
       'Tested By: OQ Testing Engineer Mech [part_d]',
-      'Reviewed By: OQ Technical Manager Mech [part_d]',
-      'Approved By: OQ Quality Manager [part_a part_b part_d]',
+      'Approved By: OQ Technical Manager Mech [part_a part_b part_d]',
+      '--',
+      'Tested By: OQ Testing Engineer Mech [part_d]',
+      'Approved By: Kunal Patle [part_a part_b part_d]',
     ],
   },
 

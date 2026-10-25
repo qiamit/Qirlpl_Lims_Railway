@@ -10,9 +10,9 @@ import type {
 
 /**
  * Test report signatories are the people who did the work (ISO/IEC 17025
- * 7.8.2.1 o, 7.5.1): whoever entered the results, the results reviewer and
- * the issuer. Print Setting keeps only the layout (role labels and the parts
- * each role signs after); the names it held were printed on every report
+ * 7.8.2.1 o, 7.5.1): whoever entered the results and the Technical Manager who
+ * reviewed and approved them. Print Setting decides the layout (which roles
+ * sign, after which parts); the names it held were printed on every report
  * whoever tested it (OQ-01 staging run, 23 Oct 2026).
  */
 
@@ -55,41 +55,66 @@ function uniquePeople(people: ReportPerson[]): ReportPerson[] {
 }
 
 /**
- * Signatures for this report: one line per tester, per reviewer and the
- * issuer, each placed after the parts the Print Setting role signs after.
- * A role missing from Print Setting signs after the parts of the "Tested By"
- * role (reviewer) or after Part D (issuer).
+ * Signatures for this report. Print Setting decides which roles sign and
+ * after which parts (lab, 25 Oct 2026); only roles enabled there print. The
+ * names come from the sample: "Tested By" = whoever entered the results;
+ * "Reviewed / Checked By" and "Approved / Authorized By" = whoever reviewed and
+ * approved the results (the Technical Manager). The person issuing the report
+ * is not printed unless Print Setting has such a role. A role whose person is
+ * not known yet (results not reviewed) prints the names Print Setting holds.
  */
 export function applyReportPeopleToSignatures(
   settings: TestReportPrintSettings,
   people: SampleReportPeople,
 ): TestReportPrintSettings {
-  const layout: Partial<Record<RoleGroup, { label: string; parts: TestReportSignatureAfterPart[] }>> = {}
+  type Slot = { label: string; parts: TestReportSignatureAfterPart[]; fallback: TestReportSignature[] }
+  const order: Array<RoleGroup | TestReportSignature> = []
+  const layout: Partial<Record<RoleGroup, Slot>> = {}
   for (const sig of settings.signatures) {
+    if (!sig.enabled) continue
     const group = roleGroup(sig.roleLabel)
-    if (!group || !sig.enabled) continue
+    if (!group) {
+      order.push(sig) // a role the app does not fill: printed as set
+      continue
+    }
     const current = layout[group]
+    if (!current) order.push(group)
     layout[group] = {
       label: current?.label ?? (sig.roleLabel.trim() || DEFAULT_ROLE_LABEL[group]),
       parts: [...new Set([...(current?.parts ?? []), ...sig.showAfterParts])],
+      fallback: [...(current?.fallback ?? []), sig],
     }
   }
-  const testedParts = layout.tested?.parts ?? (['part_d'] as TestReportSignatureAfterPart[])
-  const line = (group: RoleGroup, p: ReportPerson, fallbackParts: TestReportSignatureAfterPart[]): TestReportSignature => ({
-    roleLabel: layout[group]?.label ?? DEFAULT_ROLE_LABEL[group],
-    userId: p.userId,
-    name: p.name,
-    designation: p.designation,
-    department: p.department,
-    enabled: true,
-    required: true,
-    showAfterParts: layout[group]?.parts?.length ? layout[group]!.parts : fallbackParts,
-  })
-  const signatures = [
-    ...uniquePeople(people.testers).map((p) => line('tested', p, ['part_d'])),
-    ...uniquePeople(people.reviewers).map((p) => line('reviewed', p, testedParts)),
-    ...(people.issuer?.name ? [line('authorized', people.issuer, ['part_d'])] : []),
-  ]
+  const peopleFor: Record<RoleGroup, ReportPerson[]> = {
+    tested: uniquePeople(people.testers),
+    reviewed: uniquePeople(people.reviewers),
+    authorized: uniquePeople(people.reviewers),
+  }
+  const signatures: TestReportSignature[] = []
+  for (const item of order) {
+    if (typeof item !== 'string') {
+      signatures.push(item)
+      continue
+    }
+    const slot = layout[item]!
+    const persons = peopleFor[item]
+    if (persons.length === 0) {
+      signatures.push(...slot.fallback.map((f) => ({ ...f, roleLabel: slot.label, showAfterParts: slot.parts })))
+      continue
+    }
+    for (const p of persons) {
+      signatures.push({
+        roleLabel: slot.label,
+        userId: p.userId,
+        name: p.name,
+        designation: p.designation,
+        department: p.department,
+        enabled: true,
+        required: true,
+        showAfterParts: slot.parts,
+      })
+    }
+  }
   return { ...settings, signatures }
 }
 
