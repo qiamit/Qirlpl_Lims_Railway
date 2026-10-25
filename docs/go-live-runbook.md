@@ -369,10 +369,15 @@ in again when the 8-hour token ended. MFA verify always failed
 (`mfa_ip_address_mismatch`) because GoTrue saw Railway's internal proxy
 address, a different one per request.
 
-Not checked in production yet: a real user's session refresh and MFA (no
-production test login). Check: `token_refreshed` events in
-`auth.audit_log_entries` once a signed-in session passes its 8 hours, or a
-refresh from a signed-in browser.
+Session refresh in production, 10:14 IST: in the built-in browser, with the
+existing session of `info@qirlpl.com` (signed in 07:35 IST), at Amit's
+request: refresh HTTP 200, same user and session, token valid to 18:14 IST
+instead of 15:35 IST; `auth.audit_log_entries` shows `token_refreshed` (the
+first in production for days) and `token_revoked` for the rotated token. On
+reload the app signed that idle browser session out under its 30-minute
+inactivity rule (`logout` 10:14:20), as it would on any load after 30 idle
+minutes. MFA in production is not checked (nobody uses it); it was checked on
+staging with the same gateway file.
 
 Back-out: auth image back to `supabase/gotrue:v2.174.0` (schema unchanged)
 and revert PR #8.
