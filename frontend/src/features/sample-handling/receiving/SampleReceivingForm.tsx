@@ -16,6 +16,7 @@ import { stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { FilterCombobox } from './FilterCombobox'
 import { OptionCombobox } from './OptionCombobox'
 import { DecisionRuleSelect } from '@/features/masters/decision-rules/DecisionRuleSelect'
+import { useDecisionRules } from '@/features/masters/decision-rules/useDecisionRules'
 
 export type SrfSearchOption = Pick<SampleRow, 'id' | 'srf_number' | 'client_name'>
 
@@ -83,6 +84,21 @@ export function SampleReceivingForm({
       // "Decision Rule Applied? No" clears the selected rule.
       ...(key === 'decisionRuleApplied' && !value ? { decisionRuleId: '' } : {}),
     })
+
+  // A new SRF starts with DR-NR (decision rule not applied; lab decision 25 Oct 2026). Once per new form.
+  const { rules: decisionRules } = useDecisionRules()
+  const ruleDefaultDoneRef = useRef(false)
+  useEffect(() => {
+    if (editingSampleId) {
+      ruleDefaultDoneRef.current = true
+      return
+    }
+    if (ruleDefaultDoneRef.current || form.decisionRuleId) return
+    const notRequired = decisionRules.find((r) => r.active && r.ruleType === 'not_applied')
+    if (!notRequired) return
+    ruleDefaultDoneRef.current = true
+    onChange({ ...form, decisionRuleId: notRequired.id, decisionRuleApplied: false })
+  }, [decisionRules, editingSampleId, form, onChange])
 
   const [customerInput, setCustomerInput] = useState('')
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
@@ -578,7 +594,6 @@ export function SampleReceivingForm({
                 { key: 'canCompleteWithinTime', label: 'Can Complete within Time?', default: true },
                 { key: 'deviationFromMethods', label: 'Deviation from Test Methods?', default: false },
                 { key: 'supportingDocsRequired', label: 'Supporting Documents Required?', default: false },
-                { key: 'decisionRuleApplied', label: 'Decision Rule Applied?', default: false },
                 { key: 'testingMethodAvailable', label: 'Testing Method Available & Verified?', default: true },
                 { key: 'samplingProcedureRef', label: 'Reference to Sampling Procedure?', default: true },
               ].map(({ key, label, default: def }) => (
@@ -595,7 +610,7 @@ export function SampleReceivingForm({
               ))}
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-4">
                 <Label htmlFor="srf-decision-rule" className="flex-1 pt-2 text-sm font-normal">
-                  Decision Rule (agreed with customer)
+                  Decision Rule Applied (agreed with customer)
                 </Label>
                 <DecisionRuleSelect
                   id="srf-decision-rule"
