@@ -5,7 +5,7 @@
 | Change | MCP connector for AI assistants (plan `docs/mcp-connector-plan.md` v0.4) |
 | Records reviewed | `OQ-08-mcp-connector.md`, `go-live-runbook.md` (releases 2 and 3), `risk-assessment.md` v1.1 (F-20), `URS.md` section 7a |
 | Checks run by | Claude (development), on the Director's instruction of 25 Oct 2026 to run the QM checks and report pass or fail; the QM signs below |
-| Result | **PASS with conditions** (section 3) |
+| Result | **PASS with conditions** (section 3); conditions 1, 2, 4, 5 closed 25 Oct, condition 3 open |
 
 ## 1. Requirement → evidence
 
@@ -31,7 +31,7 @@ fix); automated script `e2e.mjs`; OQ test accounts.
 | Connector switch | On (Director) | As decided |
 | Sessions | 1 live (Grok Bot, Director's login, connected 13:29 IST) | — |
 | Call log | 11 sign-ins ok, 4 refused; no tool calls yet | Pass (log works) |
-| Audit Trail "via MCP" rows in production | 0 (no change made through the connector yet) | Not yet exercised in production |
+| Audit Trail "via MCP" rows in production | 1 (15:25:58 IST, `management_documents`, by the Director through Grok Bot) | Pass |
 | Callback addresses allowed | Claude (2), Cursor `https://www.cursor.com/agents/mcp/oauth/callback`, `cursor://anysphere.cursor-mcp/oauth/callback`; others refused | Pass |
 | Sign-in pages | No "Claude"-only wording; after sign-in the page moves on to the app (fix of 25 Oct for Grok Bot) | Pass |
 
@@ -40,10 +40,10 @@ fix); automated script `e2e.mjs`; OQ test accounts.
 | # | Condition | Owner | Status |
 |---|---|---|---|
 | 1 | **Debugger in production.** At 12:15:59 IST a Node debugger was attached inside the production `mcp` container. Not this session, not Grok Bot (asked). The Railway account has the SSH keys "cursor-migrate" (Cursor, connected about 5 months) and "qirlpl-dryrun-mac" (this project's Claude session). **Director's decision 25 Oct 2026: both stay connected to the Railway project (Cursor and Claude).** With that access in place anyone using those tools can read the service variables anyway, so changing `MCP_ENC_KEY` would not protect against them; it is not changed. Control: debuggers, `railway ssh` and test work go to staging; anything done in production by Cursor or Claude is recorded in the runbook | Director | **Closed (risk accepted)** |
-| 2 | Cursor: Settings → Privacy Mode **On** (no retention, no training by Cursor or its model providers) | Director | Open |
+| 2 | Cursor: Settings → Privacy Mode **On** (no retention, no training by Cursor or its model providers) | Director | **Closed** (Director: Privacy Mode on, 25 Oct) |
 | 3 | Grok / xAI: Data Controls → "Improve the model" **Off** | Director | Open |
-| 4 | Client agreement / confidentiality statement: add the AI clause (`client-ai-clause.md`) and issue it with the next quotations and the website terms | QM | Open |
-| 5 | Exercise one read and one small change through the connector in production; check the Audit Trail shows "via MCP" | Director | Open |
+| 4 | Client agreement / confidentiality statement: add the AI clause (`client-ai-clause.md`) and issue it with the next quotations and the website terms | QM | **Not adopted** (Director: not required, 25 Oct); residual risk stays in F-20 |
+| 5 | Exercise one read and one small change through the connector in production; check the Audit Trail shows "via MCP" — Grok Bot (Director's login) read management documents (8 reads) and updated one (`management_documents` 148484fd…: issue_no, doc_number, issue_date, approved_by, prepared_by, draft_content); the Audit Trail row shows "via MCP" with the Director as actor; all calls in `mcp_calls`. | Director | **Done** 25 Oct 15:22–15:26 IST |
 
 ## 4. Approval
 
