@@ -19,8 +19,9 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
 
-function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+function page(title, body, refreshTo) {
+  const refresh = refreshTo ? `<meta http-equiv="refresh" content="0;url=${esc(refreshTo)}">` : ''
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${refresh}
 <title>${esc(title)}</title><style>
 :root{color-scheme:light dark;--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#5d6675;--line:#d9dde3;--accent:#1f5fae;--err:#b3261e}
 @media (prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--fg:#e8eaee;--muted:#a3abb8;--line:#343a44;--accent:#7fb0f0;--err:#ff8a80}}
@@ -275,7 +276,18 @@ ${error ? `<p class="err">${esc(error)}</p>` : ''}
     completed.set(id, { clientName: info.clientName, target, at: Date.now() })
     console.log('sign-in ok, sending the browser to', target, 'for', JSON.stringify(info.clientName || info.clientId))
     await log({ who, tool: 'sign_in', outcome: 'ok', message: `connected ${info.clientName || info.clientId} via ${target}` })
-    res.redirect(302, redirectWith(info.params.redirectUri, { code, state: info.params.state }))
+    // Not a 302 from the form post: browsers apply the page's form-action to
+    // every redirect after a form post, and an app's callback may redirect
+    // again (www.cursor.com -> cursor.com), which was blocked. A page that
+    // moves on at once (and a link) is an ordinary navigation.
+    const back = redirectWith(info.params.redirectUri, { code, state: info.params.state })
+    res.status(200).send(
+      page(
+        'Signed in',
+        `<h1>Signed in</h1><p>Returning to <b>${esc(info.clientName || 'the app')}</b>…</p><a class="btn" href="${esc(back)}">Continue</a>`,
+        back,
+      ),
+    )
   }
 
   return { provider, handleLogin }
