@@ -55,7 +55,8 @@ import {
 } from './reportResultRows'
 import { evaluateResultConformityDetailed } from './evaluateResultConformity'
 import {
-  fetchSampleReportDecisionRule,
+  fetchSampleDecisionRule,
+  ruleForReport,
   type DecisionRule,
 } from '@/features/masters/decision-rules/decisionRules'
 import {
@@ -169,6 +170,8 @@ export default function TestReportPreparationMasterPage() {
   const [prepareResultRows, setPrepareResultRows] = useState<ReportResultRow[]>([])
   /** Decision rule agreed on the SRF being prepared (ISO 17025 7.8.6), null = none. */
   const [prepareDecisionRule, setPrepareDecisionRule] = useState<DecisionRule | null>(null)
+  // DR-NR on the SRF: no decision rule and no opinions and interpretations on the report.
+  const [prepareOpinionsHidden, setPrepareOpinionsHidden] = useState(false)
   const [prepareResultsLoading, setPrepareResultsLoading] = useState(false)
   const [coverDetails, setCoverDetails] = useState<TestReportCoverDetails | null>(null)
   const [partBDetails, setPartBDetails] = useState<TestReportPartBDetails | null>(null)
@@ -416,7 +419,11 @@ export default function TestReportPreparationMasterPage() {
     setPrepareResultsLoading(true)
     setCoverLoading(true)
     setPrepareDecisionRule(null)
-    void fetchSampleReportDecisionRule(r.id).then(setPrepareDecisionRule)
+    setPrepareOpinionsHidden(false)
+    void fetchSampleDecisionRule(r.id).then((rule) => {
+      setPrepareDecisionRule(ruleForReport(rule))
+      setPrepareOpinionsHidden(rule?.ruleType === 'not_applied')
+    })
     void fetchReportResultRowsForSample(r.id)
       .then(setPrepareResultRows)
       .catch(() => setPrepareResultRows([]))
@@ -1054,6 +1061,7 @@ export default function TestReportPreparationMasterPage() {
         coverLoading={coverLoading}
         resultRows={prepareResultRows}
         decisionRule={prepareDecisionRule}
+        opinionsHidden={prepareOpinionsHidden}
         resultsLoading={prepareResultsLoading}
         saveMessage={dialogOpen ? saveMessage : null}
         saveLoading={saveLoading}
