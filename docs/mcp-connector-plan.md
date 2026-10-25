@@ -114,6 +114,7 @@ section 2 for the connector):
 Steps 1–3 of section 5 are done on staging: migration 52
 `20261102101400_mcp_connector.sql` (staging database only), `backend/mcp-server/`,
 service `mcp` on staging, AI Settings switch. OQ-08:
-`docs/lims-validation/OQ-08-mcp-connector.md` (44 of 45 checks pass; token
-refresh waits for the GoTrue fix described there). Staff guide:
+`docs/lims-validation/OQ-08-mcp-connector.md` (45 of 45 pass after the GoTrue
+v2.196.0 and gateway client-IP fix on staging; both still to be done in
+production). Staff guide:
 `docs/mcp-connector-staff-guide.md`. Production: nothing applied.
