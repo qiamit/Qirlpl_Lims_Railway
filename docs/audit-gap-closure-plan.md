@@ -101,6 +101,7 @@ for Amit).
 47. `20261102100900_test_report_issue_guard.sql` (issuing a test report needs a password sign-in of the last 15 minutes, taken from the token, and the right to sign: Director; Authorization Matrix holders once the matrix is in use for signing; until then the QM or Edit access to Test Report Preparation)
 48. `20261102101000_pgcrypto_revoke.sql` (pgcrypto functions except gen_random_uuid no longer callable by anon or signed-in users through the API)
 49. `20261102101100_storage_delete_rule_and_audit.sql` (in ten buckets only the uploader, the QM or the Director can delete or change a file; every file upload, change and delete goes to audit_log)
+50. `20261102101200_storage_public_logo.sql` (signed-out visitors can load the company logo again; found in the go-live smoke test, 25 Oct)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 

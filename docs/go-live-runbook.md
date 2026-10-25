@@ -301,3 +301,25 @@ Production at 07:00 IST (read only): `main` = 0ba7925 (rollback point); Postgres
 backups Daily 24 Oct 05:30 UTC and Weekly 24 Oct 16:51 UTC present; file
 backup ran 25 Oct 02:01 IST (44 s); last change in the LIMS 24 Oct 18:32 IST;
 no report issued today; 19 samples in report preparation.
+
+## Go-live (Sunday 25 Oct 2026, 07:07–07:25 IST): done
+
+"Go" given by Amit at about 07:05 IST after the go/no-go sheet (all six checks
+met).
+
+| Step | Result | Time (IST) |
+|---|---|---|
+| 1 Backup | Postgres "Before go-live 2026-10-25" (id d04a46b6…, 151 MB); file backup of 02:01 IST, no LIMS changes since | 07:07 |
+| 3 Merge | PR qiamit/Qirlpl_Lims_Railway#5 merged; `main` 0ba7925 → 1354cf6; frontend, api, functions, pdf-service deployed (SUCCESS); site 200, bundle uses api.qirlpl.com | 07:08–07:10 |
+| 4 Migrations 1–49 | All OK in 84 s; notices as in the dry run (8 duplicate report numbers; keys 37 added / 7 skipped; 74 constraints) | 07:12 |
+| 5 Data fixes 1–6 | All OK (35 duplicate clean-up notices; 103 asset codes; 29 formulas; 285 certificate formats; 3 dummy SRFs, 5 jobs, 5 sheets removed; 349 module access rules) | 07:13 |
+| 6 Migrations 35, 38 again | Report-number index added; keys 7 added, 37 present, 0 skipped | 07:13 |
+| 7 Checks | RLS on all 142 tables; no anon write grants; no unsafe functions; no invalid indexes; samples 336, issued 270, clients 141; calibration SRFs 0; module access `log`; Audit Trail granted to QM and Auditor | 07:14 |
+| 8 Settings | rest `PGRST_DB_SCHEMAS=public`; auth password minimum 10, TOTP available, refresh-token rotation (sign-up and SMTP were already set); pdf-service `PDF_ALLOWED_ORIGINS` = the two production frontend Railway URLs (qirlpl.com is built in); frontend `RAILPACK_NO_SPA=1`, `RAILPACK_SPA_OUTPUT_DIR` removed, start `node server.mjs` | 07:15–07:18 |
+| 9 Smoke test | Signed out: clients 401, storage tables 406, rpc/gen_salt 404, sign-up 403, brand RPC 200; CSP, HSTS, X-Frame-Options present; sign-in page loads | 07:19 |
+| 9 Fix forward | The sign-in page could not load the company logo (signed URL 400): migration 46 had removed anon's storage read that the existing logo policy needs. Migration 50 `20261102101200_storage_public_logo.sql` gives anon read on `laboratory-files/company/%` only; tested on staging first (logo 200, other buckets list nothing), then production (logo 200, no anon write grants) | 07:21–07:23 |
+| 10 Backup job | `files-backup` production source = `main`, schedule `30 20 * * *` kept | 07:24 |
+
+Still to do by the lab: sign in with own logins and open Dashboard, a report
+and the Audit Trail; the after-go-live list in step 10 above.
+
