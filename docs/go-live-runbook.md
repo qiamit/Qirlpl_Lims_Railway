@@ -347,3 +347,32 @@ tests as per IS" builds editable text from the IS code and its clauses.
 
 Still to do by the lab: open one DR-NR report and one consent letter with own
 logins and confirm they look right.
+
+## Release 2 after go-live (Sunday 25 Oct 2026, 09:58–10:12 IST): done
+
+Auth fix found while testing the MCP connector on staging (record:
+`docs/lims-validation/OQ-08-mcp-connector.md`). Approved by Amit in chat at
+about 09:57 IST. The MCP connector itself is **not** in production.
+
+| Step | Result | Time (IST) |
+|---|---|---|
+| Before | Smoke test without sign-in: all pass, GoTrue `v2.174.0` | 10:00 |
+| Backup | Postgres "Before GoTrue v2.196.0 2026-10-25" (id e5340602…, 190 MB referenced) | 10:02 |
+| Auth image | `supabase/gotrue:v2.174.0` → `v2.196.0` (production only; staging done 09:50). No migration ran: `auth.schema_migrations` still at `20260625000000` (77 rows). Log: only the deprecation notices for `GOTRUE_JWT_ADMIN_GROUP_NAME` / `GOTRUE_JWT_DEFAULT_GROUP_NAME` | 10:08 |
+| Gateway | PR qiamit/Qirlpl_Lims_Railway#8 (only `backend/gateway/Caddyfile`: auth route passes Railway's `X-Real-IP` to GoTrue as `X-Forwarded-For`) merged; `main` cdb17cf → 77ee65c; api, frontend, pdf-service, files-backup deployed (SUCCESS) | 10:09 |
+| Smoke test | GoTrue `v2.196.0`; unknown user sign-in 400 `invalid_credentials`; unknown refresh token 400 (no 500); sign-up 403; anon clients 401; storage schema 406; gen_salt 404; www.qirlpl.com 200 with CSP, HSTS, X-Frame-Options | 10:12 |
+
+Why: GoTrue `v2.174.0` could not refresh any session against the `v2.19x`
+auth schema (HTTP 500 `missing destination name oauth_client_id`); no
+`token_refreshed` event in production for three days, so users had to sign
+in again when the 8-hour token ended. MFA verify always failed
+(`mfa_ip_address_mismatch`) because GoTrue saw Railway's internal proxy
+address, a different one per request.
+
+Not checked in production yet: a real user's session refresh and MFA (no
+production test login). Check: `token_refreshed` events in
+`auth.audit_log_entries` once a signed-in session passes its 8 hours, or a
+refresh from a signed-in browser.
+
+Back-out: auth image back to `supabase/gotrue:v2.174.0` (schema unchanged)
+and revert PR #8.
