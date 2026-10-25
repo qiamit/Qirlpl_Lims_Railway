@@ -40,6 +40,24 @@ function redirectWith(uri, params) {
   return u.href
 }
 
+/**
+ * Content-Security-Policy for the sign-in pages. Browsers apply form-action to
+ * the redirect that follows the form post, so the app's callback (origin, or
+ * scheme for an app link such as cursor://) must be allowed next to 'self'.
+ */
+function signInCsp(redirectUri) {
+  let target = ''
+  try {
+    const u = new URL(redirectUri)
+    target = u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : u.protocol
+  } catch {
+    target = ''
+  }
+  const ok = /^[a-z][a-z0-9+.-]*:(\/\/[a-z0-9.\-\[\]:]+)?$/i.test(target) && !/^(javascript|data|blob|vbscript):$/i.test(target)
+  const safe = ok ? ` ${target}` : ''
+  return `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${safe}; frame-ancestors 'none'`
+}
+
 export function createOAuth({ config, db, auth, sessions, log }) {
   const pending = new Map() // id -> { clientId, clientName, params, at }
   const codes = new Map() // code -> { clientId, redirectUri, codeChallenge, userId, gotrue, at }
@@ -126,7 +144,7 @@ ${error ? `<p class="err">${esc(error)}</p>` : ''}
       const id = randomToken()
       pending.set(id, { clientId: client.client_id, clientName: client.client_name, params, at: Date.now() })
       res.setHeader('Cache-Control', 'no-store')
-      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+      res.setHeader('Content-Security-Policy', signInCsp(params.redirectUri))
       res.send(loginForm(id, pending.get(id)))
     },
 
@@ -187,9 +205,9 @@ ${error ? `<p class="err">${esc(error)}</p>` : ''}
   /** POST /login from the sign-in form. */
   async function handleLogin(req, res) {
     res.setHeader('Cache-Control', 'no-store')
-    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
     const id = String(req.body?.pending || '')
     const info = pending.get(id)
+    res.setHeader('Content-Security-Policy', signInCsp(info?.params.redirectUri))
     if (!info) {
       const done = completed.get(id)
       if (done) {
