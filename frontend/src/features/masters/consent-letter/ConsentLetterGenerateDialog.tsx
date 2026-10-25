@@ -38,8 +38,8 @@ export const ALL_TESTS_CLAUSE = 'All clauses'
 /**
  * Default text for "All tests as per IS": the standard's number, year and title,
  * then every clause the LIMS knows for it with its test, e.g.
- * "All tests as per IS 10748:2025 (Hot rolled steel strip …), as required by the standard:
- *  Cl. 5 Chemical Composition; Cl. 7 Tensile Test; …"
+ * "All tests as per IS 10748:2025 (Hot rolled steel …), as required by the standard:
+ *  Cl. 7.2: Carbon, Manganese, …; Cl. 8: Tensile Strength, Yield Strength; …"
  */
 export function allTestsTextForIsCode(
   isCode: { isNumber: string; revisionYear: string | null; title: string; label: string },
@@ -50,10 +50,19 @@ export function allTestsTextForIsCode(
     : isCode.label
   const standard = /^is\b/i.test(number) ? number : `IS ${number}`
   const title = isCode.title ? ` (${isCode.title})` : ''
-  const seen = new Set<string>()
-  const clauses = tests
-    .map((t) => `${t.clauseNo?.trim() ? `Cl. ${t.clauseNo.trim()} ` : ''}${t.testName.trim()}`.trim())
-    .filter((line) => line && !seen.has(line) && seen.add(line))
+  // One entry per clause, in clause order, with its tests: "Cl. 7.2: Carbon, Manganese, …".
+  const byClause = new Map<string, string[]>()
+  for (const t of tests) {
+    const clause = t.clauseNo?.trim() ?? ''
+    const name = t.testName.trim()
+    if (!name) continue
+    const list = byClause.get(clause) ?? []
+    if (!list.includes(name)) list.push(name)
+    byClause.set(clause, list)
+  }
+  const clauses = [...byClause.entries()]
+    .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, undefined, { numeric: true })))
+    .map(([clause, names]) => (clause ? `Cl. ${clause}: ${names.join(', ')}` : names.join(', ')))
   return clauses.length
     ? `All tests as per ${standard}${title}, as required by the standard: ${clauses.join('; ')}.`
     : `All tests as per ${standard}${title}, as required by the standard (all applicable clauses).`
