@@ -29,9 +29,16 @@ function trimValue(v, selected) {
   return v
 }
 
+/** Embedded client:clients(company_name) becomes client_company_name (redacted like any client name). */
+function flattenClient(row) {
+  if (!row || typeof row !== 'object' || !('client' in row)) return row
+  const { client, ...rest } = row
+  return { ...rest, client_company_name: client?.company_name ?? null }
+}
+
 function shapeRows(rows, selectedColumns, redactor) {
   const selected = new Set(selectedColumns || [])
-  return redactor.redactRows(rows).map((r) => {
+  return redactor.redactRows(rows.map(flattenClient)).map((r) => {
     const out = {}
     for (const [k, v] of Object.entries(r)) out[k] = trimValue(v, selected.has(k))
     return out
@@ -240,7 +247,24 @@ export function createToolkit({ config, db }) {
   )
 
   const SAMPLE_COLS =
-    'id,srf_number,date_of_sample_receiving,client_name,sample_description,test_report_is_code_label,stage,status,tentative_date_by_lab,test_report_number,test_report_nabl_ulr_number,test_report_issued_at,decision_rule_id'
+    'id,srf_number,date_of_sample_receiving,client_name,client:clients(company_name),sample_description,test_report_is_code_label,stage,status,tentative_date_by_lab,test_report_number,test_report_nabl_ulr_number,test_report_issued_at,decision_rule_id'
+
+  /** Ids of clients whose name contains the text (as the user may read them). */
+  async function clientIdsMatching(ctx, text) {
+    const v = String(text || '').trim()
+    if (v.length < 2) return []
+    const { data } = await db.asUser(ctx.jwt, `/clients?select=id&company_name=ilike.${enc(`*${v}*`)}&limit=200`).catch(() => ({ data: [] }))
+    return (Array.isArray(data) ? data : []).map((c) => c.id)
+  }
+
+  async function textFilter(ctx, text, cols) {
+    const raw = ctx.redactor.unmask(text)
+    const v = listValue(`*${raw}*`)
+    const ors = cols.map((c) => `${c}.ilike.${v}`)
+    const ids = await clientIdsMatching(ctx, raw)
+    if (ids.length) ors.push(`client_id.in.(${ids.join(',')})`)
+    return `or=${enc(`(${ors.join(',')})`)}`
+  }
 
   tool(
     'search_samples',
@@ -259,9 +283,7 @@ export function createToolkit({ config, db }) {
     async (ctx, a) => {
       const parts = [`select=${SAMPLE_COLS}`, 'deleted_at=is.null', 'order=date_of_sample_receiving.desc.nullslast', `limit=${a.limit || 20}`]
       if (a.text) {
-        const v = listValue(`*${ctx.redactor.unmask(a.text)}*`)
-        const cols = ['srf_number', 'client_name', 'sample_description', 'test_report_is_code_label', 'test_report_number', 'test_report_nabl_ulr_number']
-        parts.push(`or=${enc(`(${cols.map((c) => `${c}.ilike.${v}`).join(',')})`)}`)
+        parts.push(await textFilter(ctx, a.text, ['srf_number', 'client_name', 'sample_description', 'test_report_is_code_label', 'test_report_number', 'test_report_nabl_ulr_number']))
       }
       if (a.stage) parts.push(`stage=eq.${a.stage}`)
       if (a.received_from) parts.push(`date_of_sample_receiving=gte.${enc(a.received_from)}`)
@@ -282,9 +304,9 @@ export function createToolkit({ config, db }) {
       annotations: { readOnlyHint: true },
     },
     async (ctx, { srf_number }) => {
-      const samples = await get(ctx, 'samples', `select=*&srf_number=eq.${enc(srf_number)}&deleted_at=is.null&limit=2`)
+      const samples = await get(ctx, 'samples', `select=*,client:clients(company_name)&srf_number=eq.${enc(srf_number)}&deleted_at=is.null&limit=2`)
       if (!samples.length) return `No sample ${srf_number} (or you cannot see it).`
-      const s = samples[0]
+      const s = flattenClient(samples[0])
       const allocs = await get(
         ctx,
         'test_allocations',
@@ -304,7 +326,7 @@ export function createToolkit({ config, db }) {
       const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k]]))
       return ctx.redactor.redactValue({
         sample: pick(s, [
-          'srf_number', 'date_of_sample_receiving', 'client_name', 'sample_description', 'test_report_is_code_label', 'stage', 'status',
+          'srf_number', 'date_of_sample_receiving', 'client_name', 'client_company_name', 'sample_description', 'test_report_is_code_label', 'stage', 'status',
           'tentative_date_by_lab', 'statement_conformity_required', 'test_report_number', 'test_report_nabl_ulr_number',
           'test_report_issued_at', 'issued_by_name', 'sample_retention_status', 'sample_retention_due_date',
         ]),
@@ -331,7 +353,7 @@ export function createToolkit({ config, db }) {
       const samples = await get(
         ctx,
         'samples',
-        `select=srf_number,client_name,stage,tentative_date_by_lab,date_of_sample_receiving&deleted_at=is.null&test_report_issued_at=is.null&tentative_date_by_lab=lte.${until}&order=tentative_date_by_lab.asc&limit=${config.maxRows}`,
+        `select=srf_number,client_name,client:clients(company_name),stage,tentative_date_by_lab,date_of_sample_receiving&deleted_at=is.null&test_report_issued_at=is.null&tentative_date_by_lab=lte.${until}&order=tentative_date_by_lab.asc&limit=${config.maxRows}`,
       ).catch((e) => (e instanceof Refused ? [] : Promise.reject(e)))
       const eqCols = 'asset_code,equipment_name,equipment_status,current_location,next_calibration_due,next_intermediate_check_date,next_maintenance_date'
       const equipment = await get(
@@ -426,17 +448,14 @@ export function createToolkit({ config, db }) {
     async (ctx, a) => {
       const to = a.to || today()
       const parts = [
-        'select=srf_number,client_name,test_report_is_code_label,test_report_number,test_report_nabl_ulr_number,test_report_issued_at,issued_by_name',
+        'select=srf_number,client_name,client:clients(company_name),test_report_is_code_label,test_report_number,test_report_nabl_ulr_number,test_report_issued_at,issued_by_name',
         'deleted_at=is.null',
         `test_report_issued_at=gte.${enc(a.from)}`,
         `test_report_issued_at=lt.${enc(new Date(Date.parse(to) + 86400000).toISOString().slice(0, 10))}`,
         'order=test_report_issued_at.desc',
         `limit=${a.limit || 50}`,
       ]
-      if (a.text) {
-        const v = listValue(`*${ctx.redactor.unmask(a.text)}*`)
-        parts.push(`or=${enc(`(srf_number.ilike.${v},client_name.ilike.${v},test_report_number.ilike.${v},test_report_nabl_ulr_number.ilike.${v})`)}`)
-      }
+      if (a.text) parts.push(await textFilter(ctx, a.text, ['srf_number', 'client_name', 'test_report_number', 'test_report_nabl_ulr_number']))
       const rows = await get(ctx, 'samples', parts.join('&'))
       ctx.note.table = 'samples'
       ctx.note.rows = rows.length
