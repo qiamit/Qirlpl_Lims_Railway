@@ -108,3 +108,12 @@ section 2 for the connector):
 - OQ-08 adds: the Director can edit a master record and the change shows "via
   MCP" in the Audit Trail; the Director cannot submit a result, delete, or issue;
   QM and TM have no write tools and see placeholders for client name and address.
+
+## 8. Status (25 Oct 2026)
+
+Steps 1–3 of section 5 are done on staging: migration 52
+`20261102101400_mcp_connector.sql` (staging database only), `backend/mcp-server/`,
+service `mcp` on staging, AI Settings switch. OQ-08:
+`docs/lims-validation/OQ-08-mcp-connector.md` (44 of 45 checks pass; token
+refresh waits for the GoTrue fix described there). Staff guide:
+`docs/mcp-connector-staff-guide.md`. Production: nothing applied.
