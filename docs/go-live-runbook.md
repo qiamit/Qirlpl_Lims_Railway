@@ -381,3 +381,34 @@ staging with the same gateway file.
 
 Back-out: auth image back to `supabase/gotrue:v2.174.0` (schema unchanged)
 and revert PR #8.
+
+## Release 3 after go-live (Sunday 25 Oct 2026, 10:45–10:53 IST): done
+
+MCP connector and the 60-minute idle sign-out, on the Director's instruction
+in chat ("Isko bhi Production par kar do", about 10:44 IST). The connector was
+released before the QM review of OQ-08 that the plan foresaw; the QM review
+follows (record `docs/lims-validation/OQ-08-mcp-connector.md`).
+
+| Step | Result | Time (IST) |
+|---|---|---|
+| Backup | Postgres "Before MCP connector release 2026-10-25" (id 5cdebe4c…, 190 MB referenced) | 10:45 |
+| Migration 52 | `20261102101400_mcp_connector.sql` OK (1.5 s); `lab_settings.mcp_enabled` = false; `mcp_*` tables present; `write_audit_log` writes reason "via MCP" for connector requests; checks: RLS on all 145 tables, no anon write grants, no unsafe functions, no invalid indexes | 10:45 |
+| Service `mcp` | Variables (internal REST and GoTrue addresses, `SERVICE_ROLE_KEY` as a reference to the functions service, new `MCP_ENC_KEY`, `PUBLIC_URL` = Railway address); domain `mcp-production-ff60.up.railway.app`; custom domain `mcp.qirlpl.com` added (waits for DNS); frontend `VITE_MCP_URL` | 10:46–10:47 |
+| Merge | PR qiamit/Qirlpl_Lims_Railway#9 merged; `main` 77ee65c → 75aa12b; then `mcp` source = `main`, `backend/mcp-server` | 10:47–10:48 |
+| Deploy | `mcp` and frontend SUCCESS (75aa12b) | 10:48–10:52 |
+| Checks | MCP without login: health, OAuth metadata, 401 without token, foreign redirect refused, Claude client registers, sign-in page, unknown login refused (logged in `mcp_calls`). Frontend bundle: idle sign-out 60 min, warning 58 min, AI Settings "MCP Connector On" and the address. Smoke test without sign-in: all pass | 10:48–10:53 |
+
+Still to do:
+
+1. Done 25 Oct 11:00–11:15 IST (Amit signed in to Zoho Domains in the
+   built-in browser and asked for the records): Zoho DNS for qirlpl.com gained
+   CNAME `mcp` → `gstml02g.up.railway.app` and TXT `_railway-verify.mcp`
+   (no other record changed); Railway verified the domain and issued the
+   certificate; `mcp` `PUBLIC_URL` = `https://mcp.qirlpl.com`, frontend
+   `VITE_MCP_URL` = `https://mcp.qirlpl.com/mcp`, both redeployed; the no-login
+   MCP checks and the smoke test pass on `https://mcp.qirlpl.com`.
+2. The Director switches the connector on (Lab Settings → AI Settings →
+   General Setting → 04), connects from Claude with their own login and tries
+   a read and a change; then checks the change shows "via MCP" in the Audit
+   Trail.
+3. QM review of OQ-08.
