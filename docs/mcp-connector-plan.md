@@ -1,8 +1,8 @@
-# QIRLPL LIMS: MCP connector (plan, not built)
+# QIRLPL LIMS: MCP connector (plan; build on staging started 25 Oct 2026)
 
 | | |
 |---|---|
-| Version | 0.2 (24 Oct 2026): lab decisions recorded (section 6) |
+| Version | 0.3 (25 Oct 2026): lab decisions of 25 Oct (section 7) replace parts of section 6 |
 | Asked by | Amit, 24 Oct: use the in-app AI less and an MCP connector more |
 | Clause | ISO/IEC 17025:2017 4.2 (confidentiality), 7.11 (LIMS), 8.4 |
 | Not part of | The go-live of 25 Oct. The connector is a separate service; it is built and validated on staging after go-live, then released as its own software change |
@@ -77,3 +77,34 @@ exception); the `mcp` service checks the designation at sign-in and on every
 call; the tool list in section 3 drops `my_work` for engineers (it stays for
 TMs). OQ-08 tests that an engineer and Sample Cell user are refused and that a
 consenting client is still redacted.
+
+## 7. Lab decisions (25 Oct 2026, replace section 6 where they differ)
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Who may sign in | **Laboratory Director, Quality Manager and Technical Manager** only (unchanged); everyone else is refused at sign-in and on every call |
+| 2 | Same access as the app | **Must hold**: every tool calls the database as the signed-in user, so row level security and the database guards apply; the connector also checks the user's Module Access level for every table it reads or writes, whatever the database enforcement mode (it is in `log` for two weeks) |
+| 3 | Writes | **Laboratory Director only**: view and edit everything the Director can edit in the app, **except** (a) submitting results (Samples Under Testing → Enter Results), (b) any delete or soft delete, (c) issuing or signing a test report or calibration certificate, or approving results for one. QM and TM: read only |
+| 4 | Client name and address | **Laboratory Director only** sees them. For QM and TM they are always replaced (client name, contact person, address, PIN, e-mail, phone, GSTIN, PAN), whatever the client's consent |
+| 5 | Switch | Lab Settings → AI: "MCP connector" on/off, changed by the Director; off refuses sign-in and every call. Default off |
+
+Effect on the design (replaces the "Writes" and "Confidentiality" rows of
+section 2 for the connector):
+
+- Data the Director's answers carry goes to Anthropic unredacted: this is the
+  lab's decision of 25 Oct 2026 (risk F-20 accepted by the Director); QM and TM
+  answers stay redacted.
+- Write tools (`create_record`, `update_record`) appear only for the Director.
+  Each write is one row, shows the old and new values, is marked
+  `reason = 'via MCP'` in the Audit Trail and is logged in `mcp_calls`. There is
+  no delete tool; columns for delete, issue, signature and result submission
+  are refused; tables whose rows the app numbers or signs (SRF, test reports,
+  certificates, invoices) cannot be created through MCP.
+- Tools: `whoami`, `list_tables`, `describe_table`, `query_table` (filters, no
+  free SQL, 50 rows at most), `search_samples`, `sample_status`,
+  `due_and_overdue`, `equipment_status`, `open_ncs_and_complaints`,
+  `issued_reports`, `audit_trail_search`, `lab_summary`, `my_work`; plus the
+  Director's `create_record` and `update_record`.
+- OQ-08 adds: the Director can edit a master record and the change shows "via
+  MCP" in the Audit Trail; the Director cannot submit a result, delete, or issue;
+  QM and TM have no write tools and see placeholders for client name and address.
