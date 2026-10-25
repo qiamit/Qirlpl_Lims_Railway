@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 import {
   DECISION_RULE_TYPE_LABELS,
+  ruleHasNoGuardBand,
   decisionRuleLabel,
   decisionRulesFor,
   type DecisionRule,
@@ -64,7 +65,7 @@ export function DecisionRuleSelect({
       ) : selected ? (
         <p className="text-[11px] leading-snug text-stone-500" title={selected.statementText}>
           {DECISION_RULE_TYPE_LABELS[selected.ruleType]}
-          {selected.ruleType !== 'simple_acceptance' ? `, w = ${selected.guardBandFactor} × U` : ''}
+          {ruleHasNoGuardBand(selected.ruleType) ? '' : `, w = ${selected.guardBandFactor} × U`}
         </p>
       ) : null}
     </div>
