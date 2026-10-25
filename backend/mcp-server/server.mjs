@@ -131,6 +131,21 @@ app.get('/health', (_req, res) => res.json({ ok: true }))
 app.get('/', (_req, res) => res.type('text/plain').send('QIRLPL LIMS MCP connector. Add https://' + new URL(config.publicUrl).host + '/mcp as a custom connector in Claude.'))
 
 const mcpUrl = new URL(`${config.publicUrl}/mcp`)
+
+// Log an /authorize with a client_id the connector does not know (a client
+// that kept an old registration), so the cause shows in the service log.
+app.get('/authorize', async (req, _res, next) => {
+  const clientId = String(req.query.client_id || '')
+  try {
+    if (clientId && !(await provider.clientsStore.getClient(clientId))) {
+      console.warn('authorize unknown client:', JSON.stringify({ client_id: clientId, redirect_uri: String(req.query.redirect_uri || '') }).slice(0, 400))
+    }
+  } catch {
+    /* the authorize handler reports the error */
+  }
+  next()
+})
+
 app.use(
   mcpAuthRouter({
     provider,
