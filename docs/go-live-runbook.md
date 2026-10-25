@@ -281,3 +281,23 @@ worked on the next try; two network timeouts from the test machine, retried.
 The 14 report numbers ending …AA after step 5: the 8 from data fix 1
 (QI/REP/20260179AA–20260185AA, 20260296AA; 6 of them issued, so amendments
 are needed, step 10) and 6 amendment reports that already existed.
+
+## Dry run 2 (Sunday 25 Oct 2026, 06:40–07:00 IST, go-live day)
+
+Fresh read-only copy of production (40 MB, dump 3.2 MB, restore 0 errors;
+samples 336, clients 146, logins 27, files 385, audit 11,773, calibration
+SRFs 4: equal to production). Migrations 1–49 all OK in 83 s; notices as in
+step 4 (8 duplicate report numbers; unique keys 37 added / 7 skipped;
+constraints 74 added / 0 skipped; finance backfill 0). Data fixes 1–6 all OK
+on that morning's data (103 asset codes, 29 formulas, 285 certificate
+formats, 3 dummy SRFs / 5 jobs / 5 sheets removed, 349 module access rules
+for real staff). Migrations 35 and 38 again: report-number index added, 7
+keys added, 0 skipped (44 of 44). Checks: RLS on all 142 tables, no anon
+write grants, no unsafe functions, no invalid indexes. Smoke test: role tests
+77 of 79 (B4/B5 expected, no calibration data after fix 5), security checks
+7 of 7, sign-up 403.
+
+Production at 07:00 IST (read only): `main` = 0ba7925 (rollback point); Postgres
+backups Daily 24 Oct 05:30 UTC and Weekly 24 Oct 16:51 UTC present; file
+backup ran 25 Oct 02:01 IST (44 s); last change in the LIMS 24 Oct 18:32 IST;
+no report issued today; 19 samples in report preparation.
