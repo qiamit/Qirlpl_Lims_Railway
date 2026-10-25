@@ -156,6 +156,7 @@ migration 35).
 | URS-QMS-05 environmental limits | Built; no areas configured yet | **Built; lab data** |
 | URS-QMS-06 registers | Built | Built |
 | URS-AI-01, 02 AI data guard | OQ-06 not run | **Open** (AI for client data stays off) |
+| URS-MCP-01…06 MCP connector (added 25 Oct) | OQ-08, `OQ-08-mcp-connector.md` (45/45 on staging); production checks 25 Oct | Pass (QM review: `QM-review-OQ-08.md`) |
 | URS-FIN-01, 02 numbering, GST | Suite DS; H1–H8 | Pass |
 | URS-ITC-01, 02 change and validation registers | K1–K7 | Pass |
 | URS-ITC-03 IT incidents | Built | Built |
@@ -176,6 +177,7 @@ Changes to `risk-assessment.md` proposed with this pack:
 | F-16 | Backups and restore | Evidence: B-2 on 23 Oct (restore about 1 minute); nightly backup of files and database from 24 Oct. Open item closed |
 | F-19 (new) | Uploaded files | Can be deleted or replaced only by the uploader, QM or Director; every upload, change and delete audited (migration 49); nightly copy with history. S 2, L 1: **Low** |
 | — | MFA | Lab decision 23 Oct: not required; available for anyone who wants it |
+| F-20 (new, 25 Oct) | MCP connector | Added after go-live with the connector: S 2, L 2, **Medium**; controls and evidence in `risk-assessment.md` and OQ-08 |
 
 ## 7. Go-live dry run (23 Oct, fresh copy of production)
 

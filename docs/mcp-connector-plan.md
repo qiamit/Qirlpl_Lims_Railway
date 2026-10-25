@@ -136,3 +136,10 @@ Consequences accepted by the Director, to be closed by the QM:
 | 2 | Check xAI and Cursor terms for the lab's plan: data retention, use for model training (opt-out), where data is stored | Director |
 | 3 | Client agreements and the confidentiality statement: say that AI assistants from named providers may process the lab's records | QM |
 | 4 | The connector allows the callback addresses Grok Bot uses (`MCP_REDIRECT_ALLOW` on the `mcp` service): Cursor's published callbacks `https://www.cursor.com/agents/mcp/oauth/callback` and `cursor://anysphere.cursor-mcp/oauth/callback`, and any other address only after it is seen in the connector log | Developer |
+
+Status 25 Oct 2026 (afternoon): Grok Bot connected in production at 13:29 IST
+after the sign-in page fixes (PRs #11–#15). Items 1 and 3 are drafted for the
+QM: risk F-20 in `risk-assessment.md` v1.1 and the clause in
+`lims-validation/client-ai-clause.md`; item 2 is the Director's (Cursor Privacy
+Mode, Grok Data Controls). QM review with the open conditions:
+`lims-validation/QM-review-OQ-08.md`.
