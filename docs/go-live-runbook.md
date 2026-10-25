@@ -400,11 +400,13 @@ follows (record `docs/lims-validation/OQ-08-mcp-connector.md`).
 
 Still to do:
 
-1. Zoho DNS for qirlpl.com: CNAME `mcp` → `gstml02g.up.railway.app`. When
-   Railway shows the domain as active, set the `mcp` variable `PUBLIC_URL` to
-   `https://mcp.qirlpl.com` and the frontend `VITE_MCP_URL` to
-   `https://mcp.qirlpl.com/mcp` (both production), redeploy, and connect again
-   in Claude.
+1. Done 25 Oct 11:00–11:15 IST (Amit signed in to Zoho Domains in the
+   built-in browser and asked for the records): Zoho DNS for qirlpl.com gained
+   CNAME `mcp` → `gstml02g.up.railway.app` and TXT `_railway-verify.mcp`
+   (no other record changed); Railway verified the domain and issued the
+   certificate; `mcp` `PUBLIC_URL` = `https://mcp.qirlpl.com`, frontend
+   `VITE_MCP_URL` = `https://mcp.qirlpl.com/mcp`, both redeployed; the no-login
+   MCP checks and the smoke test pass on `https://mcp.qirlpl.com`.
 2. The Director switches the connector on (Lab Settings → AI Settings →
    General Setting → 04), connects from Claude with their own login and tries
    a read and a change; then checks the change shows "via MCP" in the Audit
