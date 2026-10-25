@@ -9,7 +9,7 @@ import {
   type ResolvedScopeTemplate,
 } from '@/features/sample-handling/report-preparation/reportScopeConfig'
 import type { IssuedReportDecisionRule, IssuedReportSources } from './issuedReportPrintData'
-import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
+import { fetchSampleReportDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
 import { fetchSampleOpinionsForPrint } from '@/features/sample-handling/report-preparation/reportOpinions'
 import { fetchSamplingForReport } from '@/features/sampling/samplingForSample'
@@ -55,7 +55,7 @@ export async function loadIssuedReportSources(
     // Signatories are the sample's tester(s), reviewer(s) and issuer (ISO/IEC 17025 7.8.2.1 o).
     fetchTestReportPrintSettingsForSample(row.id),
     notesPromise,
-    fetchSampleDecisionRule(row.id),
+    fetchSampleReportDecisionRule(row.id),
     // ISO 17025 7.8.3.1 a): conditions saved with each result ({} before migration 20261026100300).
     resultRowsPromise.then((rows) => fetchResultEnvironmentSnapshots(rows.map((r) => r.parameterId))),
     // ISO 17025 7.8.7: opinions and interpretations (null before migration 20261029100300).

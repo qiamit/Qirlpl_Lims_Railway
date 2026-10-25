@@ -29,12 +29,27 @@ export type DecisionRule = ConformityRule & {
   updatedAt: string | null
 }
 
-export const DECISION_RULE_TYPES: DecisionRuleType[] = ['simple_acceptance', 'guard_band', 'non_binary']
+export const DECISION_RULE_TYPES: DecisionRuleType[] = ['simple_acceptance', 'guard_band', 'non_binary', 'not_applied']
 
 export const DECISION_RULE_TYPE_LABELS: Record<DecisionRuleType, string> = {
   simple_acceptance: 'Simple acceptance (w = 0)',
   guard_band: 'Guard band (w = factor × U)',
   non_binary: 'Non-binary (Pass / Conditional / Fail)',
+  not_applied: 'Not applied (no decision rule)',
+}
+
+/** Rule types without a guard band factor (w = 0). */
+export function ruleHasNoGuardBand(t: DecisionRuleType): boolean {
+  return t === 'simple_acceptance' || t === 'not_applied'
+}
+
+/**
+ * The rule as the report sees it: a "not applied" rule (DR-NR, lab decision
+ * 25 Oct 2026) is recorded on the SRF but never shown on reports or
+ * certificates, so it reads as no rule.
+ */
+export function ruleForReport(rule: DecisionRule | null): DecisionRule | null {
+  return rule && rule.ruleType !== 'not_applied' ? rule : null
 }
 
 export const DECISION_RULE_APPLIES_TO_LABELS: Record<DecisionRuleAppliesTo, string> = {
@@ -134,6 +149,11 @@ export async function fetchDecisionRuleById(id: string | null | undefined): Prom
   }
 }
 
+/** Decision rule for a test report: the SRF's rule, or null when none or not applied (DR-NR). */
+export async function fetchSampleReportDecisionRule(sampleId: string | null | undefined): Promise<DecisionRule | null> {
+  return ruleForReport(await fetchSampleDecisionRule(sampleId))
+}
+
 /**
  * Decision rule agreed on a testing SRF (samples.decision_rule_id), or null.
  * select('*') so the query works before the migration adds the column.
@@ -167,7 +187,7 @@ function inputToPayload(input: DecisionRuleInput) {
     code: input.code.trim(),
     name: input.name.trim(),
     rule_type: input.ruleType,
-    guard_band_factor: input.ruleType === 'simple_acceptance' ? 0 : input.guardBandFactor,
+    guard_band_factor: ruleHasNoGuardBand(input.ruleType) ? 0 : input.guardBandFactor,
     statement_text: input.statementText.trim(),
     risk_note: input.riskNote.trim() || null,
     active: input.active,

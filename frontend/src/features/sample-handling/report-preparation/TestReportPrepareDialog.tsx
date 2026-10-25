@@ -68,6 +68,7 @@ export function TestReportPrepareDialog({
   specifiedRequirementEditable = false,
   onSpecifiedRequirementUpdated,
   decisionRule = null,
+  opinionsHidden = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -110,6 +111,8 @@ export function TestReportPrepareDialog({
   onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
   /** Decision rule agreed on the SRF (ISO 17025 7.8.6). */
   decisionRule?: DecisionRule | null
+  /** DR-NR on the SRF: the lab gives no opinions and interpretations, so the section is not shown. */
+  opinionsHidden?: boolean
 }) {
   const applicableScopes = getApplicableReportScopes(resultRows)
   const [activeReportScope, setActiveReportScope] = useState<ReportScopeKind>('nabl')
@@ -225,11 +228,13 @@ export function TestReportPrepareDialog({
                 decisionRule={decisionRule}
               />
 
-              <TestReportOpinionsSection
-                sampleId={sampleId ?? active?.id ?? null}
-                srfNumber={active?.srfNumber ?? null}
-                disabled={saveLoading || issueLoading}
-              />
+              {opinionsHidden ? null : (
+                <TestReportOpinionsSection
+                  sampleId={sampleId ?? active?.id ?? null}
+                  srfNumber={active?.srfNumber ?? null}
+                  disabled={saveLoading || issueLoading}
+                />
+              )}
 
               <TestReportRemarksSection
                 remarks={draftNotes}

@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabaseClient'
 import {
   fetchDecisionRuleById,
+  ruleForReport,
   type DecisionRule,
 } from '@/features/masters/decision-rules/decisionRules'
 
@@ -46,7 +47,7 @@ export async function fetchSrfConformityPolicy(
     const ruleId = typeof row.decision_rule_id === 'string' ? row.decision_rule_id : null
     return {
       requested,
-      rule: requested && ruleId ? await fetchDecisionRuleById(ruleId) : null,
+      rule: requested && ruleId ? ruleForReport(await fetchDecisionRuleById(ruleId)) : null,
       ruleText: typeof row.decision_rule === 'string' ? row.decision_rule.trim() : '',
     }
   } catch {

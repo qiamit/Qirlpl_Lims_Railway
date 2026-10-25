@@ -14,7 +14,7 @@ import {
   resolveReportScopeTemplate,
 } from './reportScopeConfig'
 import type { TestReportPartBDetails } from './testReportPartB'
-import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
+import { fetchSampleReportDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
 import {
   summarizeReportEnvironment,
@@ -87,7 +87,7 @@ export async function buildLiveTestReportHtml(
     fetchReportScopeTemplatesConfig(),
     input.decisionRuleStatement !== undefined
       ? Promise.resolve(input.decisionRuleStatement)
-      : fetchSampleDecisionRule(active.id).then((rule) => rule?.statementText || null),
+      : fetchSampleReportDecisionRule(active.id).then((rule) => rule?.statementText || null),
     input.environmentConditions !== undefined
       ? Promise.resolve(input.environmentConditions)
       : fetchResultEnvironmentSnapshots(scopedRows.map((r) => r.parameterId))

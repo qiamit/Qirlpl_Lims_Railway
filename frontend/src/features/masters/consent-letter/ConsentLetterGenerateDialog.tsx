@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { ListChecks, Plus, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -31,6 +31,42 @@ import {
 import { ConsentLetterTestParameterPickerDialog } from './ConsentLetterTestParameterPickerDialog'
 import { generateNextConsentLetterNumber, insertConsentLetter, updateConsentLetter } from './consentLetterDb'
 import type { ConsentLetterListRow } from './types'
+
+/** Clause cell stored for an "All tests as per IS" letter (one free-text line instead of picked tests). */
+export const ALL_TESTS_CLAUSE = 'All clauses'
+
+/**
+ * Default text for "All tests as per IS": the standard's number, year and title,
+ * then every clause the LIMS knows for it with its test, e.g.
+ * "All tests as per IS 10748:2025 (Hot rolled steel …), as required by the standard:
+ *  Cl. 7.2: Carbon, Manganese, …; Cl. 8: Tensile Strength, Yield Strength; …"
+ */
+export function allTestsTextForIsCode(
+  isCode: { isNumber: string; revisionYear: string | null; title: string; label: string },
+  tests: Array<{ testName: string; clauseNo: string | null }>,
+): string {
+  const number = isCode.isNumber
+    ? `${isCode.isNumber}${isCode.revisionYear ? `:${isCode.revisionYear}` : ''}`
+    : isCode.label
+  const standard = /^is\b/i.test(number) ? number : `IS ${number}`
+  const title = isCode.title ? ` (${isCode.title})` : ''
+  // One entry per clause, in clause order, with its tests: "Cl. 7.2: Carbon, Manganese, …".
+  const byClause = new Map<string, string[]>()
+  for (const t of tests) {
+    const clause = t.clauseNo?.trim() ?? ''
+    const name = t.testName.trim()
+    if (!name) continue
+    const list = byClause.get(clause) ?? []
+    if (!list.includes(name)) list.push(name)
+    byClause.set(clause, list)
+  }
+  const clauses = [...byClause.entries()]
+    .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, undefined, { numeric: true })))
+    .map(([clause, names]) => (clause ? `Cl. ${clause}: ${names.join(', ')}` : names.join(', ')))
+  return clauses.length
+    ? `All tests as per ${standard}${title}, as required by the standard: ${clauses.join('; ')}.`
+    : `All tests as per ${standard}${title}, as required by the standard (all applicable clauses).`
+}
 
 const dialogOverlayClass = 'lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto'
 
@@ -95,6 +131,10 @@ export function ConsentLetterGenerateDialog({
   const [clientInput, setClientInput] = useState('')
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
   const [isCodeId, setIsCodeId] = useState('')
+  // "All tests as per IS": one editable text instead of picked test parameters.
+  const [allTestsMode, setAllTestsMode] = useState(false)
+  const [allTestsText, setAllTestsText] = useState('')
+  const [allTestsLoading, setAllTestsLoading] = useState(false)
   const [isCodeInput, setIsCodeInput] = useState('')
   const [isCodeDropdownOpen, setIsCodeDropdownOpen] = useState(false)
   const [addClientOpen, setAddClientOpen] = useState(false)
@@ -185,7 +225,11 @@ export function ConsentLetterGenerateDialog({
               editRow.isCodeLabel?.trim() ??
               '',
           )
-          const params = await parametersFromSavedRow(editRow)
+          const savedAllTests =
+            editRow.clauseSummary === ALL_TESTS_CLAUSE && editRow.testParameterNames.length === 1
+          setAllTestsMode(savedAllTests)
+          setAllTestsText(savedAllTests ? editRow.testParameterNames[0] : '')
+          const params = savedAllTests ? [] : await parametersFromSavedRow(editRow)
           if (!cancelled) setAddedParameters(params)
         } else {
           initialEditSnapshotRef.current = null
@@ -197,6 +241,8 @@ export function ConsentLetterGenerateDialog({
           setClientInput('')
           setIsCodeInput('')
           setAddedParameters([])
+          setAllTestsMode(false)
+          setAllTestsText('')
         }
       } catch (e) {
         if (!cancelled) {
@@ -256,6 +302,28 @@ export function ConsentLetterGenerateDialog({
   const handleIsCodeSelect = (id: string) => {
     setIsCodeId(id)
     setAddedParameters([])
+    if (allTestsMode) void generateAllTestsText(id)
+  }
+
+  /** Fills the "All tests as per IS" text from the IS code and its clauses. */
+  const generateAllTestsText = async (forIsCodeId: string = isCodeId) => {
+    const isCode = formData?.isCodes.find((c) => c.id === forIsCodeId)
+    if (!isCode) return
+    setAllTestsLoading(true)
+    try {
+      const tests = await fetchTestParametersForIsCode(forIsCodeId)
+      setAllTestsText(allTestsTextForIsCode(isCode, tests))
+    } catch {
+      setAllTestsText(allTestsTextForIsCode(isCode, []))
+    } finally {
+      setAllTestsLoading(false)
+    }
+  }
+
+  const startAllTests = () => {
+    setAllTestsMode(true)
+    setAddedParameters([])
+    void generateAllTestsText()
   }
 
   const refreshMasters = async () => {
@@ -295,7 +363,7 @@ export function ConsentLetterGenerateDialog({
     Boolean(
       selectedClient &&
         selectedIsCode &&
-        addedParameters.length > 0 &&
+        (allTestsMode ? allTestsText.trim() !== '' : addedParameters.length > 0) &&
         consentLetterNo.trim() &&
         !numberLoading,
     )
@@ -309,8 +377,10 @@ export function ConsentLetterGenerateDialog({
         .map((p) => p.clauseNo?.trim())
         .filter(Boolean)
         .join(', ')
-      const resolvedClause = clauseFromParams || 'Relevant Clause of Correspondence IS'
-      const testNames = addedParameters.map((p) => p.testName)
+      const resolvedClause = allTestsMode
+        ? ALL_TESTS_CLAUSE
+        : clauseFromParams || 'Relevant Clause of Correspondence IS'
+      const testNames = allTestsMode ? [allTestsText.trim()] : addedParameters.map((p) => p.testName)
 
       const payload = {
         consentLetterNo: consentLetterNo.trim(),
@@ -481,20 +551,67 @@ export function ConsentLetterGenerateDialog({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <Label>Test Parameters</Label>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className={cn(limsOutlineBtnClass, 'gap-1.5')}
-                      disabled={!isCodeId}
-                      onClick={() => setPickerOpen(true)}
-                    >
-                      <Plus size={14} />
-                      Add Test Parameter
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {allTestsMode ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={cn(limsOutlineBtnClass, 'gap-1.5')}
+                          disabled={!isCodeId || allTestsLoading}
+                          onClick={() => void generateAllTestsText()}
+                        >
+                          <RotateCcw size={14} />
+                          Default text from IS
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={cn(limsOutlineBtnClass, 'gap-1.5')}
+                          disabled={!isCodeId}
+                          onClick={startAllTests}
+                        >
+                          <ListChecks size={14} />
+                          All tests as per IS
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className={cn(limsOutlineBtnClass, 'gap-1.5')}
+                        disabled={!isCodeId}
+                        onClick={() => {
+                          setAllTestsMode(false)
+                          setPickerOpen(true)
+                        }}
+                      >
+                        <Plus size={14} />
+                        Add Test Parameter
+                      </Button>
+                    </div>
                   </div>
 
-                  {addedParameters.length === 0 ? (
+                  {allTestsMode ? (
+                    <div className="space-y-1">
+                      <textarea
+                        id="consent-all-tests-text"
+                        aria-label="All tests as per IS"
+                        className="min-h-[96px] w-full resize-y rounded-none border border-stone-500 bg-white px-3 py-2 text-sm"
+                        value={allTestsLoading ? 'Reading the IS code…' : allTestsText}
+                        disabled={allTestsLoading}
+                        onChange={(e) => setAllTestsText(e.target.value)}
+                      />
+                      <p className="text-xs text-stone-500">
+                        Printed in the test table with clause "{ALL_TESTS_CLAUSE}". Edit the text if needed; "Default text from
+                        IS" writes it again from the IS code. Choose "Add Test Parameter" to pick single tests instead.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {allTestsMode ? null : addedParameters.length === 0 ? (
                     <p className="rounded-none border border-dashed border-stone-400 bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
                       No test parameters added. Select IS code and click Add Test Parameter.
                     </p>

@@ -26,6 +26,7 @@ import {
   DECISION_RULE_APPLIES_TO_LABELS,
   DECISION_RULE_TYPE_LABELS,
   DECISION_RULE_TYPES,
+  ruleHasNoGuardBand,
   MIGRATION_PENDING_MESSAGE,
   deleteDecisionRule,
   fetchDecisionRules,
@@ -44,6 +45,8 @@ const TEMPLATE_STATEMENTS: Record<DecisionRuleType, (w: number) => string> = {
     `Decision rule: guarded acceptance with guard band w = ${w === 1 ? '' : `${w} × `}U (ILAC-G8:09/2019, 4.2.2), where U is the expanded measurement uncertainty (k = 2, approx. 95 % coverage). A result is stated as conforming only when the measured value is inside the specified limit by at least w; otherwise it is stated as not conforming.`,
   non_binary: (w) =>
     `Decision rule: non-binary statement of conformity with guard band w = ${w === 1 ? '' : `${w} × `}U (ILAC-G8:09/2019, 4.2.3), where U is the expanded measurement uncertainty (k = 2). Pass: measured value inside the limit by at least w. Conditional Pass: inside the limit by less than w. Conditional Fail: outside the limit by less than w. Fail: outside the limit by at least w.`,
+  not_applied: () =>
+    'Decision rule not applied: the laboratory does not apply a decision rule and gives no opinions and interpretations. Not printed on reports or certificates.',
 }
 
 const APPLIES_TO: DecisionRuleAppliesTo[] = ['both', 'testing', 'calibration']
@@ -78,7 +81,7 @@ function errorText(err: unknown): string {
 }
 
 function guardBandText(r: Pick<DecisionRule, 'ruleType' | 'guardBandFactor'>): string {
-  if (r.ruleType === 'simple_acceptance') return 'w = 0'
+  if (ruleHasNoGuardBand(r.ruleType)) return r.ruleType === 'not_applied' ? '—' : 'w = 0'
   return `w = ${r.guardBandFactor} × U`
 }
 
@@ -126,7 +129,7 @@ function RuleDialog({
   const set = <K extends keyof DecisionRuleInput>(key: K, value: DecisionRuleInput[K]) =>
     setInput((prev) => ({ ...prev, [key]: value }))
 
-  const factor = input.ruleType === 'simple_acceptance' ? 0 : Number.parseFloat(factorText)
+  const factor = ruleHasNoGuardBand(input.ruleType) ? 0 : Number.parseFloat(factorText)
 
   const handleSave = async () => {
     setError(null)
@@ -196,7 +199,7 @@ function RuleDialog({
                 onValueChange={(v) => {
                   const ruleType = v as DecisionRuleType
                   setInput((prev) => ({ ...prev, ruleType }))
-                  if (ruleType === 'simple_acceptance') setFactorText('0')
+                  if (ruleHasNoGuardBand(ruleType)) setFactorText('0')
                   else if (!(Number.parseFloat(factorText) > 0)) setFactorText('1')
                 }}
                 disabled={readOnly}
@@ -218,9 +221,9 @@ function RuleDialog({
               <Input
                 id="dr-factor"
                 inputMode="decimal"
-                value={input.ruleType === 'simple_acceptance' ? '0' : factorText}
+                value={ruleHasNoGuardBand(input.ruleType) ? '0' : factorText}
                 onChange={(e) => setFactorText(e.target.value)}
-                disabled={readOnly || input.ruleType === 'simple_acceptance'}
+                disabled={readOnly || ruleHasNoGuardBand(input.ruleType)}
               />
             </div>
             <div className="col-span-6 space-y-1 sm:col-span-3">
@@ -260,7 +263,9 @@ function RuleDialog({
             </div>
             <div className="col-span-12 flex items-end sm:col-span-6">
               <p className="text-[11px] leading-snug text-stone-500">
-                {input.ruleType === 'simple_acceptance'
+                {input.ruleType === 'not_applied'
+                  ? 'No decision rule is applied: nothing about a decision rule is printed on reports or certificates.'
+                  : input.ruleType === 'simple_acceptance'
                   ? 'Measurement uncertainty is not used: same answers as before decision rules.'
                   : input.ruleType === 'guard_band'
                     ? `Conforming only when the result is inside the limit by at least w = ${Number.isFinite(factor) ? factor : '?'} × U.`
