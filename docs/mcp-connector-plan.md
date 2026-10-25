@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 0.3 (25 Oct 2026): lab decisions of 25 Oct (section 7) replace parts of section 6 |
+| Version | 0.4 (25 Oct 2026): Grok Bot allowed (section 9); 0.3: lab decisions of 25 Oct (section 7) |
 | Asked by | Amit, 24 Oct: use the in-app AI less and an MCP connector more |
 | Clause | ISO/IEC 17025:2017 4.2 (confidentiality), 7.11 (LIMS), 8.4 |
 | Not part of | The go-live of 25 Oct. The connector is a separate service; it is built and validated on staging after go-live, then released as its own software change |
@@ -118,3 +118,21 @@ service `mcp` on staging, AI Settings switch. OQ-08:
 v2.196.0 and gateway client-IP fix on staging; both still to be done in
 production). Staff guide:
 `docs/mcp-connector-staff-guide.md`. Production: nothing applied.
+
+## 9. Lab decision: Grok Bot (25 Oct 2026)
+
+Amit (Laboratory Director) chose option C in chat: **Grok Bot** (xAI's Grok,
+which appears to run on Cursor/Anysphere's agent platform: it registered as
+"Cursor" and the Cursor forum lists its callbacks) may use the connector with
+the **same access as Claude**: the Director sees client names and addresses
+and can change records; QM and TM stay redacted and read only; the same
+refusals apply (results, issue/sign, delete).
+
+Consequences accepted by the Director, to be closed by the QM:
+
+| # | Item | Owner |
+|---|---|---|
+| 1 | Risk F-20 updated: client data (for the Director unredacted) goes to xAI and possibly Cursor/Anysphere, outside India (ISO/IEC 17025 4.2; DPDP Act 2023 for contact persons' names, phones, e-mails) | QM |
+| 2 | Check xAI and Cursor terms for the lab's plan: data retention, use for model training (opt-out), where data is stored | Director |
+| 3 | Client agreements and the confidentiality statement: say that AI assistants from named providers may process the lab's records | QM |
+| 4 | The connector allows the callback addresses Grok Bot uses (`MCP_REDIRECT_ALLOW` on the `mcp` service): Cursor's published callbacks `https://www.cursor.com/agents/mcp/oauth/callback` and `cursor://anysphere.cursor-mcp/oauth/callback`, and any other address only after it is seen in the connector log | Developer |
