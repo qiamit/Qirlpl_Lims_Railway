@@ -61,6 +61,11 @@
   handle @auth {
     uri strip_prefix /auth/v1
     reverse_proxy {$GOTRUE_UPSTREAM} {
+      # GoTrue takes the client IP from X-Forwarded-For (MFA challenge/verify
+      # must come from the same IP; rate limits). Caddy would send Railway's
+      # internal proxy address (100.64.x.x, a different one per request), so
+      # pass the client address Railway's edge sets in X-Real-IP.
+      header_up X-Forwarded-For {http.request.header.X-Real-IP}
       header_down -Access-Control-Allow-Origin
       header_down -Access-Control-Allow-Credentials
       header_down -Access-Control-Allow-Headers
