@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | QIRLPL-LIMS-RA |
-| Version | 1.0 (draft for QM review) |
+| Version | 1.1 (25 Oct 2026: F-19 and F-20 added; draft for QM review) |
 | Clause | ISO/IEC 17025:2017 8.5, 7.11.2, 7.11.6 |
 | Review | Every year, and before any High-risk change is deployed |
 
@@ -52,6 +52,8 @@ The risk decides how much testing a change needs (see
 | F-16 | Backups and restore | Data lost; backup unusable | 3 | 1 | Medium | Daily + weekly Railway volume backups | Restore test register (none yet: **open**) |
 | F-17 | Hosting / availability (Railway) | Lab cannot work; data entry delayed | 1 | 2 | Low | Paper fallback forms; incident register | IT incident register |
 | F-18 | Display, navigation, theming | Inconvenience | 1 | 2 | Low | — | Developer check |
+| F-19 | Uploaded files (storage) | File deleted or replaced without trace | 2 | 1 | Low | Only the uploader, QM or Director can delete or replace; every upload, change and delete audited (migration 49); nightly copy with history | Storage rule tests; B-2 file restore |
+| F-20 | MCP connector for AI assistants (Claude; Grok Bot via Cursor) | Client data reaches an AI provider outside India (for the Director unredacted); a wrong change made through an AI; access with a stolen connector token | 2 | 2 | Medium | Own LIMS login, Director / QM / TM only; RLS, guards and Module Access as in the app; writes Director only, never results, issue/sign or delete; client name and address replaced for QM and TM; every call logged, changes "via MCP" in the Audit Trail; Director's on/off switch; sessions end after 8 hours or when the LIMS sign-in ends; callback addresses allow-listed. Lab decision 25 Oct to allow Grok Bot (plan section 9). Railway access (and so the service secrets) stays with the owner's account, Cursor and the Claude development session (Director's decision 25 Oct) | OQ-08 (45/45, staging); production checks 25 Oct |
 
 ## 3. Findings from the first calculation validation (22 Oct 2026)
 

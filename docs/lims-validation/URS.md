@@ -98,6 +98,17 @@ requirement), **S** = should have, **C** = convenience.
 | URS-AI-01 | Client data is not sent to an AI provider unless the setting allows it and the client consented; otherwise identifiers are replaced before sending. | M |
 | URS-AI-02 | The Director can switch AI use for client data off. | M |
 
+## 7a. MCP connector for AI assistants (clauses 4.2, 7.11) — added 25 Oct 2026
+
+| No. | Requirement | Priority |
+|---|---|---|
+| URS-MCP-01 | Only the Laboratory Director, Quality Manager and Technical Managers can sign in, each with their own LIMS login; everyone else is refused. | M |
+| URS-MCP-02 | The connector gives no more access than the app: row level security, database guards and the user's Module Access apply. | M |
+| URS-MCP-03 | Only the Director can change data; submitting or approving results, issuing or signing reports and certificates, and deleting are never possible through the connector. | M |
+| URS-MCP-04 | Client names and addresses are replaced for the QM and TMs; the Director sees them (lab decision 25 Oct). | M |
+| URS-MCP-05 | Every call is logged (who, tool, table, outcome); changes show "via MCP" in the Audit Trail. | M |
+| URS-MCP-06 | The Director can switch the connector off; off refuses sign-in and every call. | M |
+
 ## 8. Finance
 
 | No. | Requirement | Priority |
