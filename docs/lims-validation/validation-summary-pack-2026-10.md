@@ -136,7 +136,7 @@ migration 35).
 | URS-TST-01, 02 calculations and rounding | Suite TR, IS; OQ-01 step 4 | Pass |
 | URS-TST-03 equipment on results | OQ-01 step 4 (In Repair blocked) | Pass |
 | URS-TST-04 environment | Required on calibration raw data (tested); for testing the lab has no areas yet (0 areas, 0 readings) | **Partial (lab data)** |
-| URS-TST-05 review before report | OQ-01 step 6 | Pass |
+| URS-TST-05 review before report | OQ-01 step 6; database guard (migration 53, staging 25 Oct): 22/22, `results-review-guard-test.md`; production 25 Oct (4/4 rolled-back checks) | Pass |
 | URS-RPT-01 report content (7.8.2) | OQ-01 step 7; signatories from tester, reviewer, issuer (SG-01; staging test) | Pass |
 | URS-RPT-02, 03 report number, ULR, never repeated | Suite RN, ULR; OQ-01 step 7; unique indexes and guards | Pass |
 | URS-RPT-04 issue with password | OQ-01 steps 8–9; database guard 11/11 (migration 47); X1, X2 | Pass |

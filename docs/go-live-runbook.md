@@ -412,3 +412,18 @@ Still to do:
    a read and a change; then checks the change shows "via MCP" in the Audit
    Trail.
 3. QM review of OQ-08.
+
+## Release 4 after go-live (Sunday 25 Oct 2026, 18:18–18:25 IST): done
+
+Results review guard (migration 53), approved by Amit in chat. Staging record:
+`docs/lims-validation/results-review-guard-test.md`.
+
+| Step | Result | Time (IST) |
+|---|---|---|
+| Backup | Postgres "Before migration 53 results review guard 2026-10-25" (id ba888c69…, 191 MB referenced) | 18:18 |
+| Before | 26 rows under review (all on samples already issued, older data); none with the reviewer equal to the tester | 18:19 |
+| Migration 53 | `20261102101500_results_review_guard.sql` OK (1.4 s); trigger `tap_verify_review_rules` after `tap_stamp_result_entry`; function not callable by users; checks: RLS on all 145 tables, no anon write grants, no unsafe functions, no invalid indexes | 18:19 |
+| Checks (rolled back) | On a result of a sample not yet issued, put under review inside the transaction: QM (not the assigned reviewer) approving refused; tester changing the result refused (locked); tester approving refused; assigned TM approving allowed. 4 of 4; nothing changed | 18:22 |
+
+No frontend change: the screens already lock a section sent for review and
+show the database message when an approval is refused.
