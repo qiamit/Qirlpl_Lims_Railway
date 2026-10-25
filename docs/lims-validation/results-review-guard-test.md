@@ -5,7 +5,7 @@
 | Change | `20261102101500_results_review_guard.sql`: nobody reviews their own results; only the assigned reviewer (or the Laboratory Director, never for own results) approves; results locked while under review or approved |
 | Clause | ISO/IEC 17025:2017 7.7.1 (review of results), 7.8.1.1 (reports reviewed and authorised), 7.5 (records) |
 | Requirement | URS-TST-05 review before report |
-| Environment | Staging only, 25 Oct 2026 (migration 53 applied 16:17 IST). **Production: not applied** |
+| Environment | Staging 25 Oct 2026 (migration 53 applied 16:17 IST); production 25 Oct 18:19 IST after a backup, checked with 4 rolled-back attempts (runbook release 4) |
 | Run | `results_review_guard_test.mjs` (run MVNPFMUU), OQ test accounts through the staging gateway, as the screens write |
 | Result | **22 of 22 pass** |
 
