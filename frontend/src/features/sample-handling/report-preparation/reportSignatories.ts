@@ -44,12 +44,13 @@ function roleGroup(label: string): RoleGroup | null {
   return null
 }
 
+/** One line per person: the same person may come with and without a user id (older rows hold only the name). */
 function uniquePeople(people: ReportPerson[]): ReportPerson[] {
   const seen = new Set<string>()
   return people.filter((p) => {
-    const key = p.userId || p.name.trim().toLowerCase()
-    if (!key || seen.has(key)) return false
-    seen.add(key)
+    const keys = [p.userId, p.name.trim().toLowerCase()].filter(Boolean)
+    if (keys.length === 0 || keys.some((k) => seen.has(k))) return false
+    keys.forEach((k) => seen.add(k))
     return true
   })
 }

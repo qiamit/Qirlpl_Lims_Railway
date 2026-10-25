@@ -804,7 +804,7 @@ export const CASES = [
       const p = (name, designation) => ({ userId: name, name, designation, department: '' })
       const out = m.sig.applyReportPeopleToSignatures(settings, {
         testers: [p('OQ Testing Engineer Mech', 'Testing Engineer'), p('OQ Testing Engineer Mech', 'Testing Engineer')],
-        reviewers: [p('OQ Technical Manager Mech', 'Technical Manager')],
+        reviewers: [p('OQ Technical Manager Mech', 'Technical Manager'), { userId: '', name: 'OQ Technical Manager Mech', designation: '', department: '' }],
         issuer: p('Yogeshwar Krishna', 'Laboratory Director'),
       })
       const notReviewed = m.sig.applyReportPeopleToSignatures(settings, {
