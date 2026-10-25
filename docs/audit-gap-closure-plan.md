@@ -102,6 +102,8 @@ for Amit).
 48. `20261102101000_pgcrypto_revoke.sql` (pgcrypto functions except gen_random_uuid no longer callable by anon or signed-in users through the API)
 49. `20261102101100_storage_delete_rule_and_audit.sql` (in ten buckets only the uploader, the QM or the Director can delete or change a file; every file upload, change and delete goes to audit_log)
 50. `20261102101200_storage_public_logo.sql` (signed-out visitors can load the company logo again; found in the go-live smoke test, 25 Oct)
+51. `20261102101300_decision_rule_not_applied.sql` (decision rule DR-NR "Not required": rule type `not_applied`, nothing about a decision rule on reports; lab request after go-live, applied to production 25 Oct 08:34 IST)
+52. `20261102101400_mcp_connector.sql` (MCP connector: switch, sessions, call log, 'via MCP' in the Audit Trail; staging 25 Oct, production after QM review of OQ-08)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 
@@ -150,7 +152,7 @@ Every migration is idempotent and the frontend works before and after each one, 
 |---|---|---|
 | S-4 | Password policy of 10+ characters, same in UI, functions and GoTrue | Built (GoTrue setting needs approval) |
 | S-5/6/7 | Change password, Director reset with must-change, forgot password by email | Built (reset email needs GoTrue SMTP) |
-| S-8/9 | Rate limits, 30-minute idle timeout, MFA for Director and signatories | Built. Lab decision 23 Oct: MFA not required (available, not enforced) |
+| S-8/9 | Rate limits, idle timeout (60 minutes, lab decision 25 Oct; was 30), MFA for Director and signatories | Built. Lab decision 23 Oct: MFA not required (available, not enforced) |
 | S-10/11/12 | All profile edits through one server function; keep at least one active Director; deactivate instead of delete | Built |
 | S-14/15 | Database-level module access (view = read-only) | Built (starts in log mode) |
 | S-16/17 | `lab_settings` writes through Director-only functions; sanitise letterhead and template HTML | Built |

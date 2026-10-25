@@ -323,3 +323,61 @@ met).
 Still to do by the lab: sign in with own logins and open Dashboard, a report
 and the Audit Trail; the after-go-live list in step 10 above.
 
+
+## Release 1 after go-live (Sunday 25 Oct 2026, 08:25–08:45 IST): done
+
+Lab requests after go-live, tested on staging first. "Release" approved by
+Amit in chat at about 08:24 IST.
+
+| Step | Result | Time (IST) |
+|---|---|---|
+| Backup | Postgres "Before release DR-NR 2026-10-25" (id 03c78926…, 190 MB referenced) | 08:25 |
+| Migration 51 | `20261102101300_decision_rule_not_applied.sql` OK in 1.5 s; DR-NR present (rule type `not_applied`, guard band 0, active); checks: RLS on all 142 tables, no anon write grants, no unsafe functions, no invalid indexes; samples 336, clients 141 | 08:34 |
+| Checks before merge | `npm run validate:calculations` 69/69 pass; `vite build` OK; PR checks 5/5 pass | 08:36 |
+| Merge | PR qiamit/Qirlpl_Lims_Railway#7 merged; `main` 085341c → cdb17cf; frontend and pdf-service deployed (SUCCESS); files-backup took the new source without running (schedule `30 20 * * *` kept) | 08:37–08:41 |
+| Smoke test | www.qirlpl.com 200 (qirlpl.com redirects to it); bundle has the new texts (All tests as per IS, Decision Rule Applied (agreed with customer), not_applied); signed-out clients 401; CSP, HSTS, X-Frame-Options present | 08:42 |
+
+What changed for users: decision rule DR-NR "Not required" (no decision rule
+note, banner or U warning on reports; Remarks and the Part D line stay);
+Opinions and interpretations hidden in Test Report Preparation for DR-NR;
+report signatures follow Print Setting (Tested By = who entered the results,
+Approved By = the TM who reviewed them, never the issuer); new SRFs start with
+DR-NR and the two decision rule fields are one; consent letter button "All
+tests as per IS" builds editable text from the IS code and its clauses.
+
+Still to do by the lab: open one DR-NR report and one consent letter with own
+logins and confirm they look right.
+
+## Release 2 after go-live (Sunday 25 Oct 2026, 10:07–10:11 IST): done
+
+Auth fix found while testing the MCP connector on staging (record:
+`docs/lims-validation/OQ-08-mcp-connector.md`). Approved by Amit in chat just
+before 10:07 IST. The MCP connector itself is **not** in production.
+
+| Step | Result | Time (IST) |
+|---|---|---|
+| Backup | Postgres "Before GoTrue v2.196.0 2026-10-25" (id e5340602…, 190 MB referenced) | 10:07 |
+| Before | Smoke test without sign-in: all pass, GoTrue `v2.174.0` | 10:08 |
+| Auth image | `supabase/gotrue:v2.174.0` → `v2.196.0` (production only; staging done 09:50). No migration ran: `auth.schema_migrations` still at `20260625000000` (77 rows). Log: only the deprecation notices for `GOTRUE_JWT_ADMIN_GROUP_NAME` / `GOTRUE_JWT_DEFAULT_GROUP_NAME` | 10:08–10:09 |
+| Gateway | PR qiamit/Qirlpl_Lims_Railway#8 (only `backend/gateway/Caddyfile`: auth route passes Railway's `X-Real-IP` to GoTrue as `X-Forwarded-For`) merged; `main` cdb17cf → 77ee65c; api, frontend, pdf-service, files-backup deployed (SUCCESS) | 10:09 |
+| Smoke test | GoTrue `v2.196.0`; unknown user sign-in 400 `invalid_credentials`; unknown refresh token 400 (no 500); sign-up 403; anon clients 401; storage schema 406; gen_salt 404; www.qirlpl.com 200 with CSP, HSTS, X-Frame-Options | 10:11 |
+
+Why: GoTrue `v2.174.0` could not refresh any session against the `v2.19x`
+auth schema (HTTP 500 `missing destination name oauth_client_id`); no
+`token_refreshed` event in production for three days, so users had to sign
+in again when the 8-hour token ended. MFA verify always failed
+(`mfa_ip_address_mismatch`) because GoTrue saw Railway's internal proxy
+address, a different one per request.
+
+Session refresh in production, 10:14 IST: in the built-in browser, with the
+existing session of `info@qirlpl.com` (signed in 07:35 IST), at Amit's
+request: refresh HTTP 200, same user and session, token valid to 18:14 IST
+instead of 15:35 IST; `auth.audit_log_entries` shows `token_refreshed` (the
+first in production for days) and `token_revoked` for the rotated token. On
+reload the app signed that idle browser session out under its 30-minute
+inactivity rule (`logout` 10:14:20), as it would on any load after 30 idle
+minutes. MFA in production is not checked (nobody uses it); it was checked on
+staging with the same gateway file.
+
+Back-out: auth image back to `supabase/gotrue:v2.174.0` (schema unchanged)
+and revert PR #8.

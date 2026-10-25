@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Cpu, FlaskConical, ShieldCheck } from 'lucide-react'
+import { Cpu, FlaskConical, PlugZap, ShieldCheck } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -28,6 +28,7 @@ import {
   type AiClientDataMode,
 } from '@/lib/aiDataGuard'
 import { fetchAiModels, fetchAiSettings, upsertAiSettings } from './aiSettingsApi'
+import { fetchMcpConnectorState, MCP_CONNECTOR_URL, saveMcpConnectorEnabled } from './mcpConnectorSetting'
 import type { AiModelRow } from './types'
 
 function SettingSection({
@@ -121,6 +122,9 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
   const [clientDataMode, setClientDataMode] = useState<AiClientDataMode>(DEFAULT_AI_CLIENT_DATA_MODE)
   const [savedClientDataMode, setSavedClientDataMode] = useState<AiClientDataMode>(DEFAULT_AI_CLIENT_DATA_MODE)
   const [clientDataColumnAvailable, setClientDataColumnAvailable] = useState(true)
+  const [mcpEnabled, setMcpEnabled] = useState(false)
+  const [savedMcpEnabled, setSavedMcpEnabled] = useState(false)
+  const [mcpColumnAvailable, setMcpColumnAvailable] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -130,11 +134,15 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
     setLoading(true)
     try {
       invalidateAiDataGuardCache()
-      const [modelRows, settings, dataMode] = await Promise.all([
+      const [modelRows, settings, dataMode, mcp] = await Promise.all([
         fetchAiModels(),
         fetchAiSettings(),
         fetchAiClientDataModeState(),
+        fetchMcpConnectorState(),
       ])
+      setMcpEnabled(mcp.enabled)
+      setSavedMcpEnabled(mcp.enabled)
+      setMcpColumnAvailable(mcp.columnAvailable)
       setModels(modelRows.filter((m) => m.is_active))
       setClientDataMode(dataMode.mode)
       setSavedClientDataMode(dataMode.mode)
@@ -201,6 +209,18 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
             return
           }
         }
+        if (mcpEnabled !== savedMcpEnabled) {
+          try {
+            await saveMcpConnectorEnabled(mcpEnabled)
+            setSavedMcpEnabled(mcpEnabled)
+          } catch (err) {
+            setMcpEnabled(savedMcpEnabled)
+            setMessage(
+              `Settings saved, but the MCP connector switch could not be saved: ${err instanceof Error ? err.message : 'unknown error'}`,
+            )
+            return
+          }
+        }
         setMessage('Settings saved.')
       } catch (err) {
         setMessage(err instanceof Error ? err.message : 'Unable to save settings')
@@ -212,6 +232,8 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
     agentCrudEnabled,
     clientDataMode,
     savedClientDataMode,
+    mcpEnabled,
+    savedMcpEnabled,
     showAiAssistant,
     defaultModelId,
     logRequests,
@@ -235,7 +257,8 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
     !!message &&
     (message.toLowerCase().includes('unable') ||
       message.toLowerCase().includes('failed') ||
-      message.toLowerCase().includes('must'))
+      message.toLowerCase().includes('must') ||
+      message.toLowerCase().includes('could not'))
 
   return (
     <div className={cn(limsPanelClass)}>
@@ -389,6 +412,32 @@ export const AiGeneralPanel = forwardRef<AiGeneralPanelHandle, AiGeneralPanelPro
             <p className="text-xs text-amber-800">
               Available after database update 20261025100200 is applied. Until then Redact applies.
             </p>
+          )}
+        </SettingSection>
+
+        <SettingSection step="04" title="MCP connector (Claude)" icon={<PlugZap className="h-4 w-4" />}>
+          <p className="text-xs leading-snug text-stone-600">
+            Lets the Laboratory Director, Quality Manager and Technical Managers use the LIMS from Claude with their
+            own login and the same access as in the app. Only the Director can change data through it; results,
+            report and certificate issue or signing, and deleting are never possible through it. Client names and
+            addresses are shown to the Director only. Every call is logged. Off refuses sign-in and every call.
+          </p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <ToggleRow
+              id="ai-mcp-enabled"
+              checked={mcpEnabled}
+              onChange={(v) => mcpColumnAvailable && setMcpEnabled(v)}
+              label="MCP Connector On"
+            />
+          </div>
+          {MCP_CONNECTOR_URL && (
+            <p className="text-xs text-stone-700">
+              Connector address for Claude (Settings → Connectors → Add custom connector):{' '}
+              <span className="font-mono">{MCP_CONNECTOR_URL}</span>
+            </p>
+          )}
+          {!mcpColumnAvailable && (
+            <p className="text-xs text-amber-800">Available after database update 20261102101400 is applied.</p>
           )}
         </SettingSection>
       </div>
