@@ -43,11 +43,13 @@ function redirectWith(uri, params) {
 export function createOAuth({ config, db, auth, sessions, log }) {
   const pending = new Map() // id -> { clientId, clientName, params, at }
   const codes = new Map() // code -> { clientId, redirectUri, codeChallenge, userId, gotrue, at }
+  const completed = new Map() // pending id -> { clientName, target, at } (form sent again after sign-in)
 
   setInterval(() => {
     const now = Date.now()
     for (const [k, v] of pending) if (now - v.at > PENDING_TTL_MS) pending.delete(k)
     for (const [k, v] of codes) if (now - v.at > CODE_TTL_MS) codes.delete(k)
+    for (const [k, v] of completed) if (now - v.at > PENDING_TTL_MS) completed.delete(k)
   }, 60000).unref()
 
   // MCP_REDIRECT_ALLOW entries are exact addresses, or prefixes ending in "*"
@@ -102,7 +104,7 @@ export function createOAuth({ config, db, auth, sessions, log }) {
     })()
     return page(
       'Sign in · QIRLPL LIMS connector',
-      `<h1>QIRLPL LIMS</h1><p>Sign in with your own LIMS login to connect <b>${esc(info.clientName || 'Claude')}</b> (${esc(host)}).</p>
+      `<h1>QIRLPL LIMS</h1><p>Sign in with your own LIMS login to connect <b>${esc(info.clientName || 'your AI app')}</b> (${esc(host)}).</p>
 <p><small>For the Laboratory Director, Quality Manager and Technical Managers. Everything you do through the connector is recorded.</small></p>
 ${error ? `<p class="err">${esc(error)}</p>` : ''}
 <form method="post" action="/login" autocomplete="on">
@@ -189,7 +191,17 @@ ${error ? `<p class="err">${esc(error)}</p>` : ''}
     const id = String(req.body?.pending || '')
     const info = pending.get(id)
     if (!info) {
-      res.status(400).send(page('Expired', '<h1>Sign-in expired</h1><p>Start the connection again from Claude.</p>'))
+      const done = completed.get(id)
+      if (done) {
+        res.status(409).send(
+          page(
+            'Already signed in',
+            `<h1>Already signed in</h1><p>You signed in a moment ago and your browser was sent back to <b>${esc(done.clientName || 'the app')}</b> at <code>${esc(done.target)}</code>.</p><p>If the app did not finish connecting, that address did not reach it: start the connection again from the app. You do not need to sign in twice.</p>`,
+          ),
+        )
+        return
+      }
+      res.status(400).send(page('Expired', '<h1>Sign-in expired</h1><p>This sign-in page is older than 10 minutes or the connector restarted. Start the connection again from the app you are connecting.</p>'))
       return
     }
     const email = String(req.body?.email || '').trim().toLowerCase()
@@ -220,7 +232,7 @@ ${error ? `<p class="err">${esc(error)}</p>` : ''}
         state: info.params.state,
       })
       res.status(403).send(
-        page('Not allowed', `<h1>Not allowed</h1><p class="err">${esc(refusal)}</p><a class="btn" href="${esc(back)}">Back to Claude</a>`),
+        page('Not allowed', `<h1>Not allowed</h1><p class="err">${esc(refusal)}</p><a class="btn" href="${esc(back)}">Back to the app</a>`),
       )
       return
     }
@@ -234,7 +246,17 @@ ${error ? `<p class="err">${esc(error)}</p>` : ''}
       gotrue,
       at: Date.now(),
     })
-    await log({ who, tool: 'sign_in', outcome: 'ok', message: `connected ${info.clientName || info.clientId}` })
+    const target = (() => {
+      try {
+        const u = new URL(info.params.redirectUri)
+        return `${u.protocol}//${u.host}${u.pathname}`
+      } catch {
+        return 'unknown'
+      }
+    })()
+    completed.set(id, { clientName: info.clientName, target, at: Date.now() })
+    console.log('sign-in ok, sending the browser to', target, 'for', JSON.stringify(info.clientName || info.clientId))
+    await log({ who, tool: 'sign_in', outcome: 'ok', message: `connected ${info.clientName || info.clientId} via ${target}` })
     res.redirect(302, redirectWith(info.params.redirectUri, { code, state: info.params.state }))
   }
 
