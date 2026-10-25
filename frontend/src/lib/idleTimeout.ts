@@ -4,9 +4,11 @@
  * of this browser; a warning appears at IDLE_WARNING_MS. Activity is shared
  * across tabs through localStorage and a BroadcastChannel, so working in one
  * tab keeps the others signed in, and an idle sign-out in one signs out all.
+ * 60 minutes (lab decision 25 Oct 2026; was 30): long tests keep staff away
+ * from the screen.
  */
-export const IDLE_TIMEOUT_MS = 30 * 60 * 1000
-export const IDLE_WARNING_MS = 28 * 60 * 1000
+export const IDLE_TIMEOUT_MS = 60 * 60 * 1000
+export const IDLE_WARNING_MS = 58 * 60 * 1000
 export const IDLE_CHECK_INTERVAL_MS = 15 * 1000
 /** Activity is written to storage at most this often. */
 export const IDLE_ACTIVITY_WRITE_THROTTLE_MS = 10 * 1000
