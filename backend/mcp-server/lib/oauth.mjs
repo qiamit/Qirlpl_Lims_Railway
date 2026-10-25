@@ -50,8 +50,10 @@ export function createOAuth({ config, db, auth, sessions, log }) {
     for (const [k, v] of codes) if (now - v.at > CODE_TTL_MS) codes.delete(k)
   }, 60000).unref()
 
+  // MCP_REDIRECT_ALLOW entries are exact addresses, or prefixes ending in "*"
+  // (for example "https://www.cursor.com/*" or "grokbot://*").
   function redirectAllowed(uri) {
-    if (config.redirectAllow.includes(uri)) return true
+    if (config.redirectAllow.some((a) => (a.endsWith('*') ? uri.startsWith(a.slice(0, -1)) : a === uri))) return true
     try {
       const u = new URL(uri)
       return (
@@ -75,7 +77,7 @@ export function createOAuth({ config, db, auth, sessions, log }) {
       const uris = client.redirect_uris || []
       if (uris.length === 0 || !uris.every((u) => redirectAllowed(String(u)))) {
         console.warn('register refused:', JSON.stringify({ client_name: client.client_name, redirect_uris: uris }).slice(0, 500))
-        throw new InvalidRequestError('This redirect address is not allowed for the QIRLPL LIMS connector.')
+        throw new InvalidRequestError(`This redirect address is not allowed for the QIRLPL LIMS connector: ${uris.join(', ')}`)
       }
       const full = {
         ...client,
