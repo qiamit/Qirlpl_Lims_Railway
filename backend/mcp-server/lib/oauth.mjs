@@ -74,6 +74,7 @@ export function createOAuth({ config, db, auth, sessions, log }) {
     async registerClient(client) {
       const uris = client.redirect_uris || []
       if (uris.length === 0 || !uris.every((u) => redirectAllowed(String(u)))) {
+        console.warn('register refused:', JSON.stringify({ client_name: client.client_name, redirect_uris: uris }).slice(0, 500))
         throw new InvalidRequestError('This redirect address is not allowed for the QIRLPL LIMS connector.')
       }
       const full = {
