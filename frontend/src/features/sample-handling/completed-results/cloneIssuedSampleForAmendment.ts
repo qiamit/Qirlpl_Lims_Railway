@@ -1,5 +1,10 @@
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { withReceivingReportTypeSuffix } from '@/features/sample-handling/report-preparation/formattedTestReportNumber'
+import {
+  nextRevisedNablUlrNumber,
+  splitNablUlrRevision,
+} from '@/features/sample-handling/report-preparation/nablUlrNumber'
 import {
   receivingReportTypeForIssueKind,
   type IssueAndReferbackSectionInput,
@@ -19,6 +24,10 @@ const SAMPLE_OMIT = new Set([
   'test_report_issued_at',
   'test_report_nabl_issued_at',
   'test_report_non_nabl_issued_at',
+  'issued_by',
+  'issued_by_name',
+  'issued_signature_meaning',
+  'issued_reauthenticated_at',
 ])
 
 const ROW_OMIT = new Set(['id', 'created_at', 'updated_at'])
@@ -52,9 +61,31 @@ function omitKeys(row: Record<string, unknown>, keys: Set<string>): Record<strin
 async function existingSrfNumbersLike(base: string): Promise<string[]> {
   const { data, error } = await supabase.from('samples').select('srf_number').ilike('srf_number', `${base}%`)
   if (error) throw error
-  return (Array.isArray(data) ? data : [])
-    .map((r) => String((r as { srf_number?: string }).srf_number ?? '').trim())
+  // SRF numbers of deleted samples are never reused.
+  const deleted = (await fetchDeletedKeys('samples', 'srf_number')).filter((n) =>
+    n.toLowerCase().startsWith(base.toLowerCase()),
+  )
+  return [...(Array.isArray(data) ? data : []).map((r) => String((r as { srf_number?: string }).srf_number ?? '')), ...deleted]
+    .map((n) => n.trim())
     .filter(Boolean)
+}
+
+/** ULRs starting with `base`, including deleted samples' (never reused). */
+async function existingUlrsLike(base: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('samples')
+    .select('test_report_nabl_ulr_number')
+    .ilike('test_report_nabl_ulr_number', `${base}%`)
+  if (error) throw error
+  const deleted = (await fetchDeletedKeys('samples', 'test_report_nabl_ulr_number')).filter((u) =>
+    u.toUpperCase().startsWith(base.toUpperCase()),
+  )
+  return [
+    ...(Array.isArray(data) ? data : []).map((r) =>
+      String((r as { test_report_nabl_ulr_number?: string | null }).test_report_nabl_ulr_number ?? ''),
+    ),
+    ...deleted,
+  ]
 }
 
 async function applySelectedSection(
@@ -137,6 +168,13 @@ export async function cloneIssuedSampleForAmendment(input: {
   const stage = earliestReferbackStage(input.sections.map((s) => s.targetStage))
 
   const sourceRow = omitKeys(asRow(source), SAMPLE_OMIT)
+  // The amended report keeps the original ULR with the next revision
+  // (TC…F → TC…F-R1, then -R2). Copying the ULR unchanged broke the unique
+  // ULR index, so no amendment could be created (OQ-01 step 11, 23 Oct 2026).
+  const sourceUlr = String(sourceRow.test_report_nabl_ulr_number ?? '').trim()
+  const revisedUlr = sourceUlr
+    ? nextRevisedNablUlrNumber(sourceUlr, await existingUlrsLike(splitNablUlrRevision(sourceUlr).base))
+    : null
   const sampleInsert = {
     ...sourceRow,
     srf_number: newSrf,
@@ -147,6 +185,7 @@ export async function cloneIssuedSampleForAmendment(input: {
     test_report_number: sourceRow.test_report_number
       ? withReceivingReportTypeSuffix(String(sourceRow.test_report_number), reportType)
       : sourceRow.test_report_number,
+    test_report_nabl_ulr_number: revisedUlr,
     test_report_issued_at: null,
     test_report_nabl_issued_at: null,
     test_report_non_nabl_issued_at: null,

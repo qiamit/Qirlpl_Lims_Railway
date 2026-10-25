@@ -269,8 +269,11 @@ export function IntermediateCheckHistoryPanel({
   currentMasters,
   currentNextDueDate,
   acceptanceCriteria,
+  registerOnlyIds,
 }: {
   history: IntermediateCheckHistoryRecord[]
+  /** Entries shown from the append-only register only (not in the equipment's JSONB history). */
+  registerOnlyIds?: Set<string>
   currentLastDate?: string
   currentDoneByName?: string
   currentStatus?: IntermediateCheckHistoryRecord['status']
@@ -370,6 +373,14 @@ export function IntermediateCheckHistoryPanel({
                     {formatDisplayDate(record.conductedOn)}
                   </span>
                   <span className="flex flex-wrap items-center justify-end gap-2 text-muted-foreground">
+                    {registerOnlyIds?.has(record.id) ? (
+                      <span
+                        className="rounded border border-slate-300 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500"
+                        title="Kept in the append-only intermediate check register"
+                      >
+                        Register
+                      </span>
+                    ) : null}
                     {statusBadge(record.status)}
                     <span className="text-[10px]">
                       {record.doneByName || '—'} · {record.readings.length} rdg

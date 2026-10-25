@@ -57,6 +57,8 @@ export type SampleRow = {
   deviation_from_methods: boolean | null
   supporting_docs_required: boolean | null
   decision_rule_applied: boolean | null
+  /** Decision rule agreed at contract review (migration 20261026100000; absent before). */
+  decision_rule_id?: string | null
   testing_method_available: boolean | null
   sampling_procedure_ref: boolean | null
   tentative_date_required: string | null
@@ -203,6 +205,8 @@ export type SampleReceivingFormTab2 = {
   deviationFromMethods: boolean
   supportingDocsRequired: boolean
   decisionRuleApplied: boolean
+  /** decision_rules.id agreed with the customer ('' = none). */
+  decisionRuleId: string
   testingMethodAvailable: boolean
   samplingProcedureRef: boolean
   tentativeDateRequired: string
@@ -256,6 +260,7 @@ export const emptySampleReceivingFormTab2 = (): SampleReceivingFormTab2 => ({
   deviationFromMethods: false,
   supportingDocsRequired: false,
   decisionRuleApplied: false,
+  decisionRuleId: '',
   testingMethodAvailable: true,
   samplingProcedureRef: true,
   tentativeDateRequired: addDays(today(), 10),

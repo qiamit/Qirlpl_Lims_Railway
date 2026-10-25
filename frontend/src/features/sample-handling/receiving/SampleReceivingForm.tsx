@@ -15,6 +15,7 @@ import {
 import { stripReceivingReportSuffix } from './receivingSrfFromReference'
 import { FilterCombobox } from './FilterCombobox'
 import { OptionCombobox } from './OptionCombobox'
+import { DecisionRuleSelect } from '@/features/masters/decision-rules/DecisionRuleSelect'
 
 export type SrfSearchOption = Pick<SampleRow, 'id' | 'srf_number' | 'client_name'>
 
@@ -76,7 +77,12 @@ export function SampleReceivingForm({
   onDeleteReceivingOption?: (category: string, id: string) => Promise<void>
 }) {
   const yesNo = (key: keyof FormType, value: boolean) =>
-    onChange({ ...form, [key]: value })
+    onChange({
+      ...form,
+      [key]: value,
+      // "Decision Rule Applied? No" clears the selected rule.
+      ...(key === 'decisionRuleApplied' && !value ? { decisionRuleId: '' } : {}),
+    })
 
   const [customerInput, setCustomerInput] = useState('')
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
@@ -170,7 +176,7 @@ export function SampleReceivingForm({
     <div className={cn(limsRegistryFormClass, 'space-y-0')}>
         <Tabs value={activeTab} onValueChange={onTabChange}>
           <div
-            className="grid h-10 w-full grid-cols-2 items-center justify-center rounded-none border border-stone-500 bg-stone-200/80 p-1 text-stone-600"
+            className="grid min-h-10 w-full grid-cols-2 items-stretch justify-center rounded-none border border-stone-500 bg-stone-200/80 p-1 text-stone-600 sm:h-10 sm:items-center"
             role="tablist"
             aria-label="Sample receiving sections"
           >
@@ -180,7 +186,7 @@ export function SampleReceivingForm({
               tabIndex={-1}
               aria-selected={activeTab === 'details'}
               className={cn(
-                'inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
+                'inline-flex min-w-0 items-center justify-center rounded-none px-2 py-1.5 text-center text-xs font-medium leading-tight transition-all sm:whitespace-nowrap sm:px-3 sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
                 activeTab === 'details'
                   ? 'bg-stone-800 text-amber-100 shadow-sm'
                   : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
@@ -195,7 +201,7 @@ export function SampleReceivingForm({
               tabIndex={-1}
               aria-selected={activeTab === 'review'}
               className={cn(
-                'inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
+                'inline-flex min-w-0 items-center justify-center rounded-none px-2 py-1.5 text-center text-xs font-medium leading-tight transition-all sm:whitespace-nowrap sm:px-3 sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
                 activeTab === 'review'
                   ? 'bg-stone-800 text-amber-100 shadow-sm'
                   : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
@@ -510,7 +516,7 @@ export function SampleReceivingForm({
                 )}
               </div>
             </div>
-            <div className="flex justify-end gap-2 border-t border-stone-300 pt-3">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-stone-300 pt-3">
               <Button type="button" variant="outline" className={limsOutlineBtnClass} onClick={onClear}>
                 Clear
               </Button>
@@ -587,8 +593,31 @@ export function SampleReceivingForm({
                   </Select>
                 </div>
               ))}
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-4">
+                <Label htmlFor="srf-decision-rule" className="flex-1 pt-2 text-sm font-normal">
+                  Decision Rule (agreed with customer)
+                </Label>
+                <DecisionRuleSelect
+                  id="srf-decision-rule"
+                  scope="testing"
+                  value={form.decisionRuleId}
+                  onChange={(ruleId) =>
+                    onChange({
+                      ...form,
+                      decisionRuleId: ruleId,
+                      decisionRuleApplied: ruleId ? true : form.decisionRuleApplied,
+                    })
+                  }
+                  className="w-full sm:w-80"
+                />
+              </div>
+              {form.statementConformityRequired && !form.decisionRuleId ? (
+                <p className="border border-amber-400/70 bg-amber-50 px-2 py-1.5 text-[12px] text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                  Statement of conformity requested: select the decision rule agreed with the customer (ISO/IEC 17025 7.1.3).
+                </p>
+              ) : null}
             </div>
-            <div className="flex justify-end gap-2 border-t border-stone-300 pt-3">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-stone-300 pt-3">
               <Button type="button" variant="outline" className={limsOutlineBtnClass} onClick={onClear}>
                 Clear
               </Button>

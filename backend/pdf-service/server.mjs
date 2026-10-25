@@ -42,7 +42,11 @@ function parseBody(body) {
   }
   const filename =
     typeof o.filename === 'string' && o.filename.trim()
-      ? o.filename.trim().replace(/[\\/:*?"<>|]+/g, '_')
+      ? o.filename
+          .trim()
+          .replace(/[\u0000-\u001f\u007f]+/g, '')
+          .replace(/[\\/:*?"<>|]+/g, '_')
+          .slice(0, 180) || 'document.pdf'
       : 'document.pdf'
   const formatRaw = typeof o.format === 'string' ? o.format.toLowerCase() : 'a4'
   const format =
@@ -107,6 +111,13 @@ async function htmlToPdf(html, opts) {
       if (isAllowedAsset(route.request().url())) route.continue()
       else route.abort()
     })
+    // page.route() does not see WebSockets. Without this, script inside the
+    // submitted HTML could open ws:// connections to private-network hosts.
+    if (typeof page.routeWebSocket === 'function') {
+      await page.routeWebSocket(/.*/, (ws) => {
+        ws.close()
+      })
+    }
     await page.setContent(html, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -180,12 +191,23 @@ function readJson(req) {
  * @param {number} status
  * @param {unknown} payload
  */
+// Optional comma-separated allow-list (e.g. the two Railway frontend URLs).
+// When set, it replaces the "any *.up.railway.app" rule below.
+const EXTRA_ALLOWED_ORIGINS = String(process.env.PDF_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim().replace(/\/$/, ''))
+  .filter(Boolean)
+
 function allowedPdfOrigin(req) {
   const origin = String(req.headers.origin || '').trim()
   if (!origin) return ''
   if (origin === 'https://www.qengineering.in' || origin === 'https://qengineering.in') return origin
   if (origin === 'https://www.qirlpl.com' || origin === 'https://qirlpl.com') return origin
-  if (/^https:\/\/[a-z0-9-]+\.up\.railway\.app$/i.test(origin)) return origin
+  if (EXTRA_ALLOWED_ORIGINS.length > 0) {
+    if (EXTRA_ALLOWED_ORIGINS.includes(origin)) return origin
+  } else if (/^https:\/\/[a-z0-9-]+\.up\.railway\.app$/i.test(origin)) {
+    return origin
+  }
   if (/^http:\/\/(localhost|127\.0\.0\.1):51(7[3-9]|8[0-5])$/.test(origin)) return origin
   return ''
 }
@@ -235,7 +257,9 @@ const server = http.createServer(async (req, res) => {
         : `${opts.filename}.pdf`
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${outName.replace(/"/g, '')}"`,
+        'Content-Disposition': `attachment; filename="${outName
+          .replace(/"/g, '')
+          .replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(outName)}`,
         'Content-Length': pdf.length,
         ...corsHeaders(req),
       })

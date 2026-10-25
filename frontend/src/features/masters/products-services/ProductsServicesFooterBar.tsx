@@ -47,8 +47,8 @@ export function ProductsServicesFooterBar({
 
   return (
     <div className="relative overflow-hidden rounded-none border-2 border-stone-500 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-2 py-1.5 text-white shadow-sm ring-1 ring-amber-700/20 sm:px-3 sm:py-2 md:px-4">
-      <div className="flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
-        <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-1.5 sm:gap-2 md:flex-nowrap md:gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-1.5 md:flex-nowrap">
           <LaboratoryDirectorOnly>
             <Button
             type="button"

@@ -4,8 +4,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { escapeHtml } from '@/lib/htmlText'
 import { cn } from '@/lib/utils'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { ComplaintsFooterBar } from '../ComplaintsFooterBar'
 import { ComplaintsHeaderBar } from '../ComplaintsHeaderBar'
 import {
@@ -16,6 +18,7 @@ import {
 } from '../shared'
 import { ComplaintFormFields } from './ComplaintFormFields'
 import { ComplaintsTable } from './ComplaintsTable'
+import { ComplaintRaiseNcDialog } from './ComplaintRaiseNcDialog'
 import {
   emptyComplaintForm,
   formToPayload,
@@ -26,7 +29,9 @@ import {
 } from './types'
 
 export default function CustomerComplaintsMasterPage() {
+  const askReason = useReasonForChange()
   const [rows, setRows] = useState<ComplaintRow[]>([])
+  const deletedComplaintIds = useDeletedKeys('customer_complaints', 'complaint_id', rows)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [loading, setLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
@@ -41,6 +46,8 @@ export default function CustomerComplaintsMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<ComplaintForm>(() => emptyComplaintForm())
+  const [raiseNcFor, setRaiseNcFor] = useState<ComplaintRow | null>(null)
+  const [ncIdsById, setNcIdsById] = useState<Record<string, string>>({})
 
   const canSave =
     !saveLoading &&
@@ -57,7 +64,17 @@ export default function CustomerComplaintsMasterPage() {
         supabase.from('user_profiles').select('id, full_name').order('full_name', { ascending: true }),
       ])
       if (cmpRes.error) throw cmpRes.error
-      setRows((cmpRes.data ?? []) as ComplaintRow[])
+      const list = (cmpRes.data ?? []) as ComplaintRow[]
+      setRows(list)
+      const ncIds = [...new Set(list.map((r) => r.nc_record_id).filter((v): v is string => Boolean(v)))]
+      if (ncIds.length) {
+        const { data: ncs } = await supabase.from('nc_work_records').select('id, nc_id').in('id', ncIds)
+        setNcIdsById(
+          Object.fromEntries(((ncs ?? []) as Array<{ id: string; nc_id: string }>).map((n) => [n.id, n.nc_id])),
+        )
+      } else {
+        setNcIdsById({})
+      }
       if (!empRes.error) {
         setEmployees(
           ((empRes.data ?? []) as Array<{ id: string; full_name: string | null }>).map((e) => ({
@@ -108,7 +125,7 @@ export default function CustomerComplaintsMasterPage() {
   const handleNew = () => {
     setMessage(null)
     setEditingId(null)
-    setForm(emptyComplaintForm(nextComplaintId(rows)))
+    setForm(emptyComplaintForm(nextComplaintId(rows, deletedComplaintIds)))
     setShowForm(true)
   }
 
@@ -124,7 +141,7 @@ export default function CustomerComplaintsMasterPage() {
     setEditingId(null)
     setForm({
       ...rowToForm(row),
-      complaintId: nextComplaintId(rows),
+      complaintId: nextComplaintId(rows, deletedComplaintIds),
       status: 'Received',
       closedAt: '',
       formalClosureNoticeSent: false,
@@ -167,11 +184,19 @@ export default function CustomerComplaintsMasterPage() {
     void (async () => {
       const ids = Array.from(selectedIds)
       if (!ids.length) return
-      if (!window.confirm(`Delete ${ids.length} selected complaint(s)?`)) return
+      const reason = await askReason({
+        title: `Reason for deleting ${ids.length} complaint(s)`,
+        recordLabel: selectedRows.map((r) => r.complaint_id).filter(Boolean).slice(0, 5).join(', '),
+        description: 'The deletion is kept in the audit trail together with the reason you give here.',
+        confirmLabel: 'Delete',
+        quickPicks: ['Duplicate record', 'Entered in error', 'Not a complaint (feedback)'],
+      })
+      if (!reason) return
       setSaveLoading(true)
       try {
         const { error: err } = await supabase.from('customer_complaints').delete().in('id', ids)
         if (err) throw err
+        await recordReason('customer_complaints', ids, reason)
         setSelectedIds(new Set())
         setMessage('Deleted successfully.')
         await load()
@@ -318,6 +343,18 @@ export default function CustomerComplaintsMasterPage() {
         }}
         onEdit={handleEdit}
         onCopy={handleCopy}
+        ncIdsById={ncIdsById}
+        onRaiseNc={(row) => setRaiseNcFor(row)}
+      />
+
+      <ComplaintRaiseNcDialog
+        complaint={raiseNcFor}
+        onClose={() => setRaiseNcFor(null)}
+        onLinked={(complaintId, nc) => {
+          setRows((prev) => prev.map((r) => (r.id === complaintId ? { ...r, nc_record_id: nc.id } : r)))
+          setNcIdsById((prev) => ({ ...prev, [nc.id]: nc.nc_id }))
+          setMessage(`NC ${nc.nc_id} raised for the complaint.`)
+        }}
       />
 
       <ComplaintsFooterBar

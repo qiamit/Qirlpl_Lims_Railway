@@ -43,8 +43,8 @@ export function ModuleAccessFooterBar({
         <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
         <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
 
-        <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
-          <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
+        <div className="relative flex min-w-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 md:flex-nowrap sm:gap-2 md:gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-1.5 md:flex-nowrap">
             {selectedCount > 0 ? (
               <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
                 Selected: {selectedCount}

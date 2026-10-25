@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Printer, Trash2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,7 @@ export function EquipmentForCalibrationFooterBar({
   jumpTo,
   onJumpToChange,
   onJumpToGo,
+  labelActions,
 }: {
   message: string | null
   loading: boolean
@@ -31,6 +33,8 @@ export function EquipmentForCalibrationFooterBar({
   jumpTo: string
   onJumpToChange: (value: string) => void
   onJumpToGo: () => void
+  /** Status label buttons (6.4.8), shown to every user. */
+  labelActions?: ReactNode
 }) {
   return (
     <div className={cn(limsPanelClass)}>
@@ -69,6 +73,7 @@ export function EquipmentForCalibrationFooterBar({
               Delete
             </Button>
             </LaboratoryDirectorOnly>
+            {labelActions}
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-center px-2">
             {message ? (

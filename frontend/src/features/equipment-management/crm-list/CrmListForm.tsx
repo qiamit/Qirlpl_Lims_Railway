@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { cn } from '@/lib/utils'
 import { CrmUncertaintyDialog } from './CrmUncertaintyDialog'
 import { type CrmForm } from './types'
+import { crmExpiryInfo } from './crmExpiry'
 
 export function CrmListForm({
   form,
@@ -26,12 +27,15 @@ export function CrmListForm({
   canSave,
   saveLoading,
   onSave,
+  showUseFields = false,
 }: {
   form: CrmForm
   onChange: (next: CrmForm) => void
   canSave: boolean
   saveLoading: boolean
   onSave: () => void
+  /** Opened-on / storage / stock fields (ISO 17025 6.4 / 6.5); only once 20261031100000 is applied. */
+  showUseFields?: boolean
 }) {
   const [clientOptions, setClientOptions] = useState<FilterComboboxOption[]>([])
   const [makeOpen, setMakeOpen] = useState(false)
@@ -207,6 +211,94 @@ export function CrmListForm({
           />
         </div>
       </div>
+
+      {showUseFields ? (
+        <fieldset className="space-y-3 border border-stone-400 p-3">
+          <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-stone-600">
+            Use, storage &amp; stock (ISO/IEC 17025 6.4 / 6.5)
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="crm-opened-on">Opened On</Label>
+              <Input
+                id="crm-opened-on"
+                type="date"
+                value={form.openedOn}
+                onChange={(e) => onChange({ ...form, openedOn: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="crm-open-days">Validity After Opening (days)</Label>
+              <Input
+                id="crm-open-days"
+                inputMode="numeric"
+                value={form.postOpeningValidityDays}
+                onChange={(e) =>
+                  onChange({ ...form, postOpeningValidityDays: e.target.value.replace(/[^0-9]/g, '') })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Expires On (effective)</Label>
+              {(() => {
+                const info = crmExpiryInfo({
+                  valid_upto: form.validUpto,
+                  opened_on: form.openedOn,
+                  post_opening_validity_days: form.postOpeningValidityDays,
+                })
+                return (
+                  <p
+                    className={cn(
+                      'flex h-8 items-center border border-stone-300 bg-stone-100 px-2 text-sm',
+                      info.status === 'expired' && 'text-red-700',
+                      info.status === 'expiring' && 'text-amber-800',
+                    )}
+                  >
+                    {info.effectiveExpiry ?? '—'}
+                    {info.status === 'expired' ? ' (expired)' : info.status === 'expiring' ? ` (${info.daysLeft} d left)` : ''}
+                  </p>
+                )
+              })()}
+            </div>
+            <div className="space-y-2 sm:col-span-3">
+              <Label htmlFor="crm-storage">Storage Conditions</Label>
+              <Input
+                id="crm-storage"
+                placeholder="e.g. 2 – 8 °C, dark, desiccator"
+                value={form.storageConditions}
+                onChange={(e) => onChange({ ...form, storageConditions: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="crm-stock">Stock Quantity</Label>
+              <Input
+                id="crm-stock"
+                inputMode="decimal"
+                value={form.stockQuantity}
+                onChange={(e) => onChange({ ...form, stockQuantity: e.target.value.replace(/[^0-9.]/g, '') })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="crm-stock-unit">Stock Unit</Label>
+              <Input
+                id="crm-stock-unit"
+                placeholder="g, mL, bottle…"
+                value={form.stockUnit}
+                onChange={(e) => onChange({ ...form, stockUnit: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="crm-reorder">Reorder Level</Label>
+              <Input
+                id="crm-reorder"
+                inputMode="decimal"
+                value={form.reorderLevel}
+                onChange={(e) => onChange({ ...form, reorderLevel: e.target.value.replace(/[^0-9.]/g, '') })}
+              />
+            </div>
+          </div>
+        </fieldset>
+      ) : null}
 
       <div className="space-y-2">
         <Label>Uncertainty</Label>

@@ -1,4 +1,4 @@
-import { Copy, Pencil } from 'lucide-react'
+import { Copy, Pencil, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { limsPanelClass } from '@/lib/limsThemeUi'
@@ -31,6 +31,8 @@ export function ComplaintsTable({
   onToggleAll,
   onEdit,
   onCopy,
+  ncIdsById,
+  onRaiseNc,
 }: {
   rows: ComplaintRow[]
   loading: boolean
@@ -41,6 +43,10 @@ export function ComplaintsTable({
   onToggleAll: (checked: boolean) => void
   onEdit: (row: ComplaintRow) => void
   onCopy: (row: ComplaintRow) => void
+  /** NC numbers of linked NC records, by nc_work_records.id. */
+  ncIdsById?: Record<string, string>
+  /** Shown only when complaints can be linked to an NC (migration 20261029100300). */
+  onRaiseNc?: (row: ComplaintRow) => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -133,6 +139,11 @@ export function ComplaintsTable({
                       >
                         {r.status}
                       </span>
+                      {r.nc_record_id ? (
+                        <p className={cn(metaLineClass, 'mt-1')} title="Nonconforming work raised from this complaint">
+                          NC {ncIdsById?.[r.nc_record_id] ?? 'linked'}
+                        </p>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="inline-flex gap-0.5">
@@ -156,6 +167,19 @@ export function ComplaintsTable({
                         >
                           <Copy size={16} />
                         </Button>
+                        {onRaiseNc && 'nc_record_id' in r && !r.nc_record_id ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className={actionBtnClass}
+                            aria-label={`Raise NC for ${r.complaint_id}`}
+                            title="Raise nonconforming work (NC) for this complaint"
+                            onClick={() => onRaiseNc(r)}
+                          >
+                            <TriangleAlert size={16} />
+                          </Button>
+                        ) : null}
                       </div>
                     </TableCell>
                   </TableRow>

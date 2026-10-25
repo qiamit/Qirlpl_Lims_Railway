@@ -283,8 +283,8 @@ export function QuotationTemplatesDialog({
 
         <div className="relative shrink-0 overflow-hidden border-t border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-2 py-1 text-white sm:px-3">
           <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
-          <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5">
-            <div className="flex min-w-0 flex-nowrap items-center gap-1">
+          <div className="relative flex min-w-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 md:flex-nowrap">
+            <div className="flex min-w-0 flex-wrap items-center gap-1 md:flex-nowrap">
               <Button
                 type="button"
                 variant="outline"
@@ -616,7 +616,7 @@ export function QuotationTemplatesDialog({
           </div>
           <div className="relative shrink-0 overflow-hidden border-t border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-3 py-2 text-white">
             <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
-            <div className="relative flex items-center justify-end gap-2">
+            <div className="relative flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
                 size="sm"

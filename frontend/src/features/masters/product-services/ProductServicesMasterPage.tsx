@@ -3,8 +3,10 @@ import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { checkScopeMethod, useScopeVerificationStatus } from '@/features/method-validation/useScopeVerificationStatus'
 import { ProductServicesForm } from './ProductServicesForm'
 import { ProductServicesHeaderBar } from './ProductServicesHeaderBar'
 import { ProductServicesTable } from './ProductServicesTable'
@@ -97,8 +99,9 @@ function parseCsv(text: string) {
   return rows
 }
 
-function nextSNo(list: NablScopeRow[]) {
-  const max = list.map((r) => r.s_no).reduce((a, b) => Math.max(a, b), 0)
+/** `deletedSNos`: S.No. of deleted rows (never reused). */
+function nextSNo(list: NablScopeRow[], deletedSNos: string[] = []) {
+  const max = [...list.map((r) => r.s_no), ...deletedSNos.map((v) => Number(v) || 0)].reduce((a, b) => Math.max(a, b), 0)
   return max + 1
 }
 
@@ -111,6 +114,7 @@ export default function ProductServicesMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<NablScopeRow[]>([])
+  const deletedSNos = useDeletedKeys('nabl_scope', 's_no', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -162,10 +166,12 @@ export default function ProductServicesMasterPage() {
     void loadItems()
   }, [])
 
+  const methodVerification = useScopeVerificationStatus(rows)
+
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...emptyNablScopeForm(), sNo: String(nextSNo(rows)) })
+    setForm({ ...emptyNablScopeForm(), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -196,7 +202,7 @@ export default function ProductServicesMasterPage() {
   const handleCopy = (row: NablScopeRow) => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows)) })
+    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -249,7 +255,17 @@ export default function ProductServicesMasterPage() {
           if (error) throw error
         }
 
-        setSaveMessage('Saved successfully.')
+        // ISO/IEC 17025 7.2.1.5 / 7.2.2 soft gate: warn, never block.
+        let methodWarning: string | null = null
+        if (payload.scope_status === 'Accredited') {
+          try {
+            const chk = await checkScopeMethod('testing', payload.test_method_specification, payload.component_parameter)
+            if (chk && !chk.covered) methodWarning = chk.message
+          } catch {
+            methodWarning = null
+          }
+        }
+        setSaveMessage(methodWarning ? `Saved. Warning: ${methodWarning}` : 'Saved successfully.')
         setShowForm(false)
         setEditingId(null)
         await loadItems()
@@ -480,7 +496,7 @@ export default function ProductServicesMasterPage() {
           }
 
           return {
-            s_no: Number(get('s_no')) || nextSNo(rows),
+            s_no: Number(get('s_no')) || nextSNo(rows, deletedSNos),
             discipline_group: get('discipline_group') || '',
             materials_products: get('materials_products') || '',
             component_parameter: get('component_parameter') || '',
@@ -582,6 +598,7 @@ export default function ProductServicesMasterPage() {
       </Dialog>
 
       <ProductServicesTable
+        verificationByScopeId={methodVerification.byScopeId}
         rows={pagedRows}
         loading={listLoading}
         error={listError}

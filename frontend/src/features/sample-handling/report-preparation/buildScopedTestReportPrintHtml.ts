@@ -2,6 +2,7 @@ import type { TestReportCoverDetails } from './fetchTestReportCoverDetails'
 import { groupReportRowsBySectionCode, type ReportResultRow } from './reportResultRows'
 import { PART_D_HEADING } from './TestReportRemarksSection'
 import { formatPartDRemarksLine1, splitPartDRemarks } from './testReportPartDRemarks'
+import { isLegacyConformityRemark } from './evaluateResultConformity'
 import {
   formatTestReportEndNotesText,
   TEST_REPORT_END_MARKER,
@@ -28,6 +29,16 @@ import {
 } from './partCReportColumns'
 import { waitForPrintDocumentReady } from './waitForPrintDocumentReady'
 import { digitalSignatureStampFields } from './digitalSignatureStamp'
+import {
+  formatReportEnvironmentLine,
+  type ReportEnvironmentLine,
+} from '@/features/environment/resultEnvironmentSnapshot'
+import { OPINIONS_HEADING, type ReportOpinions } from './reportOpinions'
+import {
+  buildSamplingInformationHtml,
+  type ReportSamplingInfo,
+} from '@/features/sampling/samplingReportBlock'
+import { formatDate } from '@/lib/utils'
 
 function escapeHtml(s: string) {
   return s
@@ -228,12 +239,56 @@ function partCHeaderCellHtml(col: { key: PartCReportColumnKey; label: string }):
   return `<th>${escapeHtml(col.label)}</th>`
 }
 
+/**
+ * "Environmental conditions during testing" (ISO 17025 7.8.3.1 a), one line per
+ * lab area. Empty string when no result carries conditions.
+ */
+function buildEnvironmentConditionsHtml(lines: ReportEnvironmentLine[] | null | undefined): string {
+  if (!lines || lines.length === 0) return ''
+  const body = lines.map((line) => escapeHtml(formatReportEnvironmentLine(line))).join('<br/>')
+  return `
+      <p class="end-notes-body part-c-environment-line" style="text-align:left;margin:0 0 6px;"><strong>Environmental conditions during testing:</strong>${lines.length > 1 ? '<br/>' : ' '}${body}</p>`
+}
+
+/**
+ * "Opinions and interpretations" (ISO 17025 7.8.7), clearly marked as such, with
+ * the basis and who gave them. Empty string when there are none.
+ */
+function buildOpinionsHtml(opinions: ReportOpinions | null | undefined): string {
+  if (!opinions || (!opinions.text.trim() && !opinions.basis.trim())) return ''
+  const p = (inner: string) =>
+    `<p class="end-notes-body part-c-opinions-line" style="text-align:left;margin:0 0 3px;">${inner}</p>`
+  const lines = [p(`<strong>${escapeHtml(OPINIONS_HEADING)}</strong>`)]
+  if (opinions.text.trim()) lines.push(p(escapeHtml(opinions.text.trim()).replace(/\n/g, '<br/>')))
+  if (opinions.basis.trim()) {
+    lines.push(p(`<strong>Basis:</strong> ${escapeHtml(opinions.basis.trim()).replace(/\n/g, '<br/>')}`))
+  }
+  const by = [opinions.byName?.trim(), opinions.at ? formatDate(opinions.at) : ''].filter(Boolean).join(', ')
+  if (by) lines.push(p(`Given by: ${escapeHtml(by)}`))
+  return `
+      <div class="part-c-opinions" style="margin:0 0 6px;">${lines.join('')}</div>`
+}
+
 function buildPartCResultsHtml(
   rows: ReportResultRow[],
   columns: PartCReportColumnVisibility = DEFAULT_PART_C_REPORT_COLUMNS,
-  options?: { showEndNotes?: boolean; showSectionRows?: boolean },
+  options?: {
+    showEndNotes?: boolean
+    showSectionRows?: boolean
+    decisionRuleStatement?: string | null
+    environmentConditions?: ReportEnvironmentLine[] | null
+    opinions?: ReportOpinions | null
+    samplingInformation?: ReportSamplingInfo | null
+  },
 ): { tableHtml: string; endNotesBlock: string } {
   const showEndNotes = options?.showEndNotes !== false
+  const decisionRuleStatement = options?.decisionRuleStatement?.trim() || ''
+  const environmentHtml = buildEnvironmentConditionsHtml(options?.environmentConditions)
+  // Opinions (7.8.7) print before the conditions, inside the same end-notes box.
+  const opinionsHtml = buildOpinionsHtml(options?.opinions)
+  // Sampling information (7.8.5) prints first; empty when the sample has none.
+  const samplingHtml = buildSamplingInformationHtml(options?.samplingInformation)
+  const preNotesHtml = samplingHtml + opinionsHtml + environmentHtml
   const showSectionRows = options?.showSectionRows !== false
   const visibleCols = visiblePartCReportColumns(columns)
   const colCount = Math.max(visibleCols.length, 1)
@@ -277,13 +332,25 @@ function buildPartCResultsHtml(
     <tbody>${rowsHtml}</tbody>
   </table>`
 
+  // ISO 17025 7.8.6: the decision rule statement prints even when the end notes are hidden.
+  // ISO 17025 7.8.3.1 a): so do the environmental conditions. They sit inside the
+  // same end-notes box (the paginator moves that box as one block).
   const endNotesBlock = showEndNotes
     ? `
-    <div class="part-c-end-notes">
+    <div class="part-c-end-notes">${preNotesHtml}
       <p class="end-marker">${escapeHtml(TEST_REPORT_END_MARKER)}</p>
-      <p class="end-notes-body">${escapeHtml(formatTestReportEndNotesText())}</p>
+      <p class="end-notes-body">${escapeHtml(formatTestReportEndNotesText(decisionRuleStatement))}</p>
     </div>`
-    : ''
+    : decisionRuleStatement
+      ? `
+    <div class="part-c-end-notes part-c-decision-rule">${preNotesHtml}
+      <p class="end-notes-body">${escapeHtml(decisionRuleStatement)}</p>
+    </div>`
+      : preNotesHtml
+        ? `
+    <div class="part-c-end-notes ${environmentHtml ? 'part-c-environment' : 'part-c-opinions-only'}">${preNotesHtml}
+    </div>`
+        : ''
 
   return { tableHtml, endNotesBlock }
 }
@@ -292,10 +359,18 @@ function buildPartCPrintHtml(
   rows: ReportResultRow[],
   columns: PartCReportColumnVisibility = DEFAULT_PART_C_REPORT_COLUMNS,
   printSettings?: TestReportPrintSettings,
+  decisionRuleStatement?: string | null,
+  environmentConditions?: ReportEnvironmentLine[] | null,
+  opinions?: ReportOpinions | null,
+  samplingInformation?: ReportSamplingInfo | null,
 ): string {
   const { tableHtml, endNotesBlock } = buildPartCResultsHtml(rows, columns, {
     showEndNotes: printSettings?.showPartCEndNotes !== false,
     showSectionRows: printSettings?.showPartCSectionRows !== false,
+    decisionRuleStatement,
+    environmentConditions,
+    opinions,
+    samplingInformation,
   })
   return `<section class="report-part part-c">
   ${tableHtml}
@@ -303,9 +378,9 @@ function buildPartCPrintHtml(
 </section>`
 }
 
-function buildPartDPrintHtml(notes: string, isLabel: string): string {
-  const { line1, line2 } = splitPartDRemarks(notes, isLabel)
-  const line1Text = line1 || formatPartDRemarksLine1(isLabel)
+function buildPartDPrintHtml(notes: string, isLabel: string, legacyWording: boolean): string {
+  const { line1, line2 } = splitPartDRemarks(notes, isLabel, legacyWording)
+  const line1Text = line1 || formatPartDRemarksLine1(isLabel, legacyWording)
   const line2Text = line2.trim()
   const line2Html = line2Text
     ? escapeHtml(line2Text).replace(/\n/g, '<br/>')
@@ -408,6 +483,14 @@ export function buildScopedTestReportPrintHtml(opts: {
   printSettings?: TestReportPrintSettings
   /** ISO timestamp used on digital signature stamps (Report Issue Date). */
   signatureIssuedAt?: string | null
+  /** Decision rule statement from the SRF (ISO 17025 7.8.6); printed in the Part C end notes. */
+  decisionRuleStatement?: string | null
+  /** Conditions during testing per lab area (ISO 17025 7.8.3.1 a); printed in Part C when present. */
+  environmentConditions?: ReportEnvironmentLine[] | null
+  /** Opinions and interpretations (ISO 17025 7.8.7); printed in Part C when present. */
+  opinions?: ReportOpinions | null
+  /** Sampling information (ISO 17025 7.8.5); printed in Part C when present. */
+  samplingInformation?: ReportSamplingInfo | null
 }): string {
   const printSettings = opts.printSettings ?? DEFAULT_TEST_REPORT_PRINT_SETTINGS
   const signatureIssuedAt =
@@ -467,8 +550,17 @@ export function buildScopedTestReportPrintHtml(opts: {
     opts.rows,
     partCColumnsForScope(printSettings.partCColumns, opts.scope),
     printSettings,
+    opts.decisionRuleStatement,
+    opts.environmentConditions,
+    opts.opinions,
+    opts.samplingInformation,
   )
-  const partDHtml = buildPartDPrintHtml(opts.notes, isLabel)
+  // Issued with the old remark wording ("Confirm"): Part D line 1 as it was printed then.
+  const partDHtml = buildPartDPrintHtml(
+    opts.notes,
+    isLabel,
+    opts.rows.some((r) => isLegacyConformityRemark(r.remark)),
+  )
   const partAWithSignatures = withSignaturesAfterPart(
     partAHtml,
     'part_a',

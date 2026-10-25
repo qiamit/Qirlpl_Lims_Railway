@@ -157,7 +157,7 @@ export function FeedbackFormFields({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="fbk-service">Related Service / Activity</Label>
               <Input
@@ -179,6 +179,25 @@ export function FeedbackFormFields({
                   {FEEDBACK_STATUSES.map((s) => (
                     <SelectItem key={s} value={s}>
                       {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Satisfaction (1 – 5)</Label>
+              <Select
+                value={form.satisfactionRating || 'none'}
+                onValueChange={(v) => onChange({ ...form, satisfactionRating: v === 'none' ? '' : v })}
+              >
+                <SelectTrigger aria-label="Customer satisfaction rating">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not rated</SelectItem>
+                  {['5', '4', '3', '2', '1'].map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r} — {['', 'Very dissatisfied', 'Dissatisfied', 'Neutral', 'Satisfied', 'Very satisfied'][Number(r)]}
                     </SelectItem>
                   ))}
                 </SelectContent>

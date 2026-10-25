@@ -12,9 +12,11 @@ import { cn } from '@/lib/utils'
 import { type ReportScopeKind, REPORT_SCOPE_SUFFIX } from './reportScope'
 import { getApplicableReportScopes, filterReportRowsByScope, type ReportResultRow } from './reportResultRows'
 import { TestReportResultsSection } from './TestReportResultsSection'
+import type { DecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { TestReportCoverDetailsGrid } from './TestReportCoverDetailsGrid'
 import { TestReportSupplementaryGrid } from './TestReportSupplementaryGrid'
 import { TestReportRemarksSection } from './TestReportRemarksSection'
+import { TestReportOpinionsSection } from './TestReportOpinionsSection'
 import { formatSectionReportLine, type TestReportCoverDetails } from './fetchTestReportCoverDetails'
 import type { TestReportPartBDetails } from './testReportPartB'
 import type { LetterheadTemplateOptions, ReportPrepLetterheadsByScope } from './reportPrepLetterhead'
@@ -65,6 +67,7 @@ export function TestReportPrepareDialog({
   onSectionCodeUpdated,
   specifiedRequirementEditable = false,
   onSpecifiedRequirementUpdated,
+  decisionRule = null,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -105,6 +108,8 @@ export function TestReportPrepareDialog({
   onSectionCodeUpdated?: (oldCode: string, newCode: string) => void
   specifiedRequirementEditable?: boolean
   onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
+  /** Decision rule agreed on the SRF (ISO 17025 7.8.6). */
+  decisionRule?: DecisionRule | null
 }) {
   const applicableScopes = getApplicableReportScopes(resultRows)
   const [activeReportScope, setActiveReportScope] = useState<ReportScopeKind>('nabl')
@@ -217,6 +222,13 @@ export function TestReportPrepareDialog({
                 onSectionCodeUpdated={onSectionCodeUpdated}
                 specifiedRequirementEditable={specifiedRequirementEditable}
                 onSpecifiedRequirementUpdated={onSpecifiedRequirementUpdated}
+                decisionRule={decisionRule}
+              />
+
+              <TestReportOpinionsSection
+                sampleId={sampleId ?? active?.id ?? null}
+                srfNumber={active?.srfNumber ?? null}
+                disabled={saveLoading || issueLoading}
               />
 
               <TestReportRemarksSection

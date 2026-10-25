@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabaseClient'
+import { sanitizeTemplateJson } from '@/lib/sanitizeHtml'
 import { LAB_SETTINGS_SINGLETON_ID, resolveLabSettingsRowId } from './labSettingsDb'
+import { saveLabTemplateSetting } from './labSettingsRpc'
 import {
   DEFAULT_LAB_PRINT_SETTINGS,
   DEFAULT_SRF_PRINT_SETTINGS,
@@ -76,7 +78,7 @@ async function fetchPrintSettingsRaw(): Promise<unknown | null> {
 
   const raw = data?.print_settings
   if (raw != null && typeof raw === 'object' && hasStoredPrintSettings(raw)) {
-    return raw
+    return sanitizeTemplateJson(raw)
   }
 
   return null
@@ -139,8 +141,22 @@ export async function fetchSrfPrintSettings(): Promise<SrfPrintSettings> {
 
 export async function saveLabPrintSettings(settings: LabPrintSettingsDocument): Promise<void> {
   await requireAuthSession()
-  const rowId = await resolveLabSettingsRowId(supabase)
   const json = labPrintSettingsToJson(settings)
+  const savedRaw = await saveLabTemplateSetting<unknown>('print_settings', json, (clean) =>
+    saveLabPrintSettingsDirect(clean as LabPrintSettingsDocument),
+  )
+
+  if (savedRaw == null || typeof savedRaw !== 'object') {
+    throw new Error('Print settings were not saved. Check your permissions and try again.')
+  }
+
+  const saved = parseLabPrintSettings(savedRaw)
+  writeTestReportPrintCache(saved.testReport)
+}
+
+/** Old direct write, used only while save_report_templates is not on the database. */
+async function saveLabPrintSettingsDirect(json: LabPrintSettingsDocument): Promise<unknown> {
+  const rowId = await resolveLabSettingsRowId(supabase)
 
   const { data: existing, error: existsError } = await supabase
     .from('lab_settings')
@@ -186,12 +202,7 @@ export async function saveLabPrintSettings(settings: LabPrintSettingsDocument): 
     savedRaw = data?.print_settings
   }
 
-  if (savedRaw == null || typeof savedRaw !== 'object') {
-    throw new Error('Print settings were not saved. Check your permissions and try again.')
-  }
-
-  const saved = parseLabPrintSettings(savedRaw)
-  writeTestReportPrintCache(saved.testReport)
+  return savedRaw
 }
 
 export async function saveTestReportPrintSettings(

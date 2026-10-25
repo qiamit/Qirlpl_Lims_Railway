@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsDeleteBtnClass } from '@/lib/limsThemeUi'
 import { ChevronLeft, ChevronRight, Download, FileUp, Printer, Trash2 } from 'lucide-react'
@@ -20,6 +21,7 @@ export function EquipmentFooterBar({
   jumpTo,
   onJumpToChange,
   onJumpToGo,
+  labelActions,
 }: {
   message: string | null
   loading: boolean
@@ -35,6 +37,8 @@ export function EquipmentFooterBar({
   jumpTo: string
   onJumpToChange: (value: string) => void
   onJumpToGo: () => void
+  /** Status label buttons (6.4.8), shown to every user. */
+  labelActions?: ReactNode
 }) {
   const selectionDisabled = selectedCount === 0
 
@@ -60,6 +64,7 @@ export function EquipmentFooterBar({
             Delete Selected
           </Button>
           </LaboratoryDirectorOnly>
+          {labelActions}
         </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end md:gap-3">
@@ -71,7 +76,7 @@ export function EquipmentFooterBar({
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
 
             <div className="flex items-center gap-2">

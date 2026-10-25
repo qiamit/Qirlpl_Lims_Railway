@@ -53,6 +53,8 @@ export type ComplaintRow = {
   reviewer_not_involved: boolean
   status: ComplaintStatus
   created_at?: string
+  /** NC work record raised from this complaint (migration 20261029100300). */
+  nc_record_id?: string | null
 }
 
 export type ComplaintForm = {
@@ -161,9 +163,10 @@ export function formToPayload(form: ComplaintForm) {
   }
 }
 
-export function nextComplaintId(rows: ComplaintRow[]): string {
+/** `deletedIds`: complaint IDs of deleted records (never reused). */
+export function nextComplaintId(rows: ComplaintRow[], deletedIds: string[] = []): string {
   return nextPrefixedId(
-    rows.map((r) => r.complaint_id),
+    [...rows.map((r) => r.complaint_id), ...deletedIds],
     'CMP',
   )
 }

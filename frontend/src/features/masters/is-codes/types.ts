@@ -11,6 +11,11 @@ export type IsCodeRow = {
   testing_charges: number | null
   remarks: string | null
   created_at?: string
+  /** ISO/IEC 17025 7.2.1.4 (migration 20261027100100_method_validation.sql). */
+  standard_status?: string | null
+  superseded_by?: string | null
+  last_reviewed_on?: string | null
+  next_review_due?: string | null
 }
 
 export type IsCodeFileRow = {
@@ -31,6 +36,10 @@ export type IsCodeForm = {
   testingCharges: string
   remarks: string
   files: File[]
+  standardStatus: string
+  supersededBy: string
+  lastReviewedOn: string
+  nextReviewDue: string
 }
 
 export const emptyIsCodeForm = (): IsCodeForm => ({
@@ -43,6 +52,18 @@ export const emptyIsCodeForm = (): IsCodeForm => ({
   testingCharges: '',
   remarks: '',
   files: [],
+  standardStatus: 'current',
+  supersededBy: '',
+  lastReviewedOn: '',
+  nextReviewDue: '',
+})
+
+/** Edition review fields of a saved row, for the form (7.2.1.4). */
+export const isCodeReviewFormFields = (row: IsCodeRow) => ({
+  standardStatus: row.standard_status || 'current',
+  supersededBy: row.superseded_by ?? '',
+  lastReviewedOn: (row.last_reviewed_on ?? '').slice(0, 10),
+  nextReviewDue: (row.next_review_due ?? '').slice(0, 10),
 })
 
 export const isValidYear4 = (value: string) => {

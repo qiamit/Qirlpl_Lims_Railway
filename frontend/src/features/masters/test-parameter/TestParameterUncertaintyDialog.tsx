@@ -163,7 +163,7 @@ function TypeAUncertaintySection({
       </p>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-        <div className="min-w-0 flex-1 overflow-hidden rounded-none border-2 border-stone-500">
+        <div className="min-w-0 flex-1 overflow-x-auto rounded-none border-2 border-stone-500">
           <table className="w-full table-auto border-collapse text-xs">
             <thead className="bg-stone-800">
               <tr>

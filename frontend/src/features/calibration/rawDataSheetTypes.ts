@@ -7,6 +7,8 @@ import {
   masterPointsFormulaRefValues,
   type MasterFormulaRefSource,
 } from './masterEquipmentFormulaRefs'
+import { is2RoundFixed, is2RoundToInterval } from '@/lib/is2Rounding'
+import { evaluateSafeExpression } from '@/lib/safeExpression'
 
 export type RawDataColumnType = 'text' | 'number' | 'formula'
 
@@ -324,6 +326,60 @@ export type RawDataSheetPayload = {
   entryBy?: RawDataSheetActor
   /** Who reviewed Raw Data (Authorized Signatory on certificate). */
   reviewedBy?: RawDataSheetActor
+  /** Expanded U per point from the MU sheet; the certificate reports these. */
+  muResults?: RawDataMuResults
+}
+
+/**
+ * Measurement uncertainty saved from Uncertainty Step by Step ("Use U on the
+ * certificate"), one entry per raw data row. The certificate's reported U
+ * comes from here (or an expanded-U column), never from a master's own
+ * certificate uncertainty (OQ-02 staging run, 23 Oct 2026).
+ */
+export type RawDataMuResults = {
+  coverageFactorK: number
+  label: string
+  savedAt: string
+  rows: Array<{ rowId: string; expanded: string; combined: string }>
+}
+
+export function parseRawDataMuResults(raw: unknown): RawDataMuResults | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const o = raw as Record<string, unknown>
+  const rows = (Array.isArray(o.rows) ? o.rows : [])
+    .map((r) => {
+      const x = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>
+      return {
+        rowId: String(x.rowId ?? '').trim(),
+        expanded: String(x.expanded ?? '').trim(),
+        combined: String(x.combined ?? '').trim(),
+      }
+    })
+    .filter((r) => r.rowId && r.expanded)
+  if (rows.length === 0) return undefined
+  const k = Number(o.coverageFactorK)
+  return {
+    coverageFactorK: Number.isFinite(k) && k > 0 ? k : 2,
+    label: String(o.label ?? '').trim() || 'Expanded U',
+    savedAt: String(o.savedAt ?? '').trim(),
+    rows,
+  }
+}
+
+/** Largest expanded U over the rows still on the sheet, or null when none is saved. */
+export function maxSavedExpandedUncertainty(
+  mu: RawDataMuResults | null | undefined,
+  rowIds?: ReadonlyArray<string>,
+): number | null {
+  if (!mu) return null
+  const keep = rowIds ? new Set(rowIds) : null
+  let max: number | null = null
+  for (const r of mu.rows) {
+    if (keep && !keep.has(r.rowId)) continue
+    const n = Number(String(r.expanded).replace(/^[±+]/, '').trim().split(/\s+/)[0])
+    if (Number.isFinite(n) && (max == null || Math.abs(n) > max)) max = Math.abs(n)
+  }
+  return max
 }
 
 export type RawDataTemperatureCorrectionConfig = {
@@ -1302,6 +1358,7 @@ export function parseRawDataSheetPayload(raw: unknown): RawDataSheetPayload | nu
     ),
     entryBy: parseRawDataSheetActor(obj.entryBy ?? obj.entry_by),
     reviewedBy: parseRawDataSheetActor(obj.reviewedBy ?? obj.reviewed_by),
+    muResults: parseRawDataMuResults(obj.muResults ?? obj.mu_results),
   }
 }
 
@@ -1719,6 +1776,8 @@ export function extractExpressionSourceKeys(
 function validateExpressionBody(body: string): string | null {
   // Strip quoted text literals before checking tokens
   let rest = body.replace(/"(?:\\.|[^"\\])*"/g, ' ')
+  const structureError = expressionStructureError(rest)
+  if (structureError) return structureError
   // After refs replaced with numbers, only math + allowed fn names + & should remain.
   rest = rest.replace(/\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, ' ')
   rest = rest.replace(/[+\-*/().,&<>=!\s]/g, ' ')
@@ -1728,6 +1787,28 @@ function validateExpressionBody(body: string): string | null {
       return `Unknown symbol "${tok}". Use names in [brackets], numbers, + − × ÷, & "text", or AVERAGE/SUM/MIN/MAX/MEDIAN/MODE/STDEV/VAR/ABS/SQRT.`
     }
   }
+  return null
+}
+
+/**
+ * Brackets must match, and a comma may only separate a function's arguments.
+ * Anywhere else the comma is JavaScript's comma operator, which silently keeps
+ * the last value: `=AVERAGE [A],[B],[C]` gave [C] instead of the average
+ * (OQ-02 staging run, 23 Oct 2026). Text literals are already blanked out.
+ */
+function expressionStructureError(body: string): string | null {
+  const calls: boolean[] = []
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i]
+    if (ch === '(') {
+      calls.push(/[A-Za-z_]\w*\s*$/.test(body.slice(0, i)))
+    } else if (ch === ')') {
+      if (calls.pop() === undefined) return 'Brackets ( ) do not match: a ")" has no "(".'
+    } else if (ch === ',' && !calls[calls.length - 1]) {
+      return 'A comma can only separate function arguments, e.g. AVERAGE([A],[B],[C]); check the brackets.'
+    }
+  }
+  if (calls.length > 0) return 'Brackets ( ) do not match: a "(" is not closed.'
   return null
 }
 
@@ -1805,7 +1886,11 @@ export function formatPlusMinusPairDisplay(value: string): string {
   return `${m[1]}±${m[2]}`
 }
 
-/** Round a formula result to the column's Decimals setting (numbers and numeric strings / ± pairs). */
+/**
+ * Round a formula result to the column's Decimals setting (numbers and numeric
+ * strings / ± pairs) by IS 2:1960: decimal (not binary) rounding, exact half to
+ * the even digit, declared decimals kept (lab decision 23 Oct 2026).
+ */
 export function formatFormulaOutput(result: number | string, decimals: number): string {
   const dp =
     Number.isFinite(decimals) && decimals >= 0 && decimals <= 12
@@ -1814,7 +1899,7 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
 
   if (typeof result === 'number') {
     if (!Number.isFinite(result)) return ''
-    return result.toFixed(dp)
+    return is2RoundFixed(result, dp)
   }
 
   const t = String(result ?? '').trim()
@@ -1824,7 +1909,7 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
     t,
   )
   if (pm) {
-    return `${Number(pm[1]).toFixed(dp)}±${Number(pm[2]).toFixed(dp)}`
+    return `${is2RoundFixed(pm[1]!, dp)}±${is2RoundFixed(pm[2]!, dp)}`
   }
 
   const withPm = formatPlusMinusPairDisplay(t)
@@ -1832,14 +1917,68 @@ export function formatFormulaOutput(result: number | string, decimals: number): 
 
   const asNum = Number(t)
   if (Number.isFinite(asNum) && /^-?\d/.test(t) && !/[^\d.eE+-]/.test(t)) {
-    return asNum.toFixed(dp)
+    return is2RoundFixed(t, dp) || is2RoundFixed(asNum, dp)
   }
 
   // Mixed text + numbers (e.g. `0.123456 °C`): round each numeric token.
   return t.replace(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, (m) => {
     const x = Number(m)
-    return Number.isFinite(x) ? x.toFixed(dp) : m
+    return Number.isFinite(x) ? is2RoundFixed(m, dp) || is2RoundFixed(x, dp) : m
   })
+}
+
+/** Decimal places in the shortest text of a finite number (1.25 → 2, 1e-7 → 7, 1200 → 0). */
+function decimalPlacesOf(x: number): number {
+  const m = /^-?\d+(?:\.(\d+))?(?:e([+-]\d+))?$/i.exec(String(x))
+  if (!m) return 0
+  return Math.max(0, (m[1]?.length ?? 0) - (m[2] ? Number(m[2]) : 0))
+}
+
+/**
+ * Decimal places of a least count / resolution: "0.01" → 2, "0.002 mm" → 3,
+ * "0.5 kN" → 1, "2" → 0. Multi-range text ("0.02 | 0.01") uses the first
+ * value above zero; null when there is none.
+ */
+export function leastCountDecimalPlaces(raw: string | null | undefined): number | null {
+  for (const segment of String(raw ?? '').split(/[|;]+/)) {
+    const m = /\d*\.?\d+(?:e[+-]?\d+)?/i.exec(segment)
+    const n = m ? Number(m[0]) : Number.NaN
+    if (Number.isFinite(n) && n > 0) return decimalPlacesOf(n)
+  }
+  return null
+}
+
+/**
+ * A reading typed in a raw data sheet, tidied when the field is left: padded
+ * to `minDecimals` (the least count's decimals), never rounded. Digits the
+ * engineer typed are the observation and are kept (ISO/IEC 17025 7.5.1):
+ * 50.01 stays 50.01 even when the sheet setting says 0 decimals.
+ */
+export function formatTypedReading(value: string, minDecimals: number): string {
+  const t = value.trim()
+  if (!t) return ''
+  const n = Number(t)
+  if (!Number.isFinite(n)) return value
+  const typed = /e/i.test(t) ? decimalPlacesOf(n) : (/\.(\d*)$/.exec(t)?.[1].length ?? 0)
+  return n.toFixed(Math.min(20, Math.max(0, minDecimals, typed)))
+}
+
+/** Text from the IS 2 helpers back to a number ("" — not a number — gives NaN). */
+function decimalTextToNumber(text: string): number {
+  return text ? Number(text) : Number.NaN
+}
+
+/**
+ * The value handed to the IS 2 helpers for rounding at `decimals` places
+ * (negative = tens, hundreds, …). The helpers read a number through its
+ * 12-significant-digit form, which strips binary noise (0.1 + 0.2 → 0.3); when
+ * the kept digits alone would need more than 11 significant digits that form
+ * would drop real digits, so the shortest exact text of the number is used.
+ */
+function roundingInput(x: number, decimals: number): number | string {
+  if (x === 0) return 0
+  const intDigits = Math.floor(Math.log10(Math.abs(x))) + 1
+  return intDigits + decimals > 11 ? String(x) : x
 }
 
 /** Evaluate a number-only math expression (no [column] refs). */
@@ -1952,10 +2091,20 @@ function runValidatedMathExpression(body: string): number | null {
     if (k < 1 || k > vals.length) throw new Error('incomplete')
     return vals[k - 1]!
   }
-  const roundFn = (x: number, digits?: number) => {
-    if (digits == null) return Math.round(x)
-    const f = 10 ** Math.round(digits)
-    return Math.round(x * f) / f
+  // ROUND / MROUND follow IS 2:1960 (lab decision, Amit, 23 Oct 2026): an
+  // exact half goes to the even digit, judged on the decimal digits (1.015 to
+  // 2 dp is 1.02, never the binary 1.01). See roundingInput for big numbers.
+  const roundFn = (value: number, digits?: number) => {
+    const x = Number(value) // a comparison gives true / false, read as 1 / 0
+    if (!Number.isFinite(x)) return x
+    const d = digits == null ? 0 : Math.round(digits)
+    if (!Number.isFinite(d)) return Number.NaN
+    if (decimalPlacesOf(x) <= d) return x
+    // The place rounded to as an interval: 2 → 0.01, 0 → 1, −2 → 100
+    // (negative digits round to tens, hundreds, …: ROUND(1250,-2) = 1200).
+    const places = Math.max(-400, Math.min(400, d))
+    const unit = places > 0 ? `0.${'0'.repeat(places - 1)}1` : `1${'0'.repeat(-places)}`
+    return decimalTextToNumber(is2RoundToInterval(roundingInput(x, places), unit))
   }
   const rms = (...nums: number[]) => {
     if (nums.length === 0) throw new Error('incomplete')
@@ -1987,9 +2136,21 @@ function runValidatedMathExpression(body: string): number | null {
     if (v == null) throw new Error('incomplete')
     return Math.sqrt(v) / avg
   }
-  const mround = (x: number, multiple: number) => {
-    if (multiple === 0) throw new Error('incomplete')
-    return Math.round(x / multiple) * multiple
+  // Nearest multiple by IS 2 (exactly half way → the even multiple):
+  // MROUND(12.5,5) = 10, MROUND(7.5,5) = 10. Rounded by magnitude with the
+  // sign of x, as before (no Excel #NUM! when x and multiple differ in sign).
+  const mround = (value: number, multipleValue: number) => {
+    if (multipleValue === 0) throw new Error('incomplete')
+    const x = Number(value)
+    const multiple = Number(multipleValue)
+    if (!Number.isFinite(x) || !Number.isFinite(multiple) || multiple === 0) {
+      return Math.round(x / multiple) * multiple
+    }
+    const step = Math.abs(multiple)
+    // A typed multiple (0.05, 0.5, 5) is read as written; a computed one that
+    // needs more than 12 significant digits keeps all of them.
+    const stepInput = Number(step.toPrecision(12)) === step ? step : String(step)
+    return decimalTextToNumber(is2RoundToInterval(roundingInput(x, decimalPlacesOf(step)), stepInput))
   }
   const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi)
   const xorFn = (...nums: number[]) => (nums.filter((n) => Boolean(n)).length % 2 === 1 ? 1 : 0)
@@ -2156,21 +2317,21 @@ function runValidatedMathExpression(body: string): number | null {
   }
   const safeNames = names.filter((n) => !(n in reservedAlias))
   const aliasNames = Object.keys(reservedAlias).filter((n) => n in impl)
-  const argNames = [
-    ...safeNames.map((n) => n.toUpperCase()),
-    ...safeNames,
-    ...aliasNames.map((n) => reservedAlias[n]!),
-  ]
-  const argValues = [
-    ...safeNames.map((n) => impl[n]!),
-    ...safeNames.map((n) => impl[n]!),
-    ...aliasNames.map((n) => impl[n]!),
-  ]
+  // Identifier bindings: UPPER and lower case names, plus `_if` / `_var` aliases.
+  const bindings: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+  for (const n of safeNames) bindings[n.toUpperCase()] = impl[n]!
+  for (const n of safeNames) bindings[n] = impl[n]!
+  for (const n of aliasNames) bindings[reservedAlias[n]!] = impl[n]!
 
   try {
-    // eslint-disable-next-line no-new-func -- tokens validated; only numbers + allowlisted fns
-    const fn = new Function(...argNames, `"use strict"; return (${safeBody});`)
-    const result = fn(...argValues)
+    // CSP-safe interpreter (no eval / new Function). Wrapping the body in
+    // parentheses (+ strict mode, ASI) mirrors the former
+    // `new Function(...names, '"use strict"; return (' + safeBody + ');')`.
+    const result = evaluateSafeExpression(`(${safeBody})`, {
+      bindings,
+      strict: true,
+      trailingStatements: true,
+    })
     return typeof result === 'number' && Number.isFinite(result) ? result : null
   } catch (err) {
     if (err instanceof Error && err.message === 'incomplete') return null
@@ -2394,6 +2555,64 @@ export function validateEnvParameterFormula(
   }
 }
 
+/**
+ * `[Old]` → `[New]` in one formula. The name inside the brackets matches like
+ * a column reference does (case and surrounding spaces ignored); the rest of
+ * the formula is left exactly as written.
+ */
+export function renameFormulaColumnRef(expr: string, oldLabel: string, newLabel: string): string {
+  const needle = oldLabel.trim().toLowerCase()
+  const next = newLabel.trim()
+  if (!needle || !next) return expr
+  return expr.replace(/\[([^\]]+)\]/g, (whole, ref: string) =>
+    ref.trim().toLowerCase() === needle ? `[${next}]` : whole,
+  )
+}
+
+/**
+ * A raw data template column was renamed from `oldLabel`: point every formula
+ * in the template (all tables) that meant that column at its new name, so a
+ * rename never leaves formulas naming a column that no longer exists.
+ * `[Old]` is rewritten only when it resolved to the renamed column; when the
+ * old name belongs to another column (the same label in another table, which
+ * a reference resolves to first) those formulas keep meaning that column.
+ */
+export function renameColumnRefsInTemplate(
+  template: RawDataSheetTemplate,
+  columnKey: string,
+  oldLabel: string,
+  newLabel: string,
+): RawDataSheetTemplate {
+  if (!oldLabel.trim() || !newLabel.trim()) return template
+  if (oldLabel.trim().toLowerCase() === newLabel.trim().toLowerCase()) return template
+  const before = allRawDataSheetColumns(template).map((c) =>
+    c.key === columnKey ? { ...c, label: oldLabel } : c,
+  )
+  if (resolveColumnRef(oldLabel, before)?.key !== columnKey) return template
+  // A new name already used by an earlier column would make `[New]` mean
+  // that column; leave the formulas for the editor to flag instead.
+  const after = allRawDataSheetColumns(template).map((c) =>
+    c.key === columnKey ? { ...c, label: newLabel } : c,
+  )
+  if (resolveColumnRef(newLabel, after)?.key !== columnKey) return template
+  const renameIn = (columns: RawDataSheetColumn[]) =>
+    columns.map((c) => {
+      const expr = c.formula?.expression
+      if (!c.formula || !expr) return c
+      const nextExpr = renameFormulaColumnRef(expr, oldLabel, newLabel)
+      return nextExpr === expr ? c : { ...c, formula: { ...c.formula, expression: nextExpr } }
+    })
+  return {
+    ...template,
+    columns: renameIn(template.columns),
+    ...(template.extraTables
+      ? {
+          extraTables: template.extraTables.map((t) => ({ ...t, columns: renameIn(t.columns) })),
+        }
+      : {}),
+  }
+}
+
 /** Validate expression structure (column refs + syntax) without row values. */
 export function validateColumnFormulaExpression(
   expr: string,
@@ -2578,7 +2797,7 @@ export const COLUMN_FORMULA_HELP_ROWS: {
     name: 'ROUND',
     syntax: 'ROUND(x[,digits])',
     example: '=ROUND([Error],3)',
-    use: 'Round to nearest (optional decimal places)',
+    use: 'Round to nearest (optional decimal places; exact half to the even digit, IS 2)',
   },
   {
     name: 'ROUNDUP / ROUNDDOWN',
@@ -2710,7 +2929,7 @@ export const COLUMN_FORMULA_HELP_ROWS: {
     name: 'MROUND',
     syntax: 'MROUND(x,multiple)',
     example: '=MROUND([Reading],0.5)',
-    use: 'Round to nearest multiple',
+    use: 'Round to nearest multiple (exactly half way: the even multiple, IS 2)',
   },
   {
     name: 'CLAMP',
@@ -2807,7 +3026,7 @@ function columnLabelForKey(
 
 function formatStepNumber(n: number, decimalPlaces: number): string {
   if (!Number.isFinite(n)) return String(n)
-  return n.toFixed(decimalPlaces)
+  return is2RoundFixed(n, decimalPlaces)
 }
 
 /** Calculation-step display values always use 2 decimal places. */

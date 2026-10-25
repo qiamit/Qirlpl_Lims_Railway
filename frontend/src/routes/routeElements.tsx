@@ -84,6 +84,41 @@ const NcWorkEvaluationActionsPage = lazy(() => import('@/features/nonconforming-
 const NcWorkCorrectiveActionPage = lazy(() => import('@/features/nonconforming-work/corrective-action/NcWorkCorrectiveActionPage'))
 const ListOfObjectivesPage = lazy(() => import('@/features/general-requirements/list-of-objectives/ListOfObjectivesPage'))
 const RiskAnalysisPage = lazy(() => import('@/features/general-requirements/risk-analysis/RiskAnalysisPage'))
+const ImpartialityRiskRegisterPage = lazy(() => import('@/features/general-requirements/impartiality/ImpartialityRiskRegisterPage'))
+const ConfidentialityRecordsPage = lazy(() => import('@/features/general-requirements/confidentiality/ConfidentialityRecordsPage'))
+const DeclarationsPage = lazy(() => import('@/features/personnel/declarations/DeclarationsPage'))
+const AuditTrailPage = lazy(() => import('@/features/audit-trail/AuditTrailPage'))
+const RecycleBinPage = lazy(() => import('@/features/recycle-bin/RecycleBinPage'))
+const AuditCoveragePage = lazy(() => import('@/features/audit-mrm/audit-coverage/AuditCoveragePage'))
+const OrganisationChartPage = lazy(() => import('@/features/general-requirements/organisation-chart/OrganisationChartPage'))
+const ModuleAccessEnforcementPage = lazy(() => import('@/features/settings/module-access-enforcement/ModuleAccessEnforcementPage'))
+const AuthorizationMatrixPage = lazy(() => import('@/features/personnel/competence/AuthorizationMatrixPage'))
+const EmployeeDossierPage = lazy(() => import('@/features/personnel/competence/EmployeeDossierPage'))
+const CompetenceRequirementsPage = lazy(() => import('@/features/personnel/competence/CompetenceRequirementsPage'))
+const CompetenceMonitoringPage = lazy(() => import('@/features/personnel/competence/CompetenceMonitoringPage'))
+const TrainingRecordsPage = lazy(() => import('@/features/personnel/competence/TrainingRecordsPage'))
+const RetentionSchedulePage = lazy(() => import('@/features/records-retention/RetentionSchedulePage'))
+const MyDocumentAcknowledgementsPage = lazy(() => import('@/features/management-docs/MyDocumentAcknowledgementsPage'))
+const DecisionRulesPage = lazy(() => import('@/features/masters/decision-rules/DecisionRulesPage'))
+const PtPlanPage = lazy(() => import('@/features/proficiency-testing/PtPlanPage'))
+const ControlChartsPage = lazy(() => import('@/features/quality/control-charts/ControlChartsPage'))
+const SamplingPlansPage = lazy(() => import('@/features/sampling/SamplingPlansPage'))
+const SamplingRecordsPage = lazy(() => import('@/features/sampling/SamplingRecordsPage'))
+const PtParticipationsPage = lazy(() => import('@/features/proficiency-testing/PtParticipationsPage'))
+const MethodVerificationsPage = lazy(() => import('@/features/method-validation/MethodVerificationsPage'))
+const ScopeVerificationStatusPage = lazy(() => import('@/features/method-validation/ScopeVerificationStatusPage'))
+const SoftwareChangesPage = lazy(() => import('@/features/lims-validation/SoftwareChangesPage'))
+const ApprovedSupplierListPage = lazy(() => import('@/features/externally-providers/approved-suppliers/ApprovedSupplierListPage'))
+const SupplierEvaluationsPage = lazy(() => import('@/features/externally-providers/evaluations/SupplierEvaluationsPage'))
+const ReceiptInspectionPage = lazy(() => import('@/features/externally-providers/receipt-inspection/ReceiptInspectionPage'))
+const SubcontractingRegisterPage = lazy(() => import('@/features/externally-providers/subcontracting/SubcontractingRegisterPage'))
+const ValidationRunsPage = lazy(() => import('@/features/lims-validation/ValidationRunsPage'))
+const ItIncidentsPage = lazy(() => import('@/features/lims-validation/ItIncidentsPage'))
+const BackupRestoreTestsPage = lazy(() => import('@/features/lims-validation/BackupRestoreTestsPage'))
+const LabAreasPage = lazy(() => import('@/features/environment/AreasPage'))
+const EnvironmentLogPage = lazy(() => import('@/features/environment/EnvironmentLogPage'))
+const AccessLogPage = lazy(() => import('@/features/environment/AccessLogPage'))
+const HousekeepingLogPage = lazy(() => import('@/features/environment/HousekeepingLogPage'))
 const ImprovementPage = lazy(() => import('@/features/general-requirements/improvement/ImprovementPage'))
 const ExternallySupplierListPage = lazy(() => import('@/features/externally-providers/supplier-list/ExternallySupplierListPage'))
 const SupplierEvaluationPage = lazy(() => import('@/features/externally-providers/supplier-evaluation/SupplierEvaluationPage'))
@@ -143,6 +178,14 @@ export function ModuleAccessRoute() {
   return (
     <RequireLaboratoryDirector>
       <ModuleAccessPage />
+    </RequireLaboratoryDirector>
+  )
+}
+
+export function ModuleAccessEnforcementRoute() {
+  return (
+    <RequireLaboratoryDirector>
+      <ModuleAccessEnforcementPage />
     </RequireLaboratoryDirector>
   )
 }
@@ -377,6 +420,142 @@ export function ListOfObjectivesRoute() {
 
 export function RiskAnalysisRoute() {
   return <RiskAnalysisPage />
+}
+
+export function ImpartialityRiskRegisterRoute() {
+  return <ImpartialityRiskRegisterPage />
+}
+
+export function ConfidentialityRecordsRoute() {
+  return <ConfidentialityRecordsPage />
+}
+
+export function DeclarationsRoute() {
+  return <DeclarationsPage />
+}
+
+export function AuditTrailRoute() {
+  return <AuditTrailPage />
+}
+
+export function RecycleBinRoute() {
+  return <RecycleBinPage />
+}
+
+export function AuditCoverageRoute() {
+  return <AuditCoveragePage />
+}
+
+export function OrganisationChartRoute() {
+  return <OrganisationChartPage />
+}
+
+export function AuthorizationMatrixRoute() {
+  return <AuthorizationMatrixPage />
+}
+
+export function EmployeeDossierRoute() {
+  return <EmployeeDossierPage />
+}
+
+export function CompetenceRequirementsRoute() {
+  return <CompetenceRequirementsPage />
+}
+
+export function CompetenceMonitoringRoute() {
+  return <CompetenceMonitoringPage />
+}
+
+export function TrainingRecordsRoute() {
+  return <TrainingRecordsPage />
+}
+
+export function RetentionScheduleRoute() {
+  return <RetentionSchedulePage />
+}
+
+export function MyDocumentAcknowledgementsRoute() {
+  return <MyDocumentAcknowledgementsPage />
+}
+
+export function DecisionRulesRoute() {
+  return <DecisionRulesPage />
+}
+
+export function PtPlanRoute() {
+  return <PtPlanPage />
+}
+
+export function ControlChartsRoute() {
+  return <ControlChartsPage />
+}
+
+export function SamplingPlansRoute() {
+  return <SamplingPlansPage />
+}
+
+export function SamplingRecordsRoute() {
+  return <SamplingRecordsPage />
+}
+
+export function PtParticipationsRoute() {
+  return <PtParticipationsPage />
+}
+
+export function MethodVerificationsRoute() {
+  return <MethodVerificationsPage />
+}
+
+export function ScopeVerificationStatusRoute() {
+  return <ScopeVerificationStatusPage />
+}
+
+export function SoftwareChangesRoute() {
+  return <SoftwareChangesPage />
+}
+
+export function ApprovedSupplierListRoute() {
+  return <ApprovedSupplierListPage />
+}
+
+export function SupplierEvaluationsRoute() {
+  return <SupplierEvaluationsPage />
+}
+
+export function ReceiptInspectionRoute() {
+  return <ReceiptInspectionPage />
+}
+
+export function SubcontractingRegisterRoute() {
+  return <SubcontractingRegisterPage />
+}
+
+export function ValidationRunsRoute() {
+  return <ValidationRunsPage />
+}
+
+export function ItIncidentsRoute() {
+  return <ItIncidentsPage />
+}
+
+export function BackupRestoreTestsRoute() {
+  return <BackupRestoreTestsPage />
+}
+
+export function LabAreasRoute() {
+  return <LabAreasPage />
+}
+
+export function EnvironmentLogRoute() {
+  return <EnvironmentLogPage />
+}
+
+export function AccessLogRoute() {
+  return <AccessLogPage />
+}
+
+export function HousekeepingLogRoute() {
+  return <HousekeepingLogPage />
 }
 
 export function ImprovementRoute() {

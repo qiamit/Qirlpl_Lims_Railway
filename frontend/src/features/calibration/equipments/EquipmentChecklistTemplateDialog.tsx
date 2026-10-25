@@ -112,7 +112,7 @@ export function EquipmentChecklistTemplateDialog({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
-          <div className="overflow-hidden rounded-none border-2 border-stone-700">
+          <div className="overflow-x-auto rounded-none border-2 border-stone-700">
             <table className={cn(limsTableClass, 'table-fixed')}>
               <colgroup>
                 <col className="w-10" />

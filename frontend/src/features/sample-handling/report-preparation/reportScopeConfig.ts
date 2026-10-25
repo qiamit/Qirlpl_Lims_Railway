@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabaseClient'
 import { LAB_SETTINGS_SINGLETON_ID, letterheadFromRow } from '@/features/settings/lab-settings/labSettingsDb'
+import { saveLabTemplateSetting } from '@/features/settings/lab-settings/labSettingsRpc'
 import {
-  DEFAULT_LETTERHEAD_TEMPLATE_NAMES,
   EMPTY_REPORT_SCOPE_TEMPLATES,
   LETTERHEAD_TEMPLATE_NAME_ALIASES,
   parseReportScopeTemplates,
@@ -120,6 +120,7 @@ async function loadLetterheadIndex(): Promise<LetterheadIndex> {
 async function resolveBinding(
   binding: ReportScopeTemplateBinding,
   index: LetterheadIndex,
+  sign = true,
 ): Promise<ResolvedScopeTemplate> {
   const omitHeader = isLetterheadNotApplicable(binding.headerName)
   const omitFooter = isLetterheadNotApplicable(binding.footerName)
@@ -142,11 +143,9 @@ async function resolveBinding(
       ? lookupLetterheadText(index.watermarkTexts, binding.watermarkName)
       : ''
 
-  const [headerUrl, footerUrl, watermarkUrl] = await Promise.all([
-    signedUrl(headerPath),
-    signedUrl(footerPath),
-    signedUrl(wmImagePath),
-  ])
+  const [headerUrl, footerUrl, watermarkUrl] = sign
+    ? await Promise.all([signedUrl(headerPath), signedUrl(footerPath), signedUrl(wmImagePath)])
+    : [headerPath, footerPath, wmImagePath]
 
   return {
     headerUrl,
@@ -177,10 +176,37 @@ export async function resolveNamedLetterheadTemplates(
   return { headerUrl: resolved.headerUrl, footerUrl: resolved.footerUrl }
 }
 
+/** Signed URL for a stored letterhead file path (http(s) URLs are returned as they are). */
+export async function signLetterheadFileUrl(path: string | null | undefined): Promise<string | null> {
+  return signedUrl(path)
+}
+
+/**
+ * Same as resolveReportScopeTemplate, but headerUrl / footerUrl / watermarkUrl
+ * hold the stored file paths instead of short-lived signed URLs (for the
+ * issued-report archive; sign with signLetterheadFileUrl when printing).
+ */
+export async function resolveReportScopeTemplateUnsigned(
+  scope: ReportScopeKind,
+  config?: ReportScopeTemplatesConfig,
+  bindingOverride?: Partial<ReportScopeTemplateBinding>,
+): Promise<ResolvedScopeTemplate> {
+  return resolveReportScopeTemplateImpl(scope, config, bindingOverride, false)
+}
+
 export async function resolveReportScopeTemplate(
   scope: ReportScopeKind,
   config?: ReportScopeTemplatesConfig,
   bindingOverride?: Partial<ReportScopeTemplateBinding>,
+): Promise<ResolvedScopeTemplate> {
+  return resolveReportScopeTemplateImpl(scope, config, bindingOverride, true)
+}
+
+async function resolveReportScopeTemplateImpl(
+  scope: ReportScopeKind,
+  config: ReportScopeTemplatesConfig | undefined,
+  bindingOverride: Partial<ReportScopeTemplateBinding> | undefined,
+  sign: boolean,
 ): Promise<ResolvedScopeTemplate> {
   const cfg = config ?? (await fetchReportScopeTemplatesConfig())
   const base = cfg[scope] ?? EMPTY_REPORT_SCOPE_TEMPLATES[scope]
@@ -194,16 +220,21 @@ export async function resolveReportScopeTemplate(
       : {}),
   }
   const index = await loadLetterheadIndex()
-  return resolveBinding(binding, index)
+  return resolveBinding(binding, index, sign)
 }
 
 export async function saveReportScopeTemplatesConfig(config: ReportScopeTemplatesConfig): Promise<void> {
-  const { error } = await supabase.from('lab_settings').upsert(
-    {
-      id: LAB_SETTINGS_SINGLETON_ID,
-      report_scope_templates: config,
-    },
-    { onConflict: 'id' },
-  )
-  if (error) throw error
+  // save_report_templates RPC (security plan S-16); the direct upsert is the
+  // fallback while that RPC is not on the database.
+  await saveLabTemplateSetting('report_scope_templates', config, async (clean) => {
+    const { error } = await supabase.from('lab_settings').upsert(
+      {
+        id: LAB_SETTINGS_SINGLETON_ID,
+        report_scope_templates: clean,
+      },
+      { onConflict: 'id' },
+    )
+    if (error) throw error
+    return clean
+  })
 }

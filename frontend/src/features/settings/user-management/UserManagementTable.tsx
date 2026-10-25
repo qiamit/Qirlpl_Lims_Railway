@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { DirectorResetPasswordButton } from '@/features/auth/DirectorResetPasswordButton'
 import type { UserAccount } from './types'
 
 const GRID_TABLE =
@@ -118,6 +119,14 @@ export function UserManagementTable(props: UserManagementTableProps) {
                   </TableCell>
 
                   <TableCell className="text-center align-middle">
+                    {/* Director-only; renders nothing for other roles or the caller's own row. */}
+                    <DirectorResetPasswordButton
+                      userId={user.id}
+                      userEmail={user.email}
+                      userName={user.name}
+                      label="Reset"
+                      className="mr-1 px-2 text-xs"
+                    />
                     <Button
                       type="button"
                       variant="ghost"

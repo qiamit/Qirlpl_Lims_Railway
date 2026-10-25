@@ -51,6 +51,42 @@ function formatMobileForSave(mobile: string, countryCode?: string): string {
   return trimmed
 }
 
+function isMissingFunctionError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  const text = String(error.message ?? '').toLowerCase()
+  return (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    text.includes('could not find the function') ||
+    (text.includes('function') && text.includes('does not exist'))
+  )
+}
+
+/** Every profile edit goes through the update_team_user RPC (security plan S-10). */
+async function updateTeamUser(args: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase.rpc('update_team_user', args)
+  if (!error) return
+  if (isMissingFunctionError(error)) {
+    throw new Error(
+      'User changes need the update_team_user database function. Ask the administrator to apply the security migrations.',
+    )
+  }
+  throw new Error(error.message || 'Unable to update user')
+}
+
+/**
+ * true when the user is referenced by records (team_user_has_records RPC),
+ * null when that RPC is not on the database yet.
+ */
+async function teamUserHasRecords(userId: string): Promise<boolean | null> {
+  const { data, error } = await supabase.rpc('team_user_has_records', { p_user_id: userId })
+  if (error) {
+    if (isMissingFunctionError(error)) return null
+    throw new Error(error.message || 'Unable to check the user\'s records')
+  }
+  return data === true
+}
+
 export default function UserManagementMasterPage() {
   const { session } = useAuth()
   const [users, setUsers] = useState<UserAccount[]>([])
@@ -65,6 +101,9 @@ export default function UserManagementMasterPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<UserAccount | null>(null)
   const [userDeleteTarget, setUserDeleteTarget] = useState<UserAccount | null>(null)
+  /** true = has records (deactivate instead), false = may be deleted, null = unknown / checking */
+  const [userDeleteHasRecords, setUserDeleteHasRecords] = useState<boolean | null>(null)
+  const [userDeleteChecking, setUserDeleteChecking] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [printMessage, setPrintMessage] = useState<string | null>(null)
 
@@ -321,7 +360,21 @@ export default function UserManagementMasterPage() {
           setEditTarget(user)
           setEditDialogOpen(true)
         }}
-        onDelete={(user: UserAccount) => setUserDeleteTarget(user)}
+        onDelete={(user: UserAccount) => {
+          // Prefer deactivation (ISO/IEC 17025 7.5 / 8.4): a user who authored
+          // records keeps the profile so the records keep their author.
+          setUserUpdateError(null)
+          setUserDeleteTarget(user)
+          setUserDeleteHasRecords(null)
+          setUserDeleteChecking(true)
+          void teamUserHasRecords(user.id)
+            .then((hasRecords) => setUserDeleteHasRecords(hasRecords))
+            .catch((err) => {
+              setUserDeleteHasRecords(true)
+              setUserUpdateError(err instanceof Error ? err.message : 'Unable to check the user\'s records')
+            })
+            .finally(() => setUserDeleteChecking(false))
+        }}
         onStatusChange={async (user, status) => {
           if (user.status === status) return
 
@@ -338,11 +391,12 @@ export default function UserManagementMasterPage() {
               throw new Error('Session expired. Please log in again.')
             }
 
-            const { error: statusError } = await supabase
-              .from('user_profiles')
-              .update({ status })
-              .eq('id', user.id)
-            if (statusError) throw statusError
+            // update_team_user also sets auth.users.banned_until, so an
+            // Inactive user can no longer sign in or refresh a session.
+            // Only through update_team_user (no direct user_profiles update):
+            // it checks the Director role, refuses the last active Director
+            // and bans the auth user while Inactive.
+            await updateTeamUser({ p_user_id: user.id, p_status: status })
 
             setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, status } : u)))
           } catch (err) {
@@ -469,7 +523,7 @@ export default function UserManagementMasterPage() {
               throw new Error('Session expired. Please log in again.')
             }
 
-            const { error: updateError } = await supabase.rpc('update_team_user', {
+            await updateTeamUser({
               p_user_id: editTarget.id,
               p_full_name: formData.name.trim(),
               p_mobile: mobileFormatted,
@@ -478,20 +532,6 @@ export default function UserManagementMasterPage() {
               p_division: formData.division,
               p_email: formData.email.trim(),
             })
-            if (updateError) {
-              const { error: profileError } = await supabase
-                .from('user_profiles')
-                .update({
-                  full_name: formData.name.trim(),
-                  mobile: mobileFormatted,
-                  designation: formData.designation,
-                  department_name: formData.department,
-                  division: formData.division,
-                  email: formData.email.trim(),
-                })
-                .eq('id', editTarget.id)
-              if (profileError) throw profileError
-            }
 
             setEditDialogOpen(false)
             setEditTarget(null)
@@ -512,6 +552,23 @@ export default function UserManagementMasterPage() {
           open={!!userDeleteTarget}
           onOpenChange={(open: boolean) => !open && setUserDeleteTarget(null)}
           initialData={userDeleteTarget}
+          deleteHasRecords={userDeleteHasRecords}
+          deleteChecking={userDeleteChecking}
+          onDeactivateInstead={async () => {
+            if (!userDeleteTarget) return
+            setUserUpdateError(null)
+            setUserUpdateLoadingId(userDeleteTarget.id)
+            try {
+              await updateTeamUser({ p_user_id: userDeleteTarget.id, p_status: 'Inactive' })
+              const id = userDeleteTarget.id
+              setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, status: 'Inactive' } : u)))
+              setUserDeleteTarget(null)
+            } catch (err) {
+              setUserUpdateError(err instanceof Error ? err.message : 'Unable to deactivate user')
+            } finally {
+              setUserUpdateLoadingId(null)
+            }
+          }}
           designations={designations}
           setDesignations={setDesignations}
           departments={departments}
@@ -519,7 +576,7 @@ export default function UserManagementMasterPage() {
           divisions={divisions}
           setDivisions={setDivisions}
           onSave={async () => {
-            if (!userDeleteTarget) return
+            if (!userDeleteTarget || userDeleteChecking || userDeleteHasRecords === true) return
 
             setUserUpdateError(null)
             setUserUpdateLoadingId(userDeleteTarget.id)

@@ -14,6 +14,15 @@ import {
   resolveReportScopeTemplate,
 } from './reportScopeConfig'
 import type { TestReportPartBDetails } from './testReportPartB'
+import { fetchSampleDecisionRule } from '@/features/masters/decision-rules/decisionRules'
+import { fetchResultEnvironmentSnapshots } from '@/features/environment/resultEnvironment'
+import {
+  summarizeReportEnvironment,
+  type ReportEnvironmentLine,
+} from '@/features/environment/resultEnvironmentSnapshot'
+import { fetchSampleOpinionsForPrint, type ReportOpinions } from './reportOpinions'
+import { applyReportPeopleToSignatures, fetchSampleReportPeople } from './reportSignatories'
+import { fetchSamplingForReport } from '@/features/sampling/samplingForSample'
 
 export type BuildLiveTestReportHtmlInput = {
   scope: ReportScopeKind
@@ -27,6 +36,21 @@ export type BuildLiveTestReportHtmlInput = {
   partBDetails: TestReportPartBDetails | null
   resultRows: ReportResultRow[]
   labName?: string
+  /**
+   * Decision rule statement from the SRF (ISO 17025 7.8.6). Undefined = read it
+   * from the sample; null = none.
+   */
+  decisionRuleStatement?: string | null
+  /**
+   * Environmental conditions per lab area (ISO 17025 7.8.3.1 a). Undefined =
+   * read the snapshots saved with the results; null / [] = none.
+   */
+  environmentConditions?: ReportEnvironmentLine[] | null
+  /**
+   * Opinions and interpretations (ISO 17025 7.8.7). Undefined = read them from
+   * the sample (none before migration 20261029100300); null = none.
+   */
+  opinions?: ReportOpinions | null
 }
 
 /**
@@ -35,9 +59,14 @@ export type BuildLiveTestReportHtmlInput = {
 export async function buildLiveTestReportHtml(
   input: BuildLiveTestReportHtmlInput,
 ): Promise<string> {
+  // Signatories are this sample's tester(s), reviewer(s) and issuer (the
+  // signed-in user until it is issued); Print Setting gives only the layout.
+  const printSettings = applyReportPeopleToSignatures(
+    input.printSettings,
+    await fetchSampleReportPeople(input.active.id).catch(() => ({ testers: [], reviewers: [], issuer: null })),
+  )
   const {
     scope,
-    printSettings,
     letterheadsByScope,
     active,
     reportNumber,
@@ -54,7 +83,21 @@ export async function buildLiveTestReportHtml(
   }
 
   const letterheads = letterheadsByScope[scope]
-  const scopeConfig = await fetchReportScopeTemplatesConfig()
+  const [scopeConfig, decisionRuleStatement, environmentConditions, opinions, samplingInformation] = await Promise.all([
+    fetchReportScopeTemplatesConfig(),
+    input.decisionRuleStatement !== undefined
+      ? Promise.resolve(input.decisionRuleStatement)
+      : fetchSampleDecisionRule(active.id).then((rule) => rule?.statementText || null),
+    input.environmentConditions !== undefined
+      ? Promise.resolve(input.environmentConditions)
+      : fetchResultEnvironmentSnapshots(scopedRows.map((r) => r.parameterId))
+          .then((byId) => summarizeReportEnvironment(scopedRows.map((r) => r.parameterId), byId))
+          // Conditions are additive: a read failure must not block the preview.
+          .catch(() => null),
+    input.opinions !== undefined ? Promise.resolve(input.opinions) : fetchSampleOpinionsForPrint(active.id),
+    // ISO 17025 7.8.5: same block as the issued report (null while sampling is off).
+    fetchSamplingForReport(active.id),
+  ])
   const binding = bindingFromLetterheadSelection(scope, scopeConfig, letterheads)
   const template = await resolveReportScopeTemplate(scope, scopeConfig, binding)
 
@@ -93,5 +136,9 @@ export async function buildLiveTestReportHtml(
     template,
     coverDetails: printCover,
     printSettings,
+    decisionRuleStatement,
+    environmentConditions,
+    opinions,
+    samplingInformation,
   })
 }

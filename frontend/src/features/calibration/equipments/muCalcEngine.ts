@@ -1,5 +1,6 @@
 /** Runtime helpers for MU Calculation Sheet evaluation (Conduct / GUM wizard). */
 
+import { is2RoundFixed } from '@/lib/is2Rounding'
 import {
   computeFormulaValue,
   type RawDataSheetColumn,
@@ -40,9 +41,10 @@ export function parseMuNumber(raw: string | number | null | undefined): number |
   return Number.isFinite(n) ? n : null
 }
 
+/** MU figure for display / the report, rounded by IS 2:1960 to `decimalPlaces` (declared decimals kept). */
 export function formatMuNumber(n: number | null, decimalPlaces: number): string {
   if (n == null || !Number.isFinite(n)) return '—'
-  return n.toFixed(decimalPlaces)
+  return is2RoundFixed(n, decimalPlaces)
 }
 
 export type MuEquipmentRangeContext = {

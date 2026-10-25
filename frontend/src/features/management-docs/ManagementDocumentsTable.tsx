@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, Pencil, Printer, Upload } from 'lucide-react'
+import { Eye, Pencil, Printer, Upload, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -12,7 +12,9 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import type { ManagementDocStatus, ManagementDocumentRow } from './types'
-import { MANAGEMENT_DOC_STATUSES, statusBadgeClass } from './types'
+import { MANAGEMENT_DOC_STATUSES, statusBadgeClass, statusLabel } from './types'
+import { ReviewDueBadge } from './DocumentWorkflowPanel'
+import { isLockedStatus, workflowStage } from './documentControl'
 
 const GRID_TABLE =
   'min-w-[880px] w-full border-collapse [&_th]:border [&_td]:border [&_th]:border-border [&_td]:border-border'
@@ -69,6 +71,8 @@ export function ManagementDocumentsTable({
   onUpload,
   onStatusChange,
   statusUpdatingId,
+  docControl = false,
+  onDistribution,
 }: {
   rows: ManagementDocumentRow[]
   loading: boolean
@@ -83,6 +87,9 @@ export function ManagementDocumentsTable({
   onUpload: (row: ManagementDocumentRow) => void
   onStatusChange: (row: ManagementDocumentRow, status: ManagementDocStatus) => void
   statusUpdatingId?: string | null
+  /** Document control migration applied: status follows the e-approval workflow. */
+  docControl?: boolean
+  onDistribution?: (row: ManagementDocumentRow) => void
 }) {
   const [controlRow, setControlRow] = useState<ManagementDocumentRow | null>(null)
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
@@ -161,6 +168,26 @@ export function ManagementDocumentsTable({
                     </Button>
                   </TableCell>
                   <TableCell className="align-middle text-center">
+                    {docControl ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <button
+                          type="button"
+                          className={cn(
+                            'mx-auto inline-flex h-8 min-w-[132px] items-center justify-center border px-2 text-xs font-semibold',
+                            statusBadgeClass(r.status),
+                          )}
+                          title="Open the document control workflow"
+                          onClick={() => onEdit(r)}
+                        >
+                          {r.status === 'under_review'
+                            ? workflowStage(r) === 'approve'
+                              ? 'Awaiting approval'
+                              : 'Awaiting review'
+                            : statusLabel(r.status)}
+                        </button>
+                        <ReviewDueBadge row={r} />
+                      </div>
+                    ) : (
                     <Select
                       value={r.status}
                       disabled={statusUpdatingId === r.id}
@@ -185,6 +212,7 @@ export function ManagementDocumentsTable({
                         ))}
                       </SelectContent>
                     </Select>
+                    )}
                   </TableCell>
                   <TableCell className="align-middle text-center">
                     <div className="inline-flex flex-nowrap items-center justify-center gap-0.5">
@@ -227,11 +255,29 @@ export function ManagementDocumentsTable({
                         variant="ghost"
                         className="h-8 w-8 shrink-0 rounded-none"
                         aria-label={`Upload document for ${r.doc_number}`}
-                        title="Upload"
+                        title={
+                          docControl && isLockedStatus(r.status) && r.file_path
+                            ? 'Approved document: start a new revision to replace the file'
+                            : 'Upload'
+                        }
+                        disabled={docControl && isLockedStatus(r.status) && Boolean(r.file_path)}
                         onClick={() => onUpload(r)}
                       >
                         <Upload size={16} />
                       </Button>
+                      {docControl && onDistribution ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0 rounded-none"
+                          aria-label={`Distribution and acknowledgements for ${r.doc_number}`}
+                          title="Distribution / read acknowledgements"
+                          onClick={() => onDistribution(r)}
+                        >
+                          <Users size={16} />
+                        </Button>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>

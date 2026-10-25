@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass, limsRegistryFormClass } from '@/lib/limsThemeUi'
 import { supabase } from '@/lib/supabaseClient'
@@ -20,6 +21,21 @@ import { ManagementDocumentsFooterBar } from './ManagementDocumentsFooterBar'
 import { ManagementDocumentsForm, type EmployeeOption } from './ManagementDocumentsForm'
 import { ManagementDocumentA4PreviewDialog } from './ManagementDocumentA4PreviewDialog'
 import { fetchActiveUserProfiles } from '@/features/sample-handling/shared/fetchActiveUserProfiles'
+import { DocumentWorkflowPanel } from './DocumentWorkflowPanel'
+import { DocumentDistributionDialog } from './DocumentDistributionDialog'
+import {
+  buildMasterListCsv,
+  docControlErrorText,
+  downloadCsv,
+  isDocControlMissingError,
+  isDocumentApprover,
+  isLockedStatus,
+  probeDocumentControl,
+  reviewDueState,
+  startDocumentChange,
+  workflowStage,
+  writeManagementDocument,
+} from './documentControl'
 import {
   defaultDocTypeForLevel,
   emptyManagementDocumentForm,
@@ -104,8 +120,13 @@ function parseCsv(text: string): string[][] {
 }
 
 export default function ManagementDocumentsMasterPage({ level }: { level: ManagementDocLevel }) {
-  const { profileName, user } = useAuth()
+  const { profileName, user, designation, departmentName } = useAuth()
   const currentUserName = profileName.trim() || user?.email?.split('@')[0] || 'User'
+  const isApprover = isDocumentApprover(designation, departmentName)
+  /** Migration 20261028100000 applied: e-approval workflow, review, distribution. */
+  const [docControl, setDocControl] = useState(false)
+  const [editingRow, setEditingRow] = useState<ManagementDocumentRow | null>(null)
+  const [distributionRow, setDistributionRow] = useState<ManagementDocumentRow | null>(null)
 
   const [rows, setRows] = useState<ManagementDocumentRow[]>([])
   const [listLoading, setListLoading] = useState(true)
@@ -139,6 +160,16 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
   const [previewAutoPrint, setPreviewAutoPrint] = useState(false)
 
   const title = levelPageTitle(level)
+
+  useEffect(() => {
+    let cancelled = false
+    void probeDocumentControl().then((on) => {
+      if (!cancelled) setDocControl(on)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     void (async () => {
@@ -239,7 +270,7 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
   const assistantContext = useMemo(() => {
     const sample = filteredRows
       .slice(0, 12)
-      .map((r) => `${r.doc_number} | ${r.title} | ${r.status} | Rev ${r.revision}`)
+      .map((r) => `${r.doc_number} | ${r.title} | ${r.status} | Rev ${r.revision_no}`)
       .join('\n')
     return `Level ${level} documents (${filteredRows.length} shown).\n${sample || 'No documents.'}`
   }, [filteredRows, level])
@@ -247,6 +278,7 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
+    setEditingRow(null)
     setForm({
       ...emptyManagementDocumentForm(),
       docType: defaultDocTypeForLevel(level),
@@ -258,8 +290,18 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
   const handleEdit = (row: ManagementDocumentRow) => {
     setSaveMessage(null)
     setEditingId(row.id)
+    setEditingRow(row)
     setForm(rowToForm(row))
     setShowForm(true)
+  }
+
+  /** A workflow step or distribution change returned the updated row. */
+  const applyUpdatedRow = (updated: ManagementDocumentRow) => {
+    setRows((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)))
+    if (editingId === updated.id) {
+      setEditingRow(updated)
+      setForm(rowToForm(updated))
+    }
   }
 
   const handleViewDocument = (row: ManagementDocumentRow) => {
@@ -345,15 +387,11 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
     )
 
     try {
-      if (editingId) {
-        const { error } = await supabase.from('management_documents').update(payload).eq('id', editingId)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('management_documents').insert(payload)
-        if (error) throw error
-      }
+      const { error } = await writeManagementDocument(payload, editingId)
+      if (error) throw error
       setShowForm(false)
       setEditingId(null)
+      setEditingRow(null)
       setMessage('Document saved.')
       await loadRows()
     } catch (err) {
@@ -371,6 +409,36 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
 
     setSaveLoading(true)
     setSaveMessage(null)
+
+    if (docControl && changeType !== 'manual_save') {
+      // Document control: the database archives the version (with content and
+      // signatures) and starts the change as a Draft in one transaction.
+      try {
+        const locked = editingRow ? isLockedStatus(editingRow.status) : false
+        if (!locked) {
+          const { error: saveErr } = await writeManagementDocument(formToDbPayload(form, level), editingId)
+          if (saveErr) throw saveErr
+        }
+        const updated = await startDocumentChange(editingId, changeType)
+        applyUpdatedRow(updated)
+        setEditingRow(updated)
+        setForm(rowToForm(updated))
+        setMessage(
+          `${changeType === 'revision' ? 'New revision' : changeType === 'issue' ? 'New issue' : 'New amendment'} started as Draft (previous version archived). Submit it for review when ready.`,
+        )
+        await loadRows()
+        setSaveLoading(false)
+        return
+      } catch (err) {
+        const e = err as { code?: string; message?: string }
+        if (!isDocControlMissingError(e)) {
+          setSaveMessage(docControlErrorText(err))
+          setSaveLoading(false)
+          return
+        }
+        // RPC not on this database: fall back to the original flow below.
+      }
+    }
 
     try {
       // Persist unsaved form edits first so history snapshot matches UI
@@ -483,6 +551,53 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
     setMessage('Deleted selected documents.')
     await loadRows()
   }
+
+  const handleExportMasterList = async () => {
+    setMessage(null)
+    const { data, error } = await supabase
+      .from('management_documents')
+      .select('*')
+      .order('level', { ascending: true })
+      .order('doc_number', { ascending: true })
+    if (error) {
+      setMessage(formatSupabaseError(error))
+      return
+    }
+    const names = new Map(employees.map((e) => [e.id, e.name]))
+    downloadCsv(
+      `master-list-of-documents-${todayIsoDate()}.csv`,
+      buildMasterListCsv((data ?? []) as ManagementDocumentRow[], names),
+    )
+    setMessage(`Master list exported (${(data ?? []).length} documents).`)
+  }
+
+  const controlCounts = useMemo(() => {
+    let review = 0
+    let approve = 0
+    let overdue = 0
+    for (const r of rows) {
+      const stage = workflowStage(r)
+      if (stage === 'review') review += 1
+      if (stage === 'approve') approve += 1
+      if (reviewDueState(r) === 'overdue') overdue += 1
+    }
+    return { review, approve, overdue }
+  }, [rows])
+
+  const editingLocked = docControl && editingRow != null && isLockedStatus(editingRow.status)
+  const signaturesLocked =
+    docControl && !(!editingId && isApprover && (form.status === 'active' || form.status === 'obsolete'))
+  const allowedStatuses: ManagementDocStatus[] | undefined = !docControl
+    ? undefined
+    : editingId
+      ? []
+      : isApprover
+        ? ['draft', 'under_review', 'active', 'obsolete']
+        : ['draft', 'under_review']
+  const changeButtonsDisabled =
+    editingLocked &&
+    !isApprover &&
+    !(editingRow?.prepared_by_id && user?.id && editingRow.prepared_by_id === user.id)
 
   const handleExport = () => {
     const source = selectedIds.size > 0 ? rows.filter((r) => selectedIds.has(r.id)) : filteredRows
@@ -632,6 +747,20 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
         onAssistantDataChanged={() => void loadRows()}
       />
 
+      {docControl ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-2 border-stone-500 bg-[#fffcf7] px-3 py-1.5 text-[12px] text-stone-700">
+          <span className="font-semibold uppercase tracking-wide text-amber-800">Document control</span>
+          <span>Awaiting review: {controlCounts.review}</span>
+          <span>Awaiting approval: {controlCounts.approve}</span>
+          <span className={controlCounts.overdue ? 'font-semibold text-red-700' : undefined}>
+            Periodic review overdue: {controlCounts.overdue}
+          </span>
+          <Link to="/management-docs/my-acknowledgements" className="ml-auto font-semibold text-amber-800 underline">
+            My documents to read
+          </Link>
+        </div>
+      ) : null}
+
       <Dialog open={showForm} onOpenChange={handleFormOpenChange}>
         <DialogContent
           persistOnFocusLoss
@@ -687,7 +816,38 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
               onNewRevision={() => void archiveAndAdvance('revision')}
               onNewIssue={() => void archiveAndAdvance('issue')}
               onNewAmendment={() => void archiveAndAdvance('amendment')}
-            />
+              readOnly={editingLocked}
+              signaturesLocked={signaturesLocked}
+              allowedStatuses={allowedStatuses}
+              changeButtonsDisabled={changeButtonsDisabled}
+            >
+              {docControl && editingLocked ? (
+                <p className="mt-4 border-l-2 border-amber-600 bg-amber-50 px-3 py-2 text-[13px] text-amber-950">
+                  {editingRow?.status === 'obsolete'
+                    ? 'This document is obsolete and read-only.'
+                    : 'This document is approved and read-only. Use New Revision, New Issue or New Amendment to change it; the change goes through review and approval again.'}
+                </p>
+              ) : null}
+              {docControl && !editingId ? (
+                <p className="mt-4 text-[12px] text-stone-600">
+                  Save as Draft, then open the document again and use Submit for review. Prepared / Reviewed /
+                  Approved are filled from the signed-in people.
+                </p>
+              ) : null}
+              {docControl && editingRow ? (
+                <div className="mt-4">
+                  <DocumentWorkflowPanel
+                    row={editingRow}
+                    currentUserId={user?.id ?? null}
+                    isApprover={isApprover}
+                    onChanged={(updated, msg) => {
+                      applyUpdatedRow(updated)
+                      setMessage(msg)
+                    }}
+                  />
+                </div>
+              ) : null}
+            </ManagementDocumentsForm>
           </div>
         </DialogContent>
       </Dialog>
@@ -706,12 +866,30 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
         onUpload={handleUploadDocument}
         onStatusChange={(row, status) => void handleStatusChange(row, status)}
         statusUpdatingId={statusUpdatingId}
+        docControl={docControl}
+        onDistribution={(row) => setDistributionRow(row)}
+      />
+
+      <DocumentDistributionDialog
+        open={distributionRow != null}
+        row={distributionRow}
+        users={employees}
+        canEdit={distributionRow != null && (!isLockedStatus(distributionRow.status) || isApprover)}
+        onOpenChange={(open) => {
+          if (!open) setDistributionRow(null)
+        }}
+        onSaved={(updated) => {
+          applyUpdatedRow(updated)
+          setDistributionRow(null)
+          setMessage(`Distribution of ${updated.doc_number} saved.`)
+        }}
       />
 
       <ManagementDocumentA4PreviewDialog
         open={showA4Preview}
         row={previewRow}
         autoPrint={previewAutoPrint}
+        readOnly={docControl && previewRow != null && isLockedStatus(previewRow.status)}
         onOpenChange={(open) => {
           setShowA4Preview(open)
           if (!open) {
@@ -759,6 +937,7 @@ export default function ManagementDocumentsMasterPage({ level }: { level: Manage
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}
         onDeleteSelected={() => void handleDeleteSelected()}
+        onExportMasterList={() => void handleExportMasterList()}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

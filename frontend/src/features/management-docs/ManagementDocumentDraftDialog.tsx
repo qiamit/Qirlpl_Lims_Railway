@@ -243,7 +243,7 @@ export function ManagementDocumentDraftDialog({
           </div>
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-white px-5 py-3 sm:px-6">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-white px-5 py-3 sm:px-6">
           <Button type="button" size="sm" disabled={saving} onClick={handleSaveAndClose}>
             {saving ? 'Saving…' : 'Save & Close'}
           </Button>

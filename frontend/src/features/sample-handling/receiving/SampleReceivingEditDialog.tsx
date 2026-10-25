@@ -13,6 +13,7 @@ import {
   type SampleRow,
 } from '../types'
 import { SampleReceivingForm } from './SampleReceivingForm'
+import { SrfContractChangesSection } from './SrfContractChangesSection'
 import { AddClientDialog } from './AddClientDialog'
 import { AddIsCodeDialog } from './AddIsCodeDialog'
 import { generateNextSrfNumber } from './generateNextSrfNumber'
@@ -431,6 +432,9 @@ export function SampleReceivingEditDialog({
                 onUpdateReceivingOption={onUpdateReceivingOption}
                 onDeleteReceivingOption={onDeleteReceivingOption}
               />
+            ) : null}
+            {!loadLoading && !loadError && loadedSampleId ? (
+              <SrfContractChangesSection sampleId={loadedSampleId} workStarted={preserveWorkflowStage} />
             ) : null}
           </div>
         </DialogContent>

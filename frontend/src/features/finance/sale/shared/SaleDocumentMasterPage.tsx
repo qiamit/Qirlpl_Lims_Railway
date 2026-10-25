@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
@@ -36,11 +37,14 @@ import {
   printQuotationsWithTemplate,
 } from '../quotation/outputQuotationDocument'
 import {
-  deleteSaleDocuments,
+  cancelSaleDocuments,
   fetchSaleDocuments,
   rememberSaleDocumentRows,
   saveSaleDocument,
 } from './saleDocumentsApi'
+import { numberForNewDocument, peekDocumentNumber } from './documentSeriesApi'
+import { isCancelledDocument, tdsAmount } from './financeRules'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 
 export type SaleDocumentModuleConfig = {
   title: string
@@ -111,6 +115,9 @@ function formToStoredRow(
   const totals = computeQuotationTotals(form)
   const paymentAmount = Math.max(0, parseMoney(form.paymentAmount))
   const id = existingId ?? crypto.randomUUID()
+  const tdsPercentValue = parseMoney(form.tdsPercent)
+  const hasTds = Boolean(opts?.paymentReceipt) && form.tdsPercent.trim() !== '' && tdsPercentValue > 0 && tdsPercentValue <= 100
+  const tdsTaxable = hasTds ? Math.max(0, parseMoney(form.tdsTaxableAmount) || paymentAmount) : 0
   const lineItems: QuotationLineRow[] = opts?.paymentReceipt
     ? []
     : form.lines
@@ -167,15 +174,26 @@ function formToStoredRow(
     line_items: lineItems,
     updated_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
+    // Supply mode: a choice made on the form, otherwise worked out when saving.
+    gst_supply_mode: opts?.paymentReceipt ? null : form.gstSupplyMode || null,
+    gst_supply_mode_manual: !opts?.paymentReceipt && Boolean(form.gstSupplyMode),
+    invoice_reference_no: opts?.paymentReceipt ? form.invoiceReferenceNo.trim() || null : null,
+    tds_percent: hasTds ? tdsPercentValue : null,
+    tds_section: hasTds ? form.tdsSection.trim() || null : null,
+    tds_taxable_amount: tdsTaxable,
+    tds_amount: hasTds ? tdsAmount(tdsTaxable, tdsPercentValue) : 0,
   }
 }
 
 /**
  * Quotation-matching chrome for other Sale modules (same theme, header, table, footer, form).
- * Records are stored in sale_documents. A browser copy is imported once.
+ * Records are stored in the typed finance tables (sale_documents before the Phase 2
+ * migrations; see saleDocumentsApi.ts). A browser copy is imported once.
  */
 export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleConfig }) {
   const [rows, setRows] = useState<QuotationRow[]>([])
+  // Numbers of deleted documents (any kind; nextQuotationNumber keeps only this prefix) are never reused.
+  const deletedNumbers = useDeletedKeys('sale_documents', 'document_number', rows)
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -192,6 +210,8 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   const [form, setForm] = useState<QuotationFormType>(() => emptyQuotationForm())
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  /** Number shown in a new form from the database series; the real one is taken on save. */
+  const [previewNumber, setPreviewNumber] = useState<string | null>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
 
   const [clientOptions, setClientOptions] = useState<FilterComboboxOption[]>([])
@@ -202,6 +222,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   const [productById, setProductById] = useState<Record<string, QuotationProductDetails>>({})
 
   const isPaymentReceipt = config.documentKind === 'paymentReceipt'
+  const askReason = useReasonForChange()
 
   const canSave =
     !saveLoading &&
@@ -279,6 +300,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
             contactEmail: String(row.email ?? '').trim(),
             contactMobile,
             gstNumber: String(row.gst_number ?? '').trim(),
+            state: String(row.state ?? '').trim(),
             address: addressParts.join(', '),
             openingBalance: Number(row.opening_balance ?? 0) || 0,
             balanceType: String(row.balance_type ?? 'Dr').trim() === 'Cr' ? 'Cr' : 'Dr',
@@ -303,7 +325,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
         const { data, error } = await supabase
           .from('products_services_master')
           .select(
-            'id, item_code, item_name, item_description, make, hsn_code, unit_of_measurement, sale_price, gst_percent',
+            'id, item_code, item_name, item_description, make, hsn_code, item_type, unit_of_measurement, sale_price, gst_percent',
           )
           .order('item_name', { ascending: true })
         if (error) throw error
@@ -318,6 +340,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
             item_description?: string | null
             make?: string | null
             hsn_code?: string | null
+            item_type?: string | null
             unit_of_measurement?: string | null
             sale_price?: number | null
             gst_percent?: number | null
@@ -341,6 +364,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
             itemDescription,
             make: String(r.make ?? '').trim(),
             hsnCode: String(r.hsn_code ?? '').trim(),
+            itemType: String(r.item_type ?? '').trim(),
             unit: String(r.unit_of_measurement ?? '').trim(),
             salePrice: Number(r.sale_price ?? 0) || 0,
             gstPercent: Number(r.gst_percent ?? 0) || 0,
@@ -389,18 +413,25 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     }
   }, [config.documentKind])
 
-  const allocateNextNumber = useCallback(() => {
+  /** Browser-side fallback while the document_series migration is not applied. */
+  const nextNumberFromRows = useCallback(() => {
     const prefix = defaultNumberPrefix(config.documentKind)
     return nextQuotationNumber(
-      rows.map((r) => r.quotation_number),
+      [...rows.map((r) => r.quotation_number), ...deletedNumbers],
       prefix,
     )
-  }, [config.documentKind, rows])
+  }, [config.documentKind, rows, deletedNumbers])
+
+  const previewNextNumber = useCallback(async () => {
+    const peeked = await peekDocumentNumber(config.documentKind).catch(() => null)
+    setPreviewNumber(peeked)
+    return peeked ?? nextNumberFromRows()
+  }, [config.documentKind, nextNumberFromRows])
 
   const openNew = () => {
     void (async () => {
       const [next, defaultTerm, defaultNote, defaultSign] = await Promise.all([
-        Promise.resolve(allocateNextNumber()),
+        previewNextNumber(),
         fetchDefaultQuotationTerm(config.documentKind).catch(() =>
           config.documentKind === 'quotation' ? '100 % Advance' : '',
         ),
@@ -425,6 +456,10 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   }
 
   const openEdit = (row: QuotationRow) => {
+    if (isCancelledDocument(row.status)) {
+      setMessage(`${row.quotation_number} is cancelled and cannot be changed.`)
+      return
+    }
     setEditingId(row.id)
     setForm(rowToForm(row, false))
     setSaveMessage(null)
@@ -432,11 +467,13 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
   }
 
   const openCopy = (row: QuotationRow) => {
-    const next = allocateNextNumber()
-    setEditingId(null)
-    setForm(rowToForm(row, true, next))
-    setSaveMessage(null)
-    setShowForm(true)
+    void (async () => {
+      const next = await previewNextNumber()
+      setEditingId(null)
+      setForm(rowToForm(row, true, next))
+      setSaveMessage(null)
+      setShowForm(true)
+    })()
   }
 
   const handleSave = () => {
@@ -460,12 +497,21 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     setSaveMessage(null)
     void (async () => {
       try {
-        const stored = formToStoredRow(form, editingId, {
+        let toStore = form
+        if (!editingId) {
+          const assigned = await numberForNewDocument(config.documentKind, form.quotationNumber, previewNumber)
+          setPreviewNumber(null)
+          if (assigned !== form.quotationNumber.trim()) {
+            toStore = { ...form, quotationNumber: assigned }
+            setForm(toStore)
+          }
+        }
+        const stored = formToStoredRow(toStore, editingId, {
           paymentReceipt: isPaymentReceipt,
         })
         const previous = editingId ? rows.find((row) => row.id === editingId) : undefined
-        const saved = previous?.created_at ? { ...stored, created_at: previous.created_at } : stored
-        await saveSaleDocument(config.documentKind, saved)
+        const toSave = previous?.created_at ? { ...stored, created_at: previous.created_at } : stored
+        const saved = await saveSaleDocument(config.documentKind, toSave)
         const next = editingId
           ? rows.map((row) => (row.id === editingId ? saved : row))
           : [saved, ...rows]
@@ -500,30 +546,48 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
     })
   }
 
-  const handleDeleteSelected = () => {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    if (!window.confirm(`Delete ${ids.length} ${config.title.toLowerCase()} record(s)?`)) return
+  /**
+   * Cancel, not delete (GST practice): the document keeps its number, stays
+   * listed greyed out with status Cancelled and no longer counts in balances.
+   */
+  const handleCancelSelected = () => {
+    const targets = rows.filter((row) => selectedIds.has(row.id) && !isCancelledDocument(row.status))
+    if (targets.length === 0) {
+      setMessage(selectedIds.size > 0 ? 'The selected records are already cancelled.' : 'Select a record to cancel.')
+      return
+    }
     void (async () => {
+      const reason = await askReason({
+        title: `Reason for cancelling (${config.title})`,
+        recordLabel: targets.map((row) => row.quotation_number).join(', '),
+        description: 'A cancelled document keeps its number and stays on record (it is not deleted). It cannot be edited afterwards.',
+        confirmLabel: 'Cancel document',
+        quickPicks: ['Raised in error', 'Wrong client or GSTIN', 'Duplicate document', 'Replaced by a new document'],
+      })
+      if (!reason) return
       try {
-        await deleteSaleDocuments(config.documentKind, ids)
-        const next = rows.filter((row) => !selectedIds.has(row.id))
+        const { rows: cancelled, table } = await cancelSaleDocuments(config.documentKind, targets, reason)
+        const byId = new Map(cancelled.map((row) => [row.id, row]))
+        const next = rows.map((row) => byId.get(row.id) ?? row)
         rememberSaleDocumentRows(config.documentKind, next)
         setRows(next)
         setSelectedIds(new Set())
-        setMessage(`Deleted ${ids.length} record(s).`)
+        setMessage(`Cancelled ${cancelled.length} record(s); numbers kept.`)
+        await recordReason(table, cancelled.map((row) => row.id), reason)
       } catch (err) {
-        setMessage(err instanceof Error ? err.message : 'Could not delete.')
+        setMessage(err instanceof Error ? err.message : 'Could not cancel.')
+        // Some rows may already be cancelled: show the stored state.
+        void fetchSaleDocuments(config.documentKind).then(setRows, () => undefined)
       }
     })()
   }
 
   const handleStatusChange = (row: QuotationRow, status: QuotationStatus) => {
+    if (isCancelledDocument(row.status)) return
     setStatusUpdatingId(row.id)
-    const nextRow = { ...row, status }
     void (async () => {
       try {
-        await saveSaleDocument(config.documentKind, nextRow)
+        const nextRow = await saveSaleDocument(config.documentKind, { ...row, status })
         const next = rows.map((item) => (item.id === row.id ? nextRow : item))
         rememberSaleDocumentRows(config.documentKind, next)
         setRows(next)
@@ -619,7 +683,7 @@ export function SaleDocumentMasterPage({ config }: { config: SaleDocumentModuleC
         pageCount={pageCount}
         onTemplates={() => setShowTemplates(true)}
         onPrintSelected={handlePrintSelected}
-        onDeleteSelected={handleDeleteSelected}
+        onDeleteSelected={handleCancelSelected}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

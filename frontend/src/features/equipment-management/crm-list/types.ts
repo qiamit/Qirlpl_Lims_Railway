@@ -28,6 +28,13 @@ export type CrmRow = {
   uncertainty: string
   uncertainty_rows?: unknown
   valid_upto: string | null
+  /** ISO/IEC 17025 6.4 / 6.5 (20261031100000); absent until that migration is applied. */
+  opened_on?: string | null
+  post_opening_validity_days?: number | null
+  storage_conditions?: string | null
+  stock_quantity?: number | string | null
+  stock_unit?: string | null
+  reorder_level?: number | string | null
   created_at?: string
   updated_at?: string
 }
@@ -42,6 +49,12 @@ export type CrmForm = {
   traceabilityAsPer: string
   uncertaintyRows: CrmUncertaintyItem[]
   validUpto: string
+  openedOn: string
+  postOpeningValidityDays: string
+  storageConditions: string
+  stockQuantity: string
+  stockUnit: string
+  reorderLevel: string
 }
 
 export function newCrmUncertaintyItem(
@@ -159,6 +172,12 @@ export const emptyCrmForm = (): CrmForm => ({
     }),
   ],
   validUpto: '',
+  openedOn: '',
+  postOpeningValidityDays: '',
+  storageConditions: '',
+  stockQuantity: '',
+  stockUnit: '',
+  reorderLevel: '',
 })
 
 export const normalizeText = (value: string) => value.trim()
@@ -325,7 +344,43 @@ export function rowToForm(row: CrmRow): CrmForm {
     traceabilityAsPer: row.traceability_as_per ?? '',
     uncertaintyRows: parseUncertaintyRowsFromDb(row.uncertainty_rows, row.uncertainty),
     validUpto: row.valid_upto ? String(row.valid_upto).slice(0, 10) : '',
+    openedOn: row.opened_on ? String(row.opened_on).slice(0, 10) : '',
+    postOpeningValidityDays:
+      row.post_opening_validity_days == null ? '' : String(row.post_opening_validity_days),
+    storageConditions: row.storage_conditions ?? '',
+    stockQuantity: row.stock_quantity == null ? '' : String(row.stock_quantity),
+    stockUnit: row.stock_unit ?? '',
+    reorderLevel: row.reorder_level == null ? '' : String(row.reorder_level),
   }
+}
+
+/** Columns added by 20261031100000; left out of saves until it is applied. */
+export const CRM_USE_COLUMNS = [
+  'opened_on',
+  'post_opening_validity_days',
+  'storage_conditions',
+  'stock_quantity',
+  'stock_unit',
+  'reorder_level',
+] as const
+
+function numOrNull(v: string): number | null {
+  const t = v.trim()
+  if (!t) return null
+  const n = Number(t)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Validation for the use / storage / stock fields (mirrors the table CHECKs). */
+export function crmUseFieldsError(form: CrmForm): string | null {
+  const days = form.postOpeningValidityDays.trim()
+  if (days && (!/^\d+$/.test(days) || Number(days) > 3650)) {
+    return 'Validity after opening must be a whole number of days (0 – 3650).'
+  }
+  for (const [label, v] of [['Stock quantity', form.stockQuantity], ['Reorder level', form.reorderLevel]] as const) {
+    if (v.trim() && (numOrNull(v) === null || (numOrNull(v) as number) < 0)) return `${label} must be a number ≥ 0.`
+  }
+  return null
 }
 
 export function formToPayload(form: CrmForm) {
@@ -344,7 +399,22 @@ export function formToPayload(form: CrmForm) {
     uncertainty_rows: uncertaintyRowsToDb(rows),
     uncertainty: summarizeUncertaintyRows(rows),
     valid_upto: validUpto || null,
+    opened_on: form.openedOn.trim() || null,
+    post_opening_validity_days: form.postOpeningValidityDays.trim()
+      ? Number.parseInt(form.postOpeningValidityDays.trim(), 10)
+      : null,
+    storage_conditions: normalizeText(form.storageConditions) || null,
+    stock_quantity: numOrNull(form.stockQuantity),
+    stock_unit: normalizeText(form.stockUnit) || null,
+    reorder_level: numOrNull(form.reorderLevel),
   }
+}
+
+/** Payload without the 20261031100000 columns (database not migrated yet). */
+export function withoutCrmUseColumns(payload: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...payload }
+  for (const c of CRM_USE_COLUMNS) delete out[c]
+  return out
 }
 
 export function formatDateDisplay(value: string | null | undefined) {

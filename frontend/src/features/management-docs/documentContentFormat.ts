@@ -1,5 +1,6 @@
 /** Helpers to clean / format management-document HTML for A4 preview. */
 import DOMPurify from 'dompurify'
+import { createInertHtmlContainer } from '@/lib/inertHtml'
 
 const BULLET_PREFIX = /^[\s]*([•\-\*◦▪▸►]|(\d+)[.)])\s+/
 
@@ -80,7 +81,7 @@ export function extractSectionHtmlFromAiReply(reply: string, fallbackHtml = ''):
 
   if (typeof document === 'undefined') return raw
 
-  const root = document.createElement('div')
+  const root = createInertHtmlContainer()
   root.innerHTML = raw
 
   // Remove leading/trailing chatter paragraphs (and similar)

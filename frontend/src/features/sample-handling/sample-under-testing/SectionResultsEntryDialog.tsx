@@ -30,13 +30,120 @@ import {
 } from './sectionParameterRows'
 import { formatTestResultDisplay, formatTestResultForTable } from './testResultValues'
 import { resolveReportScopeFromAccreditationIds } from '../report-preparation/reportScope'
+import { useAuth } from '@/hooks/useAuth'
+import { useReasonForChange } from '@/hooks/useReasonForChange'
+import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
+import {
+  equipmentSnapshotsOf,
+  equipmentUsedIsRecorded,
+  fetchEquipmentUsedByParamIds,
+  formatEquipmentUsed,
+  isNoEquipmentEntry,
+  loadEquipmentOptions,
+  readLastEquipmentSelection,
+  snapshotFromOption,
+  todayIso,
+  writeLastEquipmentSelection,
+  type EquipmentOption,
+  type EquipmentUsedEntry,
+} from '@/lib/equipmentTraceability'
+import { EquipmentUsedPickerDialog } from './EquipmentUsedPickerDialog'
+import { ResultObservationMeta } from './ResultObservationMeta'
+import {
+  fetchResultAttachments,
+  fetchResultEntryStamps,
+  type ResultAttachment,
+  type ResultEntryStamp,
+} from './resultObservationRecords'
+import { fetchConditionsFor, type EnvironmentConditions } from '@/features/environment/environmentConditions'
+import {
+  fetchResultEnvironmentByParamIds,
+  loadLabAreaOptions,
+  readLastSectionArea,
+  testPeriodOf,
+  writeLastSectionArea,
+  type LabAreaOption,
+  type TestPeriod,
+} from '@/features/environment/resultEnvironment'
+import {
+  formatEnvironmentSnapshotSummary,
+  snapshotFromConditions,
+  type ResultEnvironmentAcknowledgement,
+  type ResultEnvironmentSnapshot,
+} from '@/features/environment/resultEnvironmentSnapshot'
 
 export type SectionResultsDraft = SectionParameterEntry
 
 type BulkDateField = 'testStartDate' | 'testEndDate'
 
 const RESULTS_GRID_COLS =
-  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(4.5rem,0.5fr)_minmax(10rem,1.5fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.7fr)_minmax(8rem,0.9fr)]'
+  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(4.5rem,0.5fr)_minmax(10rem,1.5fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.7fr)_minmax(11rem,1.3fr)_minmax(8rem,0.9fr)]'
+
+/** Date the equipment must be usable on: end date, else start date, else today. */
+const testDateOf = (p: SectionParameterEntry): string =>
+  toDateInput(p.testEndDate) || toDateInput(p.testStartDate) || todayIso()
+
+const equipmentParamKey = (p: SectionParameterEntry) =>
+  (p.testParameterId?.trim() || p.testLabel.trim().toLowerCase())
+
+const ENV_ACK_QUICK_PICKS = [
+  'Excursion brief; test not sensitive to temperature / humidity at this level',
+  'Test done outside the excursion window; readings within limits during the test',
+  'Impact assessed; results not affected',
+] as const
+
+/** Distinct test periods of a section, encoded as "start|end,start|end" (sorted). */
+const periodsFromKey = (key: string): TestPeriod[] =>
+  key
+    .split(',')
+    .filter(Boolean)
+    .map((k) => {
+      const [a, b] = k.split('|')
+      return testPeriodOf(a, b)
+    })
+
+async function fetchPeriodConditions(
+  areaId: string,
+  periodsKey: string,
+): Promise<Record<string, EnvironmentConditions | null>> {
+  const entries = await Promise.all(
+    periodsFromKey(periodsKey).map(async (t) => [t.key, await fetchConditionsFor(areaId, t.from, t.to)] as const),
+  )
+  return Object.fromEntries(entries)
+}
+
+/** Readings outside limits, per period, for the acknowledgement signature. */
+const outOfLimitsSignature = (areaId: string, conditions: Record<string, EnvironmentConditions | null>) =>
+  `${areaId}#${Object.entries(conditions)
+    .filter(([, c]) => c?.anyOutOfLimits)
+    .map(([k, c]) => `${k}:${c?.outOfLimitCount ?? 0}`)
+    .sort()
+    .join(',')}`
+
+/** Acknowledgement saved earlier for the same area, period and readings (no need to ask again). */
+const carriedAcknowledgement = (
+  saved: ResultEnvironmentSnapshot | null | undefined,
+  c: EnvironmentConditions,
+  period: TestPeriod,
+): ResultEnvironmentAcknowledgement | null => {
+  if (!saved?.acknowledgement?.reason.trim()) return null
+  if (saved.area_id !== c.areaId) return null
+  if (saved.reading_count !== c.readingCount || saved.out_of_limit_count !== c.outOfLimitCount) return null
+  if (Date.parse(saved.period_from) !== Date.parse(period.from) || Date.parse(saved.period_to) !== Date.parse(period.to)) {
+    return null
+  }
+  return saved.acknowledgement
+}
+
+const localDayOf = (ts: string) => {
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ts.slice(0, 10)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Keeps clicks inside the on-demand reason dialog (own React root) from closing this one. */
+const insideReasonDialog = (e: Event) =>
+  e.target instanceof Element && Boolean(e.target.closest('[data-reason-for-change-root]'))
 
 const cellClass =
   'flex h-full min-h-[2.75rem] items-center border-b border-r border-[#e7e0d4] px-2 py-2 text-xs text-[#292524] last:border-r-0'
@@ -129,10 +236,37 @@ export function SectionResultsEntryDialog({
   const [nablScopeLoading, setNablScopeLoading] = useState(false)
   const [nablScopeLoadError, setNablScopeLoadError] = useState(false)
   const openSectionKeyRef = useRef<string | null>(null)
+  /** ISO 17025 6.4 / 7.5.1 equipment used: unknown until probed; missing = migration not applied. */
+  const [traceability, setTraceability] = useState<'unknown' | 'available' | 'missing'>('unknown')
+  const [equipmentOptions, setEquipmentOptions] = useState<EquipmentOption[]>([])
+  const [equipmentLoading, setEquipmentLoading] = useState(false)
+  const [equipmentLoadError, setEquipmentLoadError] = useState<string | null>(null)
+  const [pickerIndex, setPickerIndex] = useState<number | null>(null)
+  const [equipmentError, setEquipmentError] = useState<string | null>(null)
+  /** Rows whose equipment the user changed in this session (a late fetch must not overwrite them). */
+  const equipmentTouchedRef = useRef<Set<string>>(new Set())
+  /** ISO 17025 7.5.1 environmental conditions: unknown until probed; missing = migration 20261026100300 not applied. */
+  const [envStatus, setEnvStatus] = useState<'unknown' | 'available' | 'missing'>('unknown')
+  const [labAreas, setLabAreas] = useState<LabAreaOption[]>([])
+  const [labAreasError, setLabAreasError] = useState<string | null>(null)
+  /** Area chosen in this session; null = not chosen yet (the default applies). */
+  const [envAreaChoice, setEnvAreaChoice] = useState<string | null>(null)
+  const [envState, setEnvState] = useState<{
+    key: string
+    conditions: Record<string, EnvironmentConditions | null>
+  } | null>(null)
+  const [envFetchError, setEnvFetchError] = useState<{ key: string; message: string } | null>(null)
+  const [envAck, setEnvAck] = useState<{ signature: string; ack: ResultEnvironmentAcknowledgement } | null>(null)
+  const [envSaveError, setEnvSaveError] = useState<string | null>(null)
+  const [envPreparing, setEnvPreparing] = useState(false)
+  const { user, profileName, designation } = useAuth()
+  const askReason = useReasonForChange()
+  const isDirector = isLaboratoryDirector(designation)
   const nestedDialogOpen =
     addTestOpen ||
     sampleDetailsOpen ||
     editSpecOpen ||
+    pickerIndex !== null ||
     bulkDatePrompt !== null
 
   useEffect(() => {
@@ -147,6 +281,14 @@ export function SectionResultsEntryDialog({
       setEditSpecEntry(null)
       setEditSpecValue('')
       setEditSpecError(null)
+      setPickerIndex(null)
+      setEquipmentError(null)
+      equipmentTouchedRef.current = new Set()
+      setEnvAreaChoice(null)
+      setEnvState(null)
+      setEnvFetchError(null)
+      setEnvAck(null)
+      setEnvSaveError(null)
       return
     }
     // Keep draft while open if row briefly null (parent race); do not clear section key.
@@ -260,6 +402,392 @@ export function SectionResultsEntryDialog({
       cancelled = true
     }
   }, [open, parameterIdsKey])
+
+  const paramRowIdsKey = useMemo(
+    () => [...new Set(draft.map((p) => p.paramRowId?.trim()).filter(Boolean))].sort().join('|'),
+    [draft],
+  )
+
+  // Who entered each result and its raw data files (ISO 17025 7.5.1); null = migration not applied.
+  const [entryStamps, setEntryStamps] = useState<Record<string, ResultEntryStamp> | null>(null)
+  const [resultAttachments, setResultAttachments] = useState<Record<string, ResultAttachment[]> | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    const ids = paramRowIdsKey.split('|').filter(Boolean)
+    void Promise.all([fetchResultEntryStamps(ids), fetchResultAttachments(ids)]).then(([stamps, files]) => {
+      if (cancelled) return
+      setEntryStamps(stamps)
+      setResultAttachments(files)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, paramRowIdsKey])
+
+  // Equipment used already saved on these result rows (also probes the column).
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void fetchEquipmentUsedByParamIds(paramRowIdsKey.split('|').filter(Boolean))
+      .then(({ available, byId }) => {
+        if (cancelled) return
+        setTraceability(available ? 'available' : 'missing')
+        if (!available) return
+        setDraft((prev) =>
+          prev.map((p) => {
+            const touched = equipmentTouchedRef.current.has(p.paramRowId || p.testLabel)
+            if (!touched && p.paramRowId && byId[p.paramRowId]) {
+              return { ...p, equipmentUsed: byId[p.paramRowId] }
+            }
+            return p.equipmentUsed !== undefined ? p : { ...p, equipmentUsed: [] }
+          }),
+        )
+      })
+      .catch(() => {
+        // Unknown failure: do not block saving on it.
+        if (!cancelled) setTraceability('missing')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, paramRowIdsKey])
+
+  // Equipment / CRM list for the picker (entry mode only).
+  useEffect(() => {
+    if (!open || readOnly || traceability !== 'available') return
+    let cancelled = false
+    void Promise.resolve()
+      .then(() => {
+        if (cancelled) return null
+        setEquipmentLoading(true)
+        setEquipmentLoadError(null)
+        return loadEquipmentOptions()
+      })
+      .then((list) => {
+        if (!cancelled && list) setEquipmentOptions(list)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setEquipmentOptions([])
+          setEquipmentLoadError(err instanceof Error ? err.message : 'Could not load equipment')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setEquipmentLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, readOnly, traceability])
+
+  const equipmentOptionById = useMemo(
+    () => new Map(equipmentOptions.map((o) => [o.id, o])),
+    [equipmentOptions],
+  )
+
+  /** Re-take each snapshot from the current masters for the entry's test date (keeps overrides). */
+  const refreshSnapshots = (p: SectionParameterEntry, items: EquipmentUsedEntry[]): EquipmentUsedEntry[] =>
+    items.map((s) => {
+      if (isNoEquipmentEntry(s)) return s
+      const opt = equipmentOptionById.get(s.equipment_id)
+      if (!opt) return s
+      return snapshotFromOption(
+        opt,
+        testDateOf(p),
+        s.override_reason
+          ? { reason: s.override_reason, byId: s.override_by ?? '', byName: s.override_by_name ?? '' }
+          : undefined,
+      )
+    })
+
+  const handlePickerConfirm = (items: EquipmentUsedEntry[], applyToOthers: boolean) => {
+    const index = pickerIndex
+    setPickerIndex(null)
+    if (index === null) return
+    setEquipmentError(null)
+    setDraft((prev) =>
+      prev.map((p, i) => {
+        if (i === index) {
+          equipmentTouchedRef.current.add(p.paramRowId || p.testLabel)
+          return { ...p, equipmentUsed: items }
+        }
+        if (applyToOthers && (p.equipmentUsed ?? []).length === 0) {
+          equipmentTouchedRef.current.add(p.paramRowId || p.testLabel)
+          return { ...p, equipmentUsed: refreshSnapshots(p, items) }
+        }
+        return p
+      }),
+    )
+  }
+
+  // ---------------------------------------------------------------------
+  // Environmental conditions during the test (ISO 17025 7.5.1)
+  // ---------------------------------------------------------------------
+
+  // Saved area + snapshot on these result rows (also probes the columns).
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void fetchResultEnvironmentByParamIds(paramRowIdsKey.split('|').filter(Boolean))
+      .then(({ available, byId }) => {
+        if (cancelled) return
+        setEnvStatus(available ? 'available' : 'missing')
+        if (!available) return
+        setDraft((prev) =>
+          prev.map((p) => {
+            const saved = p.paramRowId ? byId[p.paramRowId] : undefined
+            return saved ? { ...p, environmentAreaId: saved.areaId, environmentSnapshot: saved.snapshot } : p
+          }),
+        )
+      })
+      .catch(() => {
+        // Unknown failure: do not block saving on it.
+        if (!cancelled) setEnvStatus('missing')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, paramRowIdsKey])
+
+  // Active lab areas for the picker (entry mode only).
+  useEffect(() => {
+    if (!open || readOnly || envStatus !== 'available') return
+    let cancelled = false
+    void loadLabAreaOptions()
+      .then((list) => {
+        if (cancelled) return
+        setLabAreas(list)
+        setLabAreasError(null)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLabAreasError(err instanceof Error ? err.message : 'Could not load lab areas')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, readOnly, envStatus])
+
+  const sectionAreaKey = (row?.sectionCode?.trim() || row?.department?.trim() || '').toLowerCase()
+
+  /** Area options: active areas, plus a saved area that is no longer active. */
+  const areaOptions = useMemo(() => {
+    const list = [...labAreas]
+    for (const p of draft) {
+      const s = p.environmentSnapshot
+      if (p.environmentAreaId && s && !list.some((a) => a.id === p.environmentAreaId)) {
+        list.push({ id: p.environmentAreaId, code: s.area_code, name: `${s.area_name} (inactive)`, department: null })
+      }
+    }
+    return list
+  }, [labAreas, draft])
+
+  /** Saved area of this section, else the last area used for the section on this browser. */
+  const defaultEnvAreaId = useMemo(() => {
+    const saved = draft.find((p) => p.environmentAreaId)?.environmentAreaId ?? ''
+    if (saved && areaOptions.some((a) => a.id === saved)) return saved
+    const remembered = readLastSectionArea(sectionAreaKey)
+    return remembered && labAreas.some((a) => a.id === remembered) ? remembered : ''
+  }, [draft, areaOptions, labAreas, sectionAreaKey])
+  const envAreaId = envAreaChoice ?? defaultEnvAreaId
+  const envArea = areaOptions.find((a) => a.id === envAreaId) ?? null
+  const envActive = !readOnly && envStatus === 'available'
+
+  const periodsKey = useMemo(
+    () => [...new Set(draft.map((p) => testPeriodOf(p.testStartDate, p.testEndDate).key))].sort().join(','),
+    [draft],
+  )
+  const envKey = `${envAreaId}#${periodsKey}`
+
+  // Conditions for each test period in the chosen area (debounced while dates are typed).
+  useEffect(() => {
+    if (!open || readOnly || envStatus !== 'available' || !envAreaId || !periodsKey) return
+    let cancelled = false
+    const key = `${envAreaId}#${periodsKey}`
+    const timer = window.setTimeout(() => {
+      void fetchPeriodConditions(envAreaId, periodsKey)
+        .then((conditions) => {
+          if (cancelled) return
+          setEnvState({ key, conditions })
+          setEnvFetchError(null)
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            setEnvFetchError({ key, message: err instanceof Error ? err.message : 'Could not read conditions' })
+          }
+        })
+    }, 350)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [open, readOnly, envStatus, envAreaId, periodsKey])
+
+  const envConditions = envState?.key === envKey ? envState.conditions : null
+  const envError = envFetchError?.key === envKey ? envFetchError.message : null
+  const envSignature = envConditions ? outOfLimitsSignature(envAreaId, envConditions) : ''
+  const envSessionAck = envAck && envAck.signature === envSignature ? envAck.ack : null
+  const envOutPeriods = envConditions
+    ? Object.values(envConditions).filter((c): c is EnvironmentConditions => Boolean(c?.anyOutOfLimits))
+    : []
+  /** Parameters with results tested while a reading was out of limits and not yet acknowledged. */
+  const envUnacknowledged = (conditions: Record<string, EnvironmentConditions | null>) =>
+    draft.filter((p) => {
+      if (!p.results?.trim()) return false
+      const t = testPeriodOf(p.testStartDate, p.testEndDate)
+      const c = conditions[t.key]
+      return Boolean(c?.anyOutOfLimits) && !carriedAcknowledgement(p.environmentSnapshot, c as EnvironmentConditions, t)
+    })
+  const envCarriedAck = envConditions
+    ? draft
+        .map((p) => {
+          const t = testPeriodOf(p.testStartDate, p.testEndDate)
+          const c = envConditions[t.key]
+          return c?.anyOutOfLimits ? carriedAcknowledgement(p.environmentSnapshot, c, t) : null
+        })
+        .find(Boolean) ?? null
+    : null
+  const envNeedsAck = Boolean(envConditions) && !envSessionAck && envOutPeriods.length > 0 &&
+    (envUnacknowledged(envConditions ?? {}).length > 0 || !envCarriedAck)
+
+  const askEnvironmentAck = async (
+    conditions: Record<string, EnvironmentConditions | null>,
+  ): Promise<ResultEnvironmentAcknowledgement | null> => {
+    const out = Object.values(conditions).filter((c): c is EnvironmentConditions => Boolean(c?.anyOutOfLimits))
+    const count = out.reduce((n, c) => n + c.outOfLimitCount, 0)
+    const reason = await askReason({
+      title: 'Environmental conditions outside limits during testing',
+      recordLabel: `${envArea ? `${envArea.code} ${envArea.name}` : 'Lab area'} · ${count} reading${count === 1 ? '' : 's'} outside limits · Section ${row?.sectionCode?.trim() || '—'}`,
+      description: 'State why the results remain valid. Recorded with each result (ISO/IEC 17025 7.5.1).',
+      confirmLabel: 'Acknowledge',
+      quickPicks: ENV_ACK_QUICK_PICKS,
+    })
+    if (!reason) return null
+    const ack: ResultEnvironmentAcknowledgement = {
+      reason,
+      by: user?.id ?? '',
+      by_name: profileName.trim() || user?.email || '',
+      at: new Date().toISOString(),
+    }
+    setEnvAck({ signature: outOfLimitsSignature(envAreaId, conditions), ack })
+    return ack
+  }
+
+  /**
+   * Adds lab area + conditions snapshot to each parameter with a result.
+   * Null = stop the save (fetch failed or the acknowledgement was cancelled).
+   * Before migration 20261026100300 the draft is returned unchanged.
+   */
+  const withEnvironment = async (entries: SectionResultsDraft[]): Promise<SectionResultsDraft[] | null> => {
+    setEnvSaveError(null)
+    if (readOnly || envStatus !== 'available') return entries
+    if (!envAreaId) {
+      return entries.map((p) =>
+        p.results?.trim() ? { ...p, environmentAreaId: null, environmentSnapshot: null } : p,
+      )
+    }
+    let conditions = envConditions
+    if (!conditions) {
+      setEnvPreparing(true)
+      try {
+        conditions = await fetchPeriodConditions(envAreaId, periodsKey)
+        setEnvState({ key: envKey, conditions })
+      } catch (err) {
+        setEnvSaveError(
+          `Could not read the environmental conditions: ${err instanceof Error ? err.message : 'unknown error'}`,
+        )
+        return null
+      } finally {
+        setEnvPreparing(false)
+      }
+    }
+    let ack =
+      envAck && envAck.signature === outOfLimitsSignature(envAreaId, conditions) ? envAck.ack : null
+    if (!ack && envUnacknowledged(conditions).length > 0) {
+      ack = await askEnvironmentAck(conditions)
+      if (!ack) {
+        setEnvSaveError('Acknowledge the readings outside limits to save the results.')
+        return null
+      }
+    }
+    const capturedAt = new Date().toISOString()
+    writeLastSectionArea(sectionAreaKey, envAreaId)
+    return entries.map((p) => {
+      if (!p.results?.trim()) return p
+      const t = testPeriodOf(p.testStartDate, p.testEndDate)
+      const c = conditions?.[t.key] ?? null
+      if (!c) return { ...p, environmentAreaId: envAreaId, environmentSnapshot: null }
+      const pAck = c.anyOutOfLimits ? (ack ?? carriedAcknowledgement(p.environmentSnapshot, c, t)) : null
+      return { ...p, environmentAreaId: envAreaId, environmentSnapshot: snapshotFromConditions(c, capturedAt, pAck) }
+    })
+  }
+
+  /** Saved conditions (read-only view), one line per area and period. */
+  const savedEnvironmentLines = useMemo(() => {
+    const seen = new Map<string, ResultEnvironmentSnapshot>()
+    for (const p of draft) {
+      const s = p.environmentSnapshot
+      if (!s) continue
+      const key = `${s.area_id}|${localDayOf(s.period_from)}|${localDayOf(s.period_to)}`
+      if (!seen.has(key)) seen.set(key, s)
+    }
+    return [...seen.values()]
+  }, [draft])
+
+  const handleSaveClick = async () => {
+    if (traceability !== 'available') {
+      const withEnv = await withEnvironment(draft)
+      if (withEnv) void onSave(withEnv)
+      return
+    }
+    const missing: string[] = []
+    const blocked: string[] = []
+    const checked = draft.map((p) => {
+      const items = refreshSnapshots(p, p.equipmentUsed ?? [])
+      if (p.results?.trim()) {
+        if (!equipmentUsedIsRecorded(items)) missing.push(p.testLabel)
+        for (const s of equipmentSnapshotsOf(items)) {
+          if (s.usable === false && !s.override_reason) {
+            blocked.push(`${p.testLabel}: ${s.asset_code} ${s.name} (${s.reason ?? 'not usable'})`)
+          }
+        }
+      }
+      return { ...p, equipmentUsed: items }
+    })
+    if (missing.length > 0 || blocked.length > 0) {
+      const parts: string[] = []
+      if (missing.length > 0) {
+        parts.push(
+          `Select the equipment / CRMs used (or record "no equipment used" with a reason) for: ${missing.join(', ')}.`,
+        )
+      }
+      if (blocked.length > 0) {
+        parts.push(
+          `Not usable on the test date: ${blocked.join('; ')}.${
+            isDirector ? ' Re-select the item to override with a reason.' : ' Only the Laboratory Director can override.'
+          }`,
+        )
+      }
+      setEquipmentError(parts.join(' '))
+      return
+    }
+    setEquipmentError(null)
+    const next = await withEnvironment(checked)
+    if (!next) return
+    for (const p of next) {
+      const snapshots = equipmentSnapshotsOf(p.equipmentUsed)
+      if (snapshots.length > 0) {
+        writeLastEquipmentSelection(
+          equipmentParamKey(p),
+          snapshots.map((s) => s.equipment_id),
+        )
+      }
+    }
+    setDraft(next)
+    void onSave(next)
+  }
+
+  const pickerEntry = pickerIndex !== null ? draft[pickerIndex] : undefined
 
   const toggleRow = (key: string) => {
     setSelectedKeys((prev) => {
@@ -379,6 +907,15 @@ export function SectionResultsEntryDialog({
         overlayClassName="lg:inset-y-0 lg:left-[268px] lg:right-0 lg:w-auto"
         className={cn(dialogShellClass, layer !== 'default' && '!z-[60]')}
         showCloseButton={!nestedDialogOpen}
+        onPointerDownOutside={(e) => {
+          if (insideReasonDialog(e)) e.preventDefault()
+        }}
+        onInteractOutside={(e) => {
+          if (insideReasonDialog(e)) e.preventDefault()
+        }}
+        onEscapeKeyDown={(e) => {
+          if (insideReasonDialog(e)) e.preventDefault()
+        }}
       >
         <div className="relative shrink-0 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-2.5 text-white sm:px-5 sm:py-3">
           <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
@@ -422,6 +959,145 @@ export function SectionResultsEntryDialog({
           </div>
         </div>
 
+        {envStatus === 'available' && (envActive || readOnly) ? (
+          <div className="shrink-0 border-b-2 border-stone-500 bg-[#fffaf0] px-4 py-2 text-xs text-[#292524] sm:px-5">
+            {readOnly ? (
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+                <span className="font-semibold uppercase tracking-wide text-[11px] text-stone-600">
+                  Environmental conditions
+                </span>
+                {savedEnvironmentLines.length === 0 ? (
+                  <span className="text-stone-500">Not recorded</span>
+                ) : (
+                  <ul className="min-w-0 flex-1 space-y-0.5">
+                    {savedEnvironmentLines.map((s) => (
+                      <li key={`${s.area_id}-${s.period_from}-${s.period_to}`} className="break-words">
+                        <span className="font-medium">
+                          {s.area_name || s.area_code}
+                          {s.area_code && s.area_name ? ` (${s.area_code})` : ''}
+                        </span>{' '}
+                        · {formatDateDisplay(localDayOf(s.period_from))} – {formatDateDisplay(localDayOf(s.period_to))}:{' '}
+                        <span
+                          className={cn(
+                            s.reading_count === 0 && 'text-amber-800',
+                            s.any_out_of_limits && 'font-medium text-red-700',
+                          )}
+                        >
+                          {formatEnvironmentSnapshotSummary(s)}
+                        </span>
+                        {s.acknowledgement?.reason ? (
+                          <span className="block text-amber-800">
+                            Acknowledged by {s.acknowledgement.by_name || '—'}: {s.acknowledgement.reason}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label
+                    htmlFor="section-results-env-area"
+                    className="font-semibold uppercase tracking-wide text-[11px] text-stone-600"
+                  >
+                    Lab area (environment)
+                  </label>
+                  <select
+                    id="section-results-env-area"
+                    className={cn(limsFieldClass, 'h-8 min-w-[14rem] rounded-sm px-2 text-xs')}
+                    value={envAreaId}
+                    onChange={(e) => {
+                      setEnvAreaChoice(e.target.value)
+                      setEnvSaveError(null)
+                    }}
+                    disabled={saving || envPreparing}
+                  >
+                    <option value="">— Select lab area —</option>
+                    {areaOptions.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.code} · {a.name}
+                      </option>
+                    ))}
+                  </select>
+                  {labAreasError ? <span className="text-red-700">{labAreasError}</span> : null}
+                  {!labAreasError && labAreas.length === 0 ? (
+                    <span className="text-stone-500">No lab areas defined yet (Environment → Areas).</span>
+                  ) : null}
+                  {!envAreaId && labAreas.length > 0 ? (
+                    <span className="text-stone-500">Choose where the tests were done to record the conditions.</span>
+                  ) : null}
+                </div>
+                {envAreaId ? (
+                  envError ? (
+                    <p className="text-red-700" role="alert">
+                      Could not read the environmental conditions: {envError}
+                    </p>
+                  ) : !envConditions ? (
+                    <p className="text-stone-500">Reading environmental conditions…</p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {periodsFromKey(periodsKey).map((t) => {
+                        const c = envConditions[t.key]
+                        return (
+                          <li key={t.key} className="break-words">
+                            <span className="text-stone-600">
+                              {formatDateDisplay(t.startDate)}
+                              {t.endDate !== t.startDate ? ` – ${formatDateDisplay(t.endDate)}` : ''}:
+                            </span>{' '}
+                            {!c ? (
+                              <span className="text-amber-800">Conditions not available for this area.</span>
+                            ) : c.readingCount === 0 ? (
+                              <span className="font-medium text-amber-800">
+                                No environmental readings recorded for this period
+                              </span>
+                            ) : (
+                              <span className={cn(c.anyOutOfLimits && 'font-medium text-red-700')}>
+                                {formatEnvironmentSnapshotSummary(snapshotFromConditions(c, '', null))}
+                              </span>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )
+                ) : null}
+                {envOutPeriods.length > 0 ? (
+                  envNeedsAck ? (
+                    <div className="flex flex-wrap items-center gap-2 text-red-700" role="alert">
+                      <span className="font-medium">
+                        Readings outside the area limits during testing. Acknowledge them (with a reason) before saving.
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 rounded-none border-red-600 px-2 text-[11px] text-red-700"
+                        onClick={() => {
+                          if (envConditions) void askEnvironmentAck(envConditions)
+                        }}
+                        disabled={saving}
+                      >
+                        Acknowledge
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-amber-800">
+                      Readings outside limits acknowledged: {(envSessionAck ?? envCarriedAck)?.reason}
+                    </p>
+                  )
+                ) : null}
+                {envSaveError ? (
+                  <p className="font-medium text-red-700" role="alert">
+                    {envSaveError}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <div className="min-h-0 flex-1 overflow-auto bg-[#f7f3eb] p-4 sm:p-5">
           <div className="min-h-full overflow-hidden border-2 border-stone-500 bg-[#f7f3eb] shadow-sm ring-1 ring-amber-700/20">
             <div className={cn(RESULTS_GRID_COLS, 'sticky top-0 z-10 bg-stone-800')}>
@@ -444,6 +1120,7 @@ export function SectionResultsEntryDialog({
               <div className={headCellClass}>Test Start Date</div>
               <div className={headCellClass}>Test End Date</div>
               <div className={headCellClass}>Results</div>
+              <div className={headCellClass}>Equipment / CRMs Used</div>
               <div className={headCellClass}>NABL Scope</div>
             </div>
 
@@ -559,7 +1236,7 @@ export function SectionResultsEntryDialog({
                         />
                       )}
                     </div>
-                    <div className={cn(cellClass, 'min-w-0 justify-center text-center')}>
+                    <div className={cn(cellClass, 'min-w-0 flex-col items-stretch justify-center text-center')}>
                       {readOnly ? (
                         <span
                           className="w-full break-words whitespace-pre-wrap text-center leading-relaxed"
@@ -577,6 +1254,97 @@ export function SectionResultsEntryDialog({
                           )}
                           onChange={(next) => updateDraft(index, { results: next })}
                         />
+                      )}
+                      <ResultObservationMeta
+                        sampleId={row?.sampleId ?? null}
+                        paramRowId={p.paramRowId}
+                        testLabel={p.testLabel}
+                        stamp={p.paramRowId ? entryStamps?.[p.paramRowId] : null}
+                        attachments={(p.paramRowId && resultAttachments?.[p.paramRowId]) || []}
+                        attachmentsAvailable={resultAttachments !== null}
+                        canAttach={!readOnly && row?.sampleStage !== 'completed'}
+                        onAttachmentsChange={(next) => {
+                          const id = p.paramRowId
+                          if (!id) return
+                          setResultAttachments((prev) => ({ ...(prev ?? {}), [id]: next }))
+                        }}
+                      />
+                    </div>
+                    <div className={cn(cellClass, 'min-w-0 flex-col items-stretch justify-center gap-1 text-left')}>
+                      {traceability === 'missing' ? (
+                        <span className="text-center text-[11px] text-stone-500">—</span>
+                      ) : readOnly ? (
+                        (p.equipmentUsed ?? []).length === 0 ? (
+                          <span className="text-center text-[11px] text-stone-500">
+                            {traceability === 'unknown' ? '…' : 'Not recorded'}
+                          </span>
+                        ) : (
+                          <ul className="space-y-0.5 text-[11px] leading-snug">
+                            {(p.equipmentUsed ?? []).map((s) =>
+                              isNoEquipmentEntry(s) ? (
+                                <li key="none" className="break-words">
+                                  <span className="font-medium">No equipment used</span>
+                                  {s.reason.trim() ? (
+                                    <span className="block text-stone-600">{s.reason.trim()}</span>
+                                  ) : null}
+                                </li>
+                              ) : (
+                              <li key={s.equipment_id} className="break-words">
+                                {formatEquipmentUsed(s)}
+                                {s.override_reason ? (
+                                  <span
+                                    className="block text-amber-800"
+                                    title={`${s.reason ?? ''} · ${s.override_by_name ?? ''}`}
+                                  >
+                                    Director override: {s.override_reason}
+                                  </span>
+                                ) : null}
+                              </li>
+                              ),
+                            )}
+                          </ul>
+                        )
+                      ) : (
+                        <>
+                          {(p.equipmentUsed ?? []).length > 0 ? (
+                            <ul className="space-y-0.5 text-[11px] leading-snug">
+                              {(p.equipmentUsed ?? []).map((s) =>
+                                isNoEquipmentEntry(s) ? (
+                                  <li key="none" className="break-words" title={s.reason}>
+                                    <span className="font-medium">No equipment used</span>
+                                    {s.reason.trim() ? ` · ${s.reason.trim()}` : ''}
+                                  </li>
+                                ) : (
+                                <li
+                                  key={s.equipment_id}
+                                  className={cn(
+                                    'break-words',
+                                    s.usable === false && !s.override_reason && 'font-medium text-red-700',
+                                    s.override_reason && 'text-amber-800',
+                                  )}
+                                  title={s.reason ?? undefined}
+                                >
+                                  {formatEquipmentUsed(s)}
+                                  {s.override_reason ? ' · override' : ''}
+                                </li>
+                                ),
+                              )}
+                            </ul>
+                          ) : null}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              'h-7 rounded-none border-stone-500 px-2 text-[11px]',
+                              p.results?.trim() && !equipmentUsedIsRecorded(p.equipmentUsed) && 'border-red-600 text-red-700',
+                            )}
+                            onClick={() => setPickerIndex(index)}
+                            disabled={saving || traceability !== 'available'}
+                          >
+                            {equipmentUsedIsRecorded(p.equipmentUsed) ? 'Change' : 'Select equipment'}
+                          </Button>
+                        </>
                       )}
                     </div>
                     <div className={cn(cellClass, 'justify-center text-center')}>
@@ -600,15 +1368,28 @@ export function SectionResultsEntryDialog({
         <div className="relative shrink-0 overflow-hidden border-t-2 border-stone-600 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 text-white sm:px-5">
           <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <div className="relative flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-xs text-stone-300">Selected: {selectedCount}</span>
+              {traceability === 'missing' ? (
+                <span className="text-[11px] text-amber-200">
+                  Equipment used is not recorded yet: the database update for equipment traceability
+                  (20261026100100) is pending.
+                </span>
+              ) : null}
+              {equipmentError ? (
+                <span className="text-[11px] font-medium text-red-300" role="alert">
+                  {equipmentError}
+                </span>
+              ) : null}
+            </div>
             {!readOnly ? (
               <Button
                 type="button"
                 className={cn('h-8', limsPrimaryBtnClass)}
-                onClick={() => void onSave(draft)}
-                disabled={saving || draft.length === 0}
+                onClick={() => void handleSaveClick()}
+                disabled={saving || envPreparing || draft.length === 0}
               >
-                {saving ? 'Saving…' : 'Save & Close'}
+                {saving ? 'Saving…' : envPreparing ? 'Checking conditions…' : 'Save & Close'}
               </Button>
             ) : (
               <Button
@@ -665,6 +1446,30 @@ export function SectionResultsEntryDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      {!readOnly && pickerEntry ? (
+        <EquipmentUsedPickerDialog
+          key={`${pickerIndex}-${pickerEntry.paramRowId ?? pickerEntry.testLabel}`}
+          open
+          onOpenChange={(next) => {
+            if (!next) setPickerIndex(null)
+          }}
+          testLabel={pickerEntry.testLabel}
+          testDate={testDateOf(pickerEntry)}
+          section={row?.department ?? null}
+          options={equipmentOptions}
+          loading={equipmentLoading}
+          loadError={equipmentLoadError}
+          initial={pickerEntry.equipmentUsed ?? []}
+          suggestedIds={readLastEquipmentSelection(equipmentParamKey(pickerEntry))}
+          isDirector={isDirector}
+          directorId={user?.id ?? ''}
+          directorName={profileName.trim() || user?.email || ''}
+          askReason={askReason}
+          canApplyToOthers={draft.length > 1}
+          onConfirm={handlePickerConfirm}
+        />
+      ) : null}
 
       <SectionSampleDescViewDialog
         row={row}

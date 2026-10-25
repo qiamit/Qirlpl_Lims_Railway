@@ -2326,6 +2326,7 @@ export function EquipmentForCalibrationForm({
           equipmentName={form.equipmentName}
           assetCode={form.assetCode}
           history={form.maintenanceHistory}
+          historySource={{ table: 'equipment_for_calibration', assetCode: form.assetCode }}
           currentLastDate={form.lastMaintenanceDate}
           currentDoneByName={form.maintenanceDoneBy}
           currentChecklist={form.maintenanceChecklist}
@@ -2432,6 +2433,7 @@ export function EquipmentForCalibrationForm({
           equipmentName={form.equipmentName}
           assetCode={form.assetCode}
           history={form.intermediateCheckHistory}
+          historySource={{ table: 'equipment_for_calibration', assetCode: form.assetCode }}
           currentLastDate={form.lastIntermediateCheckDate}
           currentDoneByName={form.intermediateCheckPerformedBy}
           currentStatus={currentIntermediatePayload.status}
@@ -2453,7 +2455,7 @@ export function EquipmentForCalibrationForm({
         />
       </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-300 pt-4">
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 pt-4">
         {readOnly ? (
           <Button
             type="button"

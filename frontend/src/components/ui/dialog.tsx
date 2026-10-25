@@ -141,7 +141,7 @@ const DialogContent = React.forwardRef<
           onInteractOutside?.(e)
         }}
         className={cn(
-          'fixed left-0 right-0 mx-auto grid w-[calc(100vw-1rem)] max-w-lg max-h-[92dvh] gap-4 overflow-y-auto rounded-none border-2 border-stone-600 bg-background p-6 shadow-lg ring-1 ring-amber-700/20 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:w-full sm:rounded-none',
+          'fixed left-0 right-0 mx-auto grid w-[calc(100vw-1rem)] max-w-lg max-h-[92dvh] gap-4 overflow-y-auto overscroll-contain rounded-none border-2 border-stone-600 bg-background p-6 shadow-lg ring-1 ring-amber-700/20 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5 sm:w-full sm:rounded-none',
           dialogLayerZClass(layer),
           className,
         )}
@@ -169,7 +169,7 @@ const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 DialogHeader.displayName = 'DialogHeader'
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2', className)} {...props} />
+  <div className={cn('flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-0 sm:space-x-2', className)} {...props} />
 )
 DialogFooter.displayName = 'DialogFooter'
 

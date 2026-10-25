@@ -11,6 +11,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { receiptLedgerSnapshot } from '../shared/clientSaleBalance'
+import { isCancelledDocument } from '../shared/financeRules'
 import {
   formatDate,
   formatMoney,
@@ -42,6 +43,8 @@ function statusClass(status: string): string {
     case 'Rejected':
     case 'Expired':
       return 'bg-rose-50 text-rose-800 ring-rose-200'
+    case 'Cancelled':
+      return 'bg-stone-200 text-stone-700 ring-stone-400'
     default:
       return 'bg-slate-50 text-slate-700 ring-slate-200'
   }
@@ -172,6 +175,10 @@ export function QuotationTable({
           <TableBody>
             {rows.map((r) => {
               const selected = selectedIds.has(r.id)
+              const cancelled = isCancelledDocument(r.status)
+              const cancelTitle = cancelled
+                ? `Cancelled${r.cancel_reason ? `: ${r.cancel_reason}` : ''} (number kept)`
+                : undefined
               const busy = statusUpdatingId === r.id
               const inOptions = QUOTATION_STATUS_OPTIONS.some((o) => o.value === r.status)
               const ledger = paymentLedger
@@ -187,7 +194,9 @@ export function QuotationTable({
                 <TableRow
                   key={r.id}
                   data-state={selected ? 'selected' : undefined}
-                  className="group"
+                  data-cancelled={cancelled ? 'true' : undefined}
+                  title={cancelTitle}
+                  className={cn('group', cancelled && 'bg-stone-100 text-muted-foreground [&_td]:opacity-70')}
                 >
                   <TableCell
                     className={cn(
@@ -220,7 +229,12 @@ export function QuotationTable({
                         className="truncate font-mono text-xs text-muted-foreground"
                         title={r.quotation_number}
                       >
-                        {r.quotation_number}
+                        <span className={cn(cancelled && 'line-through')}>{r.quotation_number}</span>
+                        {cancelled ? (
+                          <span className="ml-1.5 inline-block rounded-sm border border-stone-500 px-1 text-[10px] font-bold uppercase tracking-wide text-stone-700">
+                            Cancelled
+                          </span>
+                        ) : null}
                       </p>
                     </div>
                   </TableCell>
@@ -267,7 +281,7 @@ export function QuotationTable({
                   <TableCell className="text-center align-middle">
                     <Select
                       value={r.status}
-                      disabled={busy || loading}
+                      disabled={busy || loading || cancelled}
                       onValueChange={(v) => onStatusChange(r, v as QuotationStatus)}
                     >
                       <SelectTrigger
@@ -314,7 +328,8 @@ export function QuotationTable({
                         size="icon"
                         variant="ghost"
                         aria-label={`Edit ${r.quotation_number}`}
-                        title="Edit"
+                        title={cancelled ? 'Cancelled documents cannot be edited' : 'Edit'}
+                        disabled={cancelled}
                         onClick={() => onEdit(r)}
                       >
                         <Pencil size={16} />

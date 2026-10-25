@@ -65,6 +65,7 @@ import {
   parseIntermediateCheckResultPayload,
 } from './intermediateCheckHistory'
 import { IqcMasterSearchSelect } from './IqcMasterSearchSelect'
+import { evaluateArithmeticToString } from '@/lib/safeExpression'
 
 function parseAcceptanceLimit(criteria: string | null | undefined): number | null {
   if (!criteria) return null
@@ -123,18 +124,9 @@ function emptyIntermediateCheckReading(): IntermediateCheckReading {
 const DEFAULT_INTERMEDIATE_TEMPERATURE = '27'
 const DEFAULT_INTERMEDIATE_HUMIDITY = '65'
 
+/** Calculator helper: `^[-+*\/.0-9]+$` arithmetic → result string or 'Error' (CSP-safe, no eval). */
 function safeEvaluate(expr: string): string {
-  const sanitized = expr.replace(/\s+/g, '')
-  if (!/^[-+*/.0-9]+$/.test(sanitized)) {
-    return 'Error'
-  }
-  try {
-    const fn = new Function(`return ${sanitized}`)
-    const res = fn()
-    return isFinite(res) ? String(res) : 'Error'
-  } catch {
-    return 'Error'
-  }
+  return evaluateArithmeticToString(expr)
 }
 
 export function EquipmentMasterForm({
@@ -741,6 +733,7 @@ export function EquipmentMasterForm({
       equipmentName={form.equipmentName}
       assetCode={form.assetCode}
       history={form.maintenanceHistory}
+      historySource={{ table: 'equipment_master', assetCode: form.assetCode }}
       currentLastDate={form.lastMaintenanceDate}
       currentDoneByName={maintenanceDoneByName}
       currentChecklist={form.maintenanceChecklist}
@@ -1423,6 +1416,7 @@ export function EquipmentMasterForm({
       equipmentName={form.equipmentName}
       assetCode={form.assetCode}
       history={form.intermediateCheckHistory}
+      historySource={{ table: 'equipment_master', assetCode: form.assetCode }}
       currentLastDate={form.lastIntermediateCheckDate}
       currentDoneByName={intermediateDoneByName}
       currentStatus={currentIntermediatePayload.status}
@@ -2121,7 +2115,7 @@ export function EquipmentMasterForm({
             {sectionContent}
           </div>
         </CardContent>
-        <CardFooter className="-mx-4 mt-4 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+        <CardFooter className="-mx-4 mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
           <Button
             type="button"
             onClick={onSave}
@@ -2223,8 +2217,15 @@ export function EquipmentMasterForm({
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="In Repair">In Repair</SelectItem>
                   <SelectItem value="Idle">Idle</SelectItem>
+                  <SelectItem value="Out of Service">Out of Service</SelectItem>
+                  <SelectItem value="Scrapped">Scrapped</SelectItem>
                 </SelectContent>
               </Select>
+              {form.equipmentStatus === 'Out of Service' ? (
+                <p className="text-[11px] text-stone-600">
+                  Set while a breakdown is open; it returns when the breakdown is closed with return-to-service authorization (6.4.9).
+                </p>
+              ) : null}
             </div>
             </div>
           </section>
@@ -2787,10 +2788,48 @@ export function EquipmentMasterForm({
             </div>
             </div>
           </section>
+
+          <section className={cn(limsPanelClass, "p-4")}>
+            <h3 className="mb-3 border-b border-amber-700/25 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+              Seal & Adjustment Protection (6.4.12)
+            </h3>
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="eq-seal-no">Seal / Tamper Label No.</Label>
+                <Input
+                  id="eq-seal-no"
+                  placeholder="e.g. SEAL-0042"
+                  value={form.sealNo}
+                  readOnly={readOnly}
+                  onChange={(e) => onChange({ ...form, sealNo: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-3">
+                <Label htmlFor="eq-seal-checked">Seal Found Intact On</Label>
+                <Input
+                  id="eq-seal-checked"
+                  type="date"
+                  value={form.sealIntactCheckedOn}
+                  readOnly={readOnly}
+                  onChange={(e) => onChange({ ...form, sealIntactCheckedOn: e.target.value })}
+                />
+              </div>
+              <div className="col-span-12 space-y-0.5 md:col-span-6">
+                <Label htmlFor="eq-adj-protection">Protection Against Adjustment</Label>
+                <Input
+                  id="eq-adj-protection"
+                  placeholder="e.g. Calibration screw sealed; settings menu password-protected"
+                  value={form.adjustmentProtection}
+                  readOnly={readOnly}
+                  onChange={(e) => onChange({ ...form, adjustmentProtection: e.target.value })}
+                />
+              </div>
+            </div>
+          </section>
         </div>
       </CardContent>
 
-      <CardFooter className="-mx-4 mt-5 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+      <CardFooter className="-mx-4 mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
         {readOnly ? (
           <Button
             type="button"

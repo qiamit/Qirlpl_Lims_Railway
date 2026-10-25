@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { limsDarkBarBtnClass, limsDarkBarFieldClass, limsPrimaryBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import type { SectionCompareSource } from './sectionCompareSources'
-import { formatNumber } from './testResultValues'
+import { formatNumber, formatReadingForInput } from './testResultValues'
 
 function evaluateExpression(expr: string): number | null {
   const t = expr.trim().replace(/,/g, '')
@@ -50,7 +50,9 @@ export function TestResultMiniCalculator({
   }
 
   const insertReference = (source: SectionCompareSource) => {
-    appendToken(formatNumber(source.value, decimalPlaces))
+    // The expression is a calculation: insert the full-precision value; only the
+    // result shown / applied is rounded to the declared decimals.
+    appendToken(formatReadingForInput(source.value))
   }
 
   const handleKey = (key: string) => {

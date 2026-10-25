@@ -55,6 +55,21 @@ Deno.serve(async (req) => {
     })
   }
 
+  const { data: callerProfile } = await admin
+    .from('user_profiles')
+    .select('designation, status')
+    .eq('id', callerData.user.id)
+    .maybeSingle()
+  const callerRow = callerProfile as { designation?: unknown; status?: unknown } | null
+  const callerDesignation = String(callerRow?.designation ?? '').trim().toLowerCase()
+  const callerStatus = String(callerRow?.status ?? '').trim().toLowerCase()
+  if (callerDesignation !== 'laboratory director' || callerStatus === 'inactive') {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   const body = (await req.json().catch(() => null)) as CreateUserBody | null
   if (!body?.email || !body?.password) {
     return new Response(JSON.stringify({ error: 'email and password are required' }), {

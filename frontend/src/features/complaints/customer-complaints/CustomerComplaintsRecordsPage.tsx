@@ -1,5 +1,11 @@
 import CustomerComplaintsMasterPage from './CustomerComplaintsMasterPage'
+import { ComplaintsKpiPanel } from './ComplaintsKpiPanel'
 
 export default function CustomerComplaintsRecordsPage() {
-  return <CustomerComplaintsMasterPage />
+  return (
+    <>
+      <ComplaintsKpiPanel />
+      <CustomerComplaintsMasterPage />
+    </>
+  )
 }

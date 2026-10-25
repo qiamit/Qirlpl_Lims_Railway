@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, Fragment } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
+import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
+import { checkEquipmentUsableOn, todayIso } from '@/lib/equipmentTraceability'
 import {
   Briefcase,
   Calculator,
@@ -112,6 +115,9 @@ import {
   parseRawDataSheetPayload,
   parseRawDataSheetTemplate,
   parseTableSettings,
+  getEnvironmentAverageParamValue,
+  leastCountDecimalPlaces,
+  formatTypedReading,
   resolveEnvParameterColumns,
   DEFAULT_TEMP_CORRECTION,
   type FormulaCalculationExplanation,
@@ -460,6 +466,50 @@ function isEmreExpandedUncertaintyExceeded(
 ): boolean {
   if (actualExpanded == null || masterUncertainty == null) return false
   return actualExpanded > masterUncertainty
+}
+
+/**
+ * Laboratory Director override for using a master that is not usable
+ * (calibration overdue / out of service), kept in the sheet payload as
+ * `masterUsabilityOverrides` (ISO 17025 6.4).
+ */
+type MasterUsabilityOverride = {
+  master_id: string
+  asset_code: string
+  blocked_reason: string
+  override_reason: string
+  by: string
+  by_name: string
+  at: string
+}
+
+const MASTER_OVERRIDE_QUICK_PICKS = [
+  'New calibration certificate received; master not updated yet',
+  'Verified by intermediate check before use',
+  'No alternative master; impact assessed',
+] as const
+
+function readMasterUsabilityOverrides(raw: unknown): MasterUsabilityOverride[] {
+  const list = (raw as { masterUsabilityOverrides?: unknown } | null)?.masterUsabilityOverrides
+  if (!Array.isArray(list)) return []
+  return list.filter(
+    (x): x is MasterUsabilityOverride =>
+      Boolean(x) && typeof x === 'object' && typeof (x as MasterUsabilityOverride).master_id === 'string',
+  )
+}
+
+/** Same rules as equipment_usable_on(): calibration overdue or status out of service / in repair. */
+function masterUsability(master: MasterEquipmentForSheet) {
+  return checkEquipmentUsableOn(
+    {
+      kind: 'equipment',
+      status: master.equipment_status,
+      calDueDate: master.next_calibration_due,
+      crmValidUpto: null,
+      openBreakdowns: [],
+    },
+    todayIso(),
+  )
 }
 
 function masterCalDueTone(
@@ -2092,6 +2142,7 @@ export function RawDataSheetDialog({
   const [srf, setSrf] = useState<SrfSummaryForSheet | null>(null)
   const [equipmentMaster, setEquipmentMaster] = useState<EquipmentMasterForSheet | null>(null)
   const [masterEquipments, setMasterEquipments] = useState<MasterEquipmentForSheet[]>([])
+  const [masterOverrides, setMasterOverrides] = useState<MasterUsabilityOverride[]>([])
   const [uncertaintyOpen, setUncertaintyOpen] = useState(false)
   const [environmentOpen, setEnvironmentOpen] = useState(false)
   const [calculationsRowId, setCalculationsRowId] = useState<string | null>(null)
@@ -2108,7 +2159,18 @@ export function RawDataSheetDialog({
   const [companyGenerateReportEnabled, setCompanyGenerateReportEnabled] = useState(true)
   const [locationDraft, setLocationDraft] = useState('')
   const [formulaRefreshSpinning, setFormulaRefreshSpinning] = useState(false)
+  /** Sheet was submitted for review / reviewed before this edit (ISO 17025 7.5.2 reason needed). */
+  const [sheetSubmitted, setSheetSubmitted] = useState(false)
+  /** JSON of the payload as loaded, to tell whether a submitted sheet was actually changed. */
+  const loadedPayloadJsonRef = useRef<string | null>(null)
   const { user, profileName, designation } = useAuth()
+  const askReason = useReasonForChange()
+
+  useEffect(() => {
+    if (payload && loadedPayloadJsonRef.current === null) {
+      loadedPayloadJsonRef.current = JSON.stringify(payload)
+    }
+  }, [payload])
 
   useEffect(() => {
     if (!open || !job) return
@@ -2131,11 +2193,14 @@ export function RawDataSheetDialog({
     setError(null)
     setPayload(null)
     setSheetId(null)
+    setSheetSubmitted(false)
+    loadedPayloadJsonRef.current = null
     setReadOnly(forceReadOnly)
     setUncertaintyOpen(false)
     setSrf(null)
     setEquipmentMaster(null)
     setMasterEquipments([])
+    setMasterOverrides([])
     setCalculationsRowId(null)
     setContextPanel(null)
 
@@ -2189,6 +2254,8 @@ export function RawDataSheetDialog({
       }
 
       setSheetId(sheet.id)
+      setMasterOverrides(readMasterUsabilityOverrides(sheet.payload))
+      setSheetSubmitted(sheet.sheet_status === 'under_review' || Boolean(sheet.reviewed_at))
       setReadOnly(forceReadOnly || sheet.sheet_status === 'approved')
 
       const existing = parseRawDataSheetPayload(sheet.payload)
@@ -2548,6 +2615,18 @@ export function RawDataSheetDialog({
     setPayload({ ...payload, rows: nextRows })
   }, [payload, equipmentMaster, resolvedRawDataSheetTemplate, matchedEquipmentRange])
 
+  /** Masters used on this sheet that may not be used today (overdue / out of service). */
+  const blockedMasters = useMemo(() => {
+    const used = new Set(
+      (payload?.rows ?? []).map((r) => (r.masterEquipmentId ?? '').trim()).filter(Boolean),
+    )
+    const candidates =
+      used.size > 0 ? masterEquipments.filter((m) => used.has(m.id)) : masterEquipments
+    return candidates
+      .map((master) => ({ master, ...masterUsability(master) }))
+      .filter((b) => !b.usable)
+  }, [payload?.rows, masterEquipments])
+
   const persistLocationOfCalibration = async () => {
     if (!job || readOnly || forceReadOnly) return
     const next = locationDraft.trim()
@@ -2559,12 +2638,72 @@ export function RawDataSheetDialog({
 
   const handleSave = async (asComplete = false) => {
     if (!sheetId || !payload || readOnly) return
+    // Masters not usable today block the sheet; only the Laboratory Director may override.
+    const notOverridden = blockedMasters.filter(
+      (b) =>
+        !masterOverrides.some(
+          (o) => o.master_id === b.master.id && o.blocked_reason === (b.reason ?? ''),
+        ),
+    )
+    let overridesToSave = masterOverrides
+    let overrideReason: string | null = null
+    if (notOverridden.length > 0) {
+      const list = notOverridden
+        .map((b) => `${b.master.asset_code || b.master.equipment_name}: ${b.reason}`)
+        .join('; ')
+      if (!isLaboratoryDirector(designation)) {
+        setError(
+          `Master equipment not usable — ${list}. The sheet cannot be saved; only the Laboratory Director can override.`,
+        )
+        return
+      }
+      overrideReason = await askReason({
+        title: 'Override: master equipment not usable',
+        recordLabel: list,
+        description: 'Recorded on the raw data sheet as a Laboratory Director override (ISO 17025 6.4).',
+        confirmLabel: 'Save anyway',
+        quickPicks: MASTER_OVERRIDE_QUICK_PICKS,
+      })
+      if (!overrideReason) return
+      const at = new Date().toISOString()
+      overridesToSave = [
+        ...masterOverrides,
+        ...notOverridden.map((b) => ({
+          master_id: b.master.id,
+          asset_code: b.master.asset_code,
+          blocked_reason: b.reason ?? '',
+          override_reason: overrideReason as string,
+          by: user?.id ?? '',
+          by_name: profileName.trim() || user?.email || '',
+          at,
+        })),
+      ]
+    }
+    let changeReason: string | null = null
+    if (sheetSubmitted && loadedPayloadJsonRef.current !== JSON.stringify(payload)) {
+      changeReason = await askReason({
+        title: 'Reason for changing submitted raw data',
+        recordLabel: [job?.srf_number ? `SRF ${job.srf_number}` : '', job?.equipment_label ?? '']
+          .filter(Boolean)
+          .join(' · '),
+        confirmLabel: 'Save',
+      })
+      if (!changeReason) return
+    }
     setSaving(true)
     setError(null)
     try {
       await persistLocationOfCalibration()
 
-      const columns = allRawDataSheetColumns(payload.template)
+      // The formulas the grid shows: the job's copy of the template with the
+      // current Calibration Equipment formulas. The copy alone can hold
+      // formulas fixed since the sheet was started, which left formula
+      // columns empty and the sheet impossible to save.
+      const savedTemplate = mergeFormulasFromEquipmentTemplate(
+        payload.template,
+        equipmentMaster ? resolvedRawDataSheetTemplate : null,
+      )
+      const columns = allRawDataSheetColumns(savedTemplate)
       const dp = parseTableSettings(payload.tableSettings).decimalPlaces
       const env = payload.environmentConditions
       // Formula columns show computed values in the UI but may be empty in storage.
@@ -2593,6 +2732,14 @@ export function RawDataSheetDialog({
       })
 
       if (asComplete) {
+        // ISO/IEC 17025 7.8.4.1 a / 6.3.3: the certificate states the
+        // conditions of calibration, so they are recorded with the readings.
+        if (
+          !getEnvironmentAverageParamValue(env ?? null, 'temperature').trim() ||
+          !getEnvironmentAverageParamValue(env ?? null, 'humidity').trim()
+        ) {
+          throw new Error('Enter the environmental conditions (temperature and humidity) under Environment Condition.')
+        }
         for (const item of payload.template.verification.items) {
           if (item.required && !payload.verificationAnswers[item.id]) {
             throw new Error(`Complete required verification: ${item.label}`)
@@ -2617,6 +2764,7 @@ export function RawDataSheetDialog({
 
       const nextPayload: RawDataSheetPayload = {
         ...payload,
+        template: savedTemplate,
         rows: rowsWithFormulas,
         ...(entryBy ? { entryBy } : {}),
       }
@@ -2624,9 +2772,17 @@ export function RawDataSheetDialog({
 
       await updateRawDataSheetPayload(
         sheetId,
-        nextPayload as unknown as Record<string, unknown>,
+        {
+          ...(nextPayload as unknown as Record<string, unknown>),
+          ...(overridesToSave.length > 0 ? { masterUsabilityOverrides: overridesToSave } : {}),
+        },
         asComplete ? 'under_review' : 'draft',
       )
+      setMasterOverrides(overridesToSave)
+      const auditReason = [changeReason, overrideReason ? `Master override: ${overrideReason}` : null]
+        .filter(Boolean)
+        .join(' | ')
+      if (auditReason) await recordReason('calibration_raw_data_sheets', sheetId, auditReason)
       if (asComplete) setReadOnly(false)
       onOpenChange(false)
     } catch (err) {
@@ -2668,6 +2824,13 @@ export function RawDataSheetDialog({
   const showGenerateReport =
     companyGenerateReportEnabled && !forceReadOnly && !readOnly
   const jobSelectedRangeFields = parseJobSelectedRangeFields(job)
+  // Typed readings are padded to the least count of the range being
+  // calibrated (0.01 → 2 places) and never rounded below what was typed.
+  const readingDecimalPlaces =
+    leastCountDecimalPlaces(matchedEquipmentRange?.resolutionLeastCount) ??
+    leastCountDecimalPlaces(jobSelectedRangeFields.leastCount) ??
+    leastCountDecimalPlaces(equipmentMaster?.resolution_least_count) ??
+    tableSettings.decimalPlaces
   const jobRangeSplit = splitRangeCapacityToMinMax(jobSelectedRangeFields.range)
   const equipmentRangesForJob = equipmentMaster
     ? parseMeasurementRanges(
@@ -3459,6 +3622,40 @@ export function RawDataSheetDialog({
             </p>
           ) : null}
 
+          {!loading && blockedMasters.length > 0 ? (
+            <div
+              className="rounded-none border-2 border-red-700/50 bg-red-50 px-3 py-2 text-sm text-red-900"
+              role="alert"
+            >
+              <p className="font-semibold">Master equipment not usable today</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px]">
+                {blockedMasters.map((b) => {
+                  const ov = masterOverrides.find(
+                    (o) => o.master_id === b.master.id && o.blocked_reason === (b.reason ?? ''),
+                  )
+                  return (
+                    <li key={b.master.id}>
+                      {b.master.asset_code || b.master.equipment_name}: {b.reason}
+                      {ov ? (
+                        <span className="text-amber-800">
+                          {' '}
+                          — overridden by {ov.by_name || 'Laboratory Director'}: {ov.override_reason}
+                        </span>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ul>
+              {!readOnly && !forceReadOnly ? (
+                <p className="mt-1 text-[12px]">
+                  {isLaboratoryDirector(designation)
+                    ? 'Saving asks for your override reason.'
+                    : 'Saving is blocked until the master is calibrated / back in service, or the Laboratory Director overrides.'}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Context detail dialogs (opened from header buttons) */}
           <Dialog
             open={contextPanel === 'srf'}
@@ -3910,7 +4107,7 @@ export function RawDataSheetDialog({
                     No verification checks on this template.
                   </p>
                 ) : (
-                  <div className="overflow-hidden rounded-none border-2 border-stone-700">
+                  <div className="overflow-x-auto rounded-none border-2 border-stone-700">
                     <table className={cn(limsTableClass, 'table-fixed')}>
                       <colgroup>
                         <col className="w-10" />
@@ -4245,13 +4442,7 @@ export function RawDataSheetDialog({
                                 >
                                   <Input
                                     type={col.type === 'number' ? 'number' : 'text'}
-                                    step={
-                                      col.type === 'number'
-                                        ? tableSettings.decimalPlaces === 0
-                                          ? '1'
-                                          : `0.${'1'.padStart(tableSettings.decimalPlaces, '0')}`
-                                        : undefined
-                                    }
+                                    step={col.type === 'number' ? 'any' : undefined}
                                     className="h-9 text-center tabular-nums"
                                     value={rowValues[col.key] ?? ''}
                                     disabled={readOnly}
@@ -4261,9 +4452,9 @@ export function RawDataSheetDialog({
                                     }
                                     onBlur={(e) => {
                                       if (col.type !== 'number') return
-                                      const formatted = formatNumberInput(
+                                      const formatted = formatTypedReading(
                                         e.target.value,
-                                        tableSettings.decimalPlaces,
+                                        readingDecimalPlaces,
                                       )
                                       if (formatted !== e.target.value) {
                                         updateCellValue(row.id, col.key, formatted)
@@ -4306,7 +4497,10 @@ export function RawDataSheetDialog({
                                   >
                                     <Plus size={16} />
                                   </Button>
-                                ) : (
+                                ) : null}
+                                {/* The last row can be deleted too: a seeded point without a
+                                    master value can never be completed and would block saving. */}
+                                {!isLast || payload.rows.length > 1 ? (
                                   <Button
                                     type="button"
                                     variant="ghost"
@@ -4322,7 +4516,7 @@ export function RawDataSheetDialog({
                                   >
                                     <Trash2 size={16} />
                                   </Button>
-                                )}
+                                ) : null}
                               </td>
                             ) : null}
                           </tr>
@@ -4406,6 +4600,7 @@ export function RawDataSheetDialog({
                                     ) : (
                                       <Input
                                         type={col.type === 'number' ? 'number' : 'text'}
+                                        step={col.type === 'number' ? 'any' : undefined}
                                         className="h-9 text-center tabular-nums"
                                         value={rowValues[col.key] ?? ''}
                                         disabled={readOnly}
@@ -4875,6 +5070,16 @@ export function RawDataSheetDialog({
                     ? undefined
                     : () => {
                         setError(null)
+                      }
+                }
+                onApplyRowUncertainties={
+                  forceReadOnly
+                    ? undefined
+                    : (result) => {
+                        setError(null)
+                        setPayload((prev) =>
+                          prev ? { ...prev, muResults: { ...result, savedAt: new Date().toISOString() } } : prev,
+                        )
                       }
                 }
               />

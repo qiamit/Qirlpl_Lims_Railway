@@ -1,3 +1,4 @@
+import { is2RoundCompact, is2RoundFixed } from '@/lib/is2Rounding'
 import {
   COLUMN_FORMULA_HELP_ROWS,
   evaluateMathExpression,
@@ -67,18 +68,12 @@ export function clampPointFormulaDecimals(raw: unknown, fallback = 2): number {
 export function formatFormulaResult(value: number, decimals?: number): string {
   if (!Number.isFinite(value)) return ''
   if (decimals != null && Number.isFinite(decimals)) {
-    return value.toFixed(clampPointFormulaDecimals(decimals, 2))
+    return is2RoundFixed(value, clampPointFormulaDecimals(decimals, 2))
   }
+  // No declared decimals: automatic precision, IS 2 rounding, no trailing zeros.
   const abs = Math.abs(value)
-  const rounded =
-    abs >= 1e6
-      ? Number(value.toPrecision(8))
-      : abs >= 100
-        ? Math.round(value * 100) / 100
-        : abs >= 1
-          ? Math.round(value * 1000) / 1000
-          : Math.round(value * 1e8) / 1e8
-  return String(Number(rounded.toPrecision(12)))
+  if (abs >= 1e6) return String(Number(value.toPrecision(8)))
+  return is2RoundCompact(value, abs >= 100 ? 2 : abs >= 1 ? 3 : 8)
 }
 
 /** Synced with Column Calculation Formulas — same shared catalog. */

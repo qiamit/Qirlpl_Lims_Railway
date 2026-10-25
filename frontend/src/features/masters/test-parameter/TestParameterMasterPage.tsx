@@ -16,6 +16,9 @@ import {
 } from './TestParameterTable'
 import { TestParameterTableFooterBar } from './TestParameterFooterBar'
 import { TestParameterUncertaintyDialog } from './TestParameterUncertaintyDialog'
+import { MuBandsDialog } from './MuBandsDialog'
+import { fetchMuBands } from './muBandsApi'
+import { summarizeMuReview, type MuBand } from './muBands'
 import type { UncertaintyCalculationData } from './testParameterUncertainty'
 import { parseUncertaintyCalculationData } from './testParameterUncertainty'
 import {
@@ -271,6 +274,40 @@ export default function TestParameterMasterPage() {
     }
   }
 
+  // MU by range band (P3-2). Hidden until 20261031100000 is applied.
+  const [muBandsAvailable, setMuBandsAvailable] = useState(false)
+  const [muBands, setMuBands] = useState<MuBand[]>([])
+  const [muBandsRow, setMuBandsRow] = useState<TestParameterRow | null>(null)
+  const loadMuBands = async () => {
+    try {
+      const res = await fetchMuBands()
+      setMuBandsAvailable(res.available)
+      setMuBands(res.bands)
+    } catch {
+      setMuBandsAvailable(false)
+      setMuBands([])
+    }
+  }
+  const muBandsByParameter = useMemo(() => {
+    const map = new Map<string, MuBand[]>()
+    for (const b of muBands) {
+      const list = map.get(b.test_parameter_id)
+      if (list) list.push(b)
+      else map.set(b.test_parameter_id, [b])
+    }
+    return map
+  }, [muBands])
+  const muReviewCounts = useMemo(() => {
+    let overdue = 0
+    let dueSoon = 0
+    for (const list of muBandsByParameter.values()) {
+      const s = summarizeMuReview(list).status
+      if (s === 'overdue') overdue += 1
+      else if (s === 'due_soon') dueSoon += 1
+    }
+    return { overdue, dueSoon }
+  }, [muBandsByParameter])
+
   const loadMasters = async () => {
     try {
       const { data: isData, error: isErr } = await supabase
@@ -387,6 +424,7 @@ export default function TestParameterMasterPage() {
 
   useEffect(() => {
     void loadRows()
+    void loadMuBands()
     void loadMasters()
     void loadUserManagementOptions()
     void loadIsCodeAspects()
@@ -1251,6 +1289,13 @@ export default function TestParameterMasterPage() {
         </DialogContent>
       </Dialog>
 
+      {muBandsAvailable && (muReviewCounts.overdue > 0 || muReviewCounts.dueSoon > 0) ? (
+        <p className="border-l-2 border-amber-600 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          MU review (ISO/IEC 17025 7.6): {muReviewCounts.overdue} parameter
+          {muReviewCounts.overdue === 1 ? '' : 's'} overdue, {muReviewCounts.dueSoon} due within 30 days.
+        </p>
+      ) : null}
+
       <TestParameterTable
         rows={pagedRows}
         loading={listLoading}
@@ -1265,7 +1310,21 @@ export default function TestParameterMasterPage() {
         sortKey={sortKey}
         sortDir={sortDir}
         onSort={handleSort}
+        muBandsByParameter={muBandsAvailable ? muBandsByParameter : undefined}
+        onOpenMuBands={muBandsAvailable ? setMuBandsRow : undefined}
       />
+
+      {muBandsAvailable ? (
+        <MuBandsDialog
+          open={Boolean(muBandsRow)}
+          onOpenChange={(open) => {
+            if (!open) setMuBandsRow(null)
+          }}
+          parameter={muBandsRow}
+          bands={muBandsRow ? (muBandsByParameter.get(muBandsRow.id) ?? []) : []}
+          onChanged={() => void loadMuBands()}
+        />
+      ) : null}
 
       <TestParameterUncertaintyDialog
         row={uncertaintyRow}

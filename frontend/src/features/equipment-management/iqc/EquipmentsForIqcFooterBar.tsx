@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Download, Printer, Trash2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -24,6 +25,7 @@ export function EquipmentsForIqcFooterBar({
   jumpTo,
   onJumpToChange,
   onJumpToGo,
+  labelActions,
 }: {
   message: string | null
   loading: boolean
@@ -38,6 +40,8 @@ export function EquipmentsForIqcFooterBar({
   jumpTo: string
   onJumpToChange: (value: string) => void
   onJumpToGo: () => void
+  /** Status label buttons (6.4.8), shown to every user. */
+  labelActions?: ReactNode
 }) {
   const selectionDisabled = selectedCount === 0
 
@@ -53,8 +57,8 @@ export function EquipmentsForIqcFooterBar({
         />
         <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
 
-        <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
-          <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
+        <div className="relative flex min-w-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 md:flex-nowrap sm:gap-2 md:gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-1.5 md:flex-nowrap">
             <LaboratoryDirectorOnly>
               <Button
               type="button"
@@ -87,9 +91,10 @@ export function EquipmentsForIqcFooterBar({
               Delete
             </Button>
             </LaboratoryDirectorOnly>
+            {labelActions}
           </div>
 
-          <div className="flex min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2 md:flex-nowrap">
             {message ? (
               <p
                 className={cn(

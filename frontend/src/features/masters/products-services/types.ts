@@ -1,4 +1,5 @@
 import { stripCurrencyNoise } from '@/lib/appCurrency'
+import { LAB_SERVICE_SAC } from '@/features/finance/sale/shared/financeRules'
 
 export const ITEM_TYPES = ['Product', 'Service'] as const
 export type ItemType = (typeof ITEM_TYPES)[number]
@@ -51,7 +52,8 @@ export function emptyProductServiceForm(itemType: ItemType = 'Service'): Product
     itemCategory: 'Testing',
     itemName: '',
     itemDescription: '',
-    hsnCode: '',
+    // SAC of the lab's testing / calibration services; goods have their own HSN.
+    hsnCode: itemType === 'Service' ? LAB_SERVICE_SAC : '',
     salePrice: '0.00',
     purchasePrice: '0.00',
     gstPercent: '18.00',
@@ -61,6 +63,13 @@ export function emptyProductServiceForm(itemType: ItemType = 'Service'): Product
     openingStock: '0',
     lowStockAlert: '0',
   }
+}
+
+/** HSN/SAC after switching Product / Service: a blank Service gets 9983, a Product drops the service SAC. */
+export function hsnForItemType(itemType: ItemType, current: string): string {
+  const value = current.trim()
+  if (itemType === 'Service') return value || LAB_SERVICE_SAC
+  return value === LAB_SERVICE_SAC ? '' : current
 }
 
 export function normalizeText(value: string): string {

@@ -2,7 +2,6 @@ import { supabase } from '@/lib/supabaseClient'
 import { cloneIssuedSampleForAmendment } from './cloneIssuedSampleForAmendment'
 import {
   issuedReportReferbackTargetLabel,
-  receivingReportTypeForIssueKind,
   type IssueAndReferbackSectionInput,
   type IssuedReportIssueKind,
   type IssuedReportReferbackTarget,
@@ -40,11 +39,12 @@ export async function issueAndReferbackIssuedReport(
       targetStage: s.targetStage,
     }))
     .filter((s) => s.sampleAllocationId)
-  const reportType = receivingReportTypeForIssueKind(input.issueKind)
-  const remark =
-    input.remark.trim() || `${reportType} created from Issued Test Report ${input.srfNumber?.trim() || ''}`.trim()
+  // The reason is the user's own words (ISO/IEC 17025 7.8.8): no generated
+  // text stands in for it any more.
+  const remark = input.remark.trim()
 
   if (!sampleId) throw new Error('Missing sample id.')
+  if (!remark) throw new Error('Enter the reason for the amendment.')
   if (sections.length === 0) throw new Error('Select a section code.')
   if (sections.some((s) => !s.employee.id)) throw new Error('Select an employee for every section.')
   for (const section of sections) {

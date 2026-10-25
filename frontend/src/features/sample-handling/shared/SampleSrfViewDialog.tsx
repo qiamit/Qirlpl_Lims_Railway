@@ -16,6 +16,7 @@ import {
 import { getSampleWorkflowStatusLabel } from '@/features/sample-handling/sampleWorkflowStatus'
 import type { SampleStage } from '@/features/sample-handling/types'
 import { SampleReceivingEditDialog } from '@/features/sample-handling/receiving/SampleReceivingEditDialog'
+import { SampleCustodyLogSection } from './SampleCustodyLogSection'
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 const fmtDate = (v: string | null | undefined) => formatDate(v)
@@ -353,6 +354,7 @@ export function SampleSrfViewDialog({
                         ['Deviation from Methods', details.deviationFromMethods, 'bool'],
                         ['Supporting Docs Required', details.supportingDocsRequired, 'bool'],
                         ['Decision Rule Applied', details.decisionRuleApplied, 'bool'],
+                        ['Decision Rule', fmt(details.decisionRuleName)],
                         ['Testing Method Available', details.testingMethodAvailable, 'bool'],
                         ['Sampling Procedure Ref', details.samplingProcedureRef, 'bool'],
                       ]}
@@ -370,6 +372,8 @@ export function SampleSrfViewDialog({
                     ]}
                   />
                 </Section>
+
+                <SampleCustodyLogSection key={`${sampleId ?? ''}-${detailsVersion}`} sampleId={sampleId} />
               </div>
             )}
           </div>

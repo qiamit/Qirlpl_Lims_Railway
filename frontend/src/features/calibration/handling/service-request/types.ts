@@ -231,10 +231,15 @@ export type ServiceRequestRow = {
   statement_of_conformity_requested: boolean
   specification_standard: string | null
   decision_rule: string | null
+  /** ISO 17025 7.1.3 rule from the decision rules master. Absent until migration 20261026100000. */
+  decision_rule_id?: string | null
   differences_resolved: boolean | null
   contract_accepted: boolean | null
   deviations_customer_informed: boolean | null
   review_remarks: string | null
+  /** ISO 17025 7.8.4.3. Optional: column absent until migration 20261024100100 is applied. */
+  customer_requests_due_date?: boolean | null
+  due_date_interval?: string | null
   status: string
   created_at?: string
   updated_at?: string
@@ -277,10 +282,16 @@ export type ServiceRequestForm = {
   statementOfConformityRequested: boolean
   specificationStandard: string
   decisionRule: string
+  /** decision_rules.id agreed with the customer ('' = none). */
+  decisionRuleId: string
   differencesResolved: TriBool
   contractAccepted: boolean
   deviationsCustomerInformed: TriBool
   reviewRemarks: string
+  /** Customer asked for a recommended calibration due date on the certificate (ISO 17025 7.8.4.3). */
+  customerRequestsDueDate: boolean
+  /** Interval the customer asked for (e.g. Yearly, 180 Days). Blank = Raw Data Sheet frequency. */
+  dueDateInterval: string
   status: ServiceRequestStatus
 }
 
@@ -328,10 +339,13 @@ export function emptyServiceRequestForm(): ServiceRequestForm {
     statementOfConformityRequested: false,
     specificationStandard: '',
     decisionRule: '',
+    decisionRuleId: '',
     differencesResolved: true,
     contractAccepted: true,
     deviationsCustomerInformed: true,
     reviewRemarks: '',
+    customerRequestsDueDate: false,
+    dueDateInterval: '',
     status: 'Under Review',
   }
 }
@@ -413,10 +427,13 @@ export function rowToForm(row: ServiceRequestRow, asCopy = false, nextNumber = '
     statementOfConformityRequested: Boolean(row.statement_of_conformity_requested),
     specificationStandard: row.specification_standard ?? '',
     decisionRule: row.decision_rule ?? '',
+    decisionRuleId: row.decision_rule_id ?? '',
     differencesResolved: parseTriBool(row.differences_resolved),
     contractAccepted: Boolean(row.contract_accepted),
     deviationsCustomerInformed: parseTriBool(row.deviations_customer_informed),
     reviewRemarks: row.review_remarks ?? '',
+    customerRequestsDueDate: row.customer_requests_due_date === true,
+    dueDateInterval: row.due_date_interval ?? '',
     status: (row.status as ServiceRequestStatus) || 'Under Review',
   }
 }
@@ -461,10 +478,56 @@ export function formToPayload(form: ServiceRequestForm) {
     statement_of_conformity_requested: form.statementOfConformityRequested,
     specification_standard: normalizeText(form.specificationStandard) || null,
     decision_rule: normalizeText(form.decisionRule) || null,
+    decision_rule_id: form.statementOfConformityRequested ? form.decisionRuleId.trim() || null : null,
     differences_resolved: form.differencesResolved,
     contract_accepted: form.contractAccepted,
     deviations_customer_informed: form.deviationsCustomerInformed,
     review_remarks: normalizeText(form.reviewRemarks) || null,
+    customer_requests_due_date: form.customerRequestsDueDate,
+    due_date_interval: form.customerRequestsDueDate
+      ? normalizeText(form.dueDateInterval) || null
+      : null,
     status: form.status,
   }
+}
+
+/** SRF columns added by migration 20261024100100 (may not exist yet). */
+export const SRF_DUE_DATE_COLUMNS = ['customer_requests_due_date', 'due_date_interval'] as const
+
+/**
+ * True when PostgREST rejected a write because the due-date columns are not in
+ * the schema yet (migration 20261024100100 not applied).
+ */
+export function isMissingSrfDueDateColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string }
+  const msg = String(e.message ?? '')
+  const mentionsColumn = SRF_DUE_DATE_COLUMNS.some((c) => msg.includes(c))
+  return mentionsColumn && (e.code === 'PGRST204' || e.code === '42703' || /column/i.test(msg))
+}
+
+/** Payload without the due-date columns (fallback before the migration is applied). */
+export function withoutSrfDueDateColumns<T extends Record<string, unknown>>(
+  payload: T,
+): Omit<T, (typeof SRF_DUE_DATE_COLUMNS)[number]> {
+  const copy: Record<string, unknown> = { ...payload }
+  for (const c of SRF_DUE_DATE_COLUMNS) delete copy[c]
+  return copy as Omit<T, (typeof SRF_DUE_DATE_COLUMNS)[number]>
+}
+
+/** SRF column added by migration 20261026100000 (may not exist yet). */
+export function isMissingSrfDecisionRuleColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string }
+  const msg = String(e.message ?? '')
+  return msg.includes('decision_rule_id') && (e.code === 'PGRST204' || e.code === '42703' || /column/i.test(msg))
+}
+
+/** Payload without decision_rule_id (fallback before the migration is applied). */
+export function withoutSrfDecisionRuleColumn<T extends Record<string, unknown>>(
+  payload: T,
+): Omit<T, 'decision_rule_id'> {
+  const copy: Record<string, unknown> = { ...payload }
+  delete copy.decision_rule_id
+  return copy as Omit<T, 'decision_rule_id'>
 }

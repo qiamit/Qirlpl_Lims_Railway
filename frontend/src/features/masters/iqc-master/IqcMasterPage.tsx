@@ -3,6 +3,7 @@ import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -346,9 +347,11 @@ export default function IqcMasterPage() {
       console.warn('Could not load prefix, defaulting to QI/IQC-', err)
     }
 
+    // Codes of deleted records are never reused.
+    const deletedCodes = await fetchDeletedKeys('iqc_masters', 'asset_code')
+    const codes = [...rows.map((r) => r.asset_code || ''), ...deletedCodes]
     let maxSerial = 0
-    rows.forEach((r) => {
-      const code = r.asset_code || ''
+    codes.forEach((code) => {
       if (code.startsWith(prefix)) {
         const trailing = code.slice(prefix.length).replace(/\D/g, '')
         const num = parseInt(trailing, 10)

@@ -11,8 +11,12 @@ import { CrmListForm } from './CrmListForm'
 import { CrmListHeaderBar } from './CrmListHeaderBar'
 import { CrmListTable } from './CrmListTable'
 import { CrmUncertaintyViewDialog } from './CrmUncertaintyViewDialog'
+import { isMissingColumnErr } from '@/lib/missingSchema'
+import { crmExpiryInfo } from './crmExpiry'
 import {
+  crmUseFieldsError,
   emptyCrmForm,
+  withoutCrmUseColumns,
   formToPayload,
   formatDateDisplay,
   formatTraceabilityValidity,
@@ -119,6 +123,9 @@ export default function CrmListMasterPage() {
   const handleViewUncertaintyOpenChange = useFormDialogOpenChange(setViewUncertaintyOpen)
   const [viewUncertaintyRows, setViewUncertaintyRows] = useState<CrmUncertaintyItem[]>([])
   const [viewUncertaintySubtitle, setViewUncertaintySubtitle] = useState('')
+  // Opened-on / storage / stock columns (20261031100000); hidden until applied.
+  const [useColumnsAvailable, setUseColumnsAvailable] = useState(false)
+  const [alertFilter, setAlertFilter] = useState<'all' | 'expiry' | 'stock'>('all')
 
   const canSave =
     !saveLoading &&
@@ -137,6 +144,8 @@ export default function CrmListMasterPage() {
         .order('s_no', { ascending: true })
       if (error) throw error
       setRows(Array.isArray(data) ? (data as CrmRow[]) : [])
+      const probe = await supabase.from('equipment_crms').select('opened_on').limit(1)
+      setUseColumnsAvailable(!probe.error)
     } catch (err) {
       setListError(formatSupabaseError(err))
       setRows([])
@@ -149,10 +158,30 @@ export default function CrmListMasterPage() {
     void loadItems()
   }, [])
 
+  const alertCounts = useMemo(() => {
+    let expiry = 0
+    let stock = 0
+    for (const r of rows) {
+      const info = crmExpiryInfo(r)
+      if (info.status === 'expired' || info.status === 'expiring') expiry += 1
+      if (info.lowStock) stock += 1
+    }
+    return { expiry, stock }
+  }, [rows])
+
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) =>
+    const byAlert =
+      alertFilter === 'all'
+        ? rows
+        : rows.filter((r) => {
+            const info = crmExpiryInfo(r)
+            return alertFilter === 'stock'
+              ? info.lowStock
+              : info.status === 'expired' || info.status === 'expiring'
+          })
+    if (!q) return byAlert
+    return byAlert.filter((r) =>
       [
         r.s_no,
         r.id_no,
@@ -163,12 +192,13 @@ export default function CrmListMasterPage() {
         r.traceability_as_per,
         r.uncertainty,
         r.valid_upto,
+        r.storage_conditions,
       ]
         .join(' ')
         .toLowerCase()
         .includes(q),
     )
-  }, [rows, search])
+  }, [rows, search, alertFilter])
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize) || 1)
   const safePage = Math.min(page, pageCount)
@@ -179,7 +209,7 @@ export default function CrmListMasterPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, pageSize])
+  }, [search, pageSize, alertFilter])
 
   const handleNew = () => {
     setSaveMessage(null)
@@ -202,6 +232,8 @@ export default function CrmListMasterPage() {
       ...rowToForm(row),
       sNo: String(nextSNo(rows)),
       idNo: '',
+      openedOn: '',
+      stockQuantity: '',
     })
     setShowForm(true)
   }
@@ -217,17 +249,26 @@ export default function CrmListMasterPage() {
   const handleSave = () => {
     void (async () => {
       if (!canSave) return
+      const useError = useColumnsAvailable ? crmUseFieldsError(form) : null
+      if (useError) {
+        setSaveMessage(useError)
+        return
+      }
       setSaveLoading(true)
       setSaveMessage(null)
       try {
-        const payload = formToPayload(form)
-        if (editingId) {
-          const { error } = await supabase.from('equipment_crms').update(payload).eq('id', editingId)
-          if (error) throw error
-        } else {
-          const { error } = await supabase.from('equipment_crms').insert(payload)
-          if (error) throw error
+        const full: Record<string, unknown> = formToPayload(form)
+        const write = (payload: Record<string, unknown>) =>
+          editingId
+            ? supabase.from('equipment_crms').update(payload).eq('id', editingId)
+            : supabase.from('equipment_crms').insert(payload)
+        let { error } = await write(useColumnsAvailable ? full : withoutCrmUseColumns(full))
+        // Database not migrated yet: save without the new columns.
+        if (error && useColumnsAvailable && isMissingColumnErr(error)) {
+          setUseColumnsAvailable(false)
+          ;({ error } = await write(withoutCrmUseColumns(full)))
         }
+        if (error) throw error
         setSaveMessage('Saved successfully.')
         setShowForm(false)
         setEditingId(null)
@@ -393,16 +434,45 @@ export default function CrmListMasterPage() {
               canSave={canSave}
               saveLoading={saveLoading}
               onSave={handleSave}
+              showUseFields={useColumnsAvailable}
             />
           </div>
         </DialogContent>
       </Dialog>
 
+      {useColumnsAvailable ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-wide text-stone-600">Show</span>
+          {(
+            [
+              ['all', `All (${rows.length})`],
+              ['expiry', `Expiring / expired (${alertCounts.expiry})`],
+              ['stock', `Low stock (${alertCounts.stock})`],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={alertFilter === key}
+              className={cn(
+                'h-7 border px-2.5 text-xs font-medium',
+                alertFilter === key
+                  ? 'border-amber-700 bg-amber-700 text-white'
+                  : 'border-stone-400 bg-stone-50 text-stone-800 hover:bg-stone-100',
+              )}
+              onClick={() => setAlertFilter(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <CrmListTable
         rows={pagedRows}
         loading={listLoading}
         error={listError}
-        searchActive={search.trim().length > 0}
+        searchActive={search.trim().length > 0 || alertFilter !== 'all'}
         selectedIds={selectedIds}
         onToggle={toggleRow}
         onToggleAll={toggleAllOnPage}

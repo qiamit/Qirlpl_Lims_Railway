@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { ArrowRight, Download, FileCheck, Printer, RefreshCw, Save } from 'lucide-react'
 import QRCode from 'qrcode'
+import { useAuth } from '@/hooks/useAuth'
+import { ConfirmLoginPasswordDialog } from '@/features/sample-handling/shared/ConfirmLoginPasswordDialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -41,6 +43,7 @@ import {
   allRawDataSheetColumns,
   parseRawDataSheetPayload,
   getEnvironmentAverageParamValue,
+  maxSavedExpandedUncertainty,
   isRawDataColumnRequiredInCertificate,
   type RawDataEnvironmentConditions,
   type RawDataSheetPayload,
@@ -73,6 +76,7 @@ import {
   resolveEquipmentMasterForJob,
   suggestCalibrationCertificateNumber,
   updateCalibrationJobCertificateDraft,
+  type CalibrationRawDataSheetRow,
   type MasterEquipmentForSheet,
   type SrfSummaryForSheet,
 } from '../jobs/calibrationJobApi'
@@ -80,6 +84,9 @@ import {
   buildCalibrationUlrHeaderPrefix,
   fetchNextCalibrationNablUlrNumber,
   formatNablUlrNumber,
+  isCalibrationUlr,
+  LAB_CALIBRATION_ACCREDITATION_DEFAULT,
+  NABL_ULR_MAX_INPUT_LENGTH,
   sanitizeNablUlrInput,
 } from '@/features/sample-handling/report-preparation/nablUlrNumber'
 import {
@@ -91,8 +98,12 @@ import { resolveNamedLetterheadTemplates } from '@/features/sample-handling/repo
 import {
   DEFAULT_CERTIFICATE_NOTES,
   DEFAULT_CERTIFICATE_REMARKS,
+  TESTING_MACHINE_CERTIFICATE_NOTES,
+  applyCertificateLocationRemark,
+  isForceTestingMachine,
   EMPTY_CERTIFICATE_DRAFT,
   applyCertificateNotesMinLoad,
+  certificateAmendmentStatement,
   composeCustomerContactDetails,
   formatCertificateMinLoadDisplay,
   parseCertificateDraft,
@@ -102,6 +113,14 @@ import {
 } from './certificateDraftTypes'
 import { waitForPrintDocumentReady } from '@/features/sample-handling/report-preparation/waitForPrintDocumentReady'
 import { downloadCertificatePagesAsPdf } from './downloadCertificatePagesAsPdf'
+import {
+  NO_DUE_DATE_POLICY,
+  dueDateFrequency,
+  fetchSrfDueDatePolicy,
+  type SrfDueDatePolicy,
+} from './srfDueDatePolicy'
+import { applyCertificateConformityNote, fetchSrfConformityPolicy } from './srfConformityPolicy'
+import { is2RoundCompact, is2RoundFixed } from '@/lib/is2Rounding'
 
 /** Wait until certificate letterhead / footer images inside host are decoded. */
 async function waitForCertificateImagesReady(
@@ -151,7 +170,7 @@ function formatCertEnvNumber(raw: string | null | undefined): string {
   if (!t) return ''
   const n = Number.parseFloat(t.replace(/,/g, ''))
   if (!Number.isFinite(n)) return t
-  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+  return Number.isInteger(n) ? String(n) : is2RoundFixed(n, 2)
 }
 
 function NablScopeQrMark({
@@ -455,7 +474,7 @@ function CertificateNumberUlrBar({
               value={ulrNumber}
               onChange={(e) => onUlrNumberChange(sanitizeNablUlrInput(e.target.value))}
               placeholder={ulrPlaceholder}
-              maxLength={19}
+              maxLength={NABL_ULR_MAX_INPUT_LENGTH}
               className={cn(
                 certCellSingleLineClass,
                 'm-0 h-7 w-[19ch] min-w-0 border-0 bg-transparent p-0 text-left text-xs font-bold shadow-none focus-visible:ring-0 sm:text-sm',
@@ -522,7 +541,8 @@ function formatCertRawCell(value: string | null | undefined): string {
   if (!/^-?\d+(\.\d+)?$/.test(normalized)) return t
   const n = Number.parseFloat(normalized)
   if (!Number.isFinite(n)) return t
-  return n.toFixed(2)
+  // IS 2:1960 rounding of the written value (exact half to the even digit).
+  return is2RoundFixed(normalized, 2)
 }
 
 function parseNumericMagnitude(raw: string | null | undefined): number | null {
@@ -540,8 +560,15 @@ function parseNumericMagnitude(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** Unit as written on certificates: "MM" → "mm", "KN" → "kN". */
+function normalizeCertificateUnit(unit: string): string {
+  const u = unit.trim()
+  const known: Record<string, string> = { mm: 'mm', µm: 'µm', um: 'µm', m: 'm', kn: 'kN', n: 'N', kgf: 'kgf', '°c': '°C' }
+  return known[u.toLowerCase()] ?? u
+}
+
 function formatMagnitudeDisplay(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+  return Number.isInteger(n) ? String(n) : is2RoundFixed(n, 2)
 }
 
 /** Parse instrument max capacity from strings like "0 - 1000 kN" or "1000 kN". */
@@ -1126,6 +1153,13 @@ function SectionCard({
   )
 }
 
+export type CertificateSnapshotView = {
+  certificateDraft: Record<string, unknown>
+  rawDataSheet: CalibrationRawDataSheetRow | null
+  /** e.g. "QI/CC/2026/0001 (superseded by amendment No. 1)" */
+  label: string
+}
+
 export function CertificateDraftDialog({
   job,
   open,
@@ -1133,6 +1167,8 @@ export function CertificateDraftDialog({
   onIssueAndForward,
   autoPrint = false,
   autoDownload = false,
+  snapshot = null,
+  layer = 'nested',
 }: {
   job: CalibrationJobRow | null
   open: boolean
@@ -1143,10 +1179,18 @@ export function CertificateDraftDialog({
   autoPrint?: boolean
   /** After load completes, download the certificate PDF directly. */
   autoDownload?: boolean
+  /**
+   * Show a superseded certificate exactly as issued (ISO/IEC 17025 7.8.8):
+   * draft + raw data come from the amendment snapshot, nothing can be saved.
+   */
+  snapshot?: CertificateSnapshotView | null
+  layer?: 'nested' | 'stacked' | 'top'
 }) {
+  const { user, designation, profileName } = useAuth()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [issuing, setIssuing] = useState(false)
+  const [issuePasswordOpen, setIssuePasswordOpen] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [autoNumbering, setAutoNumbering] = useState(false)
   const [autoUlrNumbering, setAutoUlrNumbering] = useState(false)
@@ -1161,11 +1205,17 @@ export function CertificateDraftDialog({
     defaultCalibrationCertificateTemplate(),
   )
   const [modeOfCalibration, setModeOfCalibration] = useState('')
+  // ISO 17025 7.8.4.3: due date only when the customer asked for it on the SRF.
+  const [dueDatePolicy, setDueDatePolicy] = useState<SrfDueDatePolicy>(NO_DUE_DATE_POLICY)
   const pagesHostRef = useRef<HTMLDivElement | null>(null)
   const autoDownloadFiredRef = useRef(false)
   const autoPrintFiredRef = useRef(false)
   const onOpenChangeRef = useRef(onOpenChange)
   onOpenChangeRef.current = onOpenChange
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
+  // Issued certificates change only through an amendment (DB guard, ISO 17025 7.8.8).
+  const readOnly = Boolean(snapshot) || job?.stage === 'certificates'
   const silentMode = autoPrint
   // autoDownload uses the same full certificate UI as View Cert so PDF matches preview.
   const load = useCallback(async (activeJob: CalibrationJobRow) => {
@@ -1178,23 +1228,32 @@ export function CertificateDraftDialog({
     setLetterhead(null)
     setCertTemplate(defaultCalibrationCertificateTemplate())
     setModeOfCalibration('')
+    setDueDatePolicy(NO_DUE_DATE_POLICY)
     setDraft({ ...EMPTY_CERTIFICATE_DRAFT })
     setEquipmentLabel(activeJob.equipment_label)
 
     try {
-      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lhBase] = await Promise.all([
-        resolveEquipmentMasterForJob(activeJob),
-        activeJob.service_request_id
-          ? fetchSrfSummaryForSheet(activeJob.service_request_id, {
-              clientId: activeJob.client_id,
-              clientName: activeJob.client_name,
-            })
-          : Promise.resolve(null),
-        fetchRawDataSheetByJobId(activeJob.id),
-        fetchCertificateDraftByJobId(activeJob.id),
-        suggestCalibrationCertificateNumber(),
-        fetchManagementDocLetterhead().catch(() => null),
-      ])
+      const [equipment, srfRow, sheet, storedDraft, suggestedCert, lhBase, duePolicy, conformityPolicy] =
+        await Promise.all([
+          resolveEquipmentMasterForJob(activeJob),
+          activeJob.service_request_id
+            ? fetchSrfSummaryForSheet(activeJob.service_request_id, {
+                clientId: activeJob.client_id,
+                clientName: activeJob.client_name,
+              })
+            : Promise.resolve(null),
+          snapshotRef.current
+            ? Promise.resolve(snapshotRef.current.rawDataSheet)
+            : fetchRawDataSheetByJobId(activeJob.id),
+          snapshotRef.current
+            ? Promise.resolve(snapshotRef.current.certificateDraft)
+            : fetchCertificateDraftByJobId(activeJob.id),
+          suggestCalibrationCertificateNumber(),
+          fetchManagementDocLetterhead().catch(() => null),
+          fetchSrfDueDatePolicy(activeJob.service_request_id),
+          fetchSrfConformityPolicy(activeJob.service_request_id),
+        ])
+      setDueDatePolicy(duePolicy)
 
       let lh = lhBase
       try {
@@ -1255,18 +1314,19 @@ export function CertificateDraftDialog({
 
       const existing = parseCertificateDraft(storedDraft)
       const eqFields = parseJobEquipmentFields(activeJob)
-      const frequency = eqFields.frequency.trim() || 'Yearly'
+      const frequency = dueDateFrequency(duePolicy, eqFields.frequency)
       // Calibration Date = day Raw Data Sheet was filled/seeded (fallback today).
       const sheetFillDate = isoDateOnly(parsedSheet?.seededAt)
       const calDate =
         sheetFillDate ||
         existing.dateOfCalibration ||
         todayIsoDate()
-      // Due Date always from Calibration Date + Raw Data Sheet Frequency (default Yearly).
-      const due =
-        computeDueFromFrequency(calDate, frequency) ||
-        existing.dueDateOfCalibration ||
-        ''
+      // ISO 17025 7.8.4.3: Due Date only when the SRF records the customer's request
+      // (Calibration Date + SRF interval, else Raw Data Sheet Frequency, default Yearly).
+      // Otherwise blank, even if an older draft stored one.
+      const due = duePolicy.requested
+        ? computeDueFromFrequency(calDate, frequency) || existing.dueDateOfCalibration || ''
+        : ''
       const srfContact = srfCustomerContactFields(srfRow)
       const existingContact =
         existing.customerContactPerson ||
@@ -1289,7 +1349,11 @@ export function CertificateDraftDialog({
         email: contactEmail,
       })
 
-      const defaultNotes = template.defaultNotes.trim() || DEFAULT_CERTIFICATE_NOTES
+      const defaultNotes =
+        template.defaultNotes.trim() ||
+        (isForceTestingMachine(equipment?.equipment_name || activeJob.equipment_label)
+          ? TESTING_MACHINE_CERTIFICATE_NOTES
+          : DEFAULT_CERTIFICATE_NOTES)
       const defaultRemarks = template.defaultRemarks.trim() || DEFAULT_CERTIFICATE_REMARKS
 
       const sheetColumns = parsedSheet ? allRawDataSheetColumns(parsedSheet.template) : []
@@ -1320,7 +1384,11 @@ export function CertificateDraftDialog({
         loadNums.length > 0
           ? formatCertificateMinLoadDisplay(Math.min(...loadNums), loadUnit)
           : ''
-      const seedNotes = existing.notes.trim() ? existing.notes : defaultNotes
+      // ISO 17025 7.8.6: conformity note from the SRF (decision rule statement when a
+      // statement of conformity was requested). An issued certificate keeps its notes.
+      const issued = Boolean(snapshotRef.current) || activeJob.stage === 'certificates'
+      const baseNotes = existing.notes.trim() ? existing.notes : defaultNotes
+      const seedNotes = issued ? baseNotes : applyCertificateConformityNote(baseNotes, conformityPolicy)
 
       // Calibrated By = Raw Data entry person (fallback: allocated engineer).
       // Authorized Signatory = Raw Data reviewer (Review Data forward).
@@ -1365,7 +1433,13 @@ export function CertificateDraftDialog({
           (srfRow?.srf_number ?? '').trim() ||
           '',
         certificateNumber: existing.certificateNumber || suggestedCert || '',
-        ulrNumber: existing.ulrNumber || ulrPrefill || '',
+        // A draft not yet issued that still holds a testing (TC) ULR from the
+        // old generator gets the calibration ULR; an issued certificate and
+        // an amendment keep the ULR as issued.
+        ulrNumber:
+          issued || existing.amendment || isCalibrationUlr(existing.ulrNumber)
+            ? existing.ulrNumber || ulrPrefill || ''
+            : ulrPrefill || existing.ulrNumber || '',
         formatNumber: existing.formatNumber || template.formatNumber || '',
         customerName:
           existing.customerName ||
@@ -1386,7 +1460,13 @@ export function CertificateDraftDialog({
         dateOfCalibration: calDate,
         dueDateOfCalibration: due,
         notes: applyCertificateNotesMinLoad(seedNotes, seededMinLoad),
-        remarks: existing.remarks.trim() ? existing.remarks : defaultRemarks,
+        // Place of calibration from the job (the default said "Site of Customer" for every job).
+        remarks: issued
+          ? existing.remarks
+          : applyCertificateLocationRemark(
+              existing.remarks.trim() ? existing.remarks : defaultRemarks,
+              activeJob.calibration_location,
+            ),
         calibratedByName: calibratedName,
         calibratedByDesignation: calibratedDesig,
         authorizedSignatoryName: authorizedName,
@@ -1567,9 +1647,9 @@ export function CertificateDraftDialog({
   ) => {
     setDraft((prev) => {
       const next = { ...prev, [key]: value }
-      if (key === 'dateOfCalibration') {
+      if (key === 'dateOfCalibration' && dueDatePolicy.requested) {
         const cal = String(value)
-        const frequency = (eqFields?.frequency ?? '').trim() || 'Yearly'
+        const frequency = dueDateFrequency(dueDatePolicy, eqFields?.frequency ?? '')
         const computed = computeDueFromFrequency(cal, frequency)
         if (computed) next.dueDateOfCalibration = computed
       }
@@ -1623,13 +1703,13 @@ export function CertificateDraftDialog({
     }
   }, [job?.id, letterhead?.nablCertificateNo])
 
-  const saveDraft = async (): Promise<boolean> => {
-    if (!job) return false
+  const saveDraft = async (override?: CertificateDraftPayload): Promise<boolean> => {
+    if (!job || readOnly) return false
     setSaving(true)
     setError(null)
     setMessage(null)
     try {
-      const serialized = serializeCertificateDraft(draft)
+      const serialized = serializeCertificateDraft(override ?? draft)
       await updateCalibrationJobCertificateDraft(
         job.id,
         serialized as unknown as Record<string, unknown>,
@@ -1649,12 +1729,43 @@ export function CertificateDraftDialog({
     }
   }
 
-  const handleIssueAndForward = async () => {
+  /** What still stops this certificate from being issued (ISO/IEC 17025 7.8.2, 7.8.4.1). */
+  const issueBlocker = (): string | null => {
+    if (!draft.certificateNumber.trim()) return 'Enter the certificate number.'
+    if (!computedCertSummary.uncertaintyReported) {
+      return 'Measurement uncertainty is missing. In the raw data sheet open Uncertainty Step by Step, click "Use U on the certificate" and save the sheet.'
+    }
+    if (!envTemperatureAvg || !envHumidityAvg) {
+      return 'Environmental conditions (temperature and humidity) are missing in the raw data sheet.'
+    }
+    return null
+  }
+
+  // Checks first, then the issuer's password (as for test reports).
+  const handleIssueAndForward = () => {
+    if (!job || !onIssueAndForward) return
+    const blocker = issueBlocker()
+    if (blocker) {
+      setError(blocker)
+      return
+    }
+    setError(null)
+    setIssuePasswordOpen(true)
+  }
+
+  const completeIssueAndForward = async (reauthenticatedAt: string) => {
     if (!job || !onIssueAndForward) return
     setIssuing(true)
     setError(null)
     try {
-      const ok = await saveDraft()
+      const issuedBy = {
+        userId: user?.id ?? '',
+        name: profileName.trim() || user?.email || '',
+        designation: designation.trim(),
+        issuedAt: new Date().toISOString(),
+        reauthenticatedAt,
+      }
+      const ok = await saveDraft({ ...draft, issuedBy })
       if (!ok) return
       await onIssueAndForward(job)
       onOpenChange(false)
@@ -1708,8 +1819,7 @@ export function CertificateDraftDialog({
       /\b(kN|kn|N|kgf|kg|MPa|psi|bar|ton|t)\b/i,
     )
     const unit = unitMatch ? unitMatch[1]!.replace(/^kn$/i, 'kN') : 'kN'
-    const fmt = (n: number) =>
-      Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)))
+    const fmt = (n: number) => (Number.isInteger(n) ? String(n) : is2RoundCompact(n, 2))
     return `Range = ${fmt(min)} ${unit} - ${fmt(max)} ${unit}`
   }, [loadColumn, rows])
 
@@ -1856,19 +1966,35 @@ export function CertificateDraftDialog({
         ? (relResMaxForPct / instrumentCapacity) * 100
         : null
 
-    const uCandidates: number[] = []
+    // The reported U is the DUC's expanded uncertainty from the MU sheet
+    // (saved with the raw data) or an expanded-U column of the raw data. A
+    // master's own certificate uncertainty is only one input to that budget
+    // and is never reported as the result (OQ-02 staging run, 23 Oct 2026).
+    // U is printed as the MU sheet / raw data gives it (0.018 stays 0.018;
+    // rounding it to 2 decimals printed 0.02).
+    const uCandidates: Array<{ n: number; text: string }> = []
+    const uText = (raw: unknown) => String(raw ?? '').trim().replace(/^[±+]\s*/, '').split(/\s+/)[0] ?? ''
     if (expandedUCol) {
-      // All row values under "Actual Expanded Uncertainty" → take max later with masters.
       for (const row of rows) {
         const n = parseNumericMagnitude(row.values[expandedUCol.key])
-        if (n != null) uCandidates.push(n)
+        if (n != null) uCandidates.push({ n, text: uText(row.values[expandedUCol.key]) })
       }
     }
-    for (const master of masters) {
-      const u = parseNumericMagnitude(master.calibration_certificate_uncertainty)
-      if (u != null) uCandidates.push(u)
+    const savedMu = payload?.muResults ?? null
+    const savedMuMax = maxSavedExpandedUncertainty(savedMu, rows.map((r) => r.id))
+    if (savedMuMax != null && savedMu) {
+      const keep = new Set(rows.map((r) => r.id))
+      const hit = savedMu.rows.find(
+        (r) => keep.has(r.rowId) && Math.abs(Number(uText(r.expanded))) === savedMuMax,
+      )
+      uCandidates.push({ n: savedMuMax, text: hit ? uText(hit.expanded) : String(savedMuMax) })
     }
-    const maxU = uCandidates.length > 0 ? Math.max(...uCandidates) : null
+    const maxUEntry = uCandidates.reduce<{ n: number; text: string } | null>(
+      (best, c) => (best == null || c.n > best.n ? c : best),
+      null,
+    )
+    const maxU = maxUEntry?.n ?? null
+    const uK = savedMuMax != null && savedMu && maxU === savedMuMax ? savedMu.coverageFactorK : null
     const uUnitFromCol = (() => {
       if (!expandedUCol) return ''
       const fromLabel = `${expandedUCol.label} ${expandedUCol.key}`.match(
@@ -1878,12 +2004,13 @@ export function CertificateDraftDialog({
       if (fromLabel?.[2]) return fromLabel[2].replace(/^kn$/i, 'kN')
       return ''
     })()
-    const uUnit =
-      masters
-        .map((m) => (m.calibration_uncertainty_unit ?? '').trim())
-        .find(Boolean) ||
+    const uUnit = normalizeCertificateUnit(
       uUnitFromCol ||
-      loadUnit
+        masters
+          .map((m) => (m.calibration_uncertainty_unit ?? '').trim())
+          .find(Boolean) ||
+        loadUnit,
+    )
 
     // Relative Resolution @ Fi max — keep unit from column label, else Load unit (kN).
     const maxZeroFromRelativeResolution = relativeResolutionCol != null
@@ -1912,10 +2039,10 @@ export function CertificateDraftDialog({
             : '',
       uncertaintyReported:
         maxU != null
-          ? `±${formatMagnitudeDisplay(maxU)}${uUnit ? ` ${uUnit}` : ''}`
+          ? `±${maxUEntry?.text || formatMagnitudeDisplay(maxU)}${uUnit ? ` ${uUnit}` : ''}${uK ? ` (k = ${uK})` : ''}`
           : '',
     }
-  }, [columns, rows, masters, loadColumn, eqFields?.range])
+  }, [columns, rows, masters, loadColumn, eqFields?.range, payload?.muResults])
 
   // Prefill / refresh summary fields from Raw Data Sheet columns.
   useEffect(() => {
@@ -1945,23 +2072,28 @@ export function CertificateDraftDialog({
           changed = true
         }
       }
+      const autoLikeU = /^[±+]?\s*\d+(\.\d+)?(\s*[A-Za-zµ%°]+)?(\s*\(k\s*=\s*[\d.]+\))?$/i.test(
+        prev.uncertaintyReported.trim(),
+      )
       if (
         computedCertSummary.uncertaintyReported &&
-        (!prev.uncertaintyReported.trim() ||
-          /^[±+]?\s*\d+(\.\d+)?(\s*(kN|N|kgf|kg|%))?$/i.test(
-            prev.uncertaintyReported.trim(),
-          ))
+        (!prev.uncertaintyReported.trim() || autoLikeU)
       ) {
         if (prev.uncertaintyReported.trim() !== computedCertSummary.uncertaintyReported) {
           next.uncertaintyReported = computedCertSummary.uncertaintyReported
           changed = true
         }
+      } else if (!computedCertSummary.uncertaintyReported && autoLikeU && !readOnly) {
+        // An earlier draft filled U from a master's certificate: clear it.
+        next.uncertaintyReported = ''
+        changed = true
       }
       return changed ? next : prev
     })
-  }, [computedCertSummary, loading])
+  }, [computedCertSummary, loading, readOnly])
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-certificate-draft-preview=""
@@ -1971,7 +2103,7 @@ export function CertificateDraftDialog({
             ? 'certificate-draft-dialog !flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-white p-0 shadow-none'
             : CERT_FULLSCREEN_DIALOG_CLASS
         }
-        layer="nested"
+        layer={layer}
         aria-describedby={undefined}
         showCloseButton={!silentMode}
         onEscapeKeyDown={(e) => {
@@ -2164,10 +2296,13 @@ export function CertificateDraftDialog({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <DialogTitle className="text-base font-semibold tracking-tight text-white sm:text-lg">
-                  Certificate Draft — {cellText(equipmentLabel || job?.equipment_label)}
+                  {snapshot
+                    ? `Original Certificate (read-only) — ${snapshot.label}`
+                    : `${readOnly ? 'Issued Certificate' : 'Certificate Draft'} — ${cellText(equipmentLabel || job?.equipment_label)}`}
                 </DialogTitle>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {!readOnly ? (
                 <Button
                   type="button"
                   size="sm"
@@ -2180,7 +2315,8 @@ export function CertificateDraftDialog({
                   <Save size={14} className="mr-1.5" aria-hidden />
                   {saving ? 'Saving…' : 'Save Draft'}
                 </Button>
-                {onIssueAndForward ? (
+                ) : null}
+                {onIssueAndForward && !readOnly ? (
                   <Button
                     type="button"
                     size="sm"
@@ -2190,7 +2326,7 @@ export function CertificateDraftDialog({
                     aria-label="Issue certificate and forward to Certificates"
                   >
                     <ArrowRight size={14} aria-hidden />
-                    {issuing ? 'Issuing…' : 'Issue & Forward'}
+                    {issuing ? 'Issuing…' : draft.amendment ? 'Issue Amendment' : 'Issue & Forward'}
                   </Button>
                 ) : null}
               </div>
@@ -2225,6 +2361,12 @@ export function CertificateDraftDialog({
                   {message}
                 </p>
               ) : null}
+              {!dueDatePolicy.requested ? (
+                <p className="certificate-draft-no-print px-1 text-xs text-stone-500">
+                  Due date not shown: the customer did not request one on the SRF (ISO/IEC 17025
+                  clause 7.8.4.3).
+                </p>
+              ) : null}
 
               <CertificateLetterPage
                 lh={letterhead}
@@ -2240,7 +2382,11 @@ export function CertificateDraftDialog({
                       certificateNumber={draft.certificateNumber}
                       ulrNumber={draft.ulrNumber}
                       ulrPlaceholder={formatNablUlrNumber(
-                        buildCalibrationUlrHeaderPrefix(letterhead?.nablCertificateNo),
+                        buildCalibrationUlrHeaderPrefix(
+                          /^\s*CC/i.test(letterhead?.nablCertificateNo ?? '')
+                            ? letterhead?.nablCertificateNo
+                            : LAB_CALIBRATION_ACCREDITATION_DEFAULT,
+                        ),
                         1,
                         'CC',
                       )}
@@ -2252,8 +2398,22 @@ export function CertificateDraftDialog({
                       onAutoUlr={() => void autoCreateUlrNumber()}
                       autoNumbering={autoNumbering}
                       autoUlrNumbering={autoUlrNumbering}
-                      controlsDisabled={loading || saving || issuing}
+                      controlsDisabled={loading || saving || issuing || readOnly}
                     />
+                    {snapshot ? (
+                      <p className="w-full shrink-0 border border-red-700 bg-red-50 px-1.5 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-red-800">
+                        Superseded — copy of the certificate as originally issued
+                      </p>
+                    ) : null}
+                    {draft.amendment ? (
+                      // ISO/IEC 17025 7.8.8.2: identify the amendment and the certificate it replaces.
+                      <p
+                        className="certificate-amendment-statement w-full shrink-0 border border-slate-400 bg-white px-1.5 py-1 text-[11px] font-semibold text-slate-900"
+                        data-testid="certificate-amendment-statement"
+                      >
+                        {certificateAmendmentStatement(draft.amendment, formatDisplayDate)}
+                      </p>
+                    ) : null}
                   </>
                 }
               >
@@ -2342,15 +2502,17 @@ export function CertificateDraftDialog({
                           {formatDisplayDate(draft.dateOfCalibration)}
                         </span>
                       </CertMetaRow>
-                      <CertMetaRow label="Due Date of Calibration">
-                        <span
-                          id="cert-due-date"
-                          title="Auto: Calibration Date + Frequency"
-                          className={certMetaValueTextClass}
-                        >
-                          {formatDisplayDate(draft.dueDateOfCalibration)}
-                        </span>
-                      </CertMetaRow>
+                      {dueDatePolicy.requested ? (
+                        <CertMetaRow label="Due Date of Calibration">
+                          <span
+                            id="cert-due-date"
+                            title="Customer requested on SRF: Calibration Date + Frequency"
+                            className={certMetaValueTextClass}
+                          >
+                            {formatDisplayDate(draft.dueDateOfCalibration)}
+                          </span>
+                        </CertMetaRow>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -2460,7 +2622,11 @@ export function CertificateDraftDialog({
                     certificateNumber={draft.certificateNumber}
                     ulrNumber={draft.ulrNumber}
                     ulrPlaceholder={formatNablUlrNumber(
-                      buildCalibrationUlrHeaderPrefix(letterhead?.nablCertificateNo),
+                      buildCalibrationUlrHeaderPrefix(
+                          /^\s*CC/i.test(letterhead?.nablCertificateNo ?? '')
+                            ? letterhead?.nablCertificateNo
+                            : LAB_CALIBRATION_ACCREDITATION_DEFAULT,
+                        ),
                       1,
                       'CC',
                     )}
@@ -2472,7 +2638,7 @@ export function CertificateDraftDialog({
                     onAutoUlr={() => void autoCreateUlrNumber()}
                     autoNumbering={autoNumbering}
                     autoUlrNumbering={autoUlrNumbering}
-                    controlsDisabled={loading || saving || issuing}
+                    controlsDisabled={loading || saving || issuing || readOnly}
                   />
                 }
               >
@@ -2730,6 +2896,7 @@ export function CertificateDraftDialog({
                   <Download size={14} aria-hidden />
                   {downloading ? 'Downloading…' : 'Download'}
                 </Button>
+                {!readOnly ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -2741,7 +2908,8 @@ export function CertificateDraftDialog({
                   <FileCheck size={14} aria-hidden />
                   {saving ? 'Saving…' : 'Save Draft'}
                 </Button>
-                {onIssueAndForward ? (
+                ) : null}
+                {onIssueAndForward && !readOnly ? (
                   <Button
                     type="button"
                     className={cn('h-9 gap-1.5', limsPrimaryBtnClass)}
@@ -2750,7 +2918,7 @@ export function CertificateDraftDialog({
                     aria-label="Issue certificate and forward to Certificates"
                   >
                     <ArrowRight size={14} aria-hidden />
-                    {issuing ? 'Issuing…' : 'Issue & Forward'}
+                    {issuing ? 'Issuing…' : draft.amendment ? 'Issue Amendment' : 'Issue & Forward'}
                   </Button>
                 ) : null}
               </div>
@@ -2759,5 +2927,21 @@ export function CertificateDraftDialog({
         </div>
       </DialogContent>
     </Dialog>
+    <ConfirmLoginPasswordDialog
+      open={issuePasswordOpen}
+      onOpenChange={setIssuePasswordOpen}
+      title={draft.amendment ? 'Issue Amendment' : 'Issue Certificate'}
+      confirmLabel={draft.amendment ? 'Issue Amendment' : 'Issue & Forward'}
+      statement="I authorize release of this calibration certificate."
+      onConfirmed={({ reauthenticatedAt }) => {
+        setIssuePasswordOpen(false)
+        void completeIssueAndForward(reauthenticatedAt)
+      }}
+    >
+      <p className="text-sm text-stone-700">
+        {draft.certificateNumber || 'Certificate'} · ULR {draft.ulrNumber || '—'} · U {draft.uncertaintyReported || '—'}
+      </p>
+    </ConfirmLoginPasswordDialog>
+    </>
   )
 }

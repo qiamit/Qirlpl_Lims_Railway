@@ -15,8 +15,8 @@ function str(v: unknown): string {
 
 export function retestStatusFromResult(newResult: string, acceptanceCriteria: string): RetestStatus {
   const remark = evaluateResultConformity(newResult, acceptanceCriteria)
-  if (remark === 'Confirm') return 'Pass'
-  if (remark === 'Not Confirm') return 'Fail'
+  if (remark === 'Conforms') return 'Pass'
+  if (remark === 'Does Not Conform') return 'Fail'
   return '—'
 }
 
@@ -40,8 +40,8 @@ export function normalizeRetestStatus(value: string): RetestStatus {
   const t = value.trim()
   if (t === 'Pass' || t.toLowerCase() === 'pass') return 'Pass'
   if (t === 'Fail' || t.toLowerCase() === 'fail') return 'Fail'
-  if (t === 'Confirm') return 'Pass'
-  if (t === 'Not Confirm') return 'Fail'
+  if (t === 'Confirm' || t === 'Conforms') return 'Pass'
+  if (t === 'Not Confirm' || t === 'Does Not Conform') return 'Fail'
   return '—'
 }
 

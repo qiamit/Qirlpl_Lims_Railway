@@ -62,10 +62,8 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   const profileDesignation = String((callerProfile as { designation?: unknown } | null)?.designation ?? '').trim()
-  const metadataDesignation = String(
-    ((callerData.user.user_metadata ?? {}) as { designation?: unknown }).designation ?? '',
-  ).trim()
-  const callerDesignation = profileDesignation || metadataDesignation
+  // user_metadata is user-editable; only the profile row decides the role.
+  const callerDesignation = profileDesignation
   const normalizedDesignation = callerDesignation.toLowerCase()
   if (normalizedDesignation !== 'laboratory director') {
     return new Response(JSON.stringify({ error: 'Forbidden' }), {

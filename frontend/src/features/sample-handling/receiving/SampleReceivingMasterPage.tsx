@@ -46,6 +46,7 @@ import {
 } from './sortSampleReceivingRows'
 import { getSampleWorkflowStatusLabel } from '../sampleWorkflowStatus'
 import { fetchAllByRange } from '../shared/fetchByIdChunks'
+import { isMissingDecisionRuleIdColumnError } from '@/features/masters/decision-rules/decisionRules'
 
 const STAGE = 'receiving' as const
 const BUCKET = 'sample-client-references'
@@ -83,6 +84,7 @@ const SAMPLE_RECEIVING_LIST_SELECT = [
   'deviation_from_methods',
   'supporting_docs_required',
   'decision_rule_applied',
+  'decision_rule_id',
   'testing_method_available',
   'sampling_procedure_ref',
   'tentative_date_required',
@@ -107,6 +109,11 @@ const SAMPLE_RECEIVING_LIST_SELECT = [
   'updated_at',
   'clients(company_name)',
 ].join(', ')
+
+const SAMPLE_RECEIVING_LIST_SELECT_WITHOUT_RULE = SAMPLE_RECEIVING_LIST_SELECT.replace(
+  'decision_rule_id, ',
+  '',
+)
 
 const formatSupabaseError = (err: unknown) => {
   if (!err || typeof err !== 'object') return 'Unknown error'
@@ -244,13 +251,15 @@ export default function SampleReceivingMasterPage() {
     try {
       const [samples, allocRows] = await Promise.all([
         fetchAllByRange(async (from, to) => {
-          const { data, error } = await supabase
-            .from('samples')
-            .select(SAMPLE_RECEIVING_LIST_SELECT)
-            .order('id', { ascending: true })
-            .range(from, to)
+          const run = (select: string) =>
+            supabase.from('samples').select(select).order('id', { ascending: true }).range(from, to)
+          let { data, error } = await run(SAMPLE_RECEIVING_LIST_SELECT)
+          if (error && isMissingDecisionRuleIdColumnError(error)) {
+            // Before migration 20261026100000 samples has no decision_rule_id.
+            ;({ data, error } = await run(SAMPLE_RECEIVING_LIST_SELECT_WITHOUT_RULE))
+          }
           if (error) throw error
-          return Array.isArray(data) ? data : []
+          return Array.isArray(data) ? (data as unknown as Record<string, unknown>[]) : []
         }),
         fetchAllByRange(async (from, to) => {
           const { data, error } = await supabase
@@ -309,6 +318,7 @@ export default function SampleReceivingMasterPage() {
           deviation_from_methods: (r.deviation_from_methods as boolean) ?? null,
           supporting_docs_required: (r.supporting_docs_required as boolean) ?? null,
           decision_rule_applied: (r.decision_rule_applied as boolean) ?? null,
+          decision_rule_id: typeof r.decision_rule_id === 'string' ? r.decision_rule_id : null,
           testing_method_available: (r.testing_method_available as boolean) ?? null,
           sampling_procedure_ref: (r.sampling_procedure_ref as boolean) ?? null,
           tentative_date_required: (r.tentative_date_required as string) ?? null,
@@ -399,6 +409,7 @@ export default function SampleReceivingMasterPage() {
     deviationFromMethods: row.deviation_from_methods ?? false,
     supportingDocsRequired: row.supporting_docs_required ?? false,
     decisionRuleApplied: row.decision_rule_applied ?? false,
+    decisionRuleId: row.decision_rule_id ?? '',
     testingMethodAvailable: row.testing_method_available ?? true,
     samplingProcedureRef: row.sampling_procedure_ref ?? true,
     tentativeDateRequired: row.tentative_date_required?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
@@ -538,7 +549,8 @@ export default function SampleReceivingMasterPage() {
           can_complete_within_time: form.canCompleteWithinTime,
           deviation_from_methods: form.deviationFromMethods,
           supporting_docs_required: form.supportingDocsRequired,
-          decision_rule_applied: form.decisionRuleApplied,
+          decision_rule_applied: form.decisionRuleApplied || Boolean(form.decisionRuleId),
+          decision_rule_id: form.decisionRuleId.trim() || null,
           testing_method_available: form.testingMethodAvailable,
           sampling_procedure_ref: form.samplingProcedureRef,
           tentative_date_required: form.tentativeDateRequired.trim() ? form.tentativeDateRequired : null,
@@ -565,13 +577,18 @@ export default function SampleReceivingMasterPage() {
             referback_from_allocation: false,
           })
         }
-        if (editingId) {
-          const { error } = await supabase.from('samples').update(payload).eq('id', editingId)
-          if (error) throw error
-        } else {
-          const { error } = await supabase.from('samples').insert({ ...payload, srf_number: srfNumber || null })
-          if (error) throw error
+        const writeSample = async (body: Record<string, unknown>) =>
+          editingId
+            ? supabase.from('samples').update(body).eq('id', editingId)
+            : supabase.from('samples').insert({ ...body, srf_number: srfNumber || null })
+        let { error: writeError } = await writeSample(payload)
+        if (writeError && isMissingDecisionRuleIdColumnError(writeError)) {
+          // Before migration 20261026100000: save without the decision rule id.
+          const withoutRule: Record<string, unknown> = { ...payload }
+          delete withoutRule.decision_rule_id
+          ;({ error: writeError } = await writeSample(withoutRule))
         }
+        if (writeError) throw writeError
         setSaveMessage(
           editingViaReportPrepUnlock
             ? 'Saved successfully. Sample Receiving edit is locked again.'

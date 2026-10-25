@@ -40,6 +40,7 @@ import {
 } from '@/features/sample-handling/receiving/FilterCombobox'
 import { LimsFieldAddButton, LimsFieldWithAdd } from '@/components/lims/LimsFieldWithAdd'
 import { LocationFieldWithAdd } from '@/components/lims/LocationFieldWithAdd'
+import { evaluateArithmeticToString } from '@/lib/safeExpression'
 
 const sectionTitleClass =
   'mb-3 border-b border-amber-700/25 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800'
@@ -54,18 +55,9 @@ function parseAcceptanceLimit(criteria: string | null | undefined): number | nul
   return null
 }
 
+/** Calculator helper: `^[-+*\/.0-9]+$` arithmetic → result string or 'Error' (CSP-safe, no eval). */
 function safeEvaluate(expr: string): string {
-  const sanitized = expr.replace(/\s+/g, '')
-  if (!/^[-+*/.0-9]+$/.test(sanitized)) {
-    return 'Error'
-  }
-  try {
-    const fn = new Function(`return ${sanitized}`)
-    const res = fn()
-    return isFinite(res) ? String(res) : 'Error'
-  } catch {
-    return 'Error'
-  }
+  return evaluateArithmeticToString(expr)
 }
 
 export function IqcMasterForm({
@@ -1154,7 +1146,7 @@ export function IqcMasterForm({
               {sectionContent}
             </div>
           </CardContent>
-          <CardFooter className="-mx-0 mt-4 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3">
+          <CardFooter className="-mx-0 mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3">
             <Button
               type="button"
               onClick={onSave}
@@ -1199,6 +1191,7 @@ export function IqcMasterForm({
           equipmentName={form.equipmentName}
           assetCode={form.assetCode}
           history={form.maintenanceHistory}
+          historySource={{ table: 'iqc_masters', assetCode: form.assetCode }}
           currentLastDate={form.lastMaintenanceDate}
           currentDoneByName={maintenanceDoneByName}
           currentChecklist={form.maintenanceChecklist}
@@ -1389,7 +1382,7 @@ export function IqcMasterForm({
 
           <section className={cn(limsPanelClass, 'p-4')}>
             <h3 className={sectionTitleClass}>Purchase & Location</h3>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="min-w-0 space-y-0.5">
                 <Label htmlFor="iqc-purchase-date">Date of Purchased</Label>
                 <Input
@@ -1846,7 +1839,7 @@ export function IqcMasterForm({
         </div>
       </CardContent>
 
-      <CardFooter className="-mx-4 mt-5 flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
+      <CardFooter className="-mx-4 mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-4 py-3 sm:-mx-6 sm:px-6">
         {readOnly ? (
           <Button
             type="button"
@@ -1964,6 +1957,7 @@ export function IqcMasterForm({
         equipmentName={form.equipmentName}
         assetCode={form.assetCode}
         history={form.maintenanceHistory}
+        historySource={{ table: 'iqc_masters', assetCode: form.assetCode }}
         currentLastDate={form.lastMaintenanceDate}
         currentDoneByName={maintenanceDoneByName}
         currentChecklist={form.maintenanceChecklist}

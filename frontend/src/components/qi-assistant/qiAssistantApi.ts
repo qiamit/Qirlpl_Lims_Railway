@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { guardAiRequest, restoreAiPlaceholders } from '@/lib/aiDataGuard'
 
 export type QiChatMessage = {
   id: string
@@ -18,6 +19,8 @@ export type QiAssistantResponse = {
   reply: string
   actionsExecuted?: QiAssistantActionResult[]
   createdIsCodeId?: string
+  /** AI data guard notice for the chat UI (e.g. record data withheld). */
+  dataGuardNotice?: string
 }
 
 const MAX_PDF_BYTES = 5 * 1024 * 1024
@@ -94,6 +97,12 @@ export function validateAssistantPdfFile(file: File): void {
   }
 }
 
+/**
+ * Single choke point for every AI call from the frontend (chat panels, AI fill
+ * helpers, management documents, audit dialogs). The AI data guard
+ * (lib/aiDataGuard.ts, ISO 17025 clause 4.2) runs here, so context builders do
+ * not need to redact anything themselves.
+ */
 export async function sendQiAssistantMessage(input: {
   page: string
   message: string
@@ -110,16 +119,30 @@ export async function sendQiAssistantMessage(input: {
   /** Multiple PDFs (preferred for document AI). Falls back to attachedPdf. */
   attachedPdfs?: File[]
   history: Array<{ role: 'user' | 'assistant'; content: string }>
+  /** Optional: client ids the caller knows are in the context (AI data guard). */
+  clientIds?: string[]
+  /** Optional: caller knows the context holds client / sample data. */
+  containsClientData?: boolean
 }): Promise<QiAssistantResponse> {
-  const body: Record<string, unknown> = {
-    page: input.page,
+  // ISO 17025 4.2: redact / withhold client data per lab_settings.ai_client_data_mode.
+  const guarded = await guardAiRequest({
     message: input.message,
     context: input.context,
+    history: input.history,
+    clientIds: input.clientIds,
+    containsClientData: input.containsClientData,
+  })
+
+  const body: Record<string, unknown> = {
+    page: input.page,
+    message: guarded.message,
+    context: guarded.context,
     isCodeId: input.isCodeId,
     activeRecordId: input.activeRecordId,
     activeRecordTable: input.activeRecordTable,
     activeSkillId: input.activeSkillId,
-    history: input.history,
+    history: guarded.history,
+    clientData: guarded.clientData,
   }
 
   const pdfs: File[] = []
@@ -148,5 +171,14 @@ export async function sendQiAssistantMessage(input: {
     )
   }
 
-  return postQiAssistant(body)
+  const response = await postQiAssistant(body)
+  return {
+    ...response,
+    reply: restoreAiPlaceholders(response.reply, guarded.redactions),
+    actionsExecuted: response.actionsExecuted?.map((a) => ({
+      ...a,
+      message: restoreAiPlaceholders(a.message, guarded.redactions),
+    })),
+    dataGuardNotice: guarded.notice,
+  }
 }

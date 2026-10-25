@@ -19,13 +19,18 @@
   @apex header Origin https://qirlpl.com
   header @apex Access-Control-Allow-Origin "https://qirlpl.com"
 
+  # Staging only: set EXTRA_FRONTEND_ORIGIN on the staging api service to the
+  # staging frontend URL. Unset in production, so this matches nothing.
+  @extraOrigin header Origin {$EXTRA_FRONTEND_ORIGIN:https://unset.invalid}
+  header @extraOrigin Access-Control-Allow-Origin "{$EXTRA_FRONTEND_ORIGIN:https://unset.invalid}"
+
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains"
     X-Content-Type-Options "nosniff"
     Referrer-Policy "strict-origin-when-cross-origin"
     X-Frame-Options "DENY"
     Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
-    Access-Control-Allow-Credentials "true"
+    -Server
     Access-Control-Expose-Headers "Content-Range, Range, Content-Location, Content-Profile, Preference-Applied, X-Request-Id"
     Vary "Origin"
   }
@@ -41,6 +46,15 @@
   @health path /health
   handle @health {
     respond "ok" 200
+  }
+
+  # Accounts are created only by the Laboratory Director through the
+  # functions service (GoTrue admin API on the private network). Public
+  # self sign-up, OTP and magic-link logins are closed here as well as by
+  # GOTRUE_DISABLE_SIGNUP on the auth service.
+  @blockedAuth path /auth/v1/signup /auth/v1/signup/* /auth/v1/otp /auth/v1/magiclink
+  handle @blockedAuth {
+    respond "Sign-up is disabled" 403
   }
 
   @auth path /auth/v1 /auth/v1/*

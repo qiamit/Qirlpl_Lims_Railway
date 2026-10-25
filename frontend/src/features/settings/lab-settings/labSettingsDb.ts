@@ -1,6 +1,7 @@
 /** Maps LabSettingsPage fields ↔ public.lab_settings and related lab tables */
 
 import type { SupabaseClient } from '@/lib/supabaseClient'
+import { stripMarkup } from '@/lib/sanitizeHtml'
 
 export const LAB_SETTINGS_SINGLETON_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -63,6 +64,10 @@ export function parseLabSettingsRow(row: LabSettingsRow) {
     theme: String(row.theme ?? '').trim(),
     generateReportEnabled:
       row.generate_report_enabled == null ? true : Boolean(row.generate_report_enabled),
+    /** ISO 17025 7.3 module switch (migration 20261101100200); off by default. */
+    samplingEnabled: row.sampling_enabled === true,
+    /** False before migration 20261101100200: the toggle is hidden and never saved. */
+    samplingSettingAvailable: Object.prototype.hasOwnProperty.call(row, 'sampling_enabled'),
   }
 }
 
@@ -147,6 +152,8 @@ export function labSystemPayload(input: {
   timeFormat: string
   theme: string
   generateReportEnabled: boolean
+  /** Omitted (undefined) while the column is not on the database. */
+  samplingEnabled?: boolean
 }): LabSettingsRow {
   return {
     id: LAB_SETTINGS_SINGLETON_ID,
@@ -155,6 +162,7 @@ export function labSystemPayload(input: {
     time_format: input.timeFormat,
     theme: input.theme,
     generate_report_enabled: input.generateReportEnabled,
+    ...(input.samplingEnabled === undefined ? {} : { sampling_enabled: input.samplingEnabled }),
   }
 }
 
@@ -252,6 +260,8 @@ export function letterheadFromRow(row: {
   const type = String(row.template_type ?? '')
   const title = String(row.title ?? row.name ?? '')
   const fileUrl = typeof row.file_path === 'string' ? row.file_path : null
-  const text = String(row.content_text ?? row.footer_html ?? row.header_html ?? '')
-  return { type, title, fileUrl, text }
+  // Letterhead text (terms, watermark text, legacy header/footer HTML) is used
+  // as plain text in reports and previews: strip any markup on render.
+  const text = stripMarkup(String(row.content_text ?? row.footer_html ?? row.header_html ?? ''))
+  return { type, title: stripMarkup(title), fileUrl, text }
 }

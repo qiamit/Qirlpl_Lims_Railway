@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys, setDeleteReason } from '@/lib/softDelete'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
+import { isCancelledDocument } from '../shared/financeRules'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
@@ -28,6 +31,11 @@ import {
   type QuotationStatus,
 } from './types'
 import { fetchQuotationPrefix } from './quotationNumberPrefix'
+import {
+  allocateDocumentNumber,
+  numberForNewDocument,
+  peekDocumentNumber,
+} from '../shared/documentSeriesApi'
 import { fetchDefaultQuotationTerm } from './quotationTermsApi'
 import { fetchDefaultQuotationNote } from './quotationNotesApi'
 import { downloadQuotationPdfWithTemplate, printQuotationsWithTemplate } from './outputQuotationDocument'
@@ -108,6 +116,7 @@ export default function QuotationMasterPage() {
   const [listError, setListError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const askReason = useReasonForChange()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [jumpTo, setJumpTo] = useState('')
@@ -119,6 +128,8 @@ export default function QuotationMasterPage() {
   const [form, setForm] = useState<QuotationFormType>(() => emptyQuotationForm())
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  /** Number shown in a new form from the database series; the real one is taken on save. */
+  const [previewNumber, setPreviewNumber] = useState<string | null>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
 
   const [clientOptions, setClientOptions] = useState<FilterComboboxOption[]>([])
@@ -203,7 +214,7 @@ export default function QuotationMasterPage() {
         const { data, error } = await supabase
           .from('products_services_master')
           .select(
-            'id, item_code, item_name, item_description, make, hsn_code, unit_of_measurement, sale_price, gst_percent',
+            'id, item_code, item_name, item_description, make, hsn_code, item_type, unit_of_measurement, sale_price, gst_percent',
           )
           .order('item_name', { ascending: true })
         if (error) throw error
@@ -218,6 +229,7 @@ export default function QuotationMasterPage() {
             item_description?: string | null
             make?: string | null
             hsn_code?: string | null
+            item_type?: string | null
             unit_of_measurement?: string | null
             sale_price?: number | null
             gst_percent?: number | null
@@ -244,6 +256,7 @@ export default function QuotationMasterPage() {
             itemDescription,
             make: String(r.make ?? '').trim(),
             hsnCode: String(r.hsn_code ?? '').trim(),
+            itemType: String(r.item_type ?? '').trim(),
             unit: String(r.unit_of_measurement ?? '').trim(),
             salePrice: Number(r.sale_price ?? 0) || 0,
             gstPercent: Number(r.gst_percent ?? 0) || 0,
@@ -368,20 +381,31 @@ export default function QuotationMasterPage() {
     return filteredRows.slice(start, start + pageSize)
   }, [filteredRows, safePage, pageSize])
 
-  const allocateNextQuotationNumber = async () => {
+  /** Browser-side fallback while the document_series migration is not applied. */
+  const nextQuotationNumberFromRows = async () => {
     const prefix = await fetchQuotationPrefix()
-    const { data, error } = await supabase.from('quotations').select('quotation_number')
+    const [{ data, error }, deletedNumbers] = await Promise.all([
+      supabase.from('quotations').select('quotation_number'),
+      // Numbers of deleted quotations are never reused.
+      fetchDeletedKeys('quotations', 'quotation_number'),
+    ])
     if (error) throw error
     const numbers = (Array.isArray(data) ? data : []).map((row) =>
       String((row as { quotation_number?: string | null }).quotation_number ?? ''),
     )
-    return nextQuotationNumber(numbers, prefix)
+    return nextQuotationNumber([...numbers, ...deletedNumbers], prefix)
+  }
+
+  const previewNextQuotationNumber = async () => {
+    const peeked = await peekDocumentNumber('quotation').catch(() => null)
+    setPreviewNumber(peeked)
+    return peeked ?? nextQuotationNumberFromRows()
   }
 
   const openNew = () => {
     void (async () => {
       const [next, defaultTerm, defaultNote, defaultSign] = await Promise.all([
-        allocateNextQuotationNumber(),
+        previewNextQuotationNumber(),
         fetchDefaultQuotationTerm('quotation').catch(() => '100 % Advance'),
         fetchDefaultQuotationNote('quotation').catch(() => ''),
         fetchDefaultSignatureForKind('quotation').catch(() => ({
@@ -403,6 +427,10 @@ export default function QuotationMasterPage() {
   }
 
   const openEdit = (row: QuotationRow) => {
+    if (isCancelledDocument(row.status)) {
+      setSaveMessage(`${row.quotation_number} is cancelled and cannot be changed.`)
+      return
+    }
     setEditingId(row.id)
     setForm(rowToForm(row, false))
     setSaveMessage(null)
@@ -411,7 +439,7 @@ export default function QuotationMasterPage() {
 
   const openCopy = (row: QuotationRow) => {
     void (async () => {
-      const next = await allocateNextQuotationNumber()
+      const next = await previewNextQuotationNumber()
       setEditingId(null)
       setForm(rowToForm(row, true, next))
       setSaveMessage(null)
@@ -464,6 +492,12 @@ export default function QuotationMasterPage() {
           .eq('quotation_id', editingId)
         if (delErr) throw delErr
       } else {
+        const assigned = await numberForNewDocument('quotation', payload.quotation_number, previewNumber)
+        if (assigned !== payload.quotation_number) {
+          payload.quotation_number = assigned
+          setForm((prev) => ({ ...prev, quotationNumber: assigned }))
+        }
+        setPreviewNumber(null)
         const wanted = payload.quotation_number
         const { data: clash, error: clashErr } = await supabase
           .from('quotations')
@@ -472,7 +506,7 @@ export default function QuotationMasterPage() {
           .limit(1)
         if (clashErr) throw clashErr
         if (Array.isArray(clash) && clash.length > 0) {
-          const next = await allocateNextQuotationNumber()
+          const next = (await allocateDocumentNumber('quotation')) ?? (await nextQuotationNumberFromRows())
           payload.quotation_number = next
           setForm((prev) => ({ ...prev, quotationNumber: next }))
         }
@@ -541,16 +575,52 @@ export default function QuotationMasterPage() {
     })
   }
 
-  const handleDeleteSelected = async () => {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    if (!window.confirm(`Delete ${ids.length} quotation(s)?`)) return
+  /**
+   * Cancel, not delete: the quotation keeps its number and stays listed with
+   * status Cancelled (migration 20261101100000 allows that status). Before
+   * that migration the database refuses the status (23514); the quotation is
+   * then deleted into the Recycle Bin instead, which also keeps its number.
+   */
+  const handleCancelSelected = async () => {
+    const ids = rows
+      .filter((r) => selectedIds.has(r.id) && !isCancelledDocument(r.status))
+      .map((r) => r.id)
+    if (ids.length === 0) {
+      setSaveMessage(selectedIds.size > 0 ? 'The selected quotations are already cancelled.' : 'Select a quotation to cancel.')
+      return
+    }
+    const reason = await askReason({
+      title: 'Reason for cancelling (Quotation)',
+      recordLabel: rows
+        .filter((r) => ids.includes(r.id))
+        .map((r) => r.quotation_number)
+        .join(', '),
+      description: 'A cancelled quotation keeps its number and stays on record. It cannot be edited afterwards.',
+      confirmLabel: 'Cancel quotation',
+      quickPicks: ['Client withdrew the enquiry', 'Raised in error', 'Duplicate quotation', 'Replaced by a revised quotation'],
+    })
+    if (!reason) return
     setSaveMessage(null)
     try {
-      const { error } = await supabase.from('quotations').delete().in('id', ids)
-      if (error) throw error
+      const { data: updated, error } = await supabase
+        .from('quotations')
+        .update({ status: 'Cancelled' })
+        .in('id', ids)
+        .select('id')
+      if (error && error.code === '23514') {
+        const { error: delError } = await supabase.from('quotations').delete().in('id', ids)
+        if (delError) throw delError
+        await setDeleteReason('quotations', ids, reason)
+        setSaveMessage(`Moved ${ids.length} quotation(s) to the Recycle Bin; numbers kept.`)
+      } else {
+        if (error) throw error
+        if (!Array.isArray(updated) || updated.length === 0) {
+          throw new Error('No quotation was cancelled (no Edit access on the Quotation page?).')
+        }
+        await recordReason('quotations', ids, reason)
+        setSaveMessage(`Cancelled ${ids.length} quotation(s); numbers kept.`)
+      }
       setSelectedIds(new Set())
-      setSaveMessage(`Deleted ${ids.length} quotation(s).`)
       await loadRows()
     } catch (err) {
       setSaveMessage(formatSupabaseError(err))
@@ -569,7 +639,7 @@ export default function QuotationMasterPage() {
   }
 
   const handleStatusChange = (row: QuotationRow, status: QuotationStatus) => {
-    if (row.status === status) return
+    if (row.status === status || isCancelledDocument(row.status)) return
     void (async () => {
       setStatusUpdatingId(row.id)
       setSaveMessage(null)
@@ -656,7 +726,7 @@ export default function QuotationMasterPage() {
         pageCount={pageCount}
         onTemplates={() => setShowTemplates(true)}
         onPrintSelected={handlePrint}
-        onDeleteSelected={() => void handleDeleteSelected()}
+        onDeleteSelected={() => void handleCancelSelected()}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

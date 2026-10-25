@@ -83,6 +83,7 @@ export function QiAssistant({
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dataNotice, setDataNotice] = useState<string | null>(null)
   const [messages, setMessages] = useState<QiChatMessage[]>([])
   const [agentCrudEnabled, setAgentCrudEnabled] = useState(true)
   const [skills, setSkills] = useState<AiSkillPick[]>([])
@@ -263,7 +264,7 @@ export function QiAssistant({
           .slice(-10)
           .map((m) => ({ role: m.role, content: m.content }))
 
-        const { reply, actionsExecuted } = await sendQiAssistantMessage({
+        const { reply, actionsExecuted, dataGuardNotice } = await sendQiAssistantMessage({
           page,
           message: trimmed,
           context: contextSummary,
@@ -275,6 +276,7 @@ export function QiAssistant({
           history,
         })
 
+        setDataNotice(dataGuardNotice ?? null)
         appendAssistantResult(reply, actionsExecuted)
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unable to get a response'
@@ -437,6 +439,9 @@ export function QiAssistant({
           </div>
         )}
 
+        {dataNotice && (
+          <p className="border-t border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">{dataNotice}</p>
+        )}
         {error && (
           <p className="border-t border-destructive/20 bg-destructive/5 px-5 py-2 text-xs text-destructive">{error}</p>
         )}

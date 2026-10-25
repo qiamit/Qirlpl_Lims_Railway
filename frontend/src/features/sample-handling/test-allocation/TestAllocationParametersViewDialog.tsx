@@ -532,7 +532,7 @@ export function TestAllocationParametersViewDialog({
             ) : parameters.length === 0 ? (
               <p className="py-4 text-sm text-stone-600">No test parameters allotted for this section yet.</p>
             ) : (
-              <div className="overflow-hidden border-2 border-stone-500 bg-white ring-1 ring-amber-700/20">
+              <div className="overflow-x-auto border-2 border-stone-500 bg-white ring-1 ring-amber-700/20">
                 <table className="w-full table-fixed border-collapse text-sm">
                   <colgroup>
                     <col className="w-10" />

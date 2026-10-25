@@ -3,8 +3,10 @@ import { csvCell } from '@/lib/csv'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { checkScopeMethod, useScopeVerificationStatus } from '@/features/method-validation/useScopeVerificationStatus'
 import { CalibrationNablScopeFormView } from './CalibrationNablScopeForm'
 import { CalibrationNablScopeHeaderBar } from './CalibrationNablScopeHeaderBar'
 import { CalibrationNablScopeTable } from './CalibrationNablScopeTable'
@@ -29,8 +31,9 @@ function formatSupabaseError(err: unknown) {
   return parts.length ? parts.join(' | ') : 'Unknown error'
 }
 
-function nextSNo(list: CalibrationNablScopeRow[]) {
-  return list.map((r) => r.s_no).reduce((a, b) => Math.max(a, b), 0) + 1
+/** `deletedSNos`: S.No. of deleted rows (never reused). */
+function nextSNo(list: CalibrationNablScopeRow[], deletedSNos: string[] = []) {
+  return [...list.map((r) => r.s_no), ...deletedSNos.map((v) => Number(v) || 0)].reduce((a, b) => Math.max(a, b), 0) + 1
 }
 
 function printViaIframe(html: string) {
@@ -71,6 +74,7 @@ export default function CalibrationNablScopeMasterPage() {
   const handleFormOpenChange = useFormDialogOpenChange(setShowForm)
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<CalibrationNablScopeRow[]>([])
+  const deletedSNos = useDeletedKeys('calibration_nabl_scope', 's_no', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -113,6 +117,8 @@ export default function CalibrationNablScopeMasterPage() {
     void loadItems()
   }, [])
 
+  const methodVerification = useScopeVerificationStatus(rows)
+
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rows
@@ -147,7 +153,7 @@ export default function CalibrationNablScopeMasterPage() {
   const handleNew = () => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...emptyCalibrationNablScopeForm(), sNo: String(nextSNo(rows)) })
+    setForm({ ...emptyCalibrationNablScopeForm(), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
   }
 
@@ -161,7 +167,7 @@ export default function CalibrationNablScopeMasterPage() {
   const handleCopy = (row: CalibrationNablScopeRow) => {
     setSaveMessage(null)
     setEditingId(null)
-    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows)) })
+    setForm({ ...rowToForm(row), sNo: String(nextSNo(rows, deletedSNos)) })
     setShowForm(true)
   }
 
@@ -182,7 +188,15 @@ export default function CalibrationNablScopeMasterPage() {
           const { error } = await supabase.from('calibration_nabl_scope').insert(payload)
           if (error) throw error
         }
-        setSaveMessage('Saved successfully.')
+        // ISO/IEC 17025 7.2.1.5 / 7.2.2 soft gate: warn, never block.
+        let methodWarning: string | null = null
+        try {
+          const chk = await checkScopeMethod('calibration', payload.calibration_method, payload.measurand)
+          if (chk && !chk.covered) methodWarning = chk.message
+        } catch {
+          methodWarning = null
+        }
+        setSaveMessage(methodWarning ? `Saved. Warning: ${methodWarning}` : 'Saved successfully.')
         setShowForm(false)
         setEditingId(null)
         await loadItems()
@@ -357,6 +371,7 @@ export default function CalibrationNablScopeMasterPage() {
       </Dialog>
 
       <CalibrationNablScopeTable
+        verificationByScopeId={methodVerification.byScopeId}
         rows={pagedRows}
         loading={listLoading}
         error={listError}

@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { SessionSecurityGate } from '@/components/auth/SessionSecurityGate'
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -20,5 +21,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     )
   }
 
-  return <>{children}</>
+  // Two-step code, forced password change, idle sign-out, account dialogs.
+  return <SessionSecurityGate>{children}</SessionSecurityGate>
 }

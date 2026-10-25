@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, FileUp, Printer, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, FileUp, ListChecks, Printer, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -28,6 +28,7 @@ export function ManagementDocumentsFooterBar({
   jumpTo,
   onJumpToChange,
   onJumpToGo,
+  onExportMasterList,
 }: {
   message: string | null
   loading: boolean
@@ -43,6 +44,8 @@ export function ManagementDocumentsFooterBar({
   jumpTo: string
   onJumpToChange: (value: string) => void
   onJumpToGo: () => void
+  /** Master list of all controlled documents (every level), CSV. */
+  onExportMasterList?: () => void
 }) {
   const selectionDisabled = selectedCount === 0
 
@@ -58,8 +61,8 @@ export function ManagementDocumentsFooterBar({
         />
         <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
 
-        <div className="relative flex min-w-0 flex-nowrap items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
-          <div className="flex min-w-0 flex-nowrap items-center gap-1 sm:gap-1.5">
+        <div className="relative flex min-w-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 md:flex-nowrap sm:gap-2 md:gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-1.5 md:flex-nowrap">
             <LaboratoryDirectorOnly>
               <Button
               type="button"
@@ -122,6 +125,23 @@ export function ManagementDocumentsFooterBar({
               <span className="hidden lg:inline">Delete</span>
             </Button>
             </LaboratoryDirectorOnly>
+            {onExportMasterList ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'h-7 shrink-0 gap-1 px-1.5 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs',
+                  footerBtnClass,
+                )}
+                onClick={onExportMasterList}
+                disabled={loading}
+                title="Master list of documents (all levels, CSV)"
+              >
+                <ListChecks size={14} />
+                <span className="hidden lg:inline">Master List</span>
+              </Button>
+            ) : null}
             {selectedCount > 0 ? (
               <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-stone-300 sm:inline sm:text-xs">
                 Selected: {selectedCount}

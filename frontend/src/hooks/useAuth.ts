@@ -1,6 +1,7 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabaseClient'
+import { logAuthEvent } from '@/lib/authEvents'
 
 interface AuthState {
   user: User | null
@@ -55,6 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [division, setDivision] = useState('')
   const [profileName, setProfileName] = useState('')
   const [profileReady, setProfileReady] = useState(false)
+  // Whose profile the role fields above belong to. Right after sign-in the
+  // user is set one render before the profile effect runs; until the profile
+  // of *this* user is loaded, profileReady is reported false (otherwise route
+  // guards judged the new user with an empty designation: "Access Denied").
+  const [profileUserId, setProfileUserId] = useState<string | null>(null)
   const profileUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -128,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!userId || !user) {
       profileUserIdRef.current = null
+      setProfileUserId(null)
       setDesignation('')
       setDepartmentName('')
       setDivision('')
@@ -148,15 +155,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let canceled = false
 
+    // user_metadata is writable by the user (auth.updateUser), so it is used
+    // for the display name only. Role fields come from user_profiles, the
+    // same source RLS uses.
     const meta = user.user_metadata as Record<string, unknown>
-    const metaDeptRaw =
-      typeof meta?.department_name === 'string'
-        ? meta.department_name
-        : typeof meta?.department === 'string'
-          ? meta.department
-          : ''
-    const metaDept = metaDeptRaw.trim()
-    const metaDivision = typeof meta?.division === 'string' ? meta.division.trim() : ''
     const metaName = typeof meta?.full_name === 'string' ? meta.full_name.trim() : ''
 
     const applyFromProfile = (
@@ -167,9 +169,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
       if (canceled) return
       profileUserIdRef.current = userId
+      setProfileUserId(userId)
       setDesignation(profileDes)
-      setDepartmentName(profileDept || metaDept)
-      setDivision(profileDivision || metaDivision)
+      setDepartmentName(profileDept)
+      setDivision(profileDivision)
       setProfileName(profileNameVal || metaName || user?.email || '')
       setProfileReady(true)
       try {
@@ -180,11 +183,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const fetchProfile = async () => {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('designation, department_name, division, full_name, status')
-        .eq('id', userId)
-        .maybeSingle()
+      // A failed request (network, token just refreshed) is tried again before
+      // the user is treated as having no role.
+      let data: unknown = null
+      let error: unknown = null
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt))
+        if (canceled) return
+        const res = await supabase
+          .from('user_profiles')
+          .select('designation, department_name, division, full_name, status')
+          .eq('id', userId)
+          .maybeSingle()
+        data = res.data
+        error = res.error
+        if (!error) break
+      }
 
       if (canceled) return
       if (error || !data) {
@@ -233,9 +247,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       departmentName,
       division,
       profileName,
-      profileReady,
+      profileReady: profileReady && (!user || profileUserId === user.id),
     }),
-    [user, session, loading, designation, departmentName, division, profileName, profileReady],
+    [user, session, loading, designation, departmentName, division, profileName, profileReady, profileUserId],
   )
 
   return createElement(AuthContext.Provider, { value }, children)
@@ -249,22 +263,16 @@ export function useAuth(): AuthState {
   return ctx
 }
 
+/** Passwords are passed exactly as typed (never trimmed). */
 export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password })
 }
 
-export async function signUp(
-  email: string,
-  password: string,
-  metadata?: Record<string, unknown>,
-) {
-  return supabase.auth.signUp({
-    email,
-    password,
-    options: metadata ? { data: metadata } : undefined,
-  })
-}
+// No public sign-up: accounts are created by the Laboratory Director through
+// the functions service (User Management).
 
 export async function signOut() {
+  // Recorded while the session is still valid; best effort, at most 2 s.
+  await logAuthEvent('logout')
   return supabase.auth.signOut()
 }

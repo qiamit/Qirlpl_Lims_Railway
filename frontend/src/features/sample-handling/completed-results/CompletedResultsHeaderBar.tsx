@@ -70,7 +70,7 @@ export function CompletedResultsHeaderBar({
             </Select>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+          <div className="ml-auto flex flex-wrap shrink-0 items-center justify-end gap-2">
             <IssuedTestReportAssistant rows={assistantRows} search={search} />
             <Button
               type="button"

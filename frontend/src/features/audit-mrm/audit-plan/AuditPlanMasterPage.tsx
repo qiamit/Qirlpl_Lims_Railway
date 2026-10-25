@@ -1,8 +1,10 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -16,7 +18,9 @@ import { AuditPlanHeaderBar } from './AuditPlanHeaderBar'
 import { AuditPlanTable } from './AuditPlanTable'
 import { AuditPlanTeamViewDialog } from './AuditPlanTeamViewDialog'
 import {
+  auditKindLabel,
   auditTypeLabel,
+  describeIndependenceConflict,
   emptyAuditPlanForm,
   formTeamToPayload,
   formatDate,
@@ -26,8 +30,11 @@ import {
   formatTeamCriteria,
   getAuditFirmInitials,
   nextAuditPlanId,
+  normalizeAuditKind,
+  normalizeIndependenceConflicts,
   normalizeTeamRows,
   rowToForm,
+  teamIndependenceConflicts,
   type AuditPlanForm as AuditPlanFormType,
   type AuditPlanRow,
   type AuditType,
@@ -39,6 +46,18 @@ function formatSupabaseError(err: unknown) {
   const parts = [anyErr.message, anyErr.details, anyErr.hint, anyErr.code].filter(Boolean)
   return parts.length ? parts.join(' | ') : 'Unknown error'
 }
+
+/** PostgREST / Postgres: a column in the payload does not exist (yet). */
+function isMissingColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string }
+  if (e.code === 'PGRST204' || e.code === '42703') return true
+  const msg = String(e.message ?? '').toLowerCase()
+  return msg.includes('column') && (msg.includes('schema cache') || msg.includes('does not exist'))
+}
+
+/** Columns from 20261028100100_risk_scoring_audit_coverage.sql. */
+const COVERAGE_COLUMNS = ['audit_kind', 'scope_discipline', 'witnessed_user_id', 'witnessed_name', 'sample_ref'] as const
 
 function esc(value: string) {
   return value
@@ -133,6 +152,12 @@ export default function AuditPlanMasterPage() {
           audit_id: String(r.audit_id ?? ''),
           next_audit_date: String(r.next_audit_date ?? '').slice(0, 10),
           team_rows: normalizeTeamRows(r.team_rows),
+          audit_kind: normalizeAuditKind(r.audit_kind),
+          scope_discipline: (r.scope_discipline as string | null | undefined) ?? null,
+          witnessed_user_id: (r.witnessed_user_id as string | null | undefined) ?? null,
+          witnessed_name: (r.witnessed_name as string | null | undefined) ?? null,
+          sample_ref: (r.sample_ref as string | null | undefined) ?? null,
+          independence_conflicts: normalizeIndependenceConflicts(r.independence_conflicts),
           created_by: (r.created_by as string | null) ?? null,
           created_at: r.created_at ? String(r.created_at) : undefined,
           updated_at: r.updated_at ? String(r.updated_at) : undefined,
@@ -219,9 +244,11 @@ export default function AuditPlanMasterPage() {
   const allocateAuditId = useCallback(
     async (initials?: string) => {
       const fi = initials ?? (await resolveFirmInitials())
+      // Audit IDs of deleted plans are never reused.
+      const deletedIds = await fetchDeletedKeys('audit_plans', 'audit_id')
       return nextAuditPlanId(
         fi,
-        rows.map((r) => r.audit_id),
+        [...rows.map((r) => r.audit_id), ...deletedIds],
       )
     },
     [resolveFirmInitials, rows],
@@ -275,12 +302,43 @@ export default function AuditPlanMasterPage() {
           return
         }
 
+        // Auditor independence (ISO/IEC 17025 8.8.2): warn, the user decides.
+        const auditorIds = Array.from(
+          new Set(form.teamRows.map((r) => r.auditorUserId.trim()).filter(Boolean)),
+        )
+        const profileDeptById = new Map<string, { department: string; name: string }>()
+        if (auditorIds.length) {
+          const { data: profs } = await supabase
+            .from('user_profiles')
+            .select('id, full_name, department_name')
+            .in('id', auditorIds)
+          for (const raw of Array.isArray(profs) ? profs : []) {
+            const p = raw as { id?: unknown; full_name?: unknown; department_name?: unknown }
+            profileDeptById.set(String(p.id), {
+              department: String(p.department_name ?? ''),
+              name: String(p.full_name ?? ''),
+            })
+          }
+        }
+        const conflicts = teamIndependenceConflicts(form.teamRows, profileDeptById)
+        if (
+          conflicts.length &&
+          !window.confirm(
+            `Auditor independence (ISO/IEC 17025 8.8.2): auditors should not audit their own work.\n\n${conflicts
+              .map(describeIndependenceConflict)
+              .join('\n')}\n\nSave anyway? The conflict is recorded on the plan.`,
+          )
+        ) {
+          setSaveMessage('Not saved: change the auditor of the flagged team row(s).')
+          return
+        }
+
         let auditId = form.auditId.trim()
         if (!editingId) {
           auditId = await allocateAuditId()
         }
 
-        const payload = {
+        const payload: Record<string, unknown> = {
           ...(editingId ? { id: editingId } : null),
           audit_type: form.auditType,
           proposed_from: form.proposedFrom,
@@ -288,14 +346,34 @@ export default function AuditPlanMasterPage() {
           audit_id: auditId,
           next_audit_date: form.nextAuditDate,
           team_rows: formTeamToPayload(form.teamRows),
+          audit_kind: form.auditKind,
+          scope_discipline: form.auditKind === 'system' ? null : form.scopeDiscipline.trim() || null,
+          witnessed_user_id: form.auditKind === 'system' ? null : form.witnessedUserId || null,
+          witnessed_name: form.auditKind === 'system' ? null : form.witnessedName.trim() || null,
+          sample_ref: form.auditKind === 'system' ? null : form.sampleRef.trim() || null,
         }
 
-        const { error } = await supabase.from('audit_plans').upsert(payload, {
-          onConflict: editingId ? 'id' : 'audit_id',
-        })
+        const upsert = (p: Record<string, unknown>) =>
+          supabase.from('audit_plans').upsert(p, {
+            onConflict: editingId ? 'id' : 'audit_id',
+          })
+        let { error } = await upsert(payload)
+        let leftOut = false
+        if (error && isMissingColumnError(error)) {
+          // Database without 20261028100100: save the plan as before.
+          const reduced = { ...payload }
+          for (const k of COVERAGE_COLUMNS) delete reduced[k]
+          const retry = await upsert(reduced)
+          error = retry.error
+          leftOut = !error
+        }
         if (error) throw error
 
-        setSaveMessage('Saved successfully.')
+        setSaveMessage(
+          leftOut && form.auditKind !== 'system'
+            ? 'Saved successfully. Audit kind, discipline and witnessed person need migration 20261028100100_risk_scoring_audit_coverage.sql and were not saved.'
+            : 'Saved successfully.',
+        )
         setForm(emptyAuditPlanForm())
         setEditingId(null)
         setShowForm(false)
@@ -358,6 +436,11 @@ export default function AuditPlanMasterPage() {
       'proposed_from',
       'proposed_to',
       'next_audit_date',
+      'audit_kind',
+      'scope_discipline',
+      'witnessed_name',
+      'sample_ref',
+      'independence_conflicts',
       'team_rows',
       'created_at',
     ]
@@ -367,6 +450,11 @@ export default function AuditPlanMasterPage() {
       proposed_from: formatDate(r.proposed_from),
       proposed_to: formatDate(r.proposed_to),
       next_audit_date: formatDate(r.next_audit_date),
+      audit_kind: auditKindLabel(r.audit_kind),
+      scope_discipline: r.scope_discipline ?? '',
+      witnessed_name: r.witnessed_name ?? '',
+      sample_ref: r.sample_ref ?? '',
+      independence_conflicts: (r.independence_conflicts ?? []).map(describeIndependenceConflict).join('; '),
       team_rows: JSON.stringify(r.team_rows),
       created_at: r.created_at ?? '',
     }))
@@ -425,7 +513,7 @@ export default function AuditPlanMasterPage() {
   .team th,.team td{border:1px solid #e7eaf0;padding:8px 10px;text-align:left}
   .team th{background:#f5f7fb;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 </style></head><body>${cards}
-<script>window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print()}catch(e){}},250)})</script>
+${printHelperScriptTag()}
 </body></html>`
 
     const iframe = document.createElement('iframe')

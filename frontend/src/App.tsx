@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEnterTogglesCheckbox } from '@/hooks/useEnterTogglesCheckbox'
 import { RoutePersistence } from '@/components/routing/RoutePersistence'
 import AuthPage from '@/features/auth/AuthPage'
+import ResetPasswordPage from '@/features/auth/ResetPasswordPage'
+import ComplaintsProcessPage from '@/features/public-site/ComplaintsProcessPage'
 import PublicSiteLayout from '@/features/public-site/PublicSiteLayout'
 import PublicHomePage from '@/features/public-site/PublicHomePage'
 import NotFoundPage from '@/features/public-site/NotFoundPage'
@@ -87,6 +89,41 @@ import {
   NcWorkCorrectiveActionRoute,
   ListOfObjectivesRoute,
   RiskAnalysisRoute,
+  ImpartialityRiskRegisterRoute,
+  ConfidentialityRecordsRoute,
+  DeclarationsRoute,
+  AuditTrailRoute,
+  RecycleBinRoute,
+  AuditCoverageRoute,
+  OrganisationChartRoute,
+  ModuleAccessEnforcementRoute,
+  AuthorizationMatrixRoute,
+  EmployeeDossierRoute,
+  CompetenceRequirementsRoute,
+  CompetenceMonitoringRoute,
+  TrainingRecordsRoute,
+  RetentionScheduleRoute,
+  MyDocumentAcknowledgementsRoute,
+  DecisionRulesRoute,
+  PtPlanRoute,
+  ControlChartsRoute,
+  SamplingPlansRoute,
+  SamplingRecordsRoute,
+  PtParticipationsRoute,
+  MethodVerificationsRoute,
+  ScopeVerificationStatusRoute,
+  SoftwareChangesRoute,
+  ApprovedSupplierListRoute,
+  SupplierEvaluationsRoute,
+  ReceiptInspectionRoute,
+  SubcontractingRegisterRoute,
+  ValidationRunsRoute,
+  ItIncidentsRoute,
+  BackupRestoreTestsRoute,
+  LabAreasRoute,
+  EnvironmentLogRoute,
+  AccessLogRoute,
+  HousekeepingLogRoute,
   ImprovementRoute,
   ExternallySupplierListRoute,
   SupplierEvaluationRoute,
@@ -109,6 +146,8 @@ export default function App() {
           <Route path="news" element={<Navigate to="/home" replace />} />
           <Route path="contact" element={<Navigate to="/home#contact" replace />} />
           <Route path="auth" element={<AuthPage />} />
+          <Route path="auth/reset" element={<ResetPasswordPage />} />
+          <Route path="complaints-process" element={<ComplaintsProcessPage />} />
           <Route path="scope-letters/:kind" element={<ScopeLetterPage />} />
         </Route>
 
@@ -169,6 +208,27 @@ export default function App() {
             path="audit-mrm/management-review-meeting"
             element={<ManagementReviewMeetingRoute />}
           />
+          <Route path="audit-mrm/audit-trail" element={<AuditTrailRoute />} />
+          <Route path="audit-mrm/recycle-bin" element={<RecycleBinRoute />} />
+          <Route path="audit-mrm/audit-coverage" element={<AuditCoverageRoute />} />
+          <Route path="quality/records-retention" element={<RetentionScheduleRoute />} />
+          <Route path="management-docs/my-acknowledgements" element={<MyDocumentAcknowledgementsRoute />} />
+          <Route path="masters/decision-rules" element={<DecisionRulesRoute />} />
+          <Route path="quality/pt-plan" element={<PtPlanRoute />} />
+          <Route path="quality/control-charts" element={<ControlChartsRoute />} />
+          <Route path="sampling/plans" element={<SamplingPlansRoute />} />
+          <Route path="sampling/records" element={<SamplingRecordsRoute />} />
+          <Route path="quality/pt-participations" element={<PtParticipationsRoute />} />
+          <Route path="quality/method-verifications" element={<MethodVerificationsRoute />} />
+          <Route path="quality/scope-verification-status" element={<ScopeVerificationStatusRoute />} />
+          <Route path="quality/software-changes" element={<SoftwareChangesRoute />} />
+          <Route path="quality/validation-runs" element={<ValidationRunsRoute />} />
+          <Route path="quality/it-incidents" element={<ItIncidentsRoute />} />
+          <Route path="quality/backup-tests" element={<BackupRestoreTestsRoute />} />
+          <Route path="facilities/areas" element={<LabAreasRoute />} />
+          <Route path="facilities/environment-log" element={<EnvironmentLogRoute />} />
+          <Route path="facilities/access-log" element={<AccessLogRoute />} />
+          <Route path="facilities/housekeeping" element={<HousekeepingLogRoute />} />
 
           {/* Personnel Management (ISO 17025 §6.2) */}
           <Route path="personnel" element={<Navigate to="/personnel/employees" replace />} />
@@ -187,6 +247,12 @@ export default function App() {
             element={<RolesResponsibilitiesRoute />}
           />
           <Route path="personnel/authorities" element={<AuthoritiesRoute />} />
+          <Route path="personnel/declarations" element={<DeclarationsRoute />} />
+          <Route path="personnel/authorization-matrix" element={<AuthorizationMatrixRoute />} />
+          <Route path="personnel/dossier" element={<EmployeeDossierRoute />} />
+          <Route path="personnel/competence-requirements" element={<CompetenceRequirementsRoute />} />
+          <Route path="personnel/competence-monitoring" element={<CompetenceMonitoringRoute />} />
+          <Route path="training/records" element={<TrainingRecordsRoute />} />
 
           {/* General Requirements (ISO 17025 related) */}
           <Route
@@ -198,6 +264,9 @@ export default function App() {
             element={<ListOfObjectivesRoute />}
           />
           <Route path="general-requirements/risk-analysis" element={<RiskAnalysisRoute />} />
+          <Route path="general-requirements/impartiality" element={<ImpartialityRiskRegisterRoute />} />
+          <Route path="general-requirements/confidentiality" element={<ConfidentialityRecordsRoute />} />
+          <Route path="general-requirements/organisation-chart" element={<OrganisationChartRoute />} />
           <Route path="general-requirements/improvement" element={<ImprovementRoute />} />
 
           {/* Externally Providers (ISO 17025 §6.6) */}
@@ -217,6 +286,10 @@ export default function App() {
             path="externally-providers/list-of-consumables"
             element={<ListOfConsumablesRoute />}
           />
+          <Route path="externally-providers/approved-suppliers" element={<ApprovedSupplierListRoute />} />
+          <Route path="externally-providers/evaluations" element={<SupplierEvaluationsRoute />} />
+          <Route path="externally-providers/receipt-inspection" element={<ReceiptInspectionRoute />} />
+          <Route path="externally-providers/subcontracting" element={<SubcontractingRegisterRoute />} />
 
           {/* Complaints Management (ISO 17025 §7.9) */}
           <Route
@@ -357,6 +430,7 @@ export default function App() {
           <Route path="lab-settings" element={<LabSettingsRoute />} />
           <Route path="lab-settings/user-management" element={<UserManagementRoute />} />
           <Route path="lab-settings/module-access" element={<ModuleAccessRoute />} />
+          <Route path="lab-settings/module-access-enforcement" element={<ModuleAccessEnforcementRoute />} />
           <Route path="lab-settings/ai-settings" element={<AiSettingsRoute />} />
           <Route path="help" element={<HelpRoute />} />
           <Route path="contact-us" element={<ContactUsRoute />} />

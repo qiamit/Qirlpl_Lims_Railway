@@ -1,5 +1,7 @@
 import { compareClauseNumbers } from '../report-preparation/clauseNumberSort'
 import type { TestAllocationParameterRow, TestAllocationRow } from '../types'
+import type { EquipmentUsedEntry } from '@/lib/equipmentTraceability'
+import type { ResultEnvironmentSnapshot } from '@/features/environment/resultEnvironmentSnapshot'
 
 export function sortParametersByClause<T extends Pick<TestAllocationParameterRow, 'clauseNo' | 'testLabel'>>(
   params: T[],
@@ -49,6 +51,19 @@ export type SectionParameterEntry = {
   testStartDate: string | null
   testEndDate: string | null
   results: string | null
+  /**
+   * Equipment / CRMs used (ISO 17025 6.4, 7.5.1). Undefined = not loaded or
+   * the equipment_used column does not exist yet: the save then leaves it out.
+   * A single { kind: 'none', reason } entry = no equipment needed.
+   */
+  equipmentUsed?: EquipmentUsedEntry[]
+  /**
+   * Lab area and environmental conditions for the test period (ISO 17025
+   * 7.5.1). Undefined = not loaded / migration 20261026100300 not applied:
+   * the save then leaves both columns out.
+   */
+  environmentAreaId?: string | null
+  environmentSnapshot?: ResultEnvironmentSnapshot | null
 }
 
 export function mergeSectionDraftPreservingEdits(
@@ -70,6 +85,9 @@ export function mergeSectionDraftPreservingEdits(
       results: match.results,
       testStartDate: match.testStartDate,
       testEndDate: match.testEndDate,
+      ...(match.equipmentUsed !== undefined ? { equipmentUsed: match.equipmentUsed } : {}),
+      ...(match.environmentAreaId !== undefined ? { environmentAreaId: match.environmentAreaId } : {}),
+      ...(match.environmentSnapshot !== undefined ? { environmentSnapshot: match.environmentSnapshot } : {}),
     }
   })
 }

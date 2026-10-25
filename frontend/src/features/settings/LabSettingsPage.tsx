@@ -18,6 +18,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FileUpload } from '@/components/ui/file-upload'
 import { supabase } from '@/lib/supabaseClient'
+import { stripMarkup } from '@/lib/sanitizeHtml'
+import { saveLabSettingsCore } from './lab-settings/labSettingsRpc'
 import { EMAIL_INPUT_PATTERN } from '@/lib/validation'
 import { LegalDocumentsTab } from './lab-settings/LegalDocumentsTab'
 import { RegistrationDocumentsTab } from './lab-settings/RegistrationDocumentsTab'
@@ -198,6 +200,8 @@ export default function LabSettingsPage() {
   const [timeDialogOpen, setTimeDialogOpen] = useState(false)
   const [newTimeFormat, setNewTimeFormat] = useState('')
   const [generateReportEnabled, setGenerateReportEnabled] = useState(true)
+  const [samplingEnabled, setSamplingEnabled] = useState(false)
+  const [samplingSettingAvailable, setSamplingSettingAvailable] = useState(false)
   type AccreditationCard = {
     id: string
     inputLabel: string
@@ -325,7 +329,7 @@ export default function LabSettingsPage() {
 
         for (const h of headerTemplates) {
           if (!h.name.trim()) continue
-          const label = h.name.trim()
+          const label = stripMarkup(h.name).trim()
           payload.push({
             name: label,
             template_type: 'header',
@@ -337,7 +341,7 @@ export default function LabSettingsPage() {
         }
         for (const f of footerTemplates) {
           if (!f.name.trim()) continue
-          const label = f.name.trim()
+          const label = stripMarkup(f.name).trim()
           payload.push({
             name: label,
             template_type: 'footer',
@@ -349,20 +353,20 @@ export default function LabSettingsPage() {
         }
         for (const t of termsTemplates) {
           if (!t.name.trim()) continue
-          const label = t.name.trim()
+          const label = stripMarkup(t.name).trim()
           payload.push({
             name: label,
             template_type: 'terms',
             title: label,
             file_path: '',
-            content_text: t.text ?? '',
+            content_text: stripMarkup(t.text ?? ''),
             is_default: false,
           })
         }
 
         for (const wm of watermarkTemplates) {
           if (!wm.name.trim()) continue
-          const label = wm.name.trim()
+          const label = stripMarkup(wm.name).trim()
           if (wm.type === 'image') {
             payload.push({
               name: label,
@@ -378,7 +382,7 @@ export default function LabSettingsPage() {
               template_type: 'watermark_text',
               title: label,
               file_path: '',
-              content_text: wm.text?.trim() ?? '',
+              content_text: stripMarkup(wm.text ?? '').trim(),
               is_default: false,
             })
           }
@@ -1076,6 +1080,8 @@ export default function LabSettingsPage() {
         setSelectedTheme(normalizeAppThemeId(parsed.theme))
       }
       setGenerateReportEnabled(parsed.generateReportEnabled)
+      setSamplingEnabled(parsed.samplingEnabled)
+      setSamplingSettingAvailable(parsed.samplingSettingAvailable)
     }
 
     void load()
@@ -1221,11 +1227,15 @@ export default function LabSettingsPage() {
         ...partial,
       }
 
-      const { error: upsertError } = await supabase
-        .from('lab_settings')
-        .upsert(payload, { onConflict: 'id' })
+      // save_lab_settings RPC (Director only, security plan S-16); the direct
+      // upsert is the fallback while that RPC is not on the database.
+      await saveLabSettingsCore(payload, async (clean) => {
+        const { error: upsertError } = await supabase
+          .from('lab_settings')
+          .upsert({ ...clean, id: LAB_SETTINGS_SINGLETON_ID }, { onConflict: 'id' })
 
-      if (upsertError) throw upsertError
+        if (upsertError) throw upsertError
+      })
     })()
   }
 
@@ -1303,6 +1313,7 @@ export default function LabSettingsPage() {
             timeFormat: selectedTimeFormat,
             theme: selectedTheme,
             generateReportEnabled,
+            samplingEnabled: samplingSettingAvailable ? samplingEnabled : undefined,
           }),
         )
         setSaveMessage('Saved successfully.')
@@ -2147,6 +2158,36 @@ export default function LabSettingsPage() {
                   </span>
                 </label>
               </div>
+
+              {samplingSettingAvailable ? (
+                <div className="mt-6 space-y-2 border-t border-stone-300 pt-5">
+                  <Label htmlFor="sampling-module-enabled">Sampling module in use</Label>
+                  <label
+                    htmlFor="sampling-module-enabled"
+                    className="flex max-w-xs cursor-pointer items-center justify-between gap-3 rounded-none border border-stone-500 bg-stone-50 px-3 py-2.5 transition-colors hover:bg-white"
+                  >
+                    <span className="text-xs font-semibold uppercase tracking-wide text-stone-700">
+                      {samplingEnabled ? 'On' : 'Off'}
+                    </span>
+                    <span className="relative inline-flex h-5 w-9 shrink-0 items-center">
+                      <input
+                        id="sampling-module-enabled"
+                        type="checkbox"
+                        className="peer sr-only"
+                        checked={samplingEnabled}
+                        onChange={(e) => setSamplingEnabled(e.target.checked)}
+                      />
+                      <span className="absolute inset-0 rounded-full bg-stone-300 transition-colors peer-checked:bg-amber-700 peer-focus-visible:ring-2 peer-focus-visible:ring-amber-500/40" />
+                      <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+                    </span>
+                  </label>
+                  <p className="max-w-xl text-[12px] text-stone-600">
+                    ISO/IEC 17025 7.3. Keep Off while the Quality Manual excludes sampling. When On, sampling plans and
+                    records can be kept and test reports print the sampling information of a linked sample (7.8.5).
+                    Laboratory Director only.
+                  </p>
+                </div>
+              ) : null}
           </LabSettingsPanel>
         </TabsContent>
 

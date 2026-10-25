@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { useDeletedKeys } from '@/lib/softDelete'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { useAuth } from '@/hooks/useAuth'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,6 +11,12 @@ import { EquipmentForCalibrationHeaderBar } from './EquipmentForCalibrationHeade
 import { EquipmentForCalibrationTable } from './EquipmentForCalibrationTable'
 import { EquipmentForCalibrationFooterBar } from './EquipmentForCalibrationFooterBar'
 import { EquipmentForCalibrationForm } from './EquipmentForCalibrationForm'
+import { EquipmentLabelButtons } from '@/features/masters/equipment-master/EquipmentLabelButtons'
+import {
+  equipmentLabelStatus,
+  equipmentLabelUrl,
+  type EquipmentLabelItem,
+} from '@/features/masters/equipment-master/equipmentLabels'
 import type { FilterComboboxOption } from '@/features/sample-handling/receiving/FilterCombobox'
 import { fetchCalibrationDivisionEmployees } from '@/features/calibration/calibrationEmployees'
 import {
@@ -114,6 +121,7 @@ export default function EquipmentForCalibrationMasterPage({
   })
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<EquipmentForCalibrationRow[]>([])
+  const deletedAssetCodes = useDeletedKeys('equipment_for_calibration', 'asset_code', rows)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -283,8 +291,8 @@ export default function EquipmentForCalibrationMasterPage({
   }, [])
 
   const makeNextCode = useCallback(
-    () => nextAssetCode(labName, rows.map((r) => r.asset_code), variant),
-    [labName, rows, variant],
+    () => nextAssetCode(labName, [...rows.map((r) => r.asset_code), ...deletedAssetCodes], variant),
+    [labName, rows, deletedAssetCodes, variant],
   )
 
   const filteredRows = useMemo(() => {
@@ -361,6 +369,36 @@ export default function EquipmentForCalibrationMasterPage({
     setSearchParams(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
   }, [searchParams, listLoading, rows])
+
+  // ?asset=<code> (QR code on the equipment status label, 6.4.8).
+  useEffect(() => {
+    const asset = searchParams.get('asset')?.trim()
+    if (!asset || listLoading || rows.length === 0) return
+    const row = rows.find((r) => (r.asset_code ?? '').trim().toLowerCase() === asset.toLowerCase())
+    const next = new URLSearchParams(searchParams)
+    next.delete('asset')
+    setSearchParams(next, { replace: true })
+    if (!row) return
+    setSearch(row.asset_code)
+    openViewDetails(row)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
+  }, [searchParams, listLoading, rows])
+
+  const labelItems = (): EquipmentLabelItem[] =>
+    rows
+      .filter((r) => selectedIds.has(r.id))
+      .map((r) => ({
+        assetCode: r.asset_code,
+        name: r.equipment_name,
+        calibratedOn: r.last_calibration_date,
+        dueOn: r.next_calibration_due,
+        status: equipmentLabelStatus({
+          equipmentStatus: r.equipment_status,
+          lastCalibrationDate: r.last_calibration_date,
+          nextCalibrationDue: r.next_calibration_due,
+        }),
+        url: equipmentLabelUrl(isIqc ? '/equipment-management/iqc' : '/calibration/equipment-for-calibration', r.asset_code),
+      }))
 
   const openCopy = (row: EquipmentForCalibrationRow) => {
     setEditingId(null)
@@ -549,6 +587,15 @@ export default function EquipmentForCalibrationMasterPage({
         pageCount={pageCount}
         onPrintSelected={() => setSaveMessage('Use browser print from the table view for now.')}
         onDeleteSelected={() => void handleDeleteSelected()}
+        labelActions={
+          <EquipmentLabelButtons
+            getItems={labelItems}
+            selectedCount={selectedIds.size}
+            disabled={listLoading || saveLoading}
+            className="h-7 rounded-none border-amber-500/50 bg-transparent px-2 text-[11px] text-amber-200 hover:bg-amber-500/10 hover:text-amber-100"
+            onError={setSaveMessage}
+          />
+        }
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
         onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
         jumpTo={jumpTo}

@@ -1,10 +1,11 @@
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { limsFieldClass, limsOutlineBtnClass, limsPrimaryBtnClass } from '@/lib/limsThemeUi'
-import type { ManagementDocumentForm } from './types'
+import type { ManagementDocStatus, ManagementDocumentForm } from './types'
 import { MANAGEMENT_DOC_STATUSES, MANAGEMENT_DOC_TYPES } from './types'
 
 export type EmployeeOption = { id: string; name: string; designation?: string }
@@ -17,12 +18,14 @@ function EmployeeSelect({
   value,
   employees,
   onValueChange,
+  disabled = false,
 }: {
   id: string
   label: string
   value: string
   employees: EmployeeOption[]
   onValueChange: (name: string) => void
+  disabled?: boolean
 }) {
   const options = employees.filter((e) => e.name.trim().length > 0)
   const hasCurrent = value.trim().length > 0 && options.some((e) => e.name === value)
@@ -33,6 +36,7 @@ function EmployeeSelect({
       <Select
         value={value.trim() ? value : NONE}
         onValueChange={(v) => onValueChange(v === NONE ? '' : v)}
+        disabled={disabled}
       >
         <SelectTrigger id={id} aria-label={label} className={limsFieldClass}>
           <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
@@ -64,6 +68,11 @@ export function ManagementDocumentsForm({
   onNewRevision,
   onNewIssue,
   onNewAmendment,
+  readOnly = false,
+  signaturesLocked = false,
+  allowedStatuses,
+  changeButtonsDisabled = false,
+  children,
 }: {
   form: ManagementDocumentForm
   onChange: (next: ManagementDocumentForm) => void
@@ -75,8 +84,22 @@ export function ManagementDocumentsForm({
   onNewRevision: () => void
   onNewIssue: () => void
   onNewAmendment: () => void
+  /** Approved / obsolete controlled document: every field is read-only. */
+  readOnly?: boolean
+  /** Prepared / Reviewed / Approved are filled by the e-approval workflow. */
+  signaturesLocked?: boolean
+  /** Statuses the user may pick (document control on); all when omitted. */
+  allowedStatuses?: ManagementDocStatus[]
+  /** New Revision / Issue / Amendment not allowed for this user. */
+  changeButtonsDisabled?: boolean
+  /** Extra panel shown above the buttons (workflow, review period). */
+  children?: ReactNode
 }) {
-  const automationDisabled = !editingId || saveLoading
+  const automationDisabled = !editingId || saveLoading || changeButtonsDisabled
+  const statusOptions = allowedStatuses
+    ? MANAGEMENT_DOC_STATUSES.filter((s) => allowedStatuses.includes(s.id) || s.id === form.status)
+    : MANAGEMENT_DOC_STATUSES
+  const statusLocked = readOnly || (allowedStatuses ? allowedStatuses.length === 0 : false)
 
   return (
     <div className="space-y-6">
@@ -86,6 +109,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="doc-number">Document Number</Label>
             <Input
               id="doc-number"
+              disabled={readOnly}
               className={limsFieldClass}
               placeholder="QE/QM"
               value={form.docNumber}
@@ -95,7 +119,11 @@ export function ManagementDocumentsForm({
 
           <div className="col-span-12 space-y-2 md:col-span-4">
             <Label htmlFor="doc-type">Document Type</Label>
-            <Select value={form.docType} onValueChange={(v) => onChange({ ...form, docType: v })}>
+            <Select
+              value={form.docType}
+              onValueChange={(v) => onChange({ ...form, docType: v })}
+              disabled={readOnly}
+            >
               <SelectTrigger id="doc-type" aria-label="Document type" className={limsFieldClass}>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
@@ -114,12 +142,13 @@ export function ManagementDocumentsForm({
             <Select
               value={form.status}
               onValueChange={(v) => onChange({ ...form, status: v as ManagementDocumentForm['status'] })}
+              disabled={statusLocked}
             >
               <SelectTrigger id="status" aria-label="Status" className={limsFieldClass}>
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
               <SelectContent>
-                {MANAGEMENT_DOC_STATUSES.map((s) => (
+                {statusOptions.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.label}
                   </SelectItem>
@@ -132,6 +161,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="title">Title</Label>
             <Input
               id="title"
+              disabled={readOnly}
               className={limsFieldClass}
               placeholder="Enter Document Title"
               value={form.title}
@@ -143,6 +173,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="revision-no">Revision No</Label>
             <Input
               id="revision-no"
+              disabled={readOnly}
               className={limsFieldClass}
               placeholder="00"
               value={form.revisionNo}
@@ -153,6 +184,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="revision-date">Revision Date</Label>
             <Input
               id="revision-date"
+              disabled={readOnly}
               type="date"
               className={limsFieldClass}
               value={form.revisionDate}
@@ -163,6 +195,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="issue-no">Issue No</Label>
             <Input
               id="issue-no"
+              disabled={readOnly}
               className={limsFieldClass}
               placeholder="00"
               value={form.issueNo}
@@ -173,6 +206,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="issue-date">Issue Date</Label>
             <Input
               id="issue-date"
+              disabled={readOnly}
               type="date"
               className={limsFieldClass}
               value={form.issueDate}
@@ -184,6 +218,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="amendment-no">Amendment No</Label>
             <Input
               id="amendment-no"
+              disabled={readOnly}
               className={limsFieldClass}
               placeholder="00"
               value={form.amendmentNo}
@@ -195,6 +230,7 @@ export function ManagementDocumentsForm({
             <Label htmlFor="amendment-date">Amendment Date</Label>
             <Input
               id="amendment-date"
+              disabled={readOnly}
               type="date"
               className={limsFieldClass}
               value={form.amendmentDate}
@@ -208,6 +244,7 @@ export function ManagementDocumentsForm({
             value={form.preparedBy}
             employees={employees}
             onValueChange={(name) => onChange({ ...form, preparedBy: name })}
+            disabled={readOnly || signaturesLocked}
           />
           <EmployeeSelect
             id="reviewed-by"
@@ -215,6 +252,7 @@ export function ManagementDocumentsForm({
             value={form.reviewedBy}
             employees={employees}
             onValueChange={(name) => onChange({ ...form, reviewedBy: name })}
+            disabled={readOnly || signaturesLocked}
           />
           <EmployeeSelect
             id="approved-by"
@@ -222,9 +260,12 @@ export function ManagementDocumentsForm({
             value={form.approvedBy}
             employees={employees}
             onValueChange={(name) => onChange({ ...form, approvedBy: name })}
+            disabled={readOnly || signaturesLocked}
           />
         </div>
       </div>
+
+      {children}
 
       <div className="mt-6 flex flex-col gap-3 border-t-2 border-stone-500 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
@@ -266,7 +307,7 @@ export function ManagementDocumentsForm({
           type="button"
           className={cn('h-9 min-w-[140px]', limsPrimaryBtnClass)}
           onClick={onSave}
-          disabled={!canSave || saveLoading}
+          disabled={!canSave || saveLoading || readOnly}
         >
           {saveLoading ? 'Saving…' : 'Save & Close'}
         </Button>

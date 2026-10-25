@@ -4,6 +4,34 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { limsOutlineBtnClass, limsPanelClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { formatDateDisplay, formatTraceabilityValidity, type CrmRow } from './types'
+import { crmExpiryInfo } from './crmExpiry'
+
+/** Expired / expiring / low-stock badges (ISO 17025 6.4 / 6.5). */
+function CrmAlertBadges({ row }: { row: CrmRow }) {
+  const info = crmExpiryInfo(row)
+  const opened = row.opened_on ? formatDateDisplay(row.opened_on) : null
+  return (
+    <>
+      {info.status === 'expired' || info.status === 'expiring' ? (
+        <span
+          className={cn(
+            'mt-0.5 inline-block px-1.5 py-0.5 text-[10px] font-semibold uppercase',
+            info.status === 'expired' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900',
+          )}
+          title={`Effective expiry ${formatDateDisplay(info.effectiveExpiry)}${opened ? ` (opened ${opened})` : ''}`}
+        >
+          {info.status === 'expired' ? 'Expired' : `Expires in ${info.daysLeft} d`}
+        </span>
+      ) : null}
+      {info.lowStock ? (
+        <span className="ml-1 mt-0.5 inline-block bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-orange-900"
+          title={`Stock ${row.stock_quantity ?? ''} ${row.stock_unit ?? ''} at or below reorder level ${row.reorder_level ?? ''}`}>
+          Low stock
+        </span>
+      ) : null}
+    </>
+  )
+}
 
 const GRID_TABLE =
   'w-max min-w-full border-collapse font-jakarta [&_th]:border [&_td]:border [&_th]:border-stone-700 [&_td]:border-[#e7e0d4] [&_th]:p-[1mm] [&_td]:!p-[1mm]'
@@ -163,6 +191,7 @@ export function CrmListTable({
                         <span className={cn(monoLineClass, 'mt-0.5 block text-[11px] text-[#57534e]')}>
                           {formatDateDisplay(r.valid_upto)}
                         </span>
+                        <CrmAlertBadges row={r} />
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap px-2 align-middle text-center">

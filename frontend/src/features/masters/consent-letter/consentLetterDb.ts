@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import { formatSupabaseError } from '@/lib/formatSupabaseError'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import {
   buildConsentLetterNumberPrefix,
   formatConsentLetterNumber,
@@ -73,8 +74,15 @@ export async function generateNextConsentLetterNumber(
     throw new Error(message || 'Unable to generate consent letter number')
   }
 
+  // Numbers of deleted letters are never reused.
+  const deletedNos = (await fetchDeletedKeys('consent_letters', 'consent_letter_no')).filter((no) =>
+    no.startsWith(prefix),
+  )
   let maxSeq = 0
-  for (const row of Array.isArray(data) ? data : []) {
+  for (const row of [
+    ...(Array.isArray(data) ? data : []),
+    ...deletedNos.map((no) => ({ id: null, consent_letter_no: no })),
+  ]) {
     const r = row as { id?: string | null; consent_letter_no?: string | null }
     if (excludeId && r.id === excludeId) continue
     const no = (r.consent_letter_no ?? '').trim()

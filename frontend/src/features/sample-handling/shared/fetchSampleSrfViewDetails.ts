@@ -1,4 +1,8 @@
 import { supabase } from '@/lib/supabaseClient'
+import {
+  decisionRuleLabel,
+  fetchSampleDecisionRule,
+} from '@/features/masters/decision-rules/decisionRules'
 import { formatIsCodeLabelFromParts } from '@/features/masters/is-codes/formatIsCodeLabel'
 import { stripReceivingReportTypeFromCode } from '@/features/sample-handling/receiving/receivingSrfFromReference'
 
@@ -95,6 +99,8 @@ export type SampleSrfViewDetails = {
   deviationFromMethods: boolean | null
   supportingDocsRequired: boolean | null
   decisionRuleApplied: boolean | null
+  /** Decision rule agreed at contract review ("DR-GB · Guard band w = U"), null if none. */
+  decisionRuleName: string | null
   testingMethodAvailable: boolean | null
   samplingProcedureRef: boolean | null
   isCodeFiles: IsCodeFileLink[]
@@ -178,9 +184,10 @@ export async function fetchSampleSrfViewDetails(
     }
   }
 
-  const [isCodeFiles, clientReferenceUrl] = await Promise.all([
+  const [isCodeFiles, clientReferenceUrl, decisionRule] = await Promise.all([
     isCodeId ? loadIsCodeFiles(isCodeId) : Promise.resolve([]),
     signedClientReferenceUrl(row.client_references_path as string | null),
+    fetchSampleDecisionRule(sampleId),
   ])
 
   return {
@@ -227,6 +234,7 @@ export async function fetchSampleSrfViewDetails(
     deviationFromMethods: (row.deviation_from_methods as boolean) ?? null,
     supportingDocsRequired: (row.supporting_docs_required as boolean) ?? null,
     decisionRuleApplied: (row.decision_rule_applied as boolean) ?? null,
+    decisionRuleName: decisionRule ? decisionRuleLabel(decisionRule) : null,
     testingMethodAvailable: (row.testing_method_available as boolean) ?? null,
     samplingProcedureRef: (row.sampling_procedure_ref as boolean) ?? null,
     isCodeFiles,

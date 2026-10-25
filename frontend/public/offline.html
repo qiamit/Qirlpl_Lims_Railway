@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c416a" />
+    <title>QIRLPL LIMS — Offline</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        box-sizing: border-box;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        background: #fafaf9;
+        color: #1c1917;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #1c1917; color: #f5f5f4; }
+      }
+      main { max-width: 360px; text-align: center; }
+      img { width: 64px; height: 64px; border-radius: 12px; }
+      h1 { font-size: 1.25rem; margin: 16px 0 8px; }
+      p { margin: 0 0 20px; line-height: 1.5; opacity: 0.8; }
+      button {
+        font: inherit;
+        padding: 10px 20px;
+        border: 0;
+        border-radius: 8px;
+        background: #0c416a;
+        color: #fff;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" alt="" />
+      <h1>You are offline</h1>
+      <p>QIRLPL LIMS needs an internet connection to load lab records. Check your connection and try again.</p>
+      <button type="button" id="offline-retry">Try again</button>
+    </main>
+    <script src="/offline.js"></script>
+  </body>
+</html>

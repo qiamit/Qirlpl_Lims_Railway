@@ -176,23 +176,70 @@
 
 /* Forms reserve 268px for the sidebar from the lg breakpoint, but the sidebar
    only docks at 1280px and can be collapsed. Unless it is actually on screen,
-   use the full viewport so the form is not shifted into the sidebar column. */
-html:not(.sidebar-docked) [class*='left-[268px]'] {
-  left: 0 !important;
+   use the full viewport so the form is not shifted into the sidebar column.
+   These overrides are scoped to the breakpoints where the lg:/md: offset and
+   translate classes are active; below that the base (phone) classes apply
+   untouched, otherwise centred dialogs were pushed half off-screen on phones. */
+@media (min-width: 1024px) {
+  html:not(.sidebar-docked) [class*='left-[268px]'] {
+    left: 0 !important;
+  }
+
+  html:not(.sidebar-docked) [class*='right-0'][class*='left-[268px]'] {
+    right: 0 !important;
+  }
+
+  html:not(.sidebar-docked) [class*='pl-[268px]'] {
+    padding-left: 0 !important;
+  }
+
+  html:not(.sidebar-docked) [role='dialog'][class*='w-[calc(100vw-268px)]'],
+  html:not(.sidebar-docked) [role='dialog'][class*='max-w-[calc(100vw-268px)]'] {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
 
-html:not(.sidebar-docked) [class*='right-0'][class*='left-[268px]'] {
-  right: 0 !important;
+/* Sidebar-centred dialogs translate -50% from md upwards, so they need the
+   50% anchor from md (tablet) — not on phones, where they sit full width. */
+@media (min-width: 768px) {
+  html:not(.sidebar-docked) [role='dialog'][class*='left-[calc(268px'] {
+    left: 50% !important;
+  }
 }
 
-html:not(.sidebar-docked) [role='dialog'][class*='left-[calc(268px'] {
-  left: 50% !important;
+/* ---------- Small-screen safety nets (phones / tablets) ---------- */
+
+/* Long unbroken values (emails, URLs, IDs) wrap instead of widening the page. */
+.app-shell-main {
+  overflow-wrap: break-word;
 }
 
-html:not(.sidebar-docked) [role='dialog'][class*='w-[calc(100vw-268px)]'],
-html:not(.sidebar-docked) [role='dialog'][class*='max-w-[calc(100vw-268px)]'] {
-  left: 0 !important;
-  right: 0 !important;
-  width: 100% !important;
-  max-width: 100% !important;
+/* Radix tab strips: scroll sideways rather than overflowing their container. */
+[role='tablist'] {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 639px) {
+  /* Dialogs never exceed the small viewport; their content scrolls inside. */
+  [role='dialog'],
+  [role='alertdialog'] {
+    max-height: 100dvh;
+  }
+}
+
+/* iOS Safari zooms the page when a focused field is under 16px. */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 767px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }

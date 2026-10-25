@@ -13,6 +13,10 @@ import {
   limsRegistryFormClass,
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import {
+  STANDARD_STATUS_LABEL,
+  STANDARD_STATUS_OPTIONS,
+} from '@/features/method-validation/methodValidation'
 import type { IsAspect, IsCodeForm } from './types'
 import { isValidAmendment2, isValidYear4, toProperTitleCase } from './types'
 
@@ -319,11 +323,58 @@ export function IsCodesForm({
               ) : null}
             </div>
           </div>
+
+          {/* Edition review — ISO/IEC 17025 7.2.1.4 (latest valid edition). */}
+          <div className="col-span-12 space-y-2 md:col-span-3">
+            <Label htmlFor="is-standard-status">Standard Status</Label>
+            <select
+              id="is-standard-status"
+              value={form.standardStatus || 'current'}
+              onChange={(e) => onChange({ ...form, standardStatus: e.target.value })}
+              className="h-10 w-full rounded-none border border-stone-500 bg-stone-50 px-2 text-sm focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+            >
+              {STANDARD_STATUS_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {STANDARD_STATUS_LABEL[o]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="col-span-12 space-y-2 md:col-span-3">
+            <Label htmlFor="is-superseded-by">Superseded By</Label>
+            <Input
+              id="is-superseded-by"
+              placeholder="e.g. IS 456:2000"
+              value={form.supersededBy}
+              onChange={(e) => onChange({ ...form, supersededBy: e.target.value })}
+            />
+          </div>
+
+          <div className="col-span-12 space-y-2 md:col-span-3">
+            <Label htmlFor="is-last-reviewed">Last Reviewed On</Label>
+            <Input
+              id="is-last-reviewed"
+              type="date"
+              value={form.lastReviewedOn}
+              onChange={(e) => onChange({ ...form, lastReviewedOn: e.target.value })}
+            />
+          </div>
+
+          <div className="col-span-12 space-y-2 md:col-span-3">
+            <Label htmlFor="is-next-review">Next Review Due</Label>
+            <Input
+              id="is-next-review"
+              type="date"
+              value={form.nextReviewDue}
+              onChange={(e) => onChange({ ...form, nextReviewDue: e.target.value })}
+            />
+          </div>
         </div>
       </div>
 
       {!hideFooter ? (
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-stone-200 pt-2.5">
           <Button
             type="button"
             className={cn(limsPrimaryBtnClass, 'h-9 px-4')}

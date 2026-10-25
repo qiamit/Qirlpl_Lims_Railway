@@ -15,6 +15,7 @@ import {
 } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { PublicInfoCard, PublicSection, publicHeroPatternStyle } from './PublicChrome'
+import { ComplaintsProcessSection } from './ComplaintsProcessSection'
 import {
   PUBLIC_ADDRESS,
   PUBLIC_BIS,
@@ -302,6 +303,7 @@ export default function PublicHomePage() {
           </div>
           <PublicInfoCard title="Location" body={PUBLIC_ADDRESS} />
         </PublicSection>
+        <ComplaintsProcessSection />
       </div>
 
       <aside className={cn(limsDarkBarClass, 'flex h-full flex-col p-0')}>

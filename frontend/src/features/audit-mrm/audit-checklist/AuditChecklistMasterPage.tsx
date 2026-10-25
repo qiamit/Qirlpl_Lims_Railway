@@ -1,3 +1,4 @@
+import { printHelperScriptTag } from '@/lib/printHelper'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { limsPageShellClass } from '@/lib/limsThemeUi'
@@ -268,7 +269,7 @@ export default function AuditChecklistMasterPage() {
   .badge{font-size:12px;background:rgba(255,255,255,.1);padding:6px 10px;border-radius:999px}
   .body{padding:12px 16px;font-size:13px}
 </style></head><body>${cards}
-<script>window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print()}catch(e){}},250)})</script>
+${printHelperScriptTag()}
 </body></html>`
 
     const iframe = document.createElement('iframe')

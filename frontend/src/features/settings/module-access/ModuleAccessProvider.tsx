@@ -25,6 +25,8 @@ import type { ModuleAccessLevel } from './moduleCatalog'
 type ModuleAccessState = {
   rules: ModuleAccessRuleRow[]
   loading: boolean
+  /** The signed-in user's rules have been loaded (or failed) at least once. */
+  ready: boolean
   error: string | null
   refresh: () => Promise<void>
   ctx: ModuleAccessUserContext
@@ -41,30 +43,48 @@ export function ModuleAccessProvider({ children }: { children: ReactNode }) {
   const [rules, setRules] = useState<ModuleAccessRuleRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Whose rules are loaded. Until the signed-in user's rules arrive, access is
+  // "loading", never "denied" (Access Denied right after sign-in, 23 Oct 2026).
+  const [rulesUserId, setRulesUserId] = useState<string | null>(null)
+  const userId = user?.id ?? null
 
   const refresh = useCallback(async () => {
     setError(null)
-    try {
-      const rows = await fetchModuleAccessRules()
-      setRules(rows)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load module access rules')
-      setRules([])
-    } finally {
-      setLoading(false)
+    let lastError: unknown = null
+    // A failed load is tried again before falling back to the designation rules.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt))
+      try {
+        const rows = await fetchModuleAccessRules()
+        setRules(rows)
+        lastError = null
+        break
+      } catch (err) {
+        lastError = err
+      }
     }
-  }, [])
+    if (lastError) {
+      setError(lastError instanceof Error ? lastError.message : 'Unable to load module access rules')
+      setRules([])
+    }
+    setRulesUserId(userId)
+    setLoading(false)
+  }, [userId])
 
   useEffect(() => {
     if (!profileReady) return
-    if (!user) {
+    if (!userId) {
       setRules([])
+      setRulesUserId(null)
       setLoading(false)
       return
     }
     setLoading(true)
     void refresh()
-  }, [user?.id, profileReady, refresh])
+  }, [userId, profileReady, refresh])
+
+  const ready = !userId || rulesUserId === userId
+  const rulesLoading = userId ? loading || !ready : false
 
   const ctx = useMemo<ModuleAccessUserContext>(
     () => ({
@@ -79,7 +99,8 @@ export function ModuleAccessProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ModuleAccessState>(
     () => ({
       rules,
-      loading,
+      loading: rulesLoading,
+      ready,
       error,
       refresh,
       ctx,
@@ -89,7 +110,7 @@ export function ModuleAccessProvider({ children }: { children: ReactNode }) {
         canAccessNavItemWithRules(requiredDesignations, to, ctx, rules),
       accessLevelFor: (pathname: string) => resolveModuleAccessLevel(pathname, ctx, rules),
     }),
-    [rules, loading, error, refresh, ctx],
+    [rules, rulesLoading, ready, error, refresh, ctx],
   )
 
   return createElement(ModuleAccessContext.Provider, { value }, children)

@@ -64,6 +64,7 @@ import {
   resolveEnvParameterColumns,
   resolveEnvRowFieldType,
   analyzeColumnFormulaExpression,
+  renameColumnRefsInTemplate,
   COLUMN_FORMULA_HELP_ROWS,
   type FormulaValidationIssue,
   type EnvParameterColumn,
@@ -1595,7 +1596,7 @@ function EnvironmentConditionEditor({
             </DialogHeader>
           </div>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gradient-to-b from-stone-100/80 to-white px-4 py-4 sm:px-5">
-            <div className="overflow-hidden rounded-none border-2 border-stone-400 bg-white">
+            <div className="overflow-x-auto rounded-none border-2 border-stone-400 bg-white">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>
@@ -1744,6 +1745,8 @@ export function RawDataSheetTemplateEditor({
   onVerificationDialogOpenChange?: (open: boolean) => void
 }) {
   const [calculationColumnKey, setCalculationColumnKey] = useState<string | null>(null)
+  /** Column label when its field got focus; on blur, formulas naming it follow the rename. */
+  const labelAtFocusRef = useRef<{ key: string; label: string } | null>(null)
   const [fetchedPointsTables, setFetchedPointsTables] = useState<
     Array<{ columns: Array<{ header: string }> }>
   >([])
@@ -2191,6 +2194,21 @@ export function RawDataSheetTemplateEditor({
                               onChange={(e) =>
                                 updateColumn(table.id, col.key, { label: e.target.value })
                               }
+                              onFocus={() => {
+                                labelAtFocusRef.current = { key: col.key, label: col.label }
+                              }}
+                              onBlur={() => {
+                                const start = labelAtFocusRef.current
+                                labelAtFocusRef.current = null
+                                if (!start || start.key !== col.key || start.label === col.label) return
+                                const next = renameColumnRefsInTemplate(
+                                  value,
+                                  col.key,
+                                  start.label,
+                                  col.label,
+                                )
+                                if (next !== value) onChange(next)
+                              }}
                               placeholder={isFormula ? 'e.g. Average Reading' : 'e.g. As Found'}
                               className="h-9"
                               aria-label={`Column label ${index + 1}`}

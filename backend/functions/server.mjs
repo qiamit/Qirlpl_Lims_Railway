@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { randomInt } from 'node:crypto'
 
 const PORT = Number(process.env.PORT || 8080)
 const REST_URL = (process.env.REST_URL || 'http://rest.railway.internal:3000').replace(/\/$/, '')
@@ -107,6 +108,56 @@ async function requireUser(req) {
     throw err
   }
   return res.json()
+}
+
+async function loadCallerProfile(callerId) {
+  if (!callerId) return null
+  const profiles = await rest(
+    `/user_profiles?id=eq.${encodeURIComponent(callerId)}&select=designation,department_name,status`,
+  )
+  return Array.isArray(profiles) ? profiles[0] ?? null : null
+}
+
+/**
+ * Signed-in, active, and either a known LIMS role or holding a module grant.
+ * Uses the same public.app_is_known_staff() check as RLS (called with the
+ * caller's own JWT). Falls back to "active profile with a designation" when
+ * that function is not on the database yet.
+ */
+async function requireKnownStaff(req) {
+  const caller = await requireUser(req)
+  const callerId = String(caller?.id ?? '')
+  const row = await loadCallerProfile(callerId)
+  const status = String(row?.status ?? '').trim().toLowerCase()
+  if (!callerId || !row || status === 'inactive') {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  let known = null
+  try {
+    const rpc = await fetch(`${REST_URL}/rpc/app_is_known_staff`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${callerJwt(req)}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    })
+    if (rpc.ok) {
+      const value = await rpc.json().catch(() => null)
+      if (typeof value === 'boolean') known = value
+    }
+  } catch {
+    known = null
+  }
+  if (known === null) known = String(row?.designation ?? '').trim() !== ''
+  if (!known) {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  return caller
 }
 
 async function requireLaboratoryDirector(req) {
@@ -284,13 +335,97 @@ function normalizeAttachments(raw) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Password policy. Mirrors frontend/src/lib/passwordPolicy.ts; keep the two
+// (including COMMON_PASSWORDS) in step. Passwords are never trimmed; a
+// password may not begin or end with a space instead.
+// ---------------------------------------------------------------------------
+const PASSWORD_MIN_LENGTH = 10
+const PASSWORD_MAX_LENGTH = 72
+const COMMON_PASSWORDS = new Set([
+  '1234567890a', '1q2w3e4r5t', '1q2w3e4r5t6y', '1qaz2wsx3edc', 'a123456789', 'abc@123456',
+  'abc1234567', 'abcd123456', 'abcdef1234', 'admin@1234', 'admin12345', 'asdfghjkl1',
+  'changeme123', 'dragon12345', 'football123', 'india12345', 'iloveyou12', 'laboratory1',
+  'letmein123', 'lims123456', 'master12345', 'monkey12345', 'p@ssw0rd123', 'pass@12345',
+  'passw0rd123', 'password@123', 'password12', 'password123', 'password1234', 'princess123',
+  'q1w2e3r4t5', 'qirlpl@123', 'qirlpl12345', 'qwerty@123', 'qwerty1234', 'qwerty12345',
+  'qwertyuiop1', 'raipur1234', 'sunshine123', 'superman123', 'temp@12345', 'temp123456',
+  'test123456', 'trustno1234', 'welcome@123', 'welcome123', 'zaq12wsxcde',
+])
+
+/** Returns an error message, or null when the password meets the policy. */
+function validatePasswordPolicy(password, email) {
+  const value = typeof password === 'string' ? password : ''
+  if (value.length < PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
+  }
+  if (value.length > PASSWORD_MAX_LENGTH) {
+    return `Password must be at most ${PASSWORD_MAX_LENGTH} characters.`
+  }
+  if (value !== value.trim()) return 'Password must not begin or end with a space.'
+  if (!/[A-Za-z]/.test(value) || !/[0-9]/.test(value)) {
+    return 'Password must include a letter and a number.'
+  }
+  const lower = value.toLowerCase()
+  const mail = String(email ?? '').trim().toLowerCase()
+  if (mail) {
+    const local = mail.split('@')[0] || ''
+    if (lower === mail || (local && lower === local)) {
+      return 'Password must not be your email address.'
+    }
+  }
+  if (COMMON_PASSWORDS.has(lower)) return 'This password is too common. Choose another.'
+  return null
+}
+
+/** Random temporary password that meets the policy (no look-alike characters). */
+function generateTemporaryPassword(length = 14) {
+  const letters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ'
+  const digits = '23456789'
+  const all = letters + digits
+  for (;;) {
+    let out = ''
+    for (let i = 0; i < length; i += 1) out += all[randomInt(all.length)]
+    if (/[A-Za-z]/.test(out) && /[0-9]/.test(out) && !validatePasswordPolicy(out, '')) return out
+  }
+}
+
+function requestIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+  return (fwd || String(req.headers['x-real-ip'] || '') || req.socket?.remoteAddress || '').slice(0, 64) || null
+}
+
+const EMAIL_RE = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]+$/
+const MAX_EMAIL_RECIPIENTS = 10
+
+function normalizeRecipients(raw) {
+  const list = (Array.isArray(raw) ? raw : [raw])
+    .flatMap((item) => String(item ?? '').split(/[,;]/))
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (list.length === 0) return []
+  if (list.length > MAX_EMAIL_RECIPIENTS) {
+    const err = new Error(`At most ${MAX_EMAIL_RECIPIENTS} recipients per email`)
+    err.statusCode = 400
+    throw err
+  }
+  for (const address of list) {
+    if (address.length > 254 || !EMAIL_RE.test(address)) {
+      const err = new Error(`Invalid recipient address: ${address.slice(0, 80)}`)
+      err.statusCode = 400
+      throw err
+    }
+  }
+  return list
+}
+
 async function handleSendEmail(req, res) {
   await requireCanSendLabEmail(req)
   const body = await readBody(req)
-  const to = body.to
-  const subject = String(body.subject ?? '').trim()
+  const to = normalizeRecipients(body.to)
+  const subject = String(body.subject ?? '').trim().slice(0, 300)
   const html = String(body.html ?? body.text ?? '').trim()
-  if (!to || !subject || !html) {
+  if (to.length === 0 || !subject || !html) {
     json(res, 400, { error: 'to, subject, and html are required' })
     return
   }
@@ -423,23 +558,66 @@ async function handleCreateUser(req, res) {
   const body = await readBody(req)
 
   const email = String(body.email ?? '').trim()
-  const password = String(body.password ?? '').trim()
+  // Not trimmed: the password is stored exactly as typed (the policy rejects
+  // leading or trailing spaces instead).
+  const password = typeof body.password === 'string' ? body.password : ''
   if (!email || !password) {
     json(res, 400, { error: 'email and password are required' })
     return
   }
-  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    json(res, 400, { error: 'Password must be at least 8 characters and include a letter and a number.' })
+  if (email.length > 254 || !EMAIL_RE.test(email)) {
+    json(res, 400, { error: 'Enter a valid email address.' })
+    return
+  }
+  const passwordError = validatePasswordPolicy(password, email)
+  if (passwordError) {
+    json(res, 400, { error: passwordError })
     return
   }
 
   const mobileRaw = String(body.mobile ?? '')
   const fullName = String(body.full_name ?? '')
-  const designation = String(body.designation ?? '')
-  const departmentName = String(body.department_name ?? '')
-  const division = String(body.division ?? '')
-  const status = String(body.status ?? 'Active')
+  let designation = String(body.designation ?? '').trim()
+  let departmentName = String(body.department_name ?? '').trim()
+  let division = String(body.division ?? '').trim()
+  const status = String(body.status ?? 'Active').trim().toLowerCase() === 'inactive' ? 'Inactive' : 'Active'
   const callerId = String(caller?.id ?? '')
+
+  // Designation, department and division must be Lab Master options (security
+  // plan S-13); stored as the option label, like update_team_user does.
+  if (designation || departmentName || division) {
+    let options
+    try {
+      options = await rest('/lab_master_options?select=category,label,value&category=in.(designation,department,division)')
+    } catch {
+      json(res, 500, { error: 'Unable to check Lab Master options.' })
+      return
+    }
+    const rows = Array.isArray(options) ? options : []
+    const canonical = (category, value, name) => {
+      if (!value) return value
+      const inCategory = rows.filter((o) => o?.category === category)
+      if (inCategory.length === 0) return value
+      const v = value.toLowerCase()
+      const match =
+        inCategory.find((o) => String(o.label ?? '').trim().toLowerCase() === v) ??
+        inCategory.find((o) => String(o.value ?? '').trim().toLowerCase() === v)
+      if (!match) {
+        const err = new Error(`${name} "${value}" is not a Lab Master option. Add it under Lab Settings first.`)
+        err.statusCode = 400
+        throw err
+      }
+      return String(match.label).trim()
+    }
+    try {
+      designation = canonical('designation', designation, 'Designation')
+      departmentName = canonical('department', departmentName, 'Department')
+      division = canonical('division', division, 'Division')
+    } catch (err) {
+      json(res, 400, { error: err instanceof Error ? err.message : 'Invalid Lab Master option.' })
+      return
+    }
+  }
 
   const createResult = await authAdmin('/admin/users', {
     method: 'POST',
@@ -529,6 +707,134 @@ async function handleDeleteUser(req, res) {
   json(res, 200, { ok: true })
 }
 
+/**
+ * Laboratory Director sets a temporary password for another user.
+ * body: { user_id, password?, remove_mfa? }  (password omitted = generated
+ * here and returned once; remove_mfa = also delete the user's MFA factors,
+ * for a lost authenticator). Sets user_profiles.must_change_password so the user must
+ * pick a new password at next sign-in, ends the user's sessions where the
+ * database allows it, and records an auth_events row.
+ */
+async function handleResetUserPassword(req, res) {
+  const caller = await requireLaboratoryDirector(req)
+  const body = await readBody(req)
+  const userId = String(body.user_id ?? '').trim()
+  const callerId = String(caller?.id ?? '')
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+    json(res, 400, { error: 'user_id is required' })
+    return
+  }
+  if (userId === callerId) {
+    json(res, 400, { error: 'Use Change password in the profile menu for your own account.' })
+    return
+  }
+
+  const target = await authAdmin(`/admin/users/${encodeURIComponent(userId)}`, { method: 'GET' })
+  if (!target.ok) {
+    json(res, target.status === 404 ? 404 : 400, {
+      error: target.status === 404 ? 'User not found' : authErrorMessage(target.data, `Auth ${target.status}`),
+    })
+    return
+  }
+  const targetEmail = String(target.data?.email ?? target.data?.user?.email ?? '')
+
+  const supplied = typeof body.password === 'string' && body.password !== ''
+  const password = supplied ? body.password : generateTemporaryPassword()
+  const passwordError = validatePasswordPolicy(password, targetEmail)
+  if (passwordError) {
+    json(res, 400, { error: passwordError })
+    return
+  }
+
+  const update = await authAdmin(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ password }),
+  })
+  if (!update.ok) {
+    json(res, 400, { error: authErrorMessage(update.data, `Auth ${update.status}`) })
+    return
+  }
+
+  const warnings = []
+  let mfaFactorsRemoved = 0
+  if (body.remove_mfa === true) {
+    const factors = Array.isArray(target.data?.factors) ? target.data.factors : []
+    for (const factor of factors) {
+      const factorId = String(factor?.id ?? '')
+      if (!factorId) continue
+      const del = await authAdmin(
+        `/admin/users/${encodeURIComponent(userId)}/factors/${encodeURIComponent(factorId)}`,
+        { method: 'DELETE' },
+      )
+      if (del.ok) mfaFactorsRemoved += 1
+    }
+    if (mfaFactorsRemoved < factors.length) {
+      warnings.push('Some two-step verification factors could not be removed.')
+    }
+  }
+
+  // The steps below need 20261029100000_login_security.sql. Before it is
+  // applied the password is still reset; the response says what was skipped.
+  let mustChange = false
+  try {
+    const rows = await rest(`/user_profiles?id=eq.${encodeURIComponent(userId)}&select=id`, {
+      method: 'PATCH',
+      body: JSON.stringify({ must_change_password: true }),
+    })
+    mustChange = Array.isArray(rows) && rows.length > 0
+    if (!mustChange) warnings.push('No user profile row was found, so a password change is not forced.')
+  } catch (err) {
+    console.error('[functions] reset-user-password: flag not set:', err instanceof Error ? err.message : err)
+    warnings.push('The user will not be forced to change the password (login security migration not applied).')
+  }
+
+  let sessionsRevoked = null
+  try {
+    const revoked = await rest('/rpc/app_revoke_user_sessions', {
+      method: 'POST',
+      body: JSON.stringify({ p_user_id: userId }),
+    })
+    sessionsRevoked = typeof revoked === 'number' && revoked >= 0 ? revoked : null
+  } catch (err) {
+    console.error('[functions] reset-user-password: sessions not revoked:', err instanceof Error ? err.message : err)
+  }
+  if (sessionsRevoked === null) {
+    warnings.push('Existing sessions could not be ended; they expire when their refresh token is next used or revoked.')
+  }
+
+  try {
+    await rest('/auth_events', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        user_id: userId,
+        email: targetEmail || null,
+        event: 'password_reset_by_director',
+        ip: requestIp(req),
+        user_agent: String(req.headers['user-agent'] || '').slice(0, 512) || null,
+        details: {
+          by: callerId,
+          generated: !supplied,
+          sessions_revoked: sessionsRevoked,
+          mfa_factors_removed: mfaFactorsRemoved,
+        },
+      }),
+    })
+  } catch (err) {
+    console.error('[functions] reset-user-password: event not logged:', err instanceof Error ? err.message : err)
+  }
+
+  json(res, 200, {
+    ok: true,
+    must_change_password: mustChange,
+    sessions_revoked: sessionsRevoked,
+    mfa_factors_removed: mfaFactorsRemoved,
+    // Only returned when generated here; the director passes it on once.
+    ...(supplied ? {} : { temporary_password: password }),
+    warnings,
+  })
+}
+
 function resolveAiApiBase(provider, apiBaseUrl) {
   const custom = String(apiBaseUrl || '').trim().replace(/\/$/, '')
   if (custom) return custom
@@ -538,8 +844,76 @@ function resolveAiApiBase(provider, apiBaseUrl) {
   return 'https://api.openai.com/v1'
 }
 
+// ---------------------------------------------------------------------------
+// AI data guard, server side (ISO/IEC 17025 clause 4.2, gap item P1-10b).
+// The frontend (frontend/src/lib/aiDataGuard.ts) redacts or withholds client
+// data per lab_settings.ai_client_data_mode. This is the defence in depth:
+// e-mails, phone numbers, GSTIN and PAN are always replaced before anything is
+// forwarded to the provider (and mapped back in the reply), and requests that
+// say they carry client data are refused while the lab mode is 'off'.
+// ---------------------------------------------------------------------------
+
+const LAB_SETTINGS_SINGLETON_ID = '00000000-0000-0000-0000-000000000001'
+const AI_CLIENT_DATA_MODES = new Set(['off', 'redact', 'allow_with_consent'])
+
+async function loadAiClientDataMode() {
+  try {
+    let rows = await rest(
+      `/lab_settings?id=eq.${LAB_SETTINGS_SINGLETON_ID}&select=ai_client_data_mode`,
+    )
+    if (!Array.isArray(rows) || rows.length === 0) {
+      rows = await rest('/lab_settings?select=ai_client_data_mode&order=created_at.desc&limit=1')
+    }
+    const mode = String((Array.isArray(rows) && rows[0]?.ai_client_data_mode) || '')
+      .trim()
+      .toLowerCase()
+    return AI_CLIENT_DATA_MODES.has(mode) ? mode : 'redact'
+  } catch {
+    // Column missing (migration 20261025100200 not applied) or REST error.
+    return 'redact'
+  }
+}
+
+const SERVER_REDACTION_PATTERNS = [
+  ['EMAIL', /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g],
+  ['GSTIN', /(?<![A-Za-z0-9_])\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z](?![A-Za-z0-9_])/gi],
+  ['PAN', /(?<![A-Za-z0-9_])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9_])/g],
+  ['PHONE', /(?<![\w.+/-])(?:(?:\+|00)91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?!\w|\.\d)/g],
+  ['PHONE', /(?<![\w.+/-])0\d{2,4}[\s-]\d{6,8}(?!\w|\.\d)/g],
+  ['PHONE', /(?<![\w.])\+\d{1,3}[\s-]?\d(?:[\s-]?\d){8,12}(?!\w|\.\d)/g],
+]
+
+function createServerRedactor() {
+  const byValue = new Map()
+  const byPlaceholder = new Map()
+  const counters = new Map()
+  const redact = (text) => {
+    let out = String(text ?? '')
+    for (const [category, re] of SERVER_REDACTION_PATTERNS) {
+      out = out.replace(re, (match) => {
+        const key = `${category}:${match.toLowerCase()}`
+        let placeholder = byValue.get(key)
+        if (!placeholder) {
+          const n = (counters.get(category) || 0) + 1
+          counters.set(category, n)
+          placeholder = `${category}_S${n}`
+          byValue.set(key, placeholder)
+          byPlaceholder.set(placeholder, match)
+        }
+        return placeholder
+      })
+    }
+    return out
+  }
+  const restore = (text) =>
+    String(text ?? '').replace(/\b(EMAIL|PHONE|GSTIN|PAN)\\?_S(\d+)\b/g, (whole, cat, n) =>
+      byPlaceholder.get(`${cat}_S${n}`) ?? whole,
+    )
+  return { redact, restore, count: () => byPlaceholder.size }
+}
+
 async function handleQiAssistant(req, res) {
-  await requireUser(req)
+  await requireKnownStaff(req)
   const body = await readBody(req)
   const message = String(body.message ?? '').trim()
   const hasPdf =
@@ -556,6 +930,24 @@ async function handleQiAssistant(req, res) {
     json(res, 400, { error: 'message is required' })
     return
   }
+
+  // ISO 17025 4.2: lab policy on client data sent to AI providers.
+  const clientDataMode = await loadAiClientDataMode()
+  const clientData = String(body.clientData ?? '').trim().toLowerCase()
+  if (clientDataMode === 'off' && clientData && clientData !== 'none') {
+    json(res, 403, {
+      error:
+        'Client data sharing with AI providers is turned off in AI Settings. Ask a general question, or ask the Laboratory Director to change the setting.',
+    })
+    return
+  }
+  if (clientDataMode !== 'allow_with_consent' && clientData === 'consented') {
+    json(res, 409, {
+      error: 'AI data settings changed while you were working. Please try again in a minute.',
+    })
+    return
+  }
+  const redactor = createServerRedactor()
 
   const settingsRows = await rest(
     '/ai_settings?id=eq.00000000-0000-0000-0000-000000000002&select=default_model_id,temperature,max_tokens,system_prompt_prefix',
@@ -591,17 +983,18 @@ async function handleQiAssistant(req, res) {
   const history = (Array.isArray(body.history) ? body.history : [])
     .filter((item) => item && String(item.content || '').trim() && (item.role === 'user' || item.role === 'assistant'))
     .slice(-10)
-    .map((item) => ({ role: item.role, content: String(item.content).trim() }))
+    .map((item) => ({ role: item.role, content: redactor.redact(String(item.content).trim()) }))
 
   const system = [
     settings?.system_prompt_prefix ? String(settings.system_prompt_prefix) : '',
     'You are QI Assistant, a helpful assistant inside Qirlpl LIMS (ISO 17025 laboratory software). Answer clearly and concisely in English unless the user writes in Hindi.',
     body.page ? `The user is on the "${String(body.page)}" page.` : '',
     'You cannot change database records from this chat. Tell the user which screen to use.',
-    body.context ? `Page data:\n${String(body.context).slice(0, 12000)}` : '',
+    body.context ? `Page data:\n${redactor.redact(String(body.context)).slice(0, 12000)}` : '',
   ]
     .filter((part) => String(part).trim().length > 0)
     .join('\n\n')
+  const userMessage = redactor.redact(message)
 
   let modelId = String(model.model_id || '').trim()
   if (provider === 'google' && modelId.startsWith('models/')) modelId = modelId.slice('models/'.length)
@@ -615,7 +1008,7 @@ async function handleQiAssistant(req, res) {
     },
     body: JSON.stringify({
       model: modelId,
-      messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: message }],
+      messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: userMessage }],
       temperature: Number.isFinite(temperature) ? temperature : 0.7,
       max_tokens: Number.isFinite(maxTokens) ? Math.min(maxTokens, 8192) : 1024,
     }),
@@ -632,8 +1025,8 @@ async function handleQiAssistant(req, res) {
     json(res, 400, { error: errMsg })
     return
   }
-  const reply = String(aiPayload?.choices?.[0]?.message?.content ?? '').trim() || 'No response from model.'
-  json(res, 200, { reply })
+  const rawReply = String(aiPayload?.choices?.[0]?.message?.content ?? '').trim() || 'No response from model.'
+  json(res, 200, { reply: redactor.restore(rawReply) })
 }
 
 const routes = {
@@ -645,6 +1038,7 @@ const routes = {
   'POST /send-email': handleSendEmail,
   'POST /create-user': handleCreateUser,
   'POST /delete-user': handleDeleteUser,
+  'POST /reset-user-password': handleResetUserPassword,
   'POST /qi-assistant': handleQiAssistant,
 }
 
@@ -660,7 +1054,17 @@ const server = http.createServer(async (req, res) => {
     await handler(req, res)
   } catch (err) {
     const status = Number(err?.statusCode) || 500
-    json(res, status, { error: err instanceof Error ? err.message : 'Internal error' })
+    if (status >= 500) {
+      // Internal REST/auth messages can name tables and columns; log them only.
+      console.error(`[functions] ${key} failed:`, err instanceof Error ? err.message : err)
+    }
+    const message =
+      status >= 500 && !err?.statusCode
+        ? 'Internal error'
+        : err instanceof Error
+          ? err.message
+          : 'Internal error'
+    if (!res.headersSent) json(res, status, { error: message })
   }
 })
 

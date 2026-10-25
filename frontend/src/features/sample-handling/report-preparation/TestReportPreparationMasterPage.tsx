@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { limsDarkBarGlowStyle, limsDialogClass, limsPageShellClass } from '@/lib/limsThemeUi'
 import { useAuth } from '@/hooks/useAuth'
-import { canDeleteSampleHandlingRecords } from '@/lib/isLaboratoryDirector'
+import { canDeleteSampleHandlingRecords, isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
 import {
   confirmDestructiveDelete,
   deleteSamplesByIds,
@@ -49,10 +49,15 @@ import {
   fetchReportResultRowsForSample,
   getApplicableReportScopes,
   patchReportResultRowsSectionCode,
+  resultsWithoutUncertainty,
   saveReportResultRemarks,
   type ReportResultRow,
 } from './reportResultRows'
-import { evaluateResultConformity } from './evaluateResultConformity'
+import { evaluateResultConformityDetailed } from './evaluateResultConformity'
+import {
+  fetchSampleDecisionRule,
+  type DecisionRule,
+} from '@/features/masters/decision-rules/decisionRules'
 import {
   fetchNextNablUlrNumber,
   fetchUlrPrefix,
@@ -63,11 +68,27 @@ import {
 import { findReportNumberClash } from './reportNumberAvailability'
 import {
   fetchNextTestReportNumber,
+  isTestReportNumberConflictError,
   toCanonicalReportNumber,
   withReceivingReportTypeSuffix,
 } from './formattedTestReportNumber'
 import { fetchTestReportPrefix } from './testReportNumberPrefix'
 import { buildSampleRetentionIssuePayload } from '@/features/sample-handling/retain-disposed/sampleRetention'
+import { ConfirmLoginPasswordDialog } from '@/features/sample-handling/shared/ConfirmLoginPasswordDialog'
+import { fetchTestReportPrintSettingsForSample } from './reportSignatories'
+import {
+  archiveIssuedTestReport,
+  ISSUE_SIGNATURE_COLUMNS,
+  ISSUE_SIGNATURE_MEANING,
+  ISSUE_SIGNATURE_STATEMENT,
+  isMissingIssueSignatureColumnError,
+} from '@/features/sample-handling/completed-results/issuedReportArchive'
+import { visibleTestReportSignatures } from '@/features/settings/lab-settings/printSettingsTypes'
+import type { ReportScopeKind } from './reportScope'
+import { fetchIssueHoldNcs, ISSUE_HOLD_OVERRIDE_COLUMN, type IssueHoldNc } from './reportIssueHold'
+import { checkUlrScope, formatUlrScopeWarnings, type UlrScopeWarning } from './ulrScopeCheck'
+import { modernizePartDRemarks } from './testReportPartDRemarks'
+import { Textarea } from '@/components/ui/textarea'
 import type { ReportPreparationListRow } from './buildTestReportPreparationAssistantContext'
 import {
   sortTestReportPreparationRows,
@@ -87,6 +108,29 @@ const DEFAULT_SCOPE_LETTERHEADS_NON_NABL = {
 }
 
 type ListRow = ReportPreparationListRow
+
+/** Report waiting for the issuer's password before it is issued. */
+type PendingIssue = {
+  sampleId: string
+  scopes: ReportScopeKind[]
+  scopeLabel: string
+  reportNumber: string | null
+  ulrNumber: string | null
+  signatories: Array<{ roleLabel: string; name: string; designation: string }>
+  /** Open NC records linked to the sample (issue on hold, ISO/IEC 17025 7.10.1). */
+  openNcs: IssueHoldNc[]
+  /**
+   * NABL report only: parameters marked NABL that are not in the accredited
+   * NABL scope (NABL 133, ulr_scope_check). Warning only, the issuer must
+   * acknowledge it. [] for non-NABL reports or before migration 20261031100000.
+   */
+  ulrScopeWarnings: UlrScopeWarning[]
+  /**
+   * Results the SRF's guard band / non-binary rule could not judge for want of
+   * a U (ISO/IEC 17025 7.8.6). Warning only, the issuer must acknowledge it.
+   */
+  resultsWithoutU: string[]
+}
 
 const fmt = (v: string | null | undefined) => (v && String(v).trim() ? String(v).trim() : '—')
 
@@ -123,6 +167,8 @@ export default function TestReportPreparationMasterPage() {
   const [ulrPrefix, setUlrPrefix] = useState('')
   const [ulrPrefixLoading, setUlrPrefixLoading] = useState(false)
   const [prepareResultRows, setPrepareResultRows] = useState<ReportResultRow[]>([])
+  /** Decision rule agreed on the SRF being prepared (ISO 17025 7.8.6), null = none. */
+  const [prepareDecisionRule, setPrepareDecisionRule] = useState<DecisionRule | null>(null)
   const [prepareResultsLoading, setPrepareResultsLoading] = useState(false)
   const [coverDetails, setCoverDetails] = useState<TestReportCoverDetails | null>(null)
   const [partBDetails, setPartBDetails] = useState<TestReportPartBDetails | null>(null)
@@ -138,6 +184,12 @@ export default function TestReportPreparationMasterPage() {
   const [coverLoading, setCoverLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
   const [issueLoading, setIssueLoading] = useState(false)
+  const [pendingIssue, setPendingIssue] = useState<PendingIssue | null>(null)
+  const [issuePasswordOpen, setIssuePasswordOpen] = useState(false)
+  const [holdOverrideReason, setHoldOverrideReason] = useState('')
+  const [ulrScopeAcknowledged, setUlrScopeAcknowledged] = useState(false)
+  const [missingUAcknowledged, setMissingUAcknowledged] = useState(false)
+  const actorIsDirector = isLaboratoryDirector(designation)
   const [referbackBusyId, setReferbackBusyId] = useState<string | null>(null)
   const [referbackDialogOpen, setReferbackDialogOpen] = useState(false)
   const [referbackRow, setReferbackRow] = useState<ListRow | null>(null)
@@ -347,7 +399,7 @@ export default function TestReportPreparationMasterPage() {
 
   const openPrepare = (r: ListRow) => {
     setActive(r)
-    setDraftNotes(r.draftNotes ?? '')
+    setDraftNotes(modernizePartDRemarks(r.draftNotes ?? ''))
     setNablUlrNumber('')
     setReportNumber('')
     setUlrPrefix('')
@@ -363,6 +415,8 @@ export default function TestReportPreparationMasterPage() {
     })
     setPrepareResultsLoading(true)
     setCoverLoading(true)
+    setPrepareDecisionRule(null)
+    void fetchSampleDecisionRule(r.id).then(setPrepareDecisionRule)
     void fetchReportResultRowsForSample(r.id)
       .then(setPrepareResultRows)
       .catch(() => setPrepareResultRows([]))
@@ -546,10 +600,13 @@ export default function TestReportPreparationMasterPage() {
     setPage(1)
   }, [search, pageSize, sortKey, sortDir])
 
-  /** Plain-language message when the database rejects a ULR that another sample took meanwhile. */
+  /** Plain-language message when the database rejects a ULR / report number that another sample took meanwhile. */
   const describeSaveError = (e: unknown, fallback: string) => {
     if (isNablUlrConflictError(e as { code?: string; message?: string })) {
       return `ULR number ${sanitizeNablUlrInput(nablUlrNumber)} was just used by another report. Please change the ULR number and try again.`
+    }
+    if (isTestReportNumberConflictError(e as { code?: string; message?: string })) {
+      return `Report number ${toCanonicalReportNumber(fullReportNumber)} was just used by another report. Please change the report number and try again.`
     }
     return e instanceof Error || (e && typeof e === 'object' && 'message' in e)
       ? `${(e as { message: string }).message} ${fallback}`
@@ -642,13 +699,62 @@ export default function TestReportPreparationMasterPage() {
       setSaveMessage(describeSaveError(e, 'Could not check the report and ULR numbers.'))
       return
     }
-    if (
-      !window.confirm(
-        `Issue ${scopeLabel} test report(s) for this SRF and move to Issued Test Report?`,
-      )
-    ) {
-      return
+    // Authenticated release (ISO/IEC 17025 7.8.1, 7.11): the issuer re-enters
+    // their password; the issue continues in completeIssueReport.
+    let signatories: PendingIssue['signatories'] = []
+    try {
+      // The real tester(s), reviewer(s) and, as issuer, the signed-in user.
+      const printSettings = await fetchTestReportPrintSettingsForSample(active.id, {
+        userId: user?.id ?? '',
+        name: profileName.trim() || user?.email || '',
+        designation: designation.trim(),
+        department: (departmentName ?? '').trim(),
+      })
+      signatories = visibleTestReportSignatures(printSettings).map((sig) => ({
+        roleLabel: sig.roleLabel.trim(),
+        name: sig.name.trim(),
+        designation: sig.designation.trim(),
+      }))
+    } catch {
+      // The dialog still opens; signatories are only shown for information.
     }
+    // Report issue hold: open NC linked to this sample ([] before migration 20261029100300).
+    const openNcs = await fetchIssueHoldNcs(active.id)
+    // NABL ULR scope warning (NABL 133): parameters marked NABL but outside the
+    // accredited scope. Warning only; nothing when the RPC is not deployed yet.
+    let ulrScopeWarnings: UlrScopeWarning[] = []
+    if (scopes.includes('nabl')) {
+      try {
+        const scopeCheck = await checkUlrScope(active.id)
+        if (scopeCheck.available) ulrScopeWarnings = scopeCheck.warnings
+      } catch {
+        // A failed check never blocks the issue.
+      }
+    }
+    setHoldOverrideReason('')
+    setUlrScopeAcknowledged(false)
+    setMissingUAcknowledged(false)
+    setPendingIssue({
+      sampleId: active.id,
+      scopes,
+      scopeLabel,
+      reportNumber: toCanonicalReportNumber(fullReportNumber) || null,
+      ulrNumber: sanitizeNablUlrInput(nablUlrNumber) || null,
+      signatories,
+      openNcs,
+      ulrScopeWarnings,
+      resultsWithoutU: prepareDecisionRule ? resultsWithoutUncertainty(prepareResultRows) : [],
+    })
+    setIssuePasswordOpen(true)
+  }
+
+  const completeIssueReport = async (
+    pending: PendingIssue,
+    reauthenticatedAt: string,
+    holdOverride: string | null = null,
+  ) => {
+    if (!active || active.id !== pending.sampleId) return
+    const scopes = pending.scopes
     setIssueLoading(true)
     setSaveMessage(null)
     try {
@@ -679,26 +785,73 @@ export default function TestReportPreparationMasterPage() {
         ...partBUpdate,
         ...letterheadUpdate,
       }
-      let { error: uErr } = await supabase.from('samples').update(issuePayload).eq('id', active.id)
-      if (uErr && isSupabaseMissingColumnError(uErr, 'test_report_nabl_required')) {
-        const { test_report_nabl_required: _n, ...withoutNabl } = partBUpdate
-        const retry: Record<string, string | boolean | null> = {
-          stage: issuePayload.stage,
-          test_report_number: issuePayload.test_report_number,
-          test_report_draft_notes: issuePayload.test_report_draft_notes,
-          test_report_nabl_ulr_number: issuePayload.test_report_nabl_ulr_number,
-          test_report_issued_at: issuePayload.test_report_issued_at,
-          test_report_nabl_issued_at: issuePayload.test_report_nabl_issued_at,
-          test_report_non_nabl_issued_at: issuePayload.test_report_non_nabl_issued_at,
-          ...withoutNabl,
+      // Who issued it and how. The database trigger (migration 20261024100300)
+      // overwrites issued_by / issued_by_name with the signed-in user.
+      const signatureUpdate: Record<string, string | null> = {
+        issued_by: user?.id ?? null,
+        issued_by_name: profileName.trim() || user?.email || null,
+        issued_signature_meaning: ISSUE_SIGNATURE_MEANING,
+        issued_reauthenticated_at: reauthenticatedAt,
+      }
+      let signatureStored = true
+      let nablColumnMissing = false
+      // Director's reason for issuing despite an open NC (checked again by the database).
+      let holdOverrideStored = Boolean(holdOverride)
+      const buildPayload = (): Record<string, string | boolean | null> => {
+        let payload: Record<string, string | boolean | null> = issuePayload
+        if (nablColumnMissing) {
+          const { test_report_nabl_required: _n, ...withoutNabl } = partBUpdate
+          payload = {
+            stage: issuePayload.stage,
+            test_report_number: issuePayload.test_report_number,
+            test_report_draft_notes: issuePayload.test_report_draft_notes,
+            test_report_nabl_ulr_number: issuePayload.test_report_nabl_ulr_number,
+            test_report_issued_at: issuePayload.test_report_issued_at,
+            test_report_nabl_issued_at: issuePayload.test_report_nabl_issued_at,
+            test_report_non_nabl_issued_at: issuePayload.test_report_non_nabl_issued_at,
+            ...withoutNabl,
+          }
         }
-        ;({ error: uErr } = await supabase.from('samples').update(retry).eq('id', active.id))
+        const withHold = holdOverrideStored ? { ...payload, [ISSUE_HOLD_OVERRIDE_COLUMN]: holdOverride } : payload
+        return signatureStored ? { ...withHold, ...signatureUpdate } : withHold
+      }
+      let { error: uErr } = await supabase.from('samples').update(buildPayload()).eq('id', active.id)
+      for (let attempt = 0; uErr && attempt < 3; attempt += 1) {
+        if (holdOverrideStored && isSupabaseMissingColumnError(uErr, ISSUE_HOLD_OVERRIDE_COLUMN)) {
+          holdOverrideStored = false
+        } else if (signatureStored && isMissingIssueSignatureColumnError(uErr)) {
+          console.warn(
+            `[Issue test report] Columns ${ISSUE_SIGNATURE_COLUMNS.join(', ')} are missing; apply migration 20261024100300_report_issue_signature.sql. Issuing without the issuer signature and archive.`,
+            uErr.message,
+          )
+          signatureStored = false
+        } else if (!nablColumnMissing && isSupabaseMissingColumnError(uErr, 'test_report_nabl_required')) {
+          nablColumnMissing = true
+        } else {
+          break
+        }
+        ;({ error: uErr } = await supabase.from('samples').update(buildPayload()).eq('id', active.id))
       }
       if (uErr) throw uErr
+
+      // Frozen copy of what was issued (report data + SHA-256), stored after the issue succeeded.
+      let archiveNote = ''
+      if (signatureStored) {
+        const archived = await archiveIssuedTestReport(active.id)
+        if (archived.status === 'unavailable') {
+          console.warn(
+            '[Issue test report] issued_report_archive is not available; apply migration 20261024100300_report_issue_signature.sql.',
+            archived.message,
+          )
+        } else if (archived.status === 'failed') {
+          console.warn('[Issue test report] Could not store the issued report copy.', archived.message)
+          archiveNote = ` The frozen copy of the issued report could not be stored: ${archived.message}`
+        }
+      }
       setDialogOpen(false)
       setActive(null)
       await loadList()
-      setSaveMessage('Test report(s) issued. SRF moved to Issued Test Report.')
+      setSaveMessage(`Test report(s) issued. SRF moved to Issued Test Report.${archiveNote}`)
     } catch (e) {
       setSaveMessage(
         describeSaveError(e, 'If columns are missing, run migration 20260531230000_report_scope_dual_templates.sql'),
@@ -900,6 +1053,7 @@ export default function TestReportPreparationMasterPage() {
         onPartBDetailsChange={setPartBDetails}
         coverLoading={coverLoading}
         resultRows={prepareResultRows}
+        decisionRule={prepareDecisionRule}
         resultsLoading={prepareResultsLoading}
         saveMessage={dialogOpen ? saveMessage : null}
         saveLoading={saveLoading}
@@ -920,13 +1074,16 @@ export default function TestReportPreparationMasterPage() {
             rows.map((r) => {
               if (r.rowKey !== rowKey) return r
               const display = nextValue.trim() || '—'
+              const evaluated = evaluateResultConformityDetailed(
+                r.observedValue === '—' ? '' : r.observedValue,
+                nextValue,
+                { rule: prepareDecisionRule, uncertainty: r.uncertainty },
+              )
               return {
                 ...r,
                 specifiedRequirement: display,
-                remark: evaluateResultConformity(
-                  r.observedValue === '—' ? '' : r.observedValue,
-                  nextValue,
-                ),
+                remark: evaluated.remark,
+                uncertaintyMissing: evaluated.uncertaintyMissing,
               }
             }),
           )
@@ -996,6 +1153,146 @@ export default function TestReportPreparationMasterPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmLoginPasswordDialog
+        open={issuePasswordOpen}
+        onOpenChange={(open) => {
+          setIssuePasswordOpen(open)
+        }}
+        title="Authorize Release of Test Report"
+        confirmLabel="Issue Report"
+        statement={ISSUE_SIGNATURE_STATEMENT}
+        confirmDisabled={
+          (Boolean(pendingIssue?.openNcs.length) && (!actorIsDirector || !holdOverrideReason.trim())) ||
+          (Boolean(pendingIssue?.ulrScopeWarnings.length) && !ulrScopeAcknowledged) ||
+          (Boolean(pendingIssue?.resultsWithoutU.length) && !missingUAcknowledged)
+        }
+        onConfirmed={({ reauthenticatedAt }) => {
+          const pending = pendingIssue
+          const override = pending?.openNcs.length ? holdOverrideReason.trim() || null : null
+          setPendingIssue(null)
+          if (pending) void completeIssueReport(pending, reauthenticatedAt, override)
+        }}
+      >
+        {pendingIssue && pendingIssue.openNcs.length > 0 ? (
+          <div className="space-y-2 border border-red-700/40 bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+            <p className="font-semibold">Report issue is on hold (ISO/IEC 17025 7.10)</p>
+            <p>Open nonconforming work linked to this sample:</p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {pendingIssue.openNcs.map((nc) => (
+                <li key={nc.id}>
+                  <span className="font-mono font-semibold">{nc.ncId}</span> ({nc.status})
+                  {nc.description.trim() ? ` · ${nc.description.trim().slice(0, 140)}` : ''}
+                </li>
+              ))}
+            </ul>
+            {actorIsDirector ? (
+              <div className="space-y-1">
+                <label htmlFor="issue-hold-override" className="block text-[11px] font-semibold uppercase tracking-wide text-red-900">
+                  Override reason (Laboratory Director) *
+                </label>
+                <Textarea
+                  id="issue-hold-override"
+                  rows={2}
+                  value={holdOverrideReason}
+                  onChange={(e) => setHoldOverrideReason(e.target.value)}
+                  placeholder="e.g. NC impact assessed: results of this sample not affected"
+                  className="rounded-none border-red-700/50 bg-white text-sm text-stone-900"
+                />
+              </div>
+            ) : (
+              <p>
+                Close the NC or record the resumption authorization in Nonconforming Work Records. Only the
+                Laboratory Director can override.
+              </p>
+            )}
+          </div>
+        ) : null}
+        {pendingIssue && pendingIssue.ulrScopeWarnings.length > 0 ? (
+          <div className="space-y-2 border border-amber-600/50 bg-amber-50 px-3 py-2 text-sm text-amber-950" role="alert">
+            <p className="font-semibold">NABL scope warning (NABL 133)</p>
+            <p>
+              {pendingIssue.ulrScopeWarnings.length === 1
+                ? '1 parameter marked NABL is'
+                : `${pendingIssue.ulrScopeWarnings.length} parameters marked NABL are`}{' '}
+              not in the active accredited NABL scope:
+            </p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {formatUlrScopeWarnings(pendingIssue.ulrScopeWarnings).map((line, index) => (
+                <li key={`${pendingIssue.ulrScopeWarnings[index]?.testParameterId ?? ''}-${index}`}>{line}</li>
+              ))}
+            </ul>
+            <p>
+              A NABL ULR / accreditation symbol must cover only accredited parameters. Report these under the
+              non-accredited part, or correct the test parameter / scope first.
+            </p>
+            <label className="flex items-start gap-2 font-medium">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700"
+                checked={ulrScopeAcknowledged}
+                onChange={(e) => setUlrScopeAcknowledged(e.target.checked)}
+              />
+              <span>I have reviewed these parameters and accept issuing the NABL report as it is.</span>
+            </label>
+          </div>
+        ) : null}
+        {pendingIssue && pendingIssue.resultsWithoutU.length > 0 ? (
+          <div className="space-y-2 border border-red-700/40 bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+            <p className="font-semibold">Results judged without measurement uncertainty (ISO/IEC 17025 7.8.6)</p>
+            <p>
+              The decision rule on this SRF needs U, but{' '}
+              {pendingIssue.resultsWithoutU.length === 1
+                ? '1 result has none and was'
+                : `${pendingIssue.resultsWithoutU.length} results have none and were`}{' '}
+              judged by simple acceptance, while the report states the rule:
+            </p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {pendingIssue.resultsWithoutU.map((line, index) => (
+                <li key={`${line}-${index}`}>{line}</li>
+              ))}
+            </ul>
+            <p>Add the MU in the Test Parameter master (or MU bands) and reopen the report, or issue knowingly.</p>
+            <label className="flex items-start gap-2 font-medium">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-red-700"
+                checked={missingUAcknowledged}
+                onChange={(e) => setMissingUAcknowledged(e.target.checked)}
+              />
+              <span>I have reviewed these results and accept issuing the report as it is.</span>
+            </label>
+          </div>
+        ) : null}
+        {pendingIssue ? (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-stone-800">
+            <dt className="font-semibold text-stone-600">Report</dt>
+            <dd>{pendingIssue.scopeLabel}</dd>
+            <dt className="font-semibold text-stone-600">Report No.</dt>
+            <dd className="break-all">{fmt(pendingIssue.reportNumber)}</dd>
+            <dt className="font-semibold text-stone-600">ULR</dt>
+            <dd className="break-all">{fmt(pendingIssue.ulrNumber)}</dd>
+            <dt className="font-semibold text-stone-600">Signatories</dt>
+            <dd>
+              {pendingIssue.signatories.length === 0 ? (
+                '—'
+              ) : (
+                <ul className="space-y-0.5">
+                  {pendingIssue.signatories.map((sig, index) => (
+                    <li key={`${sig.name}-${index}`}>
+                      {sig.roleLabel ? `${sig.roleLabel}: ` : ''}
+                      {sig.name || '—'}
+                      {sig.designation ? `, ${sig.designation}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </dd>
+            <dt className="font-semibold text-stone-600">Issued by</dt>
+            <dd>{profileName.trim() || user?.email || '—'}</dd>
+          </dl>
+        ) : null}
+      </ConfirmLoginPasswordDialog>
 
       <TestReportReferbackToReviewDialog
         open={referbackDialogOpen}

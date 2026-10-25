@@ -6,8 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { supabase } from '@/lib/supabaseClient'
+import { isSupabaseMissingColumnError } from '@/lib/supabaseErrors'
+import { useDeletedKeys } from '@/lib/softDelete'
 import {
   limsDarkBarGlowStyle,
   limsDialogClass,
@@ -29,6 +32,7 @@ import {
   emptyNcWorkForm,
   nextNcId,
   ncWorkFormToPayload,
+  NC_SAMPLE_LINK_COLUMNS,
   rowToNcWorkForm,
   statusTone,
   type NcWorkRecordForm,
@@ -54,7 +58,9 @@ export default function NcWorkRecordsMasterPage({
   evaluationMode?: boolean
 }) {
   const { user } = useAuth()
+  const askReason = useReasonForChange()
   const [rows, setRows] = useState<NcWorkRecordRow[]>([])
+  const deletedNcIds = useDeletedKeys('nc_work_records', 'nc_id', rows)
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -69,16 +75,20 @@ export default function NcWorkRecordsMasterPage({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saveLoading, setSaveLoading] = useState(false)
   const [form, setForm] = useState<NcWorkRecordForm>(() => emptyNcWorkForm())
+  /** nc_work_records.sample_id exists (migration 20261029100300). */
+  const [sampleLinkAvailable, setSampleLinkAvailable] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [recRes, empRes] = await Promise.all([
+      const [recRes, empRes, linkProbe] = await Promise.all([
         supabase.from('nc_work_records').select('*').order('detected_at', { ascending: false }),
         supabase.from('user_profiles').select('id, full_name').order('full_name'),
+        supabase.from('nc_work_records').select('sample_id').limit(1),
       ])
       if (recRes.error) throw recRes.error
+      setSampleLinkAvailable(!linkProbe.error)
       setRows((recRes.data ?? []) as NcWorkRecordRow[])
       setEmployees(
         (empRes.data ?? []).map((e) => ({ id: e.id, full_name: e.full_name ?? '' })),
@@ -104,7 +114,7 @@ export default function NcWorkRecordsMasterPage({
     const q = search.trim().toLowerCase()
     if (!q) return list
     return list.filter((r) =>
-      `${r.nc_id} ${r.description} ${r.equipment_or_activity} ${r.source_area} ${r.status} ${r.reported_by_name}`
+      `${r.nc_id} ${r.description} ${r.equipment_or_activity} ${r.source_area} ${r.status} ${r.reported_by_name} ${r.srf_number ?? ''}`
         .toLowerCase()
         .includes(q),
     )
@@ -125,20 +135,23 @@ export default function NcWorkRecordsMasterPage({
     setSaveLoading(true)
     setMessage(null)
     try {
-      const payload = {
+      const full: Record<string, unknown> = {
         ...ncWorkFormToPayload(form),
         ...(editingId ? {} : { created_by: user?.id ?? null }),
       }
-      if (editingId) {
-        const { error: err } = await supabase
-          .from('nc_work_records')
-          .update(payload)
-          .eq('id', editingId)
-        if (err) throw err
-      } else {
-        const { error: err } = await supabase.from('nc_work_records').insert(payload)
-        if (err) throw err
+      const withoutLink = { ...full }
+      for (const c of NC_SAMPLE_LINK_COLUMNS) delete withoutLink[c]
+      const write = (payload: Record<string, unknown>) =>
+        editingId
+          ? supabase.from('nc_work_records').update(payload).eq('id', editingId)
+          : supabase.from('nc_work_records').insert(payload)
+      let { error: err } = await write(sampleLinkAvailable ? full : withoutLink)
+      // Migration 20261029100300 not applied: save without the sample link.
+      if (err && sampleLinkAvailable && NC_SAMPLE_LINK_COLUMNS.some((c) => isSupabaseMissingColumnError(err, c))) {
+        setSampleLinkAvailable(false)
+        ;({ error: err } = await write(withoutLink))
       }
+      if (err) throw err
       setMessage('Saved.')
       setShowForm(false)
       await load()
@@ -152,12 +165,20 @@ export default function NcWorkRecordsMasterPage({
   const handleDeleteSelected = async () => {
     const ids = [...selectedIds]
     if (!ids.length) return
-    if (!window.confirm(`Delete ${ids.length} selected record(s)?`)) return
+    const reason = await askReason({
+      title: `Reason for deleting ${ids.length} NC record(s)`,
+      recordLabel: selectedRows.map((r) => r.nc_id).filter(Boolean).slice(0, 5).join(', '),
+      description: 'The deletion is kept in the audit trail together with the reason you give here.',
+      confirmLabel: 'Delete',
+      quickPicks: ['Duplicate record', 'Entered in error', 'Raised against the wrong job'],
+    })
+    if (!reason) return
     const { error: err } = await supabase.from('nc_work_records').delete().in('id', ids)
     if (err) {
       setMessage(formatSupabaseError(err))
       return
     }
+    await recordReason('nc_work_records', ids, reason)
     setSelectedIds(new Set())
     setMessage('Deleted.')
     await load()
@@ -240,7 +261,7 @@ export default function NcWorkRecordsMasterPage({
             ? undefined
             : () => {
                 setEditingId(null)
-                setForm(emptyNcWorkForm(nextNcId(rows)))
+                setForm(emptyNcWorkForm(nextNcId(rows, deletedNcIds)))
                 setMessage(null)
                 setShowForm(true)
               }
@@ -427,6 +448,7 @@ export default function NcWorkRecordsMasterPage({
               saveLoading={saveLoading}
               onSave={() => void handleSave()}
               evaluationFocus={evaluationMode}
+              sampleLinkAvailable={sampleLinkAvailable}
             />
           </div>
         </DialogContent>

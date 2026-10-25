@@ -1,10 +1,16 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { REPORT_SCOPE_TITLE, type ReportScopeKind } from './reportScope'
-import { filterReportRowsByScope, type ReportResultRow } from './reportResultRows'
+import { filterReportRowsByScope, resultsWithoutUncertainty, type ReportResultRow } from './reportResultRows'
 import { ReportResultsTable } from './ReportResultsTable'
 import { formatTestReportEndNotesText, TEST_REPORT_END_MARKER } from './testReportEndNotes'
+import { resultRemarkOptionsForRule } from './evaluateResultConformity'
+import {
+  DECISION_RULE_TYPE_LABELS,
+  decisionRuleLabel,
+  type DecisionRule,
+} from '@/features/masters/decision-rules/decisionRules'
 
-function TestReportEndNotesBlock() {
+function TestReportEndNotesBlock({ decisionRuleStatement }: { decisionRuleStatement?: string | null }) {
   return (
     <div
       className="mt-0 border border-t-0 border-black bg-white px-3 py-3 font-[Times_New_Roman,Times,serif] text-[10pt] font-bold leading-relaxed text-black"
@@ -12,7 +18,7 @@ function TestReportEndNotesBlock() {
       aria-label="End of report notes"
     >
       <p className="mb-2 text-center font-bold tracking-wide">{TEST_REPORT_END_MARKER}</p>
-      <p className="text-justify font-bold">{formatTestReportEndNotesText()}</p>
+      <p className="text-justify font-bold">{formatTestReportEndNotesText(decisionRuleStatement)}</p>
     </div>
   )
 }
@@ -30,6 +36,7 @@ export function TestReportResultsSection({
   onSectionCodeUpdated,
   specifiedRequirementEditable = false,
   onSpecifiedRequirementUpdated,
+  decisionRule = null,
 }: {
   resultsLoading: boolean
   applicableScopes: ReportScopeKind[]
@@ -43,9 +50,33 @@ export function TestReportResultsSection({
   onSectionCodeUpdated?: (oldCode: string, newCode: string) => void
   specifiedRequirementEditable?: boolean
   onSpecifiedRequirementUpdated?: (rowKey: string, nextValue: string) => void
+  /** Decision rule agreed on the SRF: remark choices and the printed statement. */
+  decisionRule?: DecisionRule | null
 }) {
+  const remarkOptions = resultRemarkOptionsForRule(decisionRule?.ruleType)
+  const withoutU = decisionRule ? resultsWithoutUncertainty(resultRows) : []
   return (
     <div className="overflow-hidden border-2 border-stone-500 bg-white p-2 shadow-sm ring-1 ring-amber-700/15 sm:p-3">
+      {decisionRule ? (
+        <p className="mb-2 border border-amber-400/70 bg-amber-50 px-2 py-1.5 text-[12px] text-amber-900">
+          <span className="font-semibold">Decision rule: </span>
+          {decisionRuleLabel(decisionRule)} ({DECISION_RULE_TYPE_LABELS[decisionRule.ruleType]}
+          {decisionRule.ruleType !== 'simple_acceptance' ? `, w = ${decisionRule.guardBandFactor} × U` : ''}).
+          Remarks not yet saved are judged with the parameter MU.
+        </p>
+      ) : null}
+      {withoutU.length > 0 ? (
+        <div className="mb-2 border border-red-700/40 bg-red-50 px-2 py-1.5 text-[12px] text-red-900" role="alert">
+          <p className="font-semibold">
+            {withoutU.length === 1 ? '1 result has' : `${withoutU.length} results have`} no measurement uncertainty
+          </p>
+          <p>
+            The decision rule needs U, so {withoutU.length === 1 ? 'it was' : 'they were'} judged by simple acceptance, not
+            by the rule printed on the report: {withoutU.join('; ')}. Add the MU in the Test Parameter master (or MU bands)
+            before issuing.
+          </p>
+        </div>
+      ) : null}
       {resultsLoading ? (
         <p className="py-2 text-sm text-stone-600">Loading test results…</p>
       ) : applicableScopes.length === 0 ? (
@@ -90,8 +121,11 @@ export function TestReportResultsSection({
                     onSectionCodeUpdated={onSectionCodeUpdated}
                     specifiedRequirementEditable={specifiedRequirementEditable}
                     onSpecifiedRequirementUpdated={onSpecifiedRequirementUpdated}
+                    remarkOptions={remarkOptions}
                   />
-                  {scopedRows.length > 0 && <TestReportEndNotesBlock />}
+                  {scopedRows.length > 0 && (
+                    <TestReportEndNotesBlock decisionRuleStatement={decisionRule?.statementText} />
+                  )}
                 </div>
               </TabsContent>
             )

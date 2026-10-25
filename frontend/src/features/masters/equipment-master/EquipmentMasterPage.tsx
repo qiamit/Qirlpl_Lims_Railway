@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { csvCell } from '@/lib/csv'
 import { useSearchParams } from 'react-router-dom'
-import { limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
+import { limsDarkBarBtnClass, limsDarkBarGlowStyle, limsPageShellClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabaseClient'
+import { fetchDeletedKeys } from '@/lib/softDelete'
 import { assertAllowedUpload, uploadContentType } from '@/lib/validateUpload'
 import { useFormDialogOpenChange } from '@/lib/formDialogOpenChange'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,6 +13,10 @@ import { EquipmentTable } from './EquipmentTable'
 import { EquipmentFooterBar } from './EquipmentFooterBar'
 import { EquipmentMasterForm } from './EquipmentMasterForm'
 import { AddClientDialog } from './AddClientDialog'
+import { CalibrationHistoryDialog } from './CalibrationHistoryDialog'
+import { EquipmentAcceptanceDialog } from './EquipmentAcceptanceDialog'
+import { CorrectionFactorsDialog } from './CorrectionFactorsDialog'
+import { acceptanceStateFor, fetchLatestAcceptance, type AcceptanceState, type LatestAcceptance } from './equipmentAcceptance'
 import {
   emptyEquipmentForm,
   type EquipmentForm,
@@ -28,6 +33,11 @@ import { parseMaintenanceHistoryFromDb } from './maintenanceHistory'
 import { parseIntermediateCheckHistoryFromDb } from './intermediateCheckHistory'
 import { fetchDesignationAndDepartmentLabels } from '@/features/settings/lab-settings/labMasterOptions'
 import { EQUIPMENT_KIND_TESTING } from '@/lib/equipmentKind'
+import { recordReason, useReasonForChange } from '@/hooks/useReasonForChange'
+import { isMissingColumnError } from '@/features/quality/control-charts/missingColumn'
+import { printHelperScriptTag } from '@/lib/printHelper'
+import { EquipmentLabelButtons } from './EquipmentLabelButtons'
+import { equipmentLabelStatus, equipmentLabelUrl, type EquipmentLabelItem } from './equipmentLabels'
 
 const BUCKET = 'equipment-files'
 
@@ -38,7 +48,29 @@ const formatSupabaseError = (err: unknown) => {
   return parts.length ? parts.join(' | ') : 'Unknown error'
 }
 
+/**
+ * Calibration fields that already held a value and are being changed (ISO 17025 7.5.2).
+ * Filling an empty field for the first time is not a change and needs no reason.
+ */
+function changedSavedCalibrationFields(row: EquipmentRow, form: EquipmentForm): string[] {
+  const norm = (v: string | null | undefined) => (v ?? '').trim()
+  const pairs: Array<[string, string | null | undefined, string]> = [
+    ['Calibration frequency', row.calibration_frequency, form.calibrationFrequency],
+    ['Last calibration date', row.last_calibration_date, sanitizeDateStr(form.lastCalibrationDate)],
+    ['Next calibration due', row.next_calibration_due, sanitizeDateStr(form.nextCalibrationDue)],
+    ['Certificate number', row.calibration_certificate_number, form.calibrationCertificateNumber],
+    ['Certificate uncertainty', row.calibration_certificate_uncertainty, form.calibrationCertificateUncertainty],
+    ['Uncertainty unit', row.calibration_uncertainty_unit, form.calibrationUncertaintyUnit],
+    ['Coverage factor', row.calibration_coverage_factor, form.calibrationCoverageFactor],
+    ['Calibration agency', row.external_calibration_agency, form.externalCalibrationAgency],
+  ]
+  const changed = pairs.filter(([, saved, next]) => norm(saved) !== '' && norm(saved) !== norm(next)).map(([l]) => l)
+  if (form.certificateFile && norm(row.upload_certificate_path) !== '') changed.push('Calibration certificate file')
+  return changed
+}
+
 export default function EquipmentMasterPage() {
+  const askReason = useReasonForChange()
   const [searchParams, setSearchParams] = useSearchParams()
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -51,6 +83,13 @@ export default function EquipmentMasterPage() {
 
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [showForm, setShowForm] = useState(false)
+  /** Equipment whose calibration certificate history is open (ISO 17025 6.4). */
+  const [calHistoryRow, setCalHistoryRow] = useState<EquipmentRow | null>(null)
+  /** Acceptance / commissioning (6.4.1) and correction factors (6.4.11) dialogs. */
+  const [acceptanceRow, setAcceptanceRow] = useState<EquipmentRow | null>(null)
+  const [correctionsRow, setCorrectionsRow] = useState<EquipmentRow | null>(null)
+  /** Latest acceptance record per equipment; null = table not on this database yet. */
+  const [latestAcceptance, setLatestAcceptance] = useState<Map<string, LatestAcceptance> | null>(null)
   const handleFormOpenChange = useFormDialogOpenChange((open) => {
     setShowForm(open)
     if (!open) {
@@ -98,6 +137,13 @@ export default function EquipmentMasterPage() {
     })
     return map
   }, [employees])
+
+  const acceptanceStateMap = useMemo(() => {
+    if (!latestAcceptance) return undefined
+    const map: Record<string, AcceptanceState> = {}
+    for (const r of rows) map[r.id] = acceptanceStateFor(r, latestAcceptance.get(r.id))
+    return map
+  }, [rows, latestAcceptance])
 
   const [form, setForm] = useState<EquipmentForm>(() => emptyEquipmentForm())
 
@@ -149,6 +195,7 @@ export default function EquipmentMasterPage() {
 
       if (error) throw error
       setRows((data as EquipmentRow[]) ?? [])
+      void fetchLatestAcceptance().then(setLatestAcceptance)
 
       // Dynamically extract locations
       if (data) {
@@ -207,10 +254,11 @@ export default function EquipmentMasterPage() {
       console.warn('Could not load prefix, defaulting to EQ-', err)
     }
 
-    // Parse existing asset codes to find max serial number for that prefix
+    // Parse existing asset codes (and those of deleted records, never reused) to find max serial number for that prefix
+    const deletedCodes = await fetchDeletedKeys('equipment_master', 'asset_code')
+    const codes = [...rows.map((r) => r.asset_code || ''), ...deletedCodes]
     let maxSerial = 0
-    rows.forEach((r) => {
-      const code = r.asset_code || ''
+    codes.forEach((code) => {
       if (code.startsWith(prefix)) {
         const trailing = code.slice(prefix.length).replace(/\D/g, '')
         const num = parseInt(trailing, 10)
@@ -282,6 +330,18 @@ export default function EquipmentMasterPage() {
           return
         }
 
+        const savedRow = editingId ? rows.find((r) => r.id === editingId) : undefined
+        const changedCalFields = savedRow ? changedSavedCalibrationFields(savedRow, form) : []
+        let changeReason: string | null = null
+        if (changedCalFields.length > 0) {
+          changeReason = await askReason({
+            title: 'Reason for changing calibration data',
+            recordLabel: `${code} · ${changedCalFields.join(', ')}`,
+            confirmLabel: 'Save',
+          })
+          if (!changeReason) return
+        }
+
         const eqId = editingId || crypto.randomUUID()
 
         // Upload files if selected
@@ -344,8 +404,19 @@ export default function EquipmentMasterPage() {
           equipment_kind: EQUIPMENT_KIND_TESTING,
         }
 
-        const { error } = await supabase.from('equipment_master').upsert(payload)
+        // Seal / tamper fields (6.4.12) exist after migration 20261028100200;
+        // before it the save is retried without them.
+        const sealPayload = {
+          seal_no: form.sealNo.trim() || null,
+          seal_intact_checked_on: sanitizeDateStr(form.sealIntactCheckedOn) || null,
+          adjustment_protection: form.adjustmentProtection.trim() || null,
+        }
+        let { error } = await supabase.from('equipment_master').upsert({ ...payload, ...sealPayload })
+        if (error && isMissingColumnError(error)) {
+          ;({ error } = await supabase.from('equipment_master').upsert(payload))
+        }
         if (error) throw error
+        if (changeReason) await recordReason('equipment_master', eqId, changeReason)
 
         setSaveMessage('Saved successfully.')
         setForm(emptyEquipmentForm())
@@ -431,6 +502,9 @@ export default function EquipmentMasterPage() {
       uploadCertificatePath: row.upload_certificate_path ?? '',
       uploadManualSopPath: row.upload_manual_sop_path ?? '',
       custodianEmployeeId: row.custodian_employee_id ?? '',
+      sealNo: row.seal_no ?? '',
+      sealIntactCheckedOn: row.seal_intact_checked_on ?? '',
+      adjustmentProtection: row.adjustment_protection ?? '',
       certificateFile: null,
       manualSopFile: null,
     })
@@ -446,6 +520,24 @@ export default function EquipmentMasterPage() {
     const next = new URLSearchParams(searchParams)
     next.delete('view')
     setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
+  }, [searchParams, listLoading, rows])
+
+  // ?asset=<code> (QR code on the equipment status label, 6.4.8): open that equipment.
+  useEffect(() => {
+    const asset = searchParams.get('asset')?.trim()
+    if (!asset || listLoading || rows.length === 0) return
+    const key = asset.toLowerCase()
+    const row = rows.find((r) => (r.asset_code ?? '').trim().toLowerCase() === key)
+    const next = new URLSearchParams(searchParams)
+    next.delete('asset')
+    setSearchParams(next, { replace: true })
+    if (!row) {
+      setSaveMessage(`No equipment with asset code ${asset}.`)
+      return
+    }
+    setSearch(row.asset_code)
+    handleEdit(row, 'details')
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when list ready
   }, [searchParams, listLoading, rows])
 
@@ -497,6 +589,10 @@ export default function EquipmentMasterPage() {
       uploadCertificatePath: row.upload_certificate_path ?? '',
       uploadManualSopPath: row.upload_manual_sop_path ?? '',
       custodianEmployeeId: row.custodian_employee_id ?? '',
+      // A copy is another physical item: its seal is recorded afresh.
+      sealNo: '',
+      sealIntactCheckedOn: '',
+      adjustmentProtection: row.adjustment_protection ?? '',
       certificateFile: null,
       manualSopFile: null,
     })
@@ -567,6 +663,25 @@ export default function EquipmentMasterPage() {
   }
 
   const selectedRows = useMemo(() => rows.filter((r) => selectedIds.has(r.id)), [rows, selectedIds])
+
+  const labelItems = (): EquipmentLabelItem[] =>
+    selectedRows.map((r) => {
+      const acc = acceptanceStateMap?.[r.id]
+      return {
+        assetCode: r.asset_code,
+        name: r.equipment_name,
+        calibratedOn: r.last_calibration_date,
+        dueOn: r.next_calibration_due,
+        sealNo: r.seal_no,
+        status: equipmentLabelStatus({
+          equipmentStatus: r.equipment_status,
+          lastCalibrationDate: r.last_calibration_date,
+          nextCalibrationDue: r.next_calibration_due,
+          notAccepted: acc === 'pending' || acc === 'rejected',
+        }),
+        url: equipmentLabelUrl('/masters/equipment', r.asset_code),
+      }
+    })
 
   const handlePrintSelected = () => {
     const exportRows = selectedRows.length > 0 ? selectedRows : filteredRows
@@ -979,7 +1094,40 @@ export default function EquipmentMasterPage() {
         onToggleAll={toggleAllOnPage}
         onEdit={handleEdit}
         onCopy={handleCopy}
+        onCalibrationHistory={setCalHistoryRow}
+        onAcceptance={latestAcceptance ? setAcceptanceRow : undefined}
+        onCorrections={latestAcceptance ? setCorrectionsRow : undefined}
+        acceptanceState={acceptanceStateMap}
         employeeMap={employeeMap}
+      />
+
+      <EquipmentAcceptanceDialog
+        open={acceptanceRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setAcceptanceRow(null)
+        }}
+        equipment={acceptanceRow}
+        onSaved={loadEquipment}
+      />
+
+      <CorrectionFactorsDialog
+        open={correctionsRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setCorrectionsRow(null)
+        }}
+        equipment={correctionsRow}
+      />
+
+      <CalibrationHistoryDialog
+        open={calHistoryRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setCalHistoryRow(null)
+        }}
+        equipment={calHistoryRow}
+        clients={clients}
+        uploadCertificate={(equipmentId, file) => uploadAttachment(equipmentId, 'certificate', file)}
+        onViewFile={(path, name) => void handleViewFile(path, name)}
+        onEquipmentUpdated={loadEquipment}
       />
 
       <EquipmentFooterBar
@@ -990,6 +1138,15 @@ export default function EquipmentMasterPage() {
         onExport={handleExport}
         onPrintSelected={handlePrintSelected}
         onDeleteSelected={handleDeleteSelected}
+        labelActions={
+          <EquipmentLabelButtons
+            getItems={labelItems}
+            selectedCount={selectedRows.length}
+            disabled={saveLoading}
+            className={limsDarkBarBtnClass}
+            onError={setSaveMessage}
+          />
+        }
         page={page}
         pageCount={pageCount}
         onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
@@ -1133,6 +1290,7 @@ function buildEquipmentPrintHtml(
             <div class="field"><div class="k">Maintenance (Freq / Last / Next / Done By)</div><div class="v">${esc(r.maintenance_schedule_frequency || '-')}: ${esc(r.last_maintenance_date || '-')} / ${esc(r.next_maintenance_date || '-')} by ${esc(maintName)}</div></div>
 
             <div class="field span2"><div class="k">History of Damage/Malfunction</div><div class="v">${esc(r.history_of_damage || '-')}</div></div>
+            ${r.seal_no || r.adjustment_protection ? `<div class="field span2"><div class="k">Seal / Adjustment Protection (6.4.12)</div><div class="v">${esc(r.seal_no || '-')}${r.seal_intact_checked_on ? ` (intact on ${esc(r.seal_intact_checked_on)})` : ''} — ${esc(r.adjustment_protection || '-')}</div></div>` : ''}
           </div>
         </section>
       `
@@ -1166,13 +1324,7 @@ function buildEquipmentPrintHtml(
     </head>
     <body>
       <div class="wrap">${cards}</div>
-      <script>
-        window.addEventListener('load', function () {
-          setTimeout(function () {
-            try { window.focus(); window.print(); } catch (e) {}
-          }, 250);
-        });
-      </script>
+      ${printHelperScriptTag()}
     </body>
   </html>`
 }

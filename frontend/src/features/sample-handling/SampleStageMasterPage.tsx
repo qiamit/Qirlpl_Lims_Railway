@@ -187,7 +187,7 @@ export default function SampleStageMasterPage({ stage, title, nextStage }: Props
             <p className="text-sm text-muted-foreground">No samples in this stage yet.</p>
           ) : (
             <div className="rounded-md border overflow-x-auto">
-              <div className="w-full">
+              <div className="w-full min-w-[640px]">
                 <div className="grid grid-cols-[44px_1.2fr_1.5fr_1fr_1fr_96px] bg-stone-800 text-xs font-semibold divide-x divide-border">
                   <div className="p-3 flex items-center justify-center">
                     <input type="checkbox" aria-label="Select all" checked={allChecked} ref={(el) => { if (el) el.indeterminate = !allChecked && someChecked }} onChange={(e) => toggleAll(e.target.checked)} />

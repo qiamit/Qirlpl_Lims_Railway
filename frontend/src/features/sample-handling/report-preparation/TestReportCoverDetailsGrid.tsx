@@ -12,7 +12,7 @@ import {
   withReceivingReportTypeSuffix,
 } from './formattedTestReportNumber'
 import {
-  NABL_ULR_CHAR_LENGTH,
+  NABL_ULR_MAX_INPUT_LENGTH,
   nablUlrPlaceholder,
   sanitizeNablUlrInput,
   ULR_PREFIX_SETTING_NAMES,
@@ -97,7 +97,6 @@ export function TestReportCoverDetailsGrid({
   const reportLastChars = typeSuffix
     ? `${reportNumberLastCharForScope(activeScope)}${typeSuffix}`
     : reportNumberLastCharForScope(activeScope)
-  const reportMaxLength = typeSuffix ? TEST_REPORT_WITH_TYPE_LENGTH : TEST_REPORT_TOTAL_LENGTH
   const reportPlaceholder = testReportPrefix
     ? toReportNumberForScope(
         typeSuffix
@@ -106,6 +105,12 @@ export function TestReportCoverDetailsGrid({
         activeScope,
       )
     : '0'.repeat(Math.max(1, TEST_REPORT_TOTAL_LENGTH - 1)) + reportLastChars
+  // A long prefix makes the number grow rather than cut serial digits: allow that length.
+  const reportMaxLength = Math.max(
+    typeSuffix ? TEST_REPORT_WITH_TYPE_LENGTH : TEST_REPORT_TOTAL_LENGTH,
+    reportPlaceholder.length,
+    displayReportNumber.length,
+  )
   const ulrPlaceholder = nablUlrPlaceholder(ulrPrefix)
 
   const customerName = details.customerName ?? details.customerDetails
@@ -202,7 +207,7 @@ export function TestReportCoverDetailsGrid({
                   value={nablUlrNumber}
                   onChange={(e) => onNablUlrNumberChange(sanitizeNablUlrInput(e.target.value))}
                   placeholder={ulrPlaceholder}
-                  maxLength={NABL_ULR_CHAR_LENGTH}
+                  maxLength={NABL_ULR_MAX_INPUT_LENGTH}
                   disabled={disabled || ulrPrefixLoading}
                   title={`NABL 18-position ULR (19 chars) · Part A · ${ULR_PREFIX_SETTING_NAMES.join(' / ')}`}
                   aria-label="ULR Number"

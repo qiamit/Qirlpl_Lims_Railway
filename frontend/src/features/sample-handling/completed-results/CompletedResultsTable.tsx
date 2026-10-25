@@ -5,7 +5,8 @@ import {
   limsTableClass,
   limsTableHeadClass,
 } from '@/lib/limsThemeUi'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, formatDateTime } from '@/lib/utils'
+import { IssuedReportArchiveBadge, type IssuedReportArchiveStatus } from './IssuedReportArchiveBadge'
 import { IssuedTestReportRowActions } from './IssuedTestReportRowActions'
 import type { IssuedTestReportListRow } from './types'
 
@@ -34,6 +35,8 @@ export function CompletedResultsTable({
   onReferbackToResultsReview,
   onIssueAmendment,
   canReferbackToResultsReview,
+  archiveStatuses,
+  onVerifyArchive,
 }: {
   rows: IssuedTestReportListRow[]
   loading: boolean
@@ -51,6 +54,9 @@ export function CompletedResultsTable({
   onReferbackToResultsReview: (row: IssuedTestReportListRow) => void
   onIssueAmendment: (row: IssuedTestReportListRow) => void
   canReferbackToResultsReview: boolean
+  /** Issued-report archive state per row id (loaded lazily for the visible page). */
+  archiveStatuses?: Record<string, IssuedReportArchiveStatus | undefined>
+  onVerifyArchive?: (row: IssuedTestReportListRow) => void
 }) {
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id))
   const someChecked = rows.some((r) => selectedIds.has(r.id))
@@ -152,6 +158,23 @@ export function CompletedResultsTable({
                     className={cn(tdClass, 'w-0 whitespace-nowrap text-center text-[#78716c]')}
                   >
                     {formatDate(r.issuedAt ?? '')}
+                    {r.issuedByName ? (
+                      <div
+                        className="text-[11px] leading-tight text-[#a8a29e]"
+                        title={`Issued by ${r.issuedByName}, ${formatDateTime(r.issuedAt ?? '')}`}
+                      >
+                        by {r.issuedByName}
+                      </div>
+                    ) : null}
+                    {archiveStatuses ? (
+                      <div>
+                        <IssuedReportArchiveBadge
+                          status={archiveStatuses[r.id]}
+                          disabled={busy}
+                          onVerify={() => onVerifyArchive?.(r)}
+                        />
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className={cn(tdClass, 'min-w-[252px] whitespace-nowrap text-center')}>
                     <IssuedTestReportRowActions
