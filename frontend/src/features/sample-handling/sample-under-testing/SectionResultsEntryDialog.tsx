@@ -740,12 +740,13 @@ export function SectionResultsEntryDialog({
       if (withEnv) void onSave(withEnv)
       return
     }
-    const missing: string[] = []
+    // Equipment / CRMs used is optional for now (lab decision 26 Oct 2026, until
+    // the equipment records are complete); equipment that is chosen must still
+    // be usable on the test date.
     const blocked: string[] = []
     const checked = draft.map((p) => {
       const items = refreshSnapshots(p, p.equipmentUsed ?? [])
       if (p.results?.trim()) {
-        if (!equipmentUsedIsRecorded(items)) missing.push(p.testLabel)
         for (const s of equipmentSnapshotsOf(items)) {
           if (s.usable === false && !s.override_reason) {
             blocked.push(`${p.testLabel}: ${s.asset_code} ${s.name} (${s.reason ?? 'not usable'})`)
@@ -754,21 +755,12 @@ export function SectionResultsEntryDialog({
       }
       return { ...p, equipmentUsed: items }
     })
-    if (missing.length > 0 || blocked.length > 0) {
-      const parts: string[] = []
-      if (missing.length > 0) {
-        parts.push(
-          `Select the equipment / CRMs used (or record "no equipment used" with a reason) for: ${missing.join(', ')}.`,
-        )
-      }
-      if (blocked.length > 0) {
-        parts.push(
-          `Not usable on the test date: ${blocked.join('; ')}.${
-            isDirector ? ' Re-select the item to override with a reason.' : ' Only the Laboratory Director can override.'
-          }`,
-        )
-      }
-      setEquipmentError(parts.join(' '))
+    if (blocked.length > 0) {
+      setEquipmentError(
+        `Not usable on the test date: ${blocked.join('; ')}.${
+          isDirector ? ' Re-select the item to override with a reason.' : ' Only the Laboratory Director can override.'
+        }`,
+      )
       return
     }
     setEquipmentError(null)
@@ -1120,7 +1112,10 @@ export function SectionResultsEntryDialog({
               <div className={headCellClass}>Test Start Date</div>
               <div className={headCellClass}>Test End Date</div>
               <div className={headCellClass}>Results</div>
-              <div className={headCellClass}>Equipment / CRMs Used</div>
+              <div className={cn(headCellClass, 'flex-col gap-0')}>
+                Equipment / CRMs Used
+                <span className="text-[10px] font-normal normal-case tracking-normal opacity-75">optional</span>
+              </div>
               <div className={headCellClass}>NABL Scope</div>
             </div>
 
@@ -1335,10 +1330,7 @@ export function SectionResultsEntryDialog({
                             type="button"
                             size="sm"
                             variant="outline"
-                            className={cn(
-                              'h-7 rounded-none border-stone-500 px-2 text-[11px]',
-                              p.results?.trim() && !equipmentUsedIsRecorded(p.equipmentUsed) && 'border-red-600 text-red-700',
-                            )}
+                            className="h-auto min-h-7 w-full min-w-0 whitespace-normal rounded-none border-stone-500 px-2 py-1 text-[11px]"
                             onClick={() => setPickerIndex(index)}
                             disabled={saving || traceability !== 'available'}
                           >
