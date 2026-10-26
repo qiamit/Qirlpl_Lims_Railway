@@ -268,7 +268,7 @@ export function TestResultsEntryCell({
 
   return (
     <>
-      <div className="flex items-start gap-1 min-w-[200px] max-w-[320px]">
+      <div className="flex w-full min-w-0 max-w-[320px] items-start gap-1">
         {structuredValue ? (
           <button
             type="button"
