@@ -120,10 +120,11 @@ export function SignatoriesEditor({
         Signatories
       </p>
       <p className="text-xs text-stone-600">
-        Only the roles switched on here print, after the parts chosen here. Each report fills them with the people
-        who did the work: whoever entered the results (Tested By) and the Technical Manager who reviewed and
-        approved them (Reviewed / Checked By, Approved / Authorized By). Until the results are reviewed, the names
-        below are shown for that role.
+        Each report prints the people who did the work: whoever entered the results (Tested By) and the
+        Technical Manager who reviewed and approved them (Reviewed / Checked By, Approved / Authorized By). A
+        person listed here prints with their own row: its role and parts, and not at all when the row is switched
+        off or has no part ticked. Someone not listed prints with that role&apos;s parts. Until the results are
+        reviewed, the names below are shown for that role.
       </p>
 
       {usersLoading ? (

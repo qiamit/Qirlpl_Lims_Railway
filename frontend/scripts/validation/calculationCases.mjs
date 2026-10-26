@@ -823,6 +823,49 @@ export const CASES = [
       'Approved By: Kunal Patle [part_a part_b part_d]',
     ],
   },
+  {
+    id: 'SG-02',
+    module: 'sig',
+    title: 'Test report signatories: a person with their own Print Setting row prints with that row only',
+    source:
+      'Lab 26 Oct 2026: Print Setting Tested By Vishal after Part D, Tested By Rajat with no part, Approved By Kunal after ' +
+      'A, B, D; both engineers entered results. Changes in Print Setting had no effect. Hand: Rajat not printed; Vishal ' +
+      'after D; Kunal after A, B, D. Rajat switched off with parts → not printed; Rajat after Part A → printed after A, ' +
+      'in Print Setting order',
+    run: (m) => {
+      const row = (roleLabel, id, name, parts, enabled = true) => ({ roleLabel, userId: id, name, designation: '', department: '', enabled, required: true, showAfterParts: parts })
+      const person = (id, name, designation) => ({ userId: id, name, designation, department: '' })
+      const people = {
+        testers: [person('r', 'Rajat Maurya', 'Testing Engineer'), person('v', 'Vishal Rahangdale', 'Testing Engineer')],
+        reviewers: [person('k', 'Kunal Patle', 'Technical Manager')],
+        issuer: person('y', 'Yogeshwar Krishna', 'Laboratory Director'),
+      }
+      const layout = (rajat) => ({
+        showSignatures: true,
+        signatures: [row('Tested By', 'v', 'Vishal Rahangdale', ['part_d']), rajat, row('Approved By', 'k', 'Kunal Patle', ['part_a', 'part_b', 'part_d'])],
+      })
+      const line = (sg) => `${sg.roleLabel}: ${sg.name} [${sg.showAfterParts.join(' ')}]`
+      const run = (rajat) => m.sig.applyReportPeopleToSignatures(layout(rajat), people).signatures.map(line)
+      return [
+        ...run(row('Tested By', 'r', 'Rajat Maurya', [])),
+        '--',
+        ...run(row('Tested By', 'r', 'Rajat Maurya', ['part_d'], false)),
+        '--',
+        ...run(row('Tested By', 'r', 'Rajat Maurya', ['part_a'])),
+      ]
+    },
+    expected: [
+      'Tested By: Vishal Rahangdale [part_d]',
+      'Approved By: Kunal Patle [part_a part_b part_d]',
+      '--',
+      'Tested By: Vishal Rahangdale [part_d]',
+      'Approved By: Kunal Patle [part_a part_b part_d]',
+      '--',
+      'Tested By: Vishal Rahangdale [part_d]',
+      'Tested By: Rajat Maurya [part_a]',
+      'Approved By: Kunal Patle [part_a part_b part_d]',
+    ],
+  },
 
   // ------------------------------------------------------------- test report number
   {

@@ -55,68 +55,83 @@ function uniquePeople(people: ReportPerson[]): ReportPerson[] {
   })
 }
 
+const nameKey = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase()
+
+/** The Print Setting row that names this person (same user id, else same name). */
+function rowForPerson(rows: Array<{ sig: TestReportSignature; index: number }>, p: ReportPerson) {
+  return (
+    rows.find((r) => p.userId && r.sig.userId && r.sig.userId === p.userId) ??
+    rows.find((r) => nameKey(p.name) !== '' && nameKey(r.sig.name) === nameKey(p.name))
+  )
+}
+
 /**
- * Signatures for this report. Print Setting decides which roles sign and
- * after which parts (lab, 25 Oct 2026); only roles enabled there print. The
- * names come from the sample: "Tested By" = whoever entered the results;
- * "Reviewed / Checked By" and "Approved / Authorized By" = whoever reviewed and
- * approved the results (the Technical Manager). The person issuing the report
- * is not printed unless Print Setting has such a role. A role whose person is
- * not known yet (results not reviewed) prints the names Print Setting holds.
+ * Signatures for this report. The names come from the sample: "Tested By" =
+ * whoever entered the results; "Reviewed / Checked By" and "Approved /
+ * Authorized By" = whoever reviewed and approved them (the Technical Manager);
+ * the person issuing the report is not printed unless Print Setting has such a
+ * role. Print Setting decides the layout (lab, 25–26 Oct 2026):
+ *  - a person who has their own row there prints with that row's role and
+ *    parts, and not at all when the row is switched off or has no parts;
+ *  - a person without a row prints with the role's parts (all enabled rows of
+ *    that role together), placed after that role's rows;
+ *  - a role with no enabled row is not printed;
+ *  - a role whose person is not known yet (results not reviewed) prints the
+ *    rows as Print Setting holds them.
+ * The order follows Print Setting.
  */
 export function applyReportPeopleToSignatures(
   settings: TestReportPrintSettings,
   people: SampleReportPeople,
 ): TestReportPrintSettings {
-  type Slot = { label: string; parts: TestReportSignatureAfterPart[]; fallback: TestReportSignature[] }
-  const order: Array<RoleGroup | TestReportSignature> = []
-  const layout: Partial<Record<RoleGroup, Slot>> = {}
-  for (const sig of settings.signatures) {
-    if (!sig.enabled) continue
+  type Row = { sig: TestReportSignature; index: number }
+  const groups: Record<RoleGroup, Row[]> = { tested: [], reviewed: [], authorized: [] }
+  const out: Array<{ order: number; sig: TestReportSignature }> = []
+  settings.signatures.forEach((sig, index) => {
     const group = roleGroup(sig.roleLabel)
-    if (!group) {
-      order.push(sig) // a role the app does not fill: printed as set
-      continue
-    }
-    const current = layout[group]
-    if (!current) order.push(group)
-    layout[group] = {
-      label: current?.label ?? (sig.roleLabel.trim() || DEFAULT_ROLE_LABEL[group]),
-      parts: [...new Set([...(current?.parts ?? []), ...sig.showAfterParts])],
-      fallback: [...(current?.fallback ?? []), sig],
-    }
-  }
+    if (group) groups[group].push({ sig, index })
+    else if (sig.enabled) out.push({ order: index, sig }) // a role the app does not fill: printed as set
+  })
   const peopleFor: Record<RoleGroup, ReportPerson[]> = {
     tested: uniquePeople(people.testers),
     reviewed: uniquePeople(people.reviewers),
     authorized: uniquePeople(people.reviewers),
   }
-  const signatures: TestReportSignature[] = []
-  for (const item of order) {
-    if (typeof item !== 'string') {
-      signatures.push(item)
-      continue
-    }
-    const slot = layout[item]!
-    const persons = peopleFor[item]
+  for (const group of ['tested', 'reviewed', 'authorized'] as RoleGroup[]) {
+    const rows = groups[group]
+    const enabled = rows.filter((r) => r.sig.enabled)
+    if (enabled.length === 0) continue
+    const persons = peopleFor[group]
     if (persons.length === 0) {
-      signatures.push(...slot.fallback.map((f) => ({ ...f, roleLabel: slot.label, showAfterParts: slot.parts })))
+      for (const r of enabled) out.push({ order: r.index, sig: r.sig })
       continue
     }
+    const roleLabel = enabled[0].sig.roleLabel.trim() || DEFAULT_ROLE_LABEL[group]
+    const roleParts = [...new Set(enabled.flatMap((r) => r.sig.showAfterParts))] as TestReportSignatureAfterPart[]
+    const afterRole = Math.max(...rows.map((r) => r.index))
+    let extra = 0
     for (const p of persons) {
-      signatures.push({
-        roleLabel: slot.label,
-        userId: p.userId,
-        name: p.name,
-        designation: p.designation,
-        department: p.department,
-        enabled: true,
-        required: true,
-        showAfterParts: slot.parts,
+      const own = rowForPerson(rows, p)
+      const label = own ? own.sig.roleLabel.trim() || roleLabel : roleLabel
+      const parts = own ? (own.sig.enabled ? own.sig.showAfterParts : []) : roleParts
+      if (parts.length === 0) continue
+      out.push({
+        order: own ? own.index : afterRole + (extra += 0.001),
+        sig: {
+          roleLabel: label,
+          userId: p.userId,
+          name: p.name,
+          designation: p.designation,
+          department: p.department,
+          enabled: true,
+          required: true,
+          showAfterParts: parts,
+        },
       })
     }
   }
-  return { ...settings, signatures }
+  out.sort((a, b) => a.order - b.order)
+  return { ...settings, signatures: out.map((o) => o.sig) }
 }
 
 /**
