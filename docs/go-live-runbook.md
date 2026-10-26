@@ -449,3 +449,20 @@ Validation note (ISO/IEC 17025 6.4, 7.5.1): while equipment is optional the
 equipment used for a result may not be recorded in the LIMS; the lab records
 it on the worksheet until the equipment records are complete, then the
 requirement can be switched back on (one condition in `handleSaveClick`).
+
+## Release 6 after go-live (Monday 26 Oct 2026): done
+
+Report signatures follow each person's Print Setting row (lab report: changes
+in Print Setting → Signatories had no effect on the preview); approved by Amit
+in chat.
+
+| Step | Result |
+|---|---|
+| Cause | All "Tested By" rows were merged into one slot (union of parts) and filled with the people who entered the results, so a person's own row (Rajat: no part) was ignored |
+| Change | `reportSignatories.ts`: a person with their own row prints with that row's role and parts, not at all when it is off or has no part; others with the role's parts; Print Setting order; issuer never printed (unchanged). Print Setting note updated. Validation suite 70/70 (new SG-02) |
+| Staging | Deployed 1ccdeb0 |
+| Merge | PR qiamit/Qirlpl_Lims_Railway#19; `main` 82865bf → 8d37643; mcp, frontend, api, pdf-service, files-backup SUCCESS |
+| Checks | Production bundle has the new note (old one gone); smoke test and MCP checks pass. With today's production Print Setting a report prints Tested By Vishal (after Part D) and Approved By Kunal (after A, B, D); Rajat is not printed |
+
+Not checked on screen by Claude (production data); the lab checks the next
+report preview.
