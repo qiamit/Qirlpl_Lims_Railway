@@ -427,3 +427,25 @@ Results review guard (migration 53), approved by Amit in chat. Staging record:
 
 No frontend change: the screens already lock a section sent for review and
 show the database message when an approval is refused.
+
+## Release 5 after go-live (Monday 26 Oct 2026): done
+
+Enter Results: equipment / CRMs used and raw data files optional (lab
+decision 26 Oct, until the equipment records are complete); approved by Amit
+in chat.
+
+| Step | Result |
+|---|---|
+| Change | `SectionResultsEntryDialog.tsx`: no equipment needed to save; chosen equipment must still be usable on the test date (Director override as before); heading "optional". `TestResultsEntryCell.tsx`: result box fits its column (the calculator no longer sits under "Select equipment"). Raw data files were already optional. No database change |
+| Staging | Built and deployed 2d1f8f4 (one rebuild after a Railway build-machine error) |
+| Merge | PR qiamit/Qirlpl_Lims_Railway#18; `main` ec3df75 → 82865bf; mcp, frontend, api, pdf-service, files-backup SUCCESS |
+| Checks | Production bundle: the old "Select the equipment / CRMs used…" block is gone, the "Not usable on the test date" check is present, the result box class is the new one; smoke test and MCP checks pass |
+
+Not checked on screen by Claude: saving a real result without equipment
+(production data; the staging test login could not be used). The lab checks
+it with the next result entry.
+
+Validation note (ISO/IEC 17025 6.4, 7.5.1): while equipment is optional the
+equipment used for a result may not be recorded in the LIMS; the lab records
+it on the worksheet until the equipment records are complete, then the
+requirement can be switched back on (one condition in `handleSaveClick`).
