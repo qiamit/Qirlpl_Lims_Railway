@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Loader2, Paperclip, Trash2, Upload } from 'lucide-react'
+import { Loader2, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/hooks/useAuth'
@@ -121,7 +121,6 @@ export function ResultObservationMeta({
           aria-label={`Raw data files for ${testLabel}`}
           title={['Raw printouts / photos for this result', stampText].filter(Boolean).join('\n')}
         >
-          <Paperclip className="h-3 w-3" />
           {attachments.length > 0 ? `${attachments.length} file${attachments.length === 1 ? '' : 's'}` : canAttach ? 'Attach' : 'No files'}
         </button>
       ) : null}

@@ -293,17 +293,15 @@ export function TestResultsEntryCell({
           />
         )}
         <div className="flex items-center justify-center gap-2">
-          <Button
+          <button
             type="button"
-            variant="outline"
-            size="icon"
-            className="h-6 w-6 shrink-0"
+            className="text-[10.5px] font-semibold leading-tight text-amber-800 hover:text-amber-950 hover:underline"
             aria-label="Multiple readings and statistics"
             title="Multiple readings — Sum, Average, CV, Std. Deviation…"
             onClick={() => setOpen(true)}
           >
-            <Calculator className="h-3.5 w-3.5" />
-          </Button>
+            Calculator
+          </button>
           {footer}
         </div>
       </div>

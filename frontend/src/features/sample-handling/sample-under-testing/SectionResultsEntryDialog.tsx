@@ -1269,7 +1269,7 @@ export function SectionResultsEntryDialog({
                       {(() => {
                         const meta = (
                           <ResultObservationMeta
-                            className={readOnly ? undefined : 'mt-0 w-auto'}
+                            className={readOnly ? undefined : "mt-0 w-auto before:text-stone-400 before:content-['|']"}
                             sampleId={row?.sampleId ?? null}
                             paramRowId={p.paramRowId}
                             testLabel={p.testLabel}
