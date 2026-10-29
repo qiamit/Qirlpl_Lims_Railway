@@ -467,7 +467,7 @@ in chat.
 Not checked on screen by Claude (production data); the lab checks the next
 report preview.
 
-## Release 7 after go-live (Thursday 29 Oct 2026): in progress
+## Release 7 after go-live (Thursday 29 Oct 2026): done
 
 NABL scope per result (migration 54) and the Enter Results layout; approved
 by Amit in chat ("Haan, dono bhejo"; then "update karke batao").
@@ -478,4 +478,8 @@ by Amit in chat ("Haan, dono bhejo"; then "update karke batao").
 | Backup | A new manual backup was refused (Railway plan limit of 10 backups per volume). Went ahead on the daily backup of 29 Oct 11:00 IST (`76e9f433`): the migration only adds an empty column and changes the lock rule; undo is dropping the column, not a restore. No backup deleted |
 | Migration | 54 `20261102101600_result_nabl_scope_override.sql` applied 13:42 IST (1.4 s); checks: RLS on all tables, no SECURITY DEFINER without search_path, no anon write grants, no invalid indexes |
 | Guard check | Rollback only on a real non-completed row: value "NABL" refused; tester may mark own result Non NABL; tester cannot change it under review; Director can. 4/4, row unchanged, 0 of 6,246 rows with an override |
+| Merge | PR qiamit/Qirlpl_Lims_Railway#20 (staging deploys passed first); `main` 8d37643 → 09d3a8b; mcp, frontend, api, pdf-service, files-backup SUCCESS |
+| Checks | Production bundle has the dropdown ("NABL" / "Non NABL"), the equipment picker button, "Calculator" and the Attach hover text; old dropdown wording gone. Smoke test and MCP checks pass |
 
+Not checked on screen by Claude in production; the lab checks the dropdown
+the next time Enter Results is opened.
