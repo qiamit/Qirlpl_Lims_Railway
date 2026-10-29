@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Loader2, Paperclip, Trash2, Upload } from 'lucide-react'
+import { Loader2, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/hooks/useAuth'
@@ -18,9 +18,11 @@ import {
 const errText = (err: unknown) => (err as { message?: string })?.message || 'Something went wrong.'
 
 /**
- * Under a parameter result: who entered it (ISO/IEC 17025 7.5.1) and the raw
- * printouts / photos attached to it. Renders nothing for parts that are not
- * available (migration 20261029100300 not applied, or row not saved yet).
+ * Under a parameter result: the raw printouts / photos attached to it. Who
+ * entered it (ISO/IEC 17025 7.5.1) is kept by the database and shown only on
+ * hover (lab, 29 Oct 2026: the line made the cell crowded). Renders nothing
+ * when attachments are not available (migration 20261029100300 not applied,
+ * or row not saved yet).
  */
 export function ResultObservationMeta({
   sampleId,
@@ -31,6 +33,7 @@ export function ResultObservationMeta({
   attachmentsAvailable,
   canAttach,
   onAttachmentsChange,
+  className,
 }: {
   sampleId: string | null
   paramRowId: string | null
@@ -41,6 +44,7 @@ export function ResultObservationMeta({
   /** Adding files (entry mode, report not issued). Viewing is always allowed. */
   canAttach: boolean
   onAttachmentsChange: (next: ResultAttachment[]) => void
+  className?: string
 }) {
   const { user, designation } = useAuth()
   const director = isLaboratoryDirector(designation)
@@ -49,9 +53,12 @@ export function ResultObservationMeta({
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const showStamp = Boolean(stamp?.byName || stamp?.at)
+  const stampText =
+    stamp?.byName || stamp?.at
+      ? `Entered by ${stamp?.byName || '—'}${stamp?.at ? ` · ${formatDateTime(stamp.at)}` : ''}`
+      : ''
   const showAttachments = attachmentsAvailable && Boolean(paramRowId) && Boolean(sampleId)
-  if (!showStamp && !showAttachments) return null
+  if (!showAttachments) return null
 
   const onFiles = async (files: FileList | null) => {
     const list = files ? [...files] : []
@@ -97,13 +104,12 @@ export function ResultObservationMeta({
   }
 
   return (
-    <div className="mt-1 flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-[10.5px] leading-tight text-stone-600">
-      {showStamp ? (
-        <span title="Who entered this result (recorded by the database)">
-          Entered by {stamp?.byName || '—'}
-          {stamp?.at ? ` · ${formatDateTime(stamp.at)}` : ''}
-        </span>
-      ) : null}
+    <div
+      className={cn(
+        'mt-1 flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-[10.5px] leading-tight text-stone-600',
+        className,
+      )}
+    >
       {showAttachments ? (
         <button
           type="button"
@@ -113,9 +119,8 @@ export function ResultObservationMeta({
             setOpen(true)
           }}
           aria-label={`Raw data files for ${testLabel}`}
-          title="Raw printouts / photos for this result"
+          title={['Raw printouts / photos for this result', stampText].filter(Boolean).join('\n')}
         >
-          <Paperclip className="h-3 w-3" />
           {attachments.length > 0 ? `${attachments.length} file${attachments.length === 1 ? '' : 's'}` : canAttach ? 'Attach' : 'No files'}
         </button>
       ) : null}

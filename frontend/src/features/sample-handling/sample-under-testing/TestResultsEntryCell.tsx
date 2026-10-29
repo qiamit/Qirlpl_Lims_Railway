@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -68,12 +68,15 @@ export function TestResultsEntryCell({
   testLabel,
   sectionCompareSources = [],
   defaultUnit = '',
+  footer,
 }: {
   value: string | null
   onChange: (value: string) => void
   testLabel: string
   sectionCompareSources?: SectionCompareSource[]
   defaultUnit?: string
+  /** Shown under the result box, beside the calculator button (e.g. Attach). */
+  footer?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [readingRows, setReadingRows] = useState<ReadingRow[]>([emptyReadingRow(defaultUnit)])
@@ -268,11 +271,11 @@ export function TestResultsEntryCell({
 
   return (
     <>
-      <div className="flex w-full min-w-0 max-w-[320px] items-start gap-1">
+      <div className="flex w-full min-w-0 max-w-[320px] flex-col items-stretch gap-1">
         {structuredValue ? (
           <button
             type="button"
-            className="flex-1 min-h-8 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-center whitespace-pre-wrap break-words leading-relaxed hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-w-0"
+            className="w-full min-h-8 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-center whitespace-pre-wrap break-words leading-relaxed hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-w-0"
             title={displayTitle || 'Open calculator to edit multiple readings'}
             onClick={() => setOpen(true)}
           >
@@ -281,7 +284,7 @@ export function TestResultsEntryCell({
         ) : (
           <Input
             type="text"
-            className="h-8 text-xs flex-1 text-center min-w-0"
+            className="h-8 w-full min-w-0 text-xs text-center"
             placeholder="Results"
             value={value ?? ''}
             title={displayTitle || 'Enter result or open calculator for multiple readings'}
@@ -289,17 +292,18 @@ export function TestResultsEntryCell({
             onDoubleClick={() => setOpen(true)}
           />
         )}
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          aria-label="Multiple readings and statistics"
-          title="Multiple readings — Sum, Average, CV, Std. Deviation…"
-          onClick={() => setOpen(true)}
-        >
-          <Calculator className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            className="text-[10.5px] font-semibold leading-tight text-amber-800 hover:text-amber-950 hover:underline"
+            aria-label="Multiple readings and statistics"
+            title="Multiple readings — Sum, Average, CV, Std. Deviation…"
+            onClick={() => setOpen(true)}
+          >
+            Calculator
+          </button>
+          {footer}
+        </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>

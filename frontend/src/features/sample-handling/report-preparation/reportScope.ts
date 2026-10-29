@@ -49,6 +49,18 @@ export function resolveReportScopeFromAccreditationIds(
 }
 
 /**
+ * Scope of one result: the test parameter master's scope, unless the result row
+ * is marked 'Non NABL' (outside the accredited range; migration
+ * 20261102101600). A result is never made NABL when the master is not.
+ */
+export function effectiveResultScope(
+  masterScope: ReportScopeLabel,
+  override: string | null | undefined,
+): ReportScopeLabel {
+  return override === 'Non NABL' ? 'Non NABL' : masterScope
+}
+
+/**
  * Remove trailing A/B scope suffix for re-scoping (print / display).
  * Do not use on canonical values loaded from DB — stored numbers already end with A.
  */

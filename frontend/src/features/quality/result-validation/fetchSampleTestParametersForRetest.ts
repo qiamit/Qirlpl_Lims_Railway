@@ -5,7 +5,23 @@ import {
   getReportedTestResult,
 } from '@/features/sample-handling/sample-under-testing/testResultValues'
 import { fetchReportResultRowsForSample } from '@/features/sample-handling/report-preparation/reportResultRows'
-import { resolveReportScopeFromAccreditationIds } from '@/features/sample-handling/report-preparation/reportScope'
+import {
+  effectiveResultScope,
+  resolveReportScopeFromAccreditationIds,
+} from '@/features/sample-handling/report-preparation/reportScope'
+
+const RETEST_PARAM_COLUMNS = 'id, test_parameter_id, test_label, specific_requirement, results'
+
+/** Result rows with their NABL scope; before migration 20261102101600 without it. */
+async function selectRetestParamRows(
+  filter: (q: ReturnType<ReturnType<typeof supabase.from>['select']>) => PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>,
+) {
+  const first = await filter(supabase.from('test_allocation_parameters').select(`${RETEST_PARAM_COLUMNS}, nabl_scope_override`))
+  if (first.error && /nabl_scope_override/.test(first.error.message ?? '')) {
+    return filter(supabase.from('test_allocation_parameters').select(RETEST_PARAM_COLUMNS))
+  }
+  return first
+}
 
 export type RetestSampleTestParameterOption = {
   id: string
@@ -102,6 +118,7 @@ function mapParameterRow(
     test_label?: string | null
     specific_requirement?: string | null
     results?: unknown
+    nabl_scope_override?: string | null
   },
   context: TestParameterContext,
   observedFallbackByParameterId: Map<string, string>,
@@ -124,9 +141,9 @@ function mapParameterRow(
     unit: fmt(tp?.unit_value),
     uncertainty: fmt(tp?.uncertainty_mu),
     oldResult,
-    scope: resolveReportScopeFromAccreditationIds(
-      tp?.under_accreditation_ids,
-      context.accreditationById,
+    scope: effectiveResultScope(
+      resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, context.accreditationById),
+      row.nabl_scope_override,
     ),
   }
 }
@@ -172,6 +189,7 @@ async function mapParameterRows(
     test_label?: string | null
     specific_requirement?: string | null
     results?: unknown
+    nabl_scope_override?: string | null
   }>,
   observedFallbackByParameterId: Map<string, string>,
 ): Promise<RetestSampleTestParameterOption[]> {
@@ -217,11 +235,9 @@ export async function fetchSampleTestParametersForRetest(
 
   if (allocationIds.length === 0) return []
 
-  const { data: params, error: paramErr } = await supabase
-    .from('test_allocation_parameters')
-    .select('id, test_parameter_id, test_label, specific_requirement, results')
-    .in('test_allocation_id', allocationIds)
-    .order('test_label', { ascending: true })
+  const { data: params, error: paramErr } = await selectRetestParamRows((q) =>
+    q.in('test_allocation_id', allocationIds).order('test_label', { ascending: true }),
+  )
 
   if (paramErr) throw new Error(formatSupabaseError(paramErr))
 
@@ -231,6 +247,7 @@ export async function fetchSampleTestParametersForRetest(
     test_label?: string | null
     specific_requirement?: string | null
     results?: unknown
+    nabl_scope_override?: string | null
   }>
 
   const observedFallbackByParameterId = await loadObservedResultsFallback(sid, taId)
@@ -257,10 +274,7 @@ export async function fetchRetestParametersByAllocationIds(
   const ids = [...new Set(allocationParameterIds.map((id) => id.trim()).filter(Boolean))]
   if (ids.length === 0) return []
 
-  const { data: params, error: paramErr } = await supabase
-    .from('test_allocation_parameters')
-    .select('id, test_parameter_id, test_label, specific_requirement, results')
-    .in('id', ids)
+  const { data: params, error: paramErr } = await selectRetestParamRows((q) => q.in('id', ids))
 
   if (paramErr) throw new Error(formatSupabaseError(paramErr))
 
@@ -270,6 +284,7 @@ export async function fetchRetestParametersByAllocationIds(
     test_label?: string | null
     specific_requirement?: string | null
     results?: unknown
+    nabl_scope_override?: string | null
   }>
 
   const observedFallbackByParameterId = sampleId?.trim()

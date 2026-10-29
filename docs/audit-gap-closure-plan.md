@@ -105,6 +105,7 @@ for Amit).
 51. `20261102101300_decision_rule_not_applied.sql` (decision rule DR-NR "Not required": rule type `not_applied`, nothing about a decision rule on reports; lab request after go-live, applied to production 25 Oct 08:34 IST)
 52. `20261102101400_mcp_connector.sql` (MCP connector: switch, sessions, call log, 'via MCP' in the Audit Trail; staging 25 Oct, production after QM review of OQ-08)
 53. `20261102101500_results_review_guard.sql` (results review in the database: nobody reviews their own results, only the assigned reviewer (or the Director) approves, results locked while under review or approved; staging 25 Oct, production 25 Oct 18:19 IST)
+54. `20261102101600_result_nabl_scope_override.sql` (one result can be reported as Non-NABL when outside the accredited range; never the other way; locked with the results; staging 29 Oct, production 29 Oct 13:42 IST)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 
