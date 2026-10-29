@@ -466,3 +466,16 @@ in chat.
 
 Not checked on screen by Claude (production data); the lab checks the next
 report preview.
+
+## Release 7 after go-live (Thursday 29 Oct 2026): in progress
+
+NABL scope per result (migration 54) and the Enter Results layout; approved
+by Amit in chat ("Haan, dono bhejo"; then "update karke batao").
+
+| Step | Result |
+|---|---|
+| Change | Enter Results: NABL Scope dropdown for a NABL parameter ("NABL" / "Non NABL", same words as the Test Parameter master; a Non NABL parameter cannot be made NABL); report rows and retest use the result's scope. Equipment: icon button opens a table picker (search, checkboxes), then a View button (click = view, double-click = edit); column heading "Equipment", 7rem. Result cell: "Calculator \| Attach" as words under the box; "Entered by" line moved to the Attach hover text (still recorded) |
+| Backup | A new manual backup was refused (Railway plan limit of 10 backups per volume). Went ahead on the daily backup of 29 Oct 11:00 IST (`76e9f433`): the migration only adds an empty column and changes the lock rule; undo is dropping the column, not a restore. No backup deleted |
+| Migration | 54 `20261102101600_result_nabl_scope_override.sql` applied 13:42 IST (1.4 s); checks: RLS on all tables, no SECURITY DEFINER without search_path, no anon write grants, no invalid indexes |
+| Guard check | Rollback only on a real non-completed row: value "NABL" refused; tester may mark own result Non NABL; tester cannot change it under review; Director can. 4/4, row unchanged, 0 of 6,246 rows with an override |
+
