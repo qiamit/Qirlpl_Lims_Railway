@@ -10,6 +10,19 @@ import {
   resolveReportScopeFromAccreditationIds,
 } from '@/features/sample-handling/report-preparation/reportScope'
 
+const RETEST_PARAM_COLUMNS = 'id, test_parameter_id, test_label, specific_requirement, results'
+
+/** Result rows with their NABL scope; before migration 20261102101600 without it. */
+async function selectRetestParamRows(
+  filter: (q: ReturnType<ReturnType<typeof supabase.from>['select']>) => PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>,
+) {
+  const first = await filter(supabase.from('test_allocation_parameters').select(`${RETEST_PARAM_COLUMNS}, nabl_scope_override`))
+  if (first.error && /nabl_scope_override/.test(first.error.message ?? '')) {
+    return filter(supabase.from('test_allocation_parameters').select(RETEST_PARAM_COLUMNS))
+  }
+  return first
+}
+
 export type RetestSampleTestParameterOption = {
   id: string
   testParameterId: string | null
@@ -222,11 +235,9 @@ export async function fetchSampleTestParametersForRetest(
 
   if (allocationIds.length === 0) return []
 
-  const { data: params, error: paramErr } = await supabase
-    .from('test_allocation_parameters')
-    .select('id, test_parameter_id, test_label, specific_requirement, results, nabl_scope_override')
-    .in('test_allocation_id', allocationIds)
-    .order('test_label', { ascending: true })
+  const { data: params, error: paramErr } = await selectRetestParamRows((q) =>
+    q.in('test_allocation_id', allocationIds).order('test_label', { ascending: true }),
+  )
 
   if (paramErr) throw new Error(formatSupabaseError(paramErr))
 
@@ -263,10 +274,7 @@ export async function fetchRetestParametersByAllocationIds(
   const ids = [...new Set(allocationParameterIds.map((id) => id.trim()).filter(Boolean))]
   if (ids.length === 0) return []
 
-  const { data: params, error: paramErr } = await supabase
-    .from('test_allocation_parameters')
-    .select('id, test_parameter_id, test_label, specific_requirement, results, nabl_scope_override')
-    .in('id', ids)
+  const { data: params, error: paramErr } = await selectRetestParamRows((q) => q.in('id', ids))
 
   if (paramErr) throw new Error(formatSupabaseError(paramErr))
 
