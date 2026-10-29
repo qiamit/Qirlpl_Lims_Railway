@@ -1413,7 +1413,7 @@ export function SectionResultsEntryDialog({
                           return (
                             <select
                               aria-label={`NABL scope for ${p.testLabel}`}
-                              title="Choose Non-NABL when this result is outside the range the laboratory is accredited for"
+                              title="Choose Non NABL when this result is outside the range the laboratory is accredited for"
                               className={cn(
                                 'h-8 w-full min-w-0 rounded-none border bg-white px-1 text-[11px]',
                                 outsideRange ? 'border-amber-700 text-amber-900' : 'border-stone-500',
@@ -1427,21 +1427,21 @@ export function SectionResultsEntryDialog({
                                 })
                               }}
                             >
-                              <option value="NABL">NABL Accredited</option>
-                              <option value="Non NABL">Non-NABL (outside accredited range)</option>
+                              <option value="NABL">NABL</option>
+                              <option value="Non NABL">Non NABL</option>
                             </select>
                           )
                         }
                         if (scope === 'NABL' && outsideRange) {
                           return (
                             <span className="text-amber-900">
-                              Non-NABL
+                              Non NABL
                               <span className="block text-[10px] text-stone-600">outside accredited range</span>
                             </span>
                           )
                         }
-                        if (scope === 'NABL') return 'NABL Accredited'
-                        if (scope === 'Non NABL') return 'Non-NABL'
+                        // Same words as the Test Parameter master (accreditation bodies "NABL" / "Non NABL").
+                        if (scope === 'NABL' || scope === 'Non NABL') return scope
                         if (scope) return scope
                         if (nablScopeLoadError) return 'Unable to determine'
                         return nablScopeLoading ? 'Loading…' : 'Master unavailable'
