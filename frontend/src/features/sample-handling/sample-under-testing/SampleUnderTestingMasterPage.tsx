@@ -1063,9 +1063,12 @@ export default function SampleUnderTestingMasterPage() {
       // 20261026100300 those columns are missing: retry without them.
       let sendEquipment = true
       let sendEnvironment = true
+      let sendScope = true
       const withEquipment = <T extends Record<string, unknown>>(p: SectionResultsDraft, fields: T) => {
         let out: Record<string, unknown> = fields
         if (sendEquipment && p.equipmentUsed !== undefined) out = { ...out, equipment_used: p.equipmentUsed }
+        // NABL scope of the result (migration 20261102101600).
+        if (sendScope && p.nablScopeOverride !== undefined) out = { ...out, nabl_scope_override: p.nablScopeOverride }
         if (sendEnvironment && p.environmentAreaId !== undefined) {
           out = {
             ...out,
@@ -1079,9 +1082,11 @@ export default function SampleUnderTestingMasterPage() {
         write: () => PromiseLike<{ error: { code?: string; message?: string } | null }>,
       ) => {
         let result = await write()
-        for (let attempt = 0; attempt < 2 && result.error && isMissingColumnError(result.error); attempt += 1) {
+        for (let attempt = 0; attempt < 3 && result.error && isMissingColumnError(result.error); attempt += 1) {
           const msg = (result.error.message ?? '').toLowerCase()
-          if (sendEnvironment && (msg.includes('environment_') || !sendEquipment || !msg.includes('equipment_used'))) {
+          if (sendScope && msg.includes('nabl_scope_override')) {
+            sendScope = false
+          } else if (sendEnvironment && (msg.includes('environment_') || !sendEquipment || !msg.includes('equipment_used'))) {
             sendEnvironment = false
           } else if (sendEquipment) {
             sendEquipment = false

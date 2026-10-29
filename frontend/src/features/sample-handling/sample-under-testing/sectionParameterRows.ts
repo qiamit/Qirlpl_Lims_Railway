@@ -64,6 +64,12 @@ export type SectionParameterEntry = {
    */
   environmentAreaId?: string | null
   environmentSnapshot?: ResultEnvironmentSnapshot | null
+  /**
+   * 'Non NABL' = this result is reported as not accredited (outside the
+   * accredited range); null = as the test parameter master. Undefined = not
+   * loaded / migration 20261102101600 not applied: the save leaves it out.
+   */
+  nablScopeOverride?: 'Non NABL' | null
 }
 
 export function mergeSectionDraftPreservingEdits(
@@ -88,6 +94,7 @@ export function mergeSectionDraftPreservingEdits(
       ...(match.equipmentUsed !== undefined ? { equipmentUsed: match.equipmentUsed } : {}),
       ...(match.environmentAreaId !== undefined ? { environmentAreaId: match.environmentAreaId } : {}),
       ...(match.environmentSnapshot !== undefined ? { environmentSnapshot: match.environmentSnapshot } : {}),
+      ...(match.nablScopeOverride !== undefined ? { nablScopeOverride: match.nablScopeOverride } : {}),
     }
   })
 }

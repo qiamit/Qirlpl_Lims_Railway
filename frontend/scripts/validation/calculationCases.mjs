@@ -39,6 +39,7 @@ export const MODULE_FILES = {
   testResult: 'src/features/sample-handling/sample-under-testing/testResultValues.ts',
   conformity: 'src/features/sample-handling/report-preparation/evaluateResultConformity.ts',
   partD: 'src/features/sample-handling/report-preparation/testReportPartDRemarks.ts',
+  scope: 'src/features/sample-handling/report-preparation/reportScope.ts',
   ulr: 'src/features/sample-handling/report-preparation/nablUlrNumber.ts',
   reportNo: 'src/features/sample-handling/report-preparation/formattedTestReportNumber.ts',
   series: 'src/features/finance/sale/shared/documentSeriesApi.ts',
@@ -822,6 +823,26 @@ export const CASES = [
       'Tested By: OQ Testing Engineer Mech [part_d]',
       'Approved By: Kunal Patle [part_a part_b part_d]',
     ],
+  },
+  {
+    id: 'SC-01',
+    module: 'scope',
+    title: 'NABL scope of one result: Non-NABL when outside the accredited range, never NABL when the master is not',
+    source:
+      'Lab 26 Oct 2026: a NABL parameter whose result is outside the accredited range is reported as Non-NABL ' +
+      '(NABL 133; ISO/IEC 17025 7.8.1). Hand: master NABL + no change → NABL; master NABL + Non NABL → Non NABL; ' +
+      'master Non NABL + any value → Non NABL; report scope kind follows (A/B)',
+    run: (m) => {
+      const e = m.scope.effectiveResultScope
+      return [
+        e('NABL', null),
+        e('NABL', 'Non NABL'),
+        e('Non NABL', null),
+        e('Non NABL', 'NABL'),
+        m.scope.scopeKindFromLabel(e('NABL', 'Non NABL')),
+      ]
+    },
+    expected: ['NABL', 'Non NABL', 'Non NABL', 'Non NABL', 'non_nabl'],
   },
   {
     id: 'SG-02',

@@ -10,7 +10,7 @@ import {
 } from './evaluateResultConformity'
 import { fetchSampleReportDecisionRule } from '@/features/masters/decision-rules/decisionRules'
 import { normalizeResultRemark } from './resultRemarkUi'
-import { resolveReportScopeFromAccreditationIds, scopeKindFromLabel } from './reportScope'
+import { effectiveResultScope, resolveReportScopeFromAccreditationIds, scopeKindFromLabel } from './reportScope'
 import type { ReportScopeKind } from './reportScope'
 import { fetchMuBands } from '@/features/masters/test-parameter/muBandsApi'
 import type { MuBand } from '@/features/masters/test-parameter/muBands'
@@ -179,14 +179,20 @@ export async function fetchReportResultRowsForSample(
     results: string | null
     report_remark?: string | null
     specific_requirement?: string | null
+    nabl_scope_override?: string | null
   }> = []
 
-  const withRemark = await supabase
+  const remarkColumns = 'id, test_allocation_id, test_parameter_id, test_label, results, report_remark, specific_requirement'
+  let withRemark = await supabase
     .from('test_allocation_parameters')
-    .select(
-      'id, test_allocation_id, test_parameter_id, test_label, results, report_remark, specific_requirement',
-    )
+    .select(`${remarkColumns}, nabl_scope_override`)
     .in('test_allocation_id', taIds)
+  if (withRemark.error && isSupabaseMissingColumnError(withRemark.error, 'nabl_scope_override')) {
+    withRemark = (await supabase
+      .from('test_allocation_parameters')
+      .select(remarkColumns)
+      .in('test_allocation_id', taIds)) as unknown as typeof withRemark
+  }
 
   if (!withRemark.error) {
     paramRows = (Array.isArray(withRemark.data) ? withRemark.data : []) as typeof paramRows
@@ -280,7 +286,10 @@ export async function fetchReportResultRowsForSample(
       observedValue: fmt(observed),
       uncertainty: fmt(uncertaintyText),
       remark,
-      scope: resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),
+      scope: effectiveResultScope(
+        resolveReportScopeFromAccreditationIds(tp?.under_accreditation_ids, accreditationById),
+        p.nabl_scope_override,
+      ),
       uncertaintyMissing: evaluated.uncertaintyMissing,
     }
   })

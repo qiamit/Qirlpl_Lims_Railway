@@ -284,6 +284,7 @@ export function SectionResultsEntryDialog({
       setPickerIndex(null)
       setEquipmentError(null)
       equipmentTouchedRef.current = new Set()
+      scopeTouchedRef.current = new Set()
       setEnvAreaChoice(null)
       setEnvState(null)
       setEnvFetchError(null)
@@ -448,6 +449,39 @@ export function SectionResultsEntryDialog({
         // Unknown failure: do not block saving on it.
         if (!cancelled) setTraceability('missing')
       })
+    return () => {
+      cancelled = true
+    }
+  }, [open, paramRowIdsKey])
+
+  // NABL scope of each saved result (migration 20261102101600); missing = column not there yet.
+  const [scopeOverrideStatus, setScopeOverrideStatus] = useState<'unknown' | 'available' | 'missing'>('unknown')
+  /** Rows whose scope the user changed in this session (a late fetch must not overwrite them). */
+  const scopeTouchedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    const ids = paramRowIdsKey.split('|').filter(Boolean)
+    void (async () => {
+      const query = supabase.from('test_allocation_parameters').select('id, nabl_scope_override')
+      const { data, error } = ids.length > 0 ? await query.in('id', ids) : await query.limit(1)
+      if (cancelled) return
+      if (error) {
+        setScopeOverrideStatus('missing')
+        return
+      }
+      setScopeOverrideStatus('available')
+      const byId = new Map(
+        ((data ?? []) as Array<{ id: string; nabl_scope_override: string | null }>).map((r) => [r.id, r.nabl_scope_override]),
+      )
+      setDraft((prev) =>
+        prev.map((p) => {
+          if (scopeTouchedRef.current.has(p.paramRowId || p.testLabel)) return p
+          const saved = p.paramRowId ? byId.get(p.paramRowId) : undefined
+          return { ...p, nablScopeOverride: saved === 'Non NABL' ? 'Non NABL' : null }
+        }),
+      )
+    })()
     return () => {
       cancelled = true
     }
@@ -1343,6 +1377,39 @@ export function SectionResultsEntryDialog({
                       {(() => {
                         if (!p.testParameterId) return 'Not linked to master'
                         const scope = nablScopeByParameterId[p.testParameterId]
+                        const outsideRange = p.nablScopeOverride === 'Non NABL'
+                        if (scope === 'NABL' && !readOnly && scopeOverrideStatus === 'available') {
+                          // A result outside the accredited range is reported as Non-NABL; never the other way.
+                          return (
+                            <select
+                              aria-label={`NABL scope for ${p.testLabel}`}
+                              title="Choose Non-NABL when this result is outside the range the laboratory is accredited for"
+                              className={cn(
+                                'h-8 w-full min-w-0 rounded-none border bg-white px-1 text-[11px]',
+                                outsideRange ? 'border-amber-700 text-amber-900' : 'border-stone-500',
+                              )}
+                              value={outsideRange ? 'Non NABL' : 'NABL'}
+                              disabled={saving}
+                              onChange={(e) => {
+                                scopeTouchedRef.current.add(p.paramRowId || p.testLabel)
+                                updateDraft(index, {
+                                  nablScopeOverride: e.target.value === 'Non NABL' ? 'Non NABL' : null,
+                                })
+                              }}
+                            >
+                              <option value="NABL">NABL Accredited</option>
+                              <option value="Non NABL">Non-NABL (outside accredited range)</option>
+                            </select>
+                          )
+                        }
+                        if (scope === 'NABL' && outsideRange) {
+                          return (
+                            <span className="text-amber-900">
+                              Non-NABL
+                              <span className="block text-[10px] text-stone-600">outside accredited range</span>
+                            </span>
+                          )
+                        }
                         if (scope === 'NABL') return 'NABL Accredited'
                         if (scope === 'Non NABL') return 'Non-NABL'
                         if (scope) return scope
