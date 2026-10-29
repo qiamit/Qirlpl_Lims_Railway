@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { limsDarkBarBtnClass, limsDarkBarGlowStyle, limsDialogClass, limsFieldClass, limsPrimaryBtnClass, limsTableHeadClass } from '@/lib/limsThemeUi'
 import { cn, formatDate } from '@/lib/utils'
-import { Eye, FileText, Plus } from 'lucide-react'
+import { Eye, FileText, Plus, Wrench } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import type { TestAllocationRow } from '../types'
 import { AddSectionTestDialog } from './AddSectionTestDialog'
@@ -242,6 +242,9 @@ export function SectionResultsEntryDialog({
   const [equipmentLoading, setEquipmentLoading] = useState(false)
   const [equipmentLoadError, setEquipmentLoadError] = useState<string | null>(null)
   const [pickerIndex, setPickerIndex] = useState<number | null>(null)
+  /** View = saved choice read-only (single click on View); edit = the form (Add, or double-click on View). */
+  const [pickerMode, setPickerMode] = useState<'view' | 'edit'>('edit')
+  const viewClickTimerRef = useRef<number | null>(null)
   const [equipmentError, setEquipmentError] = useState<string | null>(null)
   /** Rows whose equipment the user changed in this session (a late fetch must not overwrite them). */
   const equipmentTouchedRef = useRef<Set<string>>(new Set())
@@ -1334,43 +1337,64 @@ export function SectionResultsEntryDialog({
                           </ul>
                         )
                       ) : (
-                        <>
-                          {(p.equipmentUsed ?? []).length > 0 ? (
-                            <ul className="space-y-0.5 text-[11px] leading-snug">
-                              {(p.equipmentUsed ?? []).map((s) =>
-                                isNoEquipmentEntry(s) ? (
-                                  <li key="none" className="break-words" title={s.reason}>
-                                    <span className="font-medium">No equipment used</span>
-                                    {s.reason.trim() ? ` · ${s.reason.trim()}` : ''}
-                                  </li>
-                                ) : (
-                                <li
-                                  key={s.equipment_id}
-                                  className={cn(
-                                    'break-words',
-                                    s.usable === false && !s.override_reason && 'font-medium text-red-700',
-                                    s.override_reason && 'text-amber-800',
-                                  )}
-                                  title={s.reason ?? undefined}
+                        (() => {
+                          const used = p.equipmentUsed ?? []
+                          const disabled = saving || traceability !== 'available'
+                          if (!equipmentUsedIsRecorded(used)) {
+                            return (
+                              <div className="flex justify-center">
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8 rounded-none border-stone-500"
+                                  aria-label={`Add equipment / CRMs for ${p.testLabel}`}
+                                  title="Add equipment / CRMs used (optional)"
+                                  onClick={() => {
+                                    setPickerMode('edit')
+                                    setPickerIndex(index)
+                                  }}
+                                  disabled={disabled}
                                 >
-                                  {formatEquipmentUsed(s)}
-                                  {s.override_reason ? ' · override' : ''}
-                                </li>
-                                ),
+                                  <Wrench className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )
+                          }
+                          const items = equipmentSnapshotsOf(used)
+                          const notUsable = items.some((s) => s.usable === false && !s.override_reason)
+                          const count = isNoEquipmentEntry(used[0]) ? 0 : items.length
+                          return (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className={cn(
+                                'h-auto min-h-8 w-full min-w-0 gap-1 whitespace-normal rounded-none border-stone-500 px-2 py-1 text-[11px]',
+                                notUsable && 'border-red-600 text-red-700',
                               )}
-                            </ul>
-                          ) : null}
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-auto min-h-7 w-full min-w-0 whitespace-normal rounded-none border-stone-500 px-2 py-1 text-[11px]"
-                            onClick={() => setPickerIndex(index)}
-                            disabled={saving || traceability !== 'available'}
-                          >
-                            {equipmentUsedIsRecorded(p.equipmentUsed) ? 'Change' : 'Select equipment'}
-                          </Button>
-                        </>
+                              title={`${used.map((s) => formatEquipmentUsed(s)).join('\n')}\n\nClick to view · double-click to edit`}
+                              onClick={() => {
+                                if (viewClickTimerRef.current) window.clearTimeout(viewClickTimerRef.current)
+                                viewClickTimerRef.current = window.setTimeout(() => {
+                                  viewClickTimerRef.current = null
+                                  setPickerMode('view')
+                                  setPickerIndex(index)
+                                }, 250)
+                              }}
+                              onDoubleClick={() => {
+                                if (viewClickTimerRef.current) window.clearTimeout(viewClickTimerRef.current)
+                                viewClickTimerRef.current = null
+                                setPickerMode('edit')
+                                setPickerIndex(index)
+                              }}
+                              disabled={disabled}
+                            >
+                              <Eye className="h-3.5 w-3.5 shrink-0" />
+                              {count > 0 ? `View (${count})` : 'View · no equipment'}
+                            </Button>
+                          )
+                        })()
                       )}
                     </div>
                     <div className={cn(cellClass, 'justify-center text-center')}>
@@ -1527,6 +1551,7 @@ export function SectionResultsEntryDialog({
           askReason={askReason}
           canApplyToOthers={draft.length > 1}
           onConfirm={handlePickerConfirm}
+          mode={pickerMode}
         />
       ) : null}
 

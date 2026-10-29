@@ -53,6 +53,8 @@ const insideReasonDialog = (e: Event) =>
  * Director may still pick one after giving a reason, recorded in the snapshot.
  * A parameter that needs no equipment (visual / calculation / observation) is
  * recorded as a single { kind: 'none', reason } entry with a required reason.
+ * The items are shown as a table with search; mode 'view' shows only the
+ * saved choice until Edit is pressed.
  */
 export function EquipmentUsedPickerDialog({
   open,
@@ -71,6 +73,7 @@ export function EquipmentUsedPickerDialog({
   askReason,
   canApplyToOthers,
   onConfirm,
+  mode = 'edit',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -89,7 +92,10 @@ export function EquipmentUsedPickerDialog({
   askReason: AskReason
   canApplyToOthers: boolean
   onConfirm: (items: EquipmentUsedEntry[], applyToOthers: boolean) => void
+  /** 'view' shows the saved choice read-only with an Edit button; 'edit' opens the form. */
+  mode?: 'view' | 'edit'
 }) {
+  const [editing, setEditing] = useState(mode === 'edit')
   const optionById = useMemo(() => new Map(options.map((o) => [o.id, o])), [options])
   const initialSnapshots = useMemo(() => equipmentSnapshotsOf(initial), [initial])
   const initialNone = noEquipmentEntryOf(initial)
@@ -129,7 +135,7 @@ export function EquipmentUsedPickerDialog({
       if (selected.has(o.id)) return true
       if (filterBySection && !equipmentMatchesSection(o, section)) return false
       if (!term) return true
-      return `${o.assetCode} ${o.name} ${o.location ?? ''}`.toLowerCase().includes(term)
+      return `${o.assetCode} ${o.name} ${o.location ?? ''} ${o.calCertNo ?? ''}`.toLowerCase().includes(term)
     })
   }, [options, search, filterBySection, section, selected])
 
@@ -188,12 +194,16 @@ export function EquipmentUsedPickerDialog({
     onConfirm(items, applyToOthers)
   }
 
+  const viewNone = !editing ? initialNone : null
+  const thClass = 'sticky top-0 z-10 border-b border-stone-700 bg-stone-900 px-2 py-1.5 text-left text-[10.5px] font-semibold uppercase tracking-wide text-amber-100'
+  const tdClass = 'border-b border-stone-200 px-2 py-1.5 align-top text-[11.5px]'
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         persistOnFocusLoss
         layer="stacked"
-        className={cn(limsDialogClass, '!flex !max-h-[88dvh] !max-w-2xl !flex-col !gap-0 !p-0')}
+        className={cn(limsDialogClass, '!flex !max-h-[88dvh] !w-[calc(100vw-1rem)] !max-w-5xl !flex-col !gap-0 !p-0')}
         onPointerDownOutside={(e) => {
           if (insideReasonDialog(e)) e.preventDefault()
         }}
@@ -208,165 +218,242 @@ export function EquipmentUsedPickerDialog({
           <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={limsDarkBarGlowStyle} />
           <div className="absolute bottom-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
           <DialogHeader className="relative pr-8 text-left">
-            <DialogTitle className="text-base font-semibold text-white">Equipment / CRMs used</DialogTitle>
+            <DialogTitle className="text-base font-semibold text-white">
+              {editing ? 'Add equipment / CRMs used' : 'Equipment / CRMs used'}
+            </DialogTitle>
             <DialogDescription className="text-xs text-stone-300">
               {testLabel} · test date {testDate ? formatDate(testDate) : 'today'}
             </DialogDescription>
           </DialogHeader>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-stone-300 bg-[#f7f3eb] px-4 py-2">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search asset code or name"
-            className="h-8 max-w-[16rem] rounded-none border-stone-500 bg-white text-xs"
-          />
-          {hasSectionMatches ? (
-            <label className="flex items-center gap-1.5 text-xs text-stone-700">
-              <input
-                type="checkbox"
-                className={checkboxClass}
-                checked={sectionOnly}
-                onChange={(e) => setSectionOnly(e.target.checked)}
-              />
-              Only {section} equipment
-            </label>
-          ) : null}
-        </div>
-
-        <div className="shrink-0 border-b border-stone-300 bg-white px-4 py-2">
-          <label className="flex items-center gap-1.5 text-xs font-medium text-stone-800">
-            <input
-              type="checkbox"
-              className={checkboxClass}
-              checked={noEquipment}
-              onChange={(e) => setNoEquipment(e.target.checked)}
-            />
-            {NO_EQUIPMENT_LABEL}
-          </label>
-          {noEquipment ? (
-            <div className="mt-2 space-y-1.5">
+        {editing ? (
+          <>
+            <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-stone-300 bg-[#f7f3eb] px-4 py-2">
               <Input
-                value={noEquipmentReason}
-                maxLength={NO_EQUIPMENT_REASON_MAX}
-                onChange={(e) => setNoEquipmentReason(e.target.value)}
-                placeholder="Justification (required), e.g. Visual examination"
-                aria-label="Justification for no equipment"
-                aria-invalid={!noEquipmentReasonTrimmed}
-                className={cn(
-                  'h-8 rounded-none border-stone-500 bg-white text-xs',
-                  !noEquipmentReasonTrimmed && 'border-red-600',
-                )}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search asset code, name, certificate or location"
+                aria-label="Search equipment"
+                className="h-8 w-full max-w-[22rem] rounded-none border-stone-500 bg-white text-xs"
                 autoFocus
               />
-              <div className="flex flex-wrap gap-1.5">
-                {NO_EQUIPMENT_QUICK_PICKS.map((pick) => (
-                  <button
-                    key={pick}
-                    type="button"
-                    className="rounded-none border border-stone-400 px-1.5 py-0.5 text-[11px] text-stone-700 hover:bg-amber-50"
-                    onClick={() => setNoEquipmentReason(pick)}
-                  >
-                    {pick}
-                  </button>
-                ))}
-              </div>
-              {!noEquipmentReasonTrimmed ? (
-                <p className="text-[11px] font-medium text-red-700">Give a short justification.</p>
+              {hasSectionMatches ? (
+                <label className="flex items-center gap-1.5 text-xs text-stone-700">
+                  <input
+                    type="checkbox"
+                    className={checkboxClass}
+                    checked={sectionOnly}
+                    onChange={(e) => setSectionOnly(e.target.checked)}
+                  />
+                  Only {section} equipment
+                </label>
+              ) : null}
+              <span className="ml-auto text-xs text-stone-600">{selected.size} selected</span>
+            </div>
+
+            <div className="shrink-0 border-b border-stone-300 bg-white px-4 py-2">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-stone-800">
+                <input
+                  type="checkbox"
+                  className={checkboxClass}
+                  checked={noEquipment}
+                  onChange={(e) => setNoEquipment(e.target.checked)}
+                />
+                {NO_EQUIPMENT_LABEL}
+              </label>
+              {noEquipment ? (
+                <div className="mt-2 space-y-1.5">
+                  <Input
+                    value={noEquipmentReason}
+                    maxLength={NO_EQUIPMENT_REASON_MAX}
+                    onChange={(e) => setNoEquipmentReason(e.target.value)}
+                    placeholder="Justification (required), e.g. Visual examination"
+                    aria-label="Justification for no equipment"
+                    aria-invalid={!noEquipmentReasonTrimmed}
+                    className={cn(
+                      'h-8 rounded-none border-stone-500 bg-white text-xs',
+                      !noEquipmentReasonTrimmed && 'border-red-600',
+                    )}
+                    autoFocus
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {NO_EQUIPMENT_QUICK_PICKS.map((pick) => (
+                      <button
+                        key={pick}
+                        type="button"
+                        className="rounded-none border border-stone-400 px-1.5 py-0.5 text-[11px] text-stone-700 hover:bg-amber-50"
+                        onClick={() => setNoEquipmentReason(pick)}
+                      >
+                        {pick}
+                      </button>
+                    ))}
+                  </div>
+                  {!noEquipmentReasonTrimmed ? (
+                    <p className="text-[11px] font-medium text-red-700">Give a short justification.</p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
-          ) : null}
-        </div>
+          </>
+        ) : null}
 
-        <div className={cn('min-h-0 flex-1 overflow-auto bg-white', noEquipment && 'pointer-events-none opacity-40')}>
-          {loading ? (
+        <div className={cn('min-h-0 flex-1 overflow-auto bg-white', editing && noEquipment && 'pointer-events-none opacity-40')}>
+          {viewNone ? (
+            <p className="px-4 py-6 text-sm text-stone-800">
+              <span className="font-semibold">No equipment used</span>
+              {viewNone.reason.trim() ? ` · ${viewNone.reason.trim()}` : ''}
+            </p>
+          ) : !editing ? (
+            initialSnapshots.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-stone-600">No equipment recorded for this result.</p>
+            ) : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className={thClass}>Asset code</th>
+                    <th className={thClass}>Equipment / CRM</th>
+                    <th className={thClass}>Type</th>
+                    <th className={thClass}>Cal. certificate</th>
+                    <th className={thClass}>Cal. due / valid upto</th>
+                    <th className={thClass}>Status at use</th>
+                    <th className={thClass}>On the test date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {initialSnapshots.map((sn) => {
+                    const due = sn.kind === 'crm' ? sn.crm_valid_upto : sn.cal_due_date
+                    return (
+                      <tr key={sn.equipment_id}>
+                        <td className={cn(tdClass, 'font-semibold whitespace-nowrap')}>{sn.asset_code || '—'}</td>
+                        <td className={tdClass}>{sn.name || '—'}</td>
+                        <td className={tdClass}>{sn.kind === 'crm' ? 'CRM' : 'Equipment'}</td>
+                        <td className={tdClass}>{sn.cal_cert_no || '—'}</td>
+                        <td className={cn(tdClass, 'whitespace-nowrap')}>{due ? formatDate(due) : '—'}</td>
+                        <td className={tdClass}>{sn.status_at_use || '—'}</td>
+                        <td className={cn(tdClass, sn.override_reason ? 'text-amber-800' : sn.usable === false ? 'text-red-700' : 'text-emerald-800')}>
+                          {sn.override_reason
+                            ? `Director override: ${sn.override_reason}`
+                            : sn.usable === false
+                              ? `Not usable: ${sn.reason ?? ''}`
+                              : 'Usable'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )
+          ) : loading ? (
             <p className="px-4 py-6 text-center text-sm text-stone-600">Loading equipment…</p>
           ) : loadError ? (
             <p className="px-4 py-6 text-center text-sm text-red-700">{loadError}</p>
           ) : visible.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-stone-600">No equipment found.</p>
           ) : (
-            <ul className="divide-y divide-stone-200">
-              {visible.map((o) => {
-                const check = checkEquipmentUsableOn(o, testDate)
-                const isSelected = selected.has(o.id)
-                const overridden = Boolean(overrides[o.id])
-                const blocked = !check.usable && !overridden
-                const due = o.kind === 'crm' ? o.crmValidUpto : o.calDueDate
-                return (
-                  <li key={o.id}>
-                    <label
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className={cn(thClass, 'w-8')}>
+                    <span className="sr-only">Select</span>
+                  </th>
+                  <th className={thClass}>Asset code</th>
+                  <th className={thClass}>Equipment / CRM</th>
+                  <th className={thClass}>Type</th>
+                  <th className={thClass}>Cal. certificate</th>
+                  <th className={thClass}>Cal. due / valid upto</th>
+                  <th className={thClass}>Status</th>
+                  <th className={thClass}>Location</th>
+                  <th className={thClass}>On the test date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((o) => {
+                  const check = checkEquipmentUsableOn(o, testDate)
+                  const isSelected = selected.has(o.id)
+                  const overridden = Boolean(overrides[o.id])
+                  const blocked = !check.usable && !overridden
+                  const disabled = blocked && !isDirector && !isSelected
+                  const due = o.kind === 'crm' ? o.crmValidUpto : o.calDueDate
+                  return (
+                    <tr
+                      key={o.id}
                       className={cn(
-                        'flex cursor-pointer items-start gap-2.5 px-4 py-2 text-xs',
+                        'cursor-pointer hover:bg-amber-50/60',
                         isSelected && 'bg-amber-50',
-                        blocked && !isDirector && !isSelected && 'cursor-not-allowed opacity-75',
+                        disabled && 'cursor-not-allowed opacity-70',
                       )}
+                      onClick={() => {
+                        if (!disabled) void toggle(o)
+                      }}
                     >
-                      <input
-                        type="checkbox"
-                        className={cn(checkboxClass, 'mt-0.5')}
-                        checked={isSelected}
-                        disabled={blocked && !isDirector && !isSelected}
-                        onChange={() => void toggle(o)}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-stone-900">
-                          {o.assetCode} · {o.name}
-                          <span className="ml-1.5 rounded-none border border-stone-300 px-1 py-px text-[10px] font-medium uppercase text-stone-600">
-                            {o.kind === 'crm' ? 'CRM' : 'Equipment'}
-                          </span>
-                        </span>
-                        <span className="block text-[11px] text-stone-600">
-                          {o.kind === 'crm' ? 'Valid upto' : 'Cal due'} {due ? formatDate(due) : '—'}
-                          {o.calCertNo ? ` · Cert ${o.calCertNo}` : ''}
-                          {o.status ? ` · ${o.status}` : ''}
-                          {o.location ? ` · ${o.location}` : ''}
-                        </span>
-                        {!check.usable ? (
-                          <span
-                            className={cn(
-                              'mt-0.5 block text-[11px] font-medium',
-                              overridden ? 'text-amber-800' : 'text-red-700',
-                            )}
-                          >
-                            {overridden
-                              ? `Director override: ${overrides[o.id]} (${check.reason})`
-                              : `Not usable: ${check.reason}${isDirector ? ' — tick to override with a reason' : ''}`}
-                          </span>
-                        ) : null}
-                      </span>
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
+                      <td className={cn(tdClass, 'text-center')}>
+                        <input
+                          type="checkbox"
+                          className={checkboxClass}
+                          aria-label={`Select ${o.assetCode} ${o.name}`}
+                          checked={isSelected}
+                          disabled={disabled}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => void toggle(o)}
+                        />
+                      </td>
+                      <td className={cn(tdClass, 'font-semibold whitespace-nowrap')}>{o.assetCode || '—'}</td>
+                      <td className={tdClass}>{o.name || '—'}</td>
+                      <td className={tdClass}>{o.kind === 'crm' ? 'CRM' : 'Equipment'}</td>
+                      <td className={tdClass}>{o.calCertNo || '—'}</td>
+                      <td className={cn(tdClass, 'whitespace-nowrap')}>{due ? formatDate(due) : '—'}</td>
+                      <td className={tdClass}>{o.status || '—'}</td>
+                      <td className={tdClass}>{o.location || '—'}</td>
+                      <td className={cn(tdClass, check.usable ? 'text-emerald-800' : overridden ? 'text-amber-800' : 'text-red-700')}>
+                        {check.usable
+                          ? 'Usable'
+                          : overridden
+                            ? `Director override: ${overrides[o.id]} (${check.reason})`
+                            : `Not usable: ${check.reason}${isDirector ? ' — tick to override with a reason' : ''}`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           )}
         </div>
 
         <DialogFooter className="relative shrink-0 flex-wrap items-center gap-2 border-t border-stone-700 bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 px-4 py-3 sm:justify-between">
           <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-amber-500 via-amber-300 to-transparent" />
-          {canApplyToOthers ? (
-            <label className="relative flex items-center gap-1.5 text-xs text-stone-200">
-              <input
-                type="checkbox"
-                className={checkboxClass}
-                checked={applyToOthers}
-                onChange={(e) => setApplyToOthers(e.target.checked)}
-              />
-              Also use for other parameters in this section with no equipment yet
-            </label>
+          {!editing ? (
+            <>
+              <span className="relative text-xs text-stone-300">Double-click View in the results table also opens the form.</span>
+              <Button type="button" className={cn(limsPrimaryBtnClass, 'relative')} onClick={() => setEditing(true)}>
+                Edit
+              </Button>
+            </>
           ) : (
-            <span />
+            <>
+              {canApplyToOthers ? (
+                <label className="relative flex items-center gap-1.5 text-xs text-stone-200">
+                  <input
+                    type="checkbox"
+                    className={checkboxClass}
+                    checked={applyToOthers}
+                    onChange={(e) => setApplyToOthers(e.target.checked)}
+                  />
+                  Also use for other parameters in this section with no equipment yet
+                </label>
+              ) : (
+                <span />
+              )}
+              <Button
+                type="button"
+                className={cn(limsPrimaryBtnClass, 'relative')}
+                onClick={confirm}
+                disabled={!canConfirm}
+              >
+                {noEquipment ? 'Record: no equipment used' : `Use ${selected.size} item${selected.size === 1 ? '' : 's'}`}
+              </Button>
+            </>
           )}
-          <Button
-            type="button"
-            className={cn(limsPrimaryBtnClass, 'relative')}
-            onClick={confirm}
-            disabled={!canConfirm}
-          >
-            {noEquipment ? 'Record: no equipment used' : `Use ${selected.size} item${selected.size === 1 ? '' : 's'}`}
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
