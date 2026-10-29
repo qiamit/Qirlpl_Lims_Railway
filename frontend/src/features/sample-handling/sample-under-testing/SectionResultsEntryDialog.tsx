@@ -77,7 +77,7 @@ export type SectionResultsDraft = SectionParameterEntry
 type BulkDateField = 'testStartDate' | 'testEndDate'
 
 const RESULTS_GRID_COLS =
-  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(4.5rem,0.5fr)_minmax(10rem,1.5fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.7fr)_minmax(11rem,1.3fr)_minmax(8rem,0.9fr)]'
+  'grid grid-cols-[2.5rem_minmax(9rem,1.2fr)_minmax(4.5rem,0.5fr)_minmax(10rem,1.5fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(12rem,1.7fr)_7rem_minmax(8rem,0.9fr)]'
 
 /** Date the equipment must be usable on: end date, else start date, else today. */
 const testDateOf = (p: SectionParameterEntry): string =>
@@ -1149,10 +1149,7 @@ export function SectionResultsEntryDialog({
               <div className={headCellClass}>Test Start Date</div>
               <div className={headCellClass}>Test End Date</div>
               <div className={headCellClass}>Results</div>
-              <div className={cn(headCellClass, 'flex-col gap-0')}>
-                Equipment / CRMs Used
-                <span className="text-[10px] font-normal normal-case tracking-normal opacity-75">optional</span>
-              </div>
+              <div className={headCellClass}>Equipment</div>
               <div className={headCellClass}>NABL Scope</div>
             </div>
 
@@ -1269,38 +1266,47 @@ export function SectionResultsEntryDialog({
                       )}
                     </div>
                     <div className={cn(cellClass, 'min-w-0 flex-col items-stretch justify-center text-center')}>
-                      {readOnly ? (
-                        <span
-                          className="w-full break-words whitespace-pre-wrap text-center leading-relaxed"
-                          title={resultsTitle || undefined}
-                        >
-                          {resultsDisplay || '—'}
-                        </span>
-                      ) : (
-                        <TestResultsEntryCell
-                          value={p.results}
-                          testLabel={p.testLabel}
-                          sectionCompareSources={buildSectionCompareSources(
-                            sectionCompareItems,
-                            paramKeyFromRow(p.paramRowId, p.testLabel),
-                          )}
-                          onChange={(next) => updateDraft(index, { results: next })}
-                        />
-                      )}
-                      <ResultObservationMeta
-                        sampleId={row?.sampleId ?? null}
-                        paramRowId={p.paramRowId}
-                        testLabel={p.testLabel}
-                        stamp={p.paramRowId ? entryStamps?.[p.paramRowId] : null}
-                        attachments={(p.paramRowId && resultAttachments?.[p.paramRowId]) || []}
-                        attachmentsAvailable={resultAttachments !== null}
-                        canAttach={!readOnly && row?.sampleStage !== 'completed'}
-                        onAttachmentsChange={(next) => {
-                          const id = p.paramRowId
-                          if (!id) return
-                          setResultAttachments((prev) => ({ ...(prev ?? {}), [id]: next }))
-                        }}
-                      />
+                      {(() => {
+                        const meta = (
+                          <ResultObservationMeta
+                            className={readOnly ? undefined : 'mt-0 w-auto'}
+                            sampleId={row?.sampleId ?? null}
+                            paramRowId={p.paramRowId}
+                            testLabel={p.testLabel}
+                            stamp={p.paramRowId ? entryStamps?.[p.paramRowId] : null}
+                            attachments={(p.paramRowId && resultAttachments?.[p.paramRowId]) || []}
+                            attachmentsAvailable={resultAttachments !== null}
+                            canAttach={!readOnly && row?.sampleStage !== 'completed'}
+                            onAttachmentsChange={(next) => {
+                              const id = p.paramRowId
+                              if (!id) return
+                              setResultAttachments((prev) => ({ ...(prev ?? {}), [id]: next }))
+                            }}
+                          />
+                        )
+                        return readOnly ? (
+                          <>
+                            <span
+                              className="w-full break-words whitespace-pre-wrap text-center leading-relaxed"
+                              title={resultsTitle || undefined}
+                            >
+                              {resultsDisplay || '—'}
+                            </span>
+                            {meta}
+                          </>
+                        ) : (
+                          <TestResultsEntryCell
+                            value={p.results}
+                            testLabel={p.testLabel}
+                            sectionCompareSources={buildSectionCompareSources(
+                              sectionCompareItems,
+                              paramKeyFromRow(p.paramRowId, p.testLabel),
+                            )}
+                            onChange={(next) => updateDraft(index, { results: next })}
+                            footer={meta}
+                          />
+                        )
+                      })()}
                     </div>
                     <div className={cn(cellClass, 'min-w-0 flex-col items-stretch justify-center gap-1 text-left')}>
                       {traceability === 'missing' ? (
