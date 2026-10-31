@@ -187,6 +187,10 @@ const ROUTE_LABELS: Record<string, string> = {
   '/samples/report-preparation': 'Sample Handling / Test Report Preparation',
   '/samples/completed': 'Sample Handling / Issued Test Report',
   '/samples/retain-disposed': 'Sample Handling / Retain & Disposed Sample',
+  '/metallography/analyses': 'Metallurgy & Metallography / Analyses',
+  '/metallography/scale-calibrations': 'Metallurgy & Metallography / Microscope Calibration (µm/px)',
+  '/metallography/methods': 'Metallurgy & Metallography / Method Setup',
+  '/metallography/periodic-table': 'Metallurgy & Metallography / Periodic Table',
   '/masters/consent-letter': 'Testing LIMS / Consent Letter',
   '/masters/clients': 'Client Master',
   '/masters/is-codes': 'IS Code Master',
@@ -303,9 +307,19 @@ const ROUTE_LABELS: Record<string, string> = {
   '/contact-us': 'Contact Us',
 }
 
+/** Labels for routes with an id or symbol at the end (exact-path ROUTE_LABELS cannot match them). */
+const ROUTE_PREFIX_LABELS: ReadonlyArray<readonly [string, string]> = [
+  ['/metallography/analyses/', 'Metallurgy & Metallography / Analyses / Analysis'],
+  ['/metallography/periodic-table/', 'Metallurgy & Metallography / Periodic Table / Element'],
+]
+
+function routeLabelFor(pathname: string): string | undefined {
+  return ROUTE_LABELS[pathname] ?? ROUTE_PREFIX_LABELS.find(([prefix]) => pathname.startsWith(prefix))?.[1]
+}
+
 function Breadcrumbs() {
   const location = useLocation()
-  let label = ROUTE_LABELS[location.pathname]
+  let label = routeLabelFor(location.pathname)
   if (
     location.pathname === '/nonconforming-work/corrective-action' &&
     new URLSearchParams(location.search).get('source') === 'audit'
@@ -834,7 +848,7 @@ export default function GlobalLayout() {
               ) : (
                 <>
                   <Breadcrumbs />
-                  {!ROUTE_LABELS[location.pathname] ? (
+                  {!routeLabelFor(location.pathname) ? (
                     <span className="block truncate text-sm font-semibold text-white sm:text-base">
                       {labName || 'Quality International Research & Laboratories Pvt. Ltd.'}
                     </span>

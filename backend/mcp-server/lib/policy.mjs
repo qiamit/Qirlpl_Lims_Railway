@@ -13,6 +13,7 @@ export const HIDDEN_TABLES = new Set([
   'schema_migrations',
   'finance_backfill_log',
   'audit_log', // read with audit_trail_search (changed fields only)
+  'metallography_counters', // numbering counters (migration 20261102101700)
 ])
 
 /**
@@ -44,6 +45,13 @@ export const WRITE_BLOCKED_TABLES = new Map([
   ['soft_delete_tables', 'delete settings are changed only in the app'],
   ['document_series', 'document numbering is changed only in the app'],
   ['auth_events', 'sign-in events cannot be changed'],
+  // Metallurgy & Metallography (migration 20261102101700)
+  ['metallography_settings', 'metallography raw data and settings are made only in the app'],
+  ['metallography_parameter_methods', 'metallography raw data and settings are made only in the app'],
+  ['metallography_scale_calibrations', 'metallography raw data and settings are made only in the app'],
+  ['metallography_analyses', 'metallography raw data and settings are made only in the app'],
+  ['metallography_fields', 'metallography raw data and settings are made only in the app'],
+  ['metallography_rechecks', 'metallography raw data and settings are made only in the app'],
 ])
 
 /** Rows the app numbers or builds in several steps: no new rows through the connector. */
@@ -59,6 +67,8 @@ export const CREATE_BLOCKED_TABLES = new Map([
   ['finance_tax_invoices', 'invoices are numbered by the app'],
   ['finance_credit_notes', 'credit notes are numbered by the app'],
   ['consent_letters', 'consent letters are generated in the app'],
+  ['metallography_analyses', 'metallography analyses are numbered by the app (MA-YYYY-NNNNN)'],
+  ['metallography_scale_calibrations', 'microscope calibrations are numbered by the app (MSC-YYYY-NNN)'],
 ])
 
 /** Columns never written through the connector, in any table. */

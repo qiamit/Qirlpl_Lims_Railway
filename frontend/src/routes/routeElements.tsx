@@ -104,6 +104,14 @@ const PtPlanPage = lazy(() => import('@/features/proficiency-testing/PtPlanPage'
 const ControlChartsPage = lazy(() => import('@/features/quality/control-charts/ControlChartsPage'))
 const SamplingPlansPage = lazy(() => import('@/features/sampling/SamplingPlansPage'))
 const SamplingRecordsPage = lazy(() => import('@/features/sampling/SamplingRecordsPage'))
+const MetallographyMasterPage = lazy(() => import('@/features/metallography/MetallographyMasterPage'))
+const MetallographyWorkbenchPage = lazy(() => import('@/features/metallography/workbench/MetallographyWorkbenchPage'))
+const MicroscopeCalibrationMasterPage = lazy(
+  () => import('@/features/metallography/calibrations/MicroscopeCalibrationMasterPage'),
+)
+const MetallographyMethodSetupPage = lazy(() => import('@/features/metallography/methods/MethodSetupPage'))
+const PeriodicTablePage = lazy(() => import('@/features/metallography/periodic-table/PeriodicTablePage'))
+const ElementDetailPage = lazy(() => import('@/features/metallography/periodic-table/ElementDetailPage'))
 const PtParticipationsPage = lazy(() => import('@/features/proficiency-testing/PtParticipationsPage'))
 const MethodVerificationsPage = lazy(() => import('@/features/method-validation/MethodVerificationsPage'))
 const ScopeVerificationStatusPage = lazy(() => import('@/features/method-validation/ScopeVerificationStatusPage'))
@@ -496,6 +504,31 @@ export function SamplingPlansRoute() {
 
 export function SamplingRecordsRoute() {
   return <SamplingRecordsPage />
+}
+
+/** Metallurgy & Metallography (design 3.3). Module access decides; no designation gate. */
+export function MetallographyAnalysesRoute() {
+  return <MetallographyMasterPage />
+}
+
+export function MetallographyWorkbenchRoute() {
+  return <MetallographyWorkbenchPage />
+}
+
+export function MicroscopeCalibrationRoute() {
+  return <MicroscopeCalibrationMasterPage />
+}
+
+export function MetallographyMethodsRoute() {
+  return <MetallographyMethodSetupPage />
+}
+
+export function PeriodicTableRoute() {
+  return <PeriodicTablePage />
+}
+
+export function ElementDetailRoute() {
+  return <ElementDetailPage />
 }
 
 export function PtParticipationsRoute() {

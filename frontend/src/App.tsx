@@ -109,6 +109,12 @@ import {
   ControlChartsRoute,
   SamplingPlansRoute,
   SamplingRecordsRoute,
+  MetallographyAnalysesRoute,
+  MetallographyWorkbenchRoute,
+  MicroscopeCalibrationRoute,
+  MetallographyMethodsRoute,
+  PeriodicTableRoute,
+  ElementDetailRoute,
   PtParticipationsRoute,
   MethodVerificationsRoute,
   ScopeVerificationStatusRoute,
@@ -164,6 +170,15 @@ export default function App() {
           <Route path="samples/report-preparation" element={<TestReportPreparationMasterPage />} />
           <Route path="samples/completed" element={<CompletedResultsMasterPage />} />
           <Route path="samples/retain-disposed" element={<RetainDisposedMasterPage />} />
+
+          {/* Metallurgy & Metallography (Testing LIMS) */}
+          <Route path="metallography" element={<Navigate to="/metallography/analyses" replace />} />
+          <Route path="metallography/analyses" element={<MetallographyAnalysesRoute />} />
+          <Route path="metallography/analyses/:id" element={<MetallographyWorkbenchRoute />} />
+          <Route path="metallography/scale-calibrations" element={<MicroscopeCalibrationRoute />} />
+          <Route path="metallography/methods" element={<MetallographyMethodsRoute />} />
+          <Route path="metallography/periodic-table" element={<PeriodicTableRoute />} />
+          <Route path="metallography/periodic-table/:symbol" element={<ElementDetailRoute />} />
           <Route
             path="samples/result-validation"
             element={

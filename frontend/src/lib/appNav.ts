@@ -74,6 +74,10 @@ import {
   Network,
   Pipette,
   MapPinned,
+  Microscope,
+  Ruler,
+  Settings2,
+  Atom,
 } from 'lucide-react'
 import {
   RESULT_VALIDATION_MODULES,
@@ -571,6 +575,22 @@ export const NAV_SECTIONS: NavSection[] = [
             icon: FlaskConical,
             clause: '7.4',
           },
+        ],
+      },
+      {
+        label: 'Metallurgy & Metallography',
+        icon: Microscope,
+        clause: '7.2',
+        children: [
+          { label: 'Analyses', to: '/metallography/analyses', icon: Microscope, clause: '7.5' },
+          {
+            label: 'Microscope Calibration (µm/px)',
+            to: '/metallography/scale-calibrations',
+            icon: Ruler,
+            clause: '6.4',
+          },
+          { label: 'Method Setup', to: '/metallography/methods', icon: Settings2, clause: '7.2' },
+          { label: 'Periodic Table', to: '/metallography/periodic-table', icon: Atom },
         ],
       },
       {

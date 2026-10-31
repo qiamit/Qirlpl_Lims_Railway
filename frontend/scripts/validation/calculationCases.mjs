@@ -20,6 +20,7 @@
  *
  * Module handles (see run-calculation-validation.mjs):
  *   m.mu, m.rds, m.point, m.testResult, m.conformity, m.ulr, m.reportNo, m.series, m.is2
+ *   metallography: m.mgScale, m.mgStats, m.mgRing, m.mgRingDetect, m.mgFormat
  *
  * Rounding (lab decision, Amit, 23 Oct 2026): reported values are rounded by
  * IS 2:1960 "Rules for rounding off numerical values" — the digits dropped are
@@ -44,6 +45,12 @@ export const MODULE_FILES = {
   reportNo: 'src/features/sample-handling/report-preparation/formattedTestReportNumber.ts',
   series: 'src/features/finance/sale/shared/documentSeriesApi.ts',
   is2: 'src/lib/is2Rounding.ts',
+  // Metallurgy & Metallography (design 3.10 A)
+  mgScale: 'src/features/metallography/calc/scaleCalibration.ts',
+  mgStats: 'src/features/metallography/calc/fieldStatistics.ts',
+  mgRing: 'src/features/metallography/engines/ringTest/ringMaths.ts',
+  mgRingDetect: 'src/features/metallography/engines/ringTest/detectRing.ts',
+  mgFormat: 'src/features/metallography/formatResult.ts',
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +129,78 @@ const IST_2026_03_31_235959 = new Date('2026-03-31T18:29:59Z')
 const IST_2026_04_01_000000 = new Date('2026-03-31T18:30:00Z')
 const IST_2027_01_01_000000 = new Date('2026-12-31T18:30:00Z')
 const IST_2099_04_01_120000 = new Date('2099-04-01T06:30:00Z')
+
+// ---------------------------------------------------------------------------
+// Metallography (design 3.10 A). Ring test geometry for RT-01 … RT-09:
+// concentric circles centred at (400, 400) px; t1–t8 rays from the outer
+// centre; the inner edge is moved out by inner_gap_px and the outer edge in by
+// outer_gap_px along each ray (the drawn lines sit on the edges), so with 1 px
+// gaps t = (R_outer − 1) − (R_inner + 1) px. Areas: F&P = inner disc,
+// TM = outer disc − inner disc, share = TM / (TM + F&P) × 100.
+// Limits are given in the case (old code's values: 0.07 d – 0.15 d, 30–50 %).
+// ---------------------------------------------------------------------------
+
+const RING_LIMITS = {
+  thickness_min_factor: 0.07,
+  thickness_max_factor: 0.15,
+  tm_share_min_pct: 30,
+  tm_share_max_pct: 50,
+  limits_inclusive: true,
+}
+
+function ringGeometry(inner, outer, gapPx) {
+  return {
+    inner,
+    outer,
+    diameterLines: [],
+    thicknessApplied: true,
+    pointOffsets: Array.from({ length: 8 }, () => ({ angleOffsetDeg: 0, deltaPx: 0 })),
+    angularCorrectionDeg: 0,
+    outerGapPx: gapPx,
+    innerGapPx: gapPx,
+  }
+}
+
+const ringCircle = (r) => ({ type: 'circle', cx: 400, cy: 400, r })
+
+function ringSquare(cx, cy, side) {
+  const h = side / 2
+  return {
+    type: 'polygon',
+    cx,
+    cy,
+    points: [
+      { x: cx - h, y: cy - h },
+      { x: cx + h, y: cy - h },
+      { x: cx + h, y: cy + h },
+      { x: cx - h, y: cy + h },
+    ],
+  }
+}
+
+function ringOutcome(s) {
+  return {
+    thickness_mm: s.thickness.map((p) => p.thickness_mm),
+    valid_point_count: s.valid_point_count,
+    thickness_range_low_mm: s.thickness_range_low_mm,
+    thickness_range_high_mm: s.thickness_range_high_mm,
+    thickness_in_range: s.thickness_in_range,
+    area_tm_mm2: s.area_tm_mm2,
+    area_fp_mm2: s.area_fp_mm2,
+    tm_share_pct: s.tm_share_pct,
+    tm_share_in_range: s.tm_share_in_range,
+    overall_pass: s.overall_pass,
+  }
+}
+
+/** Stage micrometer readings of the given lengths along one axis (MC-01). */
+function micrometerReadings(axis, lengths) {
+  return lengths.map((len) =>
+    axis === 'x'
+      ? { axis, x1: 10, y1: 50, x2: 10 + len, y2: 50 }
+      : { axis, x1: 50, y1: 10, x2: 50, y2: 10 + len },
+  )
+}
 
 export const CASES = [
   // ------------------------------------------------------------- MU
@@ -1142,5 +1221,316 @@ export const CASES = [
       m.series.seriesDocType('unknown'),
     ],
     expected: ['INV/0007', 'INV/00000007', 'TAX_INVOICE', null],
+  },
+
+  // ------------------------------------------------------------- metallography: scale and statistics
+  {
+    id: 'MC-01',
+    module: 'mgScale',
+    title: 'Microscope scale: 100 µm over 199, 200, 201 px on each axis → µm/px, s, u_rel',
+    source:
+      'Hand: mean = 600 / 3 = 200 px; µm/px = 100 / 200 = 0.5000; deviations −1, 0, +1 → ' +
+      's = √(2 / 2) = 1 px; u_rel = 1 / 200 × 100 = 0.50 %. Same rule as the database calibration guard',
+    run: (m) => {
+      const r = m.mgScale.computeScaleFromReadings(
+        [...micrometerReadings('x', [199, 200, 201]), ...micrometerReadings('y', [199, 200, 201])],
+        100,
+      )
+      return {
+        meanPxX: r.meanPxX,
+        meanPxY: r.meanPxY,
+        umPerPxX: r.umPerPxX,
+        umPerPxY: r.umPerPxY,
+        sPxX: r.sPxX,
+        sPxY: r.sPxY,
+        uRelScalePct: r.uRelScalePct,
+        errors: r.errors,
+      }
+    },
+    expected: { meanPxX: 200, meanPxY: 200, umPerPxX: 0.5, umPerPxY: 0.5, sPxX: 1, sPxY: 1, uRelScalePct: 0.5, errors: [] },
+    tol: 1e-9,
+  },
+  {
+    id: 'MC-02',
+    module: 'mgStats',
+    title: 'Field statistics of 10, 12, 11, 13, 9: mean, s, 95 % CI, % relative accuracy',
+    source:
+      'Hand: mean = 55 / 5 = 11.000; Σ(x − mean)² = 10 → s = √(10 / 4) = 1.581; ' +
+      't(0.975, 4) = 2.776 (t table); CI95 = 2.776 × 1.581 / √5 = 1.963; %RA = 1.963 / 11 × 100 = 17.8',
+    run: (m) => {
+      const r = m.mgStats.fieldStatistics([10, 12, 11, 13, 9])
+      return [
+        r.n,
+        m.is2.is2RoundFixed(r.mean, 3),
+        m.is2.is2RoundFixed(r.s, 3),
+        r.t95,
+        m.is2.is2RoundFixed(r.ci95, 3),
+        m.is2.is2RoundFixed(r.relativeAccuracyPct, 1),
+      ]
+    },
+    expected: [5, '11.000', '1.581', 2.776, '1.963', '17.8'],
+  },
+
+  // ------------------------------------------------------------- metallography: ring test (IS 1786)
+  {
+    id: 'RT-01',
+    module: 'mgRing',
+    title: 'Ring test: outer r 300 px, inner r 210 px, 0.02 mm/px, d 12 mm, 1 px gaps → thickness in range, TM 51.0 % → FAIL',
+    source:
+      'Hand: t = (300 − 1) − (210 + 1) = 88 px × 0.02 = 1.760 mm at all 8 points; limits 0.07 × 12 = 0.84 to ' +
+      '0.15 × 12 = 1.80 mm → in range; TM = π(300² − 210²) = π·45900 px², F&P = π·44100 px² → ' +
+      'TM = 18.36π = 57.6796 mm², F&P = 17.64π = 55.4177 mm²; share = 45900 / 90000 = 51.0 % > 50 % → FAIL',
+    run: (m) =>
+      ringOutcome(
+        m.mgRing.computeRing(ringGeometry(ringCircle(210), ringCircle(300), 1), { kind: 'in_image', mmPerPx: 0.02 }, 12, RING_LIMITS),
+      ),
+    expected: {
+      thickness_mm: [1.76, 1.76, 1.76, 1.76, 1.76, 1.76, 1.76, 1.76],
+      valid_point_count: 8,
+      thickness_range_low_mm: 0.84,
+      thickness_range_high_mm: 1.8,
+      thickness_in_range: true,
+      area_tm_mm2: 57.6796,
+      area_fp_mm2: 55.4177,
+      tm_share_pct: 51,
+      tm_share_in_range: false,
+      overall_pass: false,
+    },
+    tol: 1e-9,
+  },
+  {
+    id: 'RT-02',
+    module: 'mgRing',
+    title: 'Ring test: as RT-01 with inner r 225 px → t 1.460 mm in range, TM 43.75 % → PASS',
+    source:
+      'Hand: t = 299 − 226 = 73 px × 0.02 = 1.460 mm (0.84–1.80 mm → in range); TM = π(90000 − 50625) = π·39375 px² ' +
+      '= 15.75π = 49.4801 mm², F&P = π·50625 px² = 20.25π = 63.6173 mm²; share = 39375 / 90000 = 43.75 % ' +
+      '(30–50 %) → PASS',
+    run: (m) =>
+      ringOutcome(
+        m.mgRing.computeRing(ringGeometry(ringCircle(225), ringCircle(300), 1), { kind: 'in_image', mmPerPx: 0.02 }, 12, RING_LIMITS),
+      ),
+    expected: {
+      thickness_mm: [1.46, 1.46, 1.46, 1.46, 1.46, 1.46, 1.46, 1.46],
+      valid_point_count: 8,
+      thickness_range_low_mm: 0.84,
+      thickness_range_high_mm: 1.8,
+      thickness_in_range: true,
+      area_tm_mm2: 49.4801,
+      area_fp_mm2: 63.6173,
+      tm_share_pct: 43.75,
+      tm_share_in_range: true,
+      overall_pass: true,
+    },
+    tol: 1e-9,
+  },
+  {
+    id: 'RT-03',
+    module: 'mgRing',
+    title: 'Ring test polygon edges: inner square 100 px, outer square 200 px, 0.1 mm/px → areas by shoelace',
+    source:
+      'Hand: outer square (200 × 0.1)² = 400 mm², inner (100 × 0.1)² = 100 mm² → TM = 300 mm², F&P = 100 mm², ' +
+      'share = 300 / 400 = 75.0 %. Circles through the same points would give other areas (old code used circles)',
+    run: (m) => {
+      const s = m.mgRing.computeRing(
+        ringGeometry(ringSquare(300, 300, 100), ringSquare(300, 300, 200), 0),
+        { kind: 'calibration', umPerPxX: 100, umPerPxY: 100 },
+        12,
+        RING_LIMITS,
+      )
+      return { area_tm_mm2: s.area_tm_mm2, area_fp_mm2: s.area_fp_mm2, tm_share_pct: s.tm_share_pct }
+    },
+    expected: { area_tm_mm2: 300, area_fp_mm2: 100, tm_share_pct: 75 },
+    tol: 1e-9,
+  },
+  {
+    id: 'RT-04',
+    module: 'mgRing',
+    title: 'Ring test: thickness exactly 0.07 d → in range when limits are inclusive, out when exclusive',
+    source:
+      'Hand: d 12 mm → 0.07 d = 0.84 mm = 42 px at 0.02 mm/px; outer r 300, inner r 256, 1 px gaps → ' +
+      't = 299 − 257 = 42 px = 0.840 mm at all 8 points. Inclusive limits (≥ low, ≤ high) → in range; exclusive ' +
+      '(> low, < high) → out. The method setting limits_inclusive decides; which one IS 1786 requires is confirmed ' +
+      'in Phase 0 (default inclusive, flagged "verify against IS 1786")',
+    run: (m) => {
+      const g = ringGeometry(ringCircle(256), ringCircle(300), 1)
+      const scale = { kind: 'in_image', mmPerPx: 0.02 }
+      const inc = m.mgRing.computeRing(g, scale, 12, { ...RING_LIMITS, limits_inclusive: true })
+      const exc = m.mgRing.computeRing(g, scale, 12, { ...RING_LIMITS, limits_inclusive: false })
+      return [inc.thickness_min_mm, inc.thickness_max_mm, inc.thickness_in_range, exc.thickness_in_range]
+    },
+    expected: [0.84, 0.84, true, false],
+  },
+  {
+    id: 'RT-05',
+    module: 'mgRing',
+    title: 'Ring test with separate x / y scale (20 × 25 µm/px): thickness per axis, areas π r² sx sy, share unchanged',
+    source:
+      'Hand: as RT-02 (inner r 225, outer r 300, 1 px gaps → 73 px along every ray) with 0.020 mm/px across and ' +
+      '0.025 mm/px down. t1 / t5 (vertical) = 73 × 0.025 = 1.825 mm; t3 / t7 (horizontal) = 73 × 0.020 = 1.460 mm; ' +
+      't2, t4, t6, t8 (45°) = 73 × √((0.020² + 0.025²) / 2) = 73 × 0.0226385 = 1.6526 → 1.653 mm. Outer area ' +
+      'π·90000 × 0.020 × 0.025 = 45π = 141.3717 mm², F&P = π·50625 × 0.0005 = 25.3125π = 79.5216 mm², ' +
+      'TM = 61.8501 mm²; share = 61.8501 / 141.3717 = 43.75 % (as with one scale). 1.825 > 0.15 × 12 = 1.80 → FAIL',
+    run: (m) => {
+      const s = m.mgRing.computeRing(
+        ringGeometry(ringCircle(225), ringCircle(300), 1),
+        { kind: 'calibration', umPerPxX: 20, umPerPxY: 25 },
+        12,
+        RING_LIMITS,
+      )
+      return ringOutcome(s)
+    },
+    expected: {
+      thickness_mm: [1.825, 1.653, 1.46, 1.653, 1.825, 1.653, 1.46, 1.653],
+      valid_point_count: 8,
+      thickness_range_low_mm: 0.84,
+      thickness_range_high_mm: 1.8,
+      thickness_in_range: false,
+      area_tm_mm2: 61.8501,
+      area_fp_mm2: 79.5216,
+      tm_share_pct: 43.75,
+      tm_share_in_range: true,
+      overall_pass: false,
+    },
+    tol: 1e-9,
+  },
+  {
+    id: 'RT-06',
+    module: 'mgRing',
+    title: 'Ring test: one source of d — a measured diameter line does not move the limits',
+    source:
+      'Hand: nominal d 10 mm → limits 0.07 × 10 = 0.70 to 0.15 × 10 = 1.50 mm. A diameter line of 600 px at ' +
+      '0.02 mm/px measures 12.000 mm and is recorded for information only (the old code switched the limits ' +
+      'to 0.84–1.80 mm). RT-02 geometry: t = 1.460 mm, inside 0.70–1.50',
+    run: (m) => {
+      const g = { ...ringGeometry(ringCircle(225), ringCircle(300), 1), diameterLines: [{ x1: 100, y1: 400, x2: 700, y2: 400 }] }
+      const s = m.mgRing.computeRing(g, { kind: 'in_image', mmPerPx: 0.02 }, 10, RING_LIMITS)
+      return [s.d_mm, s.d_source, s.d_measured_mm, s.thickness_range_low_mm, s.thickness_range_high_mm, s.thickness_in_range]
+    },
+    expected: [10, 'nominal', 12, 0.7, 1.5, true],
+  },
+  {
+    id: 'RT-07',
+    module: 'mgRing',
+    title: 'Ring test: thickness points not applied → no valid point, FAIL even when the TM share is in range',
+    source:
+      'Design 3.6 (thickness points required): RT-02 geometry (TM 43.75 %, in 30–50 %) with thicknessApplied ' +
+      'false → 0 of 8 thickness points, thickness not in range, overall FAIL; the summary is not complete',
+    run: (m) => {
+      const g = { ...ringGeometry(ringCircle(225), ringCircle(300), 1), thicknessApplied: false }
+      const s = m.mgRing.computeRing(g, { kind: 'in_image', mmPerPx: 0.02 }, 12, RING_LIMITS)
+      return [s.valid_point_count, s.thickness_in_range, s.tm_share_in_range, s.overall_pass, m.mgRing.ringSummaryComplete(s)]
+    },
+    expected: [0, false, true, false, false],
+  },
+  {
+    id: 'RT-08',
+    module: 'mgRing',
+    title: 'Ring test: thickness exactly 0.15 d → in range when limits are inclusive, out when exclusive',
+    source:
+      'Hand: d 12 mm → 0.15 d = 1.80 mm = 90 px at 0.02 mm/px; outer r 300, inner r 208, 1 px gaps → ' +
+      't = 299 − 209 = 90 px = 1.800 mm at all 8 points. Inclusive (≤ high) → in range; exclusive (< high) → out',
+    run: (m) => {
+      const g = ringGeometry(ringCircle(208), ringCircle(300), 1)
+      const scale = { kind: 'in_image', mmPerPx: 0.02 }
+      const inc = m.mgRing.computeRing(g, scale, 12, { ...RING_LIMITS, limits_inclusive: true })
+      const exc = m.mgRing.computeRing(g, scale, 12, { ...RING_LIMITS, limits_inclusive: false })
+      return [inc.thickness_min_mm, inc.thickness_max_mm, inc.thickness_in_range, exc.thickness_in_range]
+    },
+    expected: [1.8, 1.8, true, false],
+  },
+  {
+    id: 'RT-09',
+    module: 'mgRing',
+    title: 'Ring test: TM share exactly 50 % and 30 % → in range when inclusive, out when exclusive',
+    source:
+      'Hand: outer r 300 px at 0.02 mm/px → outer area 36π = 113.0973 mm². Inner r 300/√2 → F&P = 18π = ' +
+      '56.5487 mm², TM = 56.5487 mm², share 50.00 % (t = 299 − 213.13 = 85.87 px = 1.717 mm, in 0.84–1.80). ' +
+      'Inner r 300·√0.7 → F&P = 25.2π = 79.1681 mm², TM = 33.9292 mm², share 33.9292 / 113.0973 = 30.00 % ' +
+      '(t = 299 − 252.00 = 47.00 px = 0.940 mm). Inclusive (≥ 30, ≤ 50) → in; exclusive (> 30, < 50) → out',
+    run: (m) => {
+      const scale = { kind: 'in_image', mmPerPx: 0.02 }
+      const exc = { ...RING_LIMITS, limits_inclusive: false }
+      const g50 = ringGeometry(ringCircle(300 / Math.SQRT2), ringCircle(300), 1)
+      const g30 = ringGeometry(ringCircle(300 * Math.sqrt(0.7)), ringCircle(300), 1)
+      const i50 = m.mgRing.computeRing(g50, scale, 12, RING_LIMITS)
+      const e50 = m.mgRing.computeRing(g50, scale, 12, exc)
+      const i30 = m.mgRing.computeRing(g30, scale, 12, RING_LIMITS)
+      const e30 = m.mgRing.computeRing(g30, scale, 12, exc)
+      return [
+        i50.area_tm_mm2,
+        i50.area_fp_mm2,
+        i50.tm_share_pct,
+        i50.tm_share_in_range,
+        i50.overall_pass,
+        e50.tm_share_in_range,
+        i30.area_tm_mm2,
+        i30.area_fp_mm2,
+        i30.tm_share_pct,
+        i30.tm_share_in_range,
+        e30.tm_share_in_range,
+      ]
+    },
+    expected: [56.5487, 56.5487, 50, true, true, false, 33.9292, 79.1681, 30, true, false],
+    tol: 1e-9,
+  },
+  {
+    id: 'RTD-01',
+    module: 'mgRingDetect',
+    title: 'Ring edge detection on a drawn ring: light core r 110 px, dark rim to r 150 px → both edges found',
+    source:
+      'Hand: 400 × 400 px image drawn by the case, centre (200, 200): grey 200 inside r 110 (F&P core), grey 40 ' +
+      'from r 110 to r 150 (TM rim), 255 outside. The proposals (the analyst confirms every edge) must lie within ' +
+      '3 px of the drawn edges and centre: inner r 110, outer r 150, centre 200, 200',
+    run: (m) => {
+      const W = 400
+      const data = new Uint8Array(W * W)
+      for (let y = 0; y < W; y += 1) {
+        for (let x = 0; x < W; x += 1) {
+          const r = Math.hypot(x + 0.5 - 200, y + 0.5 - 200)
+          data[y * W + x] = r <= 110 ? 200 : r <= 150 ? 40 : 255
+        }
+      }
+      const res = m.mgRingDetect.detectRing({ width: W, height: W, data }, { which: 'both' })
+      const radius = (s) => (s ? m.mgRing.shapeMeanRadiusPx(s) : null)
+      return [radius(res.inner), radius(res.outer), res.outer?.cx ?? null, res.outer?.cy ?? null, res.warnings.length]
+    },
+    expected: [110, 150, 200, 200, 0],
+    tol: 3,
+  },
+
+  // ------------------------------------------------------------- metallography: reported value
+  {
+    id: 'MF-01',
+    module: 'mgFormat',
+    title: 'Metallography single value: G 7.46 at 1 decimal → "7.5" (IS 2 rounding)',
+    source: 'IS 2:1960: dropped part 0.06 of 0.1 is more than half → round up → 7.5',
+    run: (m) => m.mgFormat.formatSingleValue(7.46, 1),
+    expected: '7.5',
+  },
+  {
+    id: 'MF-02',
+    module: 'mgFormat',
+    title: 'Ring test reported value at the precision of the verdict: t 1.805 mm, d 12, method decimals 2 → "1.805 mm", FAIL',
+    source:
+      'Hand: outer r 300, inner r 207.75, 1 px gaps, 0.02 mm/px → t = 299 − 208.75 = 90.25 px = 1.805 mm at all 8 ' +
+      'points, above 0.15 × 12 = 1.80 → FAIL. The text keeps 3 decimals whatever the method decimals ' +
+      '(re-rounding to 2 would print "1.80 mm", which reads as on the limit). TM share = 1 − (207.75 / 300)² = ' +
+      '52.04 %',
+    run: (m) => {
+      const s = m.mgRing.computeRing(
+        ringGeometry(ringCircle(207.75), ringCircle(300), 1),
+        { kind: 'in_image', mmPerPx: 0.02 },
+        12,
+        RING_LIMITS,
+      )
+      const r = m.mgFormat.formatMetallographyResult({ kind: 'ring_test', summary: s, reportedUnit: 'mm', decimals: 2 })
+      return [r.reportedText, r.verdict, r.structured?.decimals ?? null]
+    },
+    expected: [
+      't1 1.805 mm, t2 1.805 mm, t3 1.805 mm, t4 1.805 mm, t5 1.805 mm, t6 1.805 mm, t7 1.805 mm, t8 1.805 mm; TM 52.04 %',
+      'FAIL',
+      3,
+    ],
   },
 ]

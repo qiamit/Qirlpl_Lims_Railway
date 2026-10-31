@@ -51,6 +51,20 @@ export const HELP_GUIDE_SECTIONS: HelpGuideSection[] = [
     ],
   },
   {
+    id: 'metallography',
+    title: 'Metallurgy & Metallography',
+    summary:
+      'Image analyses behind metallography results (ring test now; grain size, inclusion, decarburization, microstructure and macro later), microscope µm/px calibrations, method setup and a periodic table.',
+    tips: [
+      'The Laboratory Director switches the module on in Method Setup → Module settings. Until then the pages show "Metallography is not in use" and Enter Results shows no Metallography link.',
+      'Method Setup → Test parameters: map a Test Parameter to an analysis kind. Ring test limits start at 0.07d–0.15d and 30–50 % TM; verify them against IS 1786 before use.',
+      'Link a method validation record (Quality → Method Verifications). Until it is approved and in date, results are marked Indicative and Non NABL.',
+      'Analyses → Pending lists saved result rows of mapped parameters without a result; Analyse opens the workbench. In Enter Results the word Metallography next to Attach does the same.',
+      'The original image is hashed and never changed. A completed analysis is read-only: supersede it to change the result, or void it with a reason.',
+      'Microscope Calibration: draw at least 3 readings per axis on the stage micrometer image; a second person verifies it. Only verified calibrations valid on the test date can be used.',
+    ],
+  },
+  {
     id: 'calibration-lims',
     title: 'Calibration LIMS',
     summary: 'Service request through certificate preparation for calibration jobs.',
@@ -119,6 +133,12 @@ export const HELP_FAQ_ITEMS: HelpFaqItem[] = [
     question: 'How should Product IS Code Title appear on Part A?',
     answer:
       'Format is: IS Title as per IS Number: Revision Year (example: High Strength Deformed Steel Bars as per IS 1786: 2008). Values come from the linked IS Code master.',
+  },
+  {
+    id: 'faq-metallography-result',
+    question: 'Why can I not type over a result that came from a metallography analysis?',
+    answer:
+      'A result linked to an analysis (shown as "from MA-…") must equal the analysis value. Change it in the analysis (supersede it), or use Unlink in Enter Results and give a reason. Under review or approved results cannot be unlinked; refer them back first.',
   },
   {
     id: 'faq-support',
