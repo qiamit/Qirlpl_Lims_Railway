@@ -232,8 +232,26 @@ function sendJson(res, status, payload, req) {
   res.end(body)
 }
 
+// Log, never exit, on a stray async error: one bad request must not stop the
+// service for everyone (audit F-15).
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err instanceof Error ? err.message : err)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err instanceof Error ? err.message : err)
+})
+
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url || '/', `http://${HOST}:${PORT}`)
+  // A malformed request target (e.g. `//a:99999/`) makes new URL() throw; outside
+  // a try block that ended the process (audit F-15). Answer 400 instead.
+  let url
+  try {
+    url = new URL(req.url || '/', `http://${HOST}:${PORT}`)
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('Bad request')
+    return
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, corsHeaders(req))
