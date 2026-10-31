@@ -1,6 +1,11 @@
-import type { ReactNode } from 'react'
-import { Clock, DatabaseZap, FlaskConical, Loader2, PowerOff } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Clock, DatabaseZap, FlaskConical, Loader2, Power, PowerOff } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useAuth } from '@/hooks/useAuth'
+import { isLaboratoryDirector } from '@/lib/isLaboratoryDirector'
+import { limsPrimaryBtnClass } from '@/lib/limsThemeUi'
 import { cn } from '@/lib/utils'
+import { metallographyErrorText, updateSettings } from './metallographyApi'
 import {
   ANALYSIS_STATUS_LABEL,
   CALIBRATION_STATUS_LABEL,
@@ -27,24 +32,53 @@ export function MetallographyMissingNotice() {
   )
 }
 
-/** "Metallography is not in use" banner (module switched off). */
-export function MetallographyOffNotice() {
+/**
+ * "Metallography is not in use" banner (module switched off). The Director gets
+ * a "Switch on now" button here, so the module can be started from any of its
+ * pages (lab, 1 Nov 2026: the setting alone, inside Method Setup, was missed).
+ */
+export function MetallographyOffNotice({ canSwitchOn = false }: { canSwitchOn?: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const switchOn = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await updateSettings({ enabled: true })
+      window.location.reload()
+    } catch (err) {
+      setError(metallographyErrorText(err))
+      setBusy(false)
+    }
+  }
   return (
-    <div className="border-2 border-amber-600 bg-amber-50 p-3 text-amber-950">
-      <p className="flex items-center gap-2 font-semibold">
-        <PowerOff className="h-4 w-4 shrink-0" /> {METALLOGRAPHY_OFF_TITLE}
-      </p>
-      <p className="mt-1 text-[13px]">
-        The Laboratory Director can switch it on in Method Setup → Module settings.
-      </p>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-2 border-amber-600 bg-amber-50 p-3 text-amber-950">
+      <div className="min-w-0">
+        <p className="flex items-center gap-2 font-semibold">
+          <PowerOff className="h-4 w-4 shrink-0" /> {METALLOGRAPHY_OFF_TITLE}
+        </p>
+        <p className="mt-1 text-[13px]">
+          {canSwitchOn
+            ? 'Switch it on to use these pages. Until then Enter Results shows no Metallography link. It can be switched off again in Method Setup → Module settings.'
+            : 'The Laboratory Director can switch it on in Method Setup → Module settings.'}
+        </p>
+        {error ? <p className="mt-1 text-[13px] text-red-700">{error}</p> : null}
+      </div>
+      {canSwitchOn ? (
+        <Button type="button" className={limsPrimaryBtnClass} disabled={busy} onClick={() => void switchOn()}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+          Switch on now
+        </Button>
+      ) : null}
     </div>
   )
 }
 
 /**
  * Renders children only when the module is on (pattern of SamplingGate).
- * 'missing' shows MetallographyMissingNotice; 'off' shows the off banner, and
- * with allowWhenOff (Director on Method Setup) the page below it as well.
+ * 'missing' shows MetallographyMissingNotice; 'off' shows the off banner (with
+ * "Switch on now" for the Director), and with allowWhenOff (Director on Method
+ * Setup) the page below it as well.
  */
 export function MetallographyGate({
   state,
@@ -55,6 +89,8 @@ export function MetallographyGate({
   allowWhenOff?: boolean
   children: ReactNode
 }) {
+  const { designation } = useAuth()
+  const director = isLaboratoryDirector(designation)
   if (state === null) {
     return (
       <p className="flex items-center gap-2 p-3 text-[13px] text-stone-600">
@@ -67,12 +103,12 @@ export function MetallographyGate({
   if (allowWhenOff) {
     return (
       <div className="space-y-3">
-        <MetallographyOffNotice />
+        <MetallographyOffNotice canSwitchOn={director} />
         {children}
       </div>
     )
   }
-  return <MetallographyOffNotice />
+  return <MetallographyOffNotice canSwitchOn={director} />
 }
 
 const badgeBase = 'inline-block whitespace-nowrap border px-1.5 py-0.5 text-[11px] font-bold'
