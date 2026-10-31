@@ -483,3 +483,16 @@ by Amit in chat ("Haan, dono bhejo"; then "update karke batao").
 
 Not checked on screen by Claude in production; the lab checks the dropdown
 the next time Enter Results is opened.
+
+## Release 8 after go-live (Saturday 31 Oct 2026): done
+
+Security fixes from the 31 Oct audit (`docs/security-audit-2026-10-31.md`, kept private); approved by Amit in chat ("Haan, abhi bhejo").
+
+| Step | Result |
+|---|---|
+| Change | F-01: gateway answers 403 for any `/storage/v1/…resumable…` and `/storage/v1/s3…` path (storage-api v1.24.7 is affected by GHSA-8rrf-w776-x75g; interim until storage-api is upgraded). F-15: pdf-service and functions answer 400 to a malformed request target instead of exiting |
+| Staging | 3296bb3: all blocked-path variants 403, normal storage reaches storage-api, pdf-service `//a:99999/` → 400 and stays up |
+| Merge | PR qiamit/Qirlpl_Lims_Railway#21; `main` 09d3a8b → 142435a; api, pdf-service, functions, frontend, mcp, files-backup SUCCESS |
+| Checks | Production: blocked paths 403 (plain, encoded, double slash, S3); storage-api still answers normal calls; pdf-service `//a:99999/` → 400, health 200 before and after; sign-up 403; anon REST 401; auth, functions, site and MCP metadata 200 |
+
+Still open: storage-api upgrade (staging first), and the rest of the audit list.
