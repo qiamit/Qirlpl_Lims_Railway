@@ -496,3 +496,16 @@ Security fixes from the 31 Oct audit (`docs/security-audit-2026-10-31.md`, kept 
 | Checks | Production: blocked paths 403 (plain, encoded, double slash, S3); storage-api still answers normal calls; pdf-service `//a:99999/` → 400, health 200 before and after; sign-up 403; anon REST 401; auth, functions, site and MCP metadata 200 |
 
 Still open: storage-api upgrade (staging first), and the rest of the audit list.
+
+## Release 9 after go-live (Saturday 31 Oct 2026): done
+
+Metallurgy & Metallography module, Phase 1; approved by Amit in chat ("Haan, production par lagao" for migration 55, "Haan, bhejo" for the frontend).
+
+| Step | Result |
+|---|---|
+| Backup | Weekly volume backup of 31 Oct 22:21 IST (manual backups are at the plan limit of 10) |
+| Migration | 55 `20261102101700_metallurgy_module.sql`: staging first (applied, re-run twice in one rolled-back transaction), then production 23:09 IST (3.1 s). Checks: RLS everywhere, no SECURITY DEFINER without search_path, no anon writes, no invalid indexes |
+| Rollback-only checks | Staging and production: tester's result save unchanged (1 row); module off by default; an engineer cannot switch it on (0 rows); no result row linked |
+| Merge | PR qiamit/Qirlpl_Lims_Railway#22; `main` 142435a → bb09d6e; frontend, mcp, api SUCCESS |
+| Checks | `/metallography/analyses` deep link 200; menu in the production bundle; sign-up 403, anon REST 401, storage resumable 403, MCP metadata 200 |
+| Next | Director switches the module on (Method Setup → Module settings), maps the ring-test parameter, records a microscope calibration; Module Access data fix `20261103_module_access_metallography.sql` when staff should see the pages |
