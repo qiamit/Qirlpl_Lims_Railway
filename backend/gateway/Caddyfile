@@ -86,6 +86,21 @@
     }
   }
 
+  # storage-api up to 1.80.1 lets an unsigned request create or overwrite any
+  # file through the signed resumable-upload routes (GHSA-8rrf-w776-x75g,
+  # audit F-01, 31 Oct 2026). The app never uses resumable uploads or the S3
+  # protocol, so both are closed here. Matchers see the decoded path, so
+  # percent-encoded and absolute-form targets are caught too.
+  @storageResumable path_regexp storageResumable (?i)^/storage/v1/.*resumable
+  handle @storageResumable {
+    respond "Not available" 403
+  }
+
+  @storageS3 path_regexp storageS3 (?i)^/storage/v1/+s3(/|$)
+  handle @storageS3 {
+    respond "Not available" 403
+  }
+
   @storage path /storage/v1 /storage/v1/*
   handle @storage {
     uri strip_prefix /storage/v1
