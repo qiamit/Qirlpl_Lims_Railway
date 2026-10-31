@@ -92,6 +92,16 @@ type LoadedTestAlloc = {
   referred_back_from_review?: boolean | null
 }
 
+/**
+ * Refusals by the metallography link guard (migration 20261102101700), e.g.
+ * "Result comes from metallography analysis MA-…; change it there or unlink."
+ * Shown in the dialog as written; other save errors keep their old handling.
+ */
+function metallographySaveError(err: unknown): string | null {
+  const msg = (err as { message?: unknown } | null)?.message
+  return typeof msg === 'string' && /metallograph/i.test(msg) ? msg : null
+}
+
 /** Saved parameter rows whose date/result differs from the draft (ISO 17025 7.5.2 reason needed). */
 function changedSavedParameterIds(row: TestAllocationRow, draft: SectionResultsDraft[]): string[] {
   const norm = (v: string | null | undefined) => (v ?? '').trim()
@@ -156,6 +166,7 @@ export default function SampleUnderTestingMasterPage() {
   const [resultsDialogOpen, setResultsDialogOpen] = useState(false)
   const [resultsDialogRow, setResultsDialogRow] = useState<TestAllocationRow | null>(null)
   const [resultsDialogSaving, setResultsDialogSaving] = useState(false)
+  const [resultsDialogError, setResultsDialogError] = useState<string | null>(null)
 
   const [sendForReviewOpen, setSendForReviewOpen] = useState(false)
   const [sendForReviewRow, setSendForReviewRow] = useState<TestAllocationRow | null>(null)
@@ -889,6 +900,7 @@ export default function SampleUnderTestingMasterPage() {
   }
 
   const openResultsDialog = (row: TestAllocationRow) => {
+    setResultsDialogError(null)
     setResultsDialogRow(row)
     setResultsDialogOpen(true)
   }
@@ -1053,6 +1065,7 @@ export default function SampleUnderTestingMasterPage() {
     }
 
     setResultsDialogSaving(true)
+    setResultsDialogError(null)
     setSaveMessage(null)
     try {
       const withIds = draft.filter((p) => Boolean(p.paramRowId?.trim()))
@@ -1064,11 +1077,16 @@ export default function SampleUnderTestingMasterPage() {
       let sendEquipment = true
       let sendEnvironment = true
       let sendScope = true
+      let sendMetallography = true
       const withEquipment = <T extends Record<string, unknown>>(p: SectionResultsDraft, fields: T) => {
         let out: Record<string, unknown> = fields
         if (sendEquipment && p.equipmentUsed !== undefined) out = { ...out, equipment_used: p.equipmentUsed }
         // NABL scope of the result (migration 20261102101600).
         if (sendScope && p.nablScopeOverride !== undefined) out = { ...out, nabl_scope_override: p.nablScopeOverride }
+        // Metallography "Use result" (migration 20261102101700); only rows changed in the dialog carry it.
+        if (sendMetallography && p.metallographyAnalysisId !== undefined) {
+          out = { ...out, metallography_analysis_id: p.metallographyAnalysisId }
+        }
         if (sendEnvironment && p.environmentAreaId !== undefined) {
           out = {
             ...out,
@@ -1082,9 +1100,11 @@ export default function SampleUnderTestingMasterPage() {
         write: () => PromiseLike<{ error: { code?: string; message?: string } | null }>,
       ) => {
         let result = await write()
-        for (let attempt = 0; attempt < 3 && result.error && isMissingColumnError(result.error); attempt += 1) {
+        for (let attempt = 0; attempt < 4 && result.error && isMissingColumnError(result.error); attempt += 1) {
           const msg = (result.error.message ?? '').toLowerCase()
-          if (sendScope && msg.includes('nabl_scope_override')) {
+          if (sendMetallography && msg.includes('metallography_analysis_id')) {
+            sendMetallography = false
+          } else if (sendScope && msg.includes('nabl_scope_override')) {
             sendScope = false
           } else if (sendEnvironment && (msg.includes('environment_') || !sendEquipment || !msg.includes('equipment_used'))) {
             sendEnvironment = false
@@ -1200,7 +1220,9 @@ export default function SampleUnderTestingMasterPage() {
       setResultsDialogRow(null)
       await loadRows()
     } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : 'Save failed')
+      const metallographyError = metallographySaveError(err)
+      if (metallographyError) setResultsDialogError(metallographyError)
+      setSaveMessage(err instanceof Error ? err.message : metallographyError ?? 'Save failed')
     } finally {
       setResultsDialogSaving(false)
     }
@@ -1643,11 +1665,15 @@ export default function SampleUnderTestingMasterPage() {
         open={resultsDialogOpen}
         onOpenChange={(open) => {
           setResultsDialogOpen(open)
-          if (!open) setResultsDialogRow(null)
+          if (!open) {
+            setResultsDialogRow(null)
+            setResultsDialogError(null)
+          }
         }}
         row={resultsDialogRow}
         readOnly={Boolean(resultsDialogRow?.resultsLocked)}
         saving={resultsDialogSaving}
+        saveError={resultsDialogError}
         onSave={handleSaveSectionResults}
         onAddTests={handleAddTestsToSection}
         onUpdateSpecificRequirement={handleUpdateSectionSpecificRequirement}

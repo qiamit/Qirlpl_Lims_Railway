@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 
+/** Default bucket: letterhead, footer and seal images. */
 const LETTERHEAD_BUCKET = 'laboratory-files'
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -11,25 +12,37 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
-function storagePathFromUrl(url: string): string | null {
-  const encoded = url.match(/\/object\/(?:sign|public)\/laboratory-files\/([^?]+)/i)
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Object path inside `bucket` from a storage-api sign / public URL; null when the URL is for another bucket. */
+function storagePathFromUrl(url: string, bucket: string): string | null {
+  const re = new RegExp(`/object/(?:sign|public)/${escapeRegExp(bucket)}/([^?]+)`, 'i')
+  const encoded = url.match(re)
   if (encoded?.[1]) return decodeURIComponent(encoded[1])
   return null
 }
 
-/** Embed letterhead/footer so Playwright PDF does not need to fetch remote images. */
+/**
+ * Embed an image so Playwright PDF does not need to fetch remote images.
+ * `pathOrUrl` is an object path in `bucket` (default laboratory-files, the
+ * letterhead / footer bucket) or a URL; private buckets such as
+ * metallography-images are read with the signed-in user's token.
+ */
 export async function embedPrintImageAsDataUrl(
   pathOrUrl: string | null | undefined,
+  bucket: string = LETTERHEAD_BUCKET,
 ): Promise<string | null> {
   const raw = (pathOrUrl ?? '').trim()
   if (!raw) return null
   if (raw.startsWith('data:')) return raw
 
-  const storagePath = /^https?:\/\//i.test(raw) ? storagePathFromUrl(raw) : raw
+  const storagePath = /^https?:\/\//i.test(raw) ? storagePathFromUrl(raw, bucket) : raw
   let blob: Blob | null = null
 
   if (storagePath) {
-    const { data, error } = await supabase.storage.from(LETTERHEAD_BUCKET).download(storagePath)
+    const { data, error } = await supabase.storage.from(bucket).download(storagePath)
     if (!error && data) blob = data
   }
 
@@ -47,6 +60,16 @@ export async function embedPrintImageAsDataUrl(
     return await blobToDataUrl(blob)
   } catch {
     return /^https?:\/\//i.test(raw) ? raw : null
+  }
+}
+
+/** Blob (already downloaded) to a data URL for print HTML. */
+export async function embedBlobAsDataUrl(blob: Blob | null | undefined): Promise<string | null> {
+  if (!blob) return null
+  try {
+    return await blobToDataUrl(blob)
+  } catch {
+    return null
   }
 }
 

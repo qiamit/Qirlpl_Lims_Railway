@@ -70,6 +70,12 @@ export type SectionParameterEntry = {
    * loaded / migration 20261102101600 not applied: the save leaves it out.
    */
   nablScopeOverride?: 'Non NABL' | null
+  /**
+   * Metallography analysis chosen with "Use result" in this session (design
+   * 3.4). Undefined = not changed here: the save leaves
+   * metallography_analysis_id out, so other parameters are saved as before.
+   */
+  metallographyAnalysisId?: string | null
 }
 
 export function mergeSectionDraftPreservingEdits(
@@ -95,6 +101,7 @@ export function mergeSectionDraftPreservingEdits(
       ...(match.environmentAreaId !== undefined ? { environmentAreaId: match.environmentAreaId } : {}),
       ...(match.environmentSnapshot !== undefined ? { environmentSnapshot: match.environmentSnapshot } : {}),
       ...(match.nablScopeOverride !== undefined ? { nablScopeOverride: match.nablScopeOverride } : {}),
+      ...(match.metallographyAnalysisId !== undefined ? { metallographyAnalysisId: match.metallographyAnalysisId } : {}),
     }
   })
 }

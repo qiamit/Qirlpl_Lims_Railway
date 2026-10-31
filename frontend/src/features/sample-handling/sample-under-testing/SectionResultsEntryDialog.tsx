@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -71,6 +71,40 @@ import {
   type ResultEnvironmentAcknowledgement,
   type ResultEnvironmentSnapshot,
 } from '@/features/environment/resultEnvironmentSnapshot'
+import {
+  fetchAnalysisInfoForParamRows,
+  fetchMethodsByTestParameterIds,
+  fetchMetallographyPermissions,
+  fetchMetallographySwitch,
+  metallographyErrorText,
+  unlinkParamRow,
+} from '@/features/metallography/metallographyApi'
+import type {
+  MetallographyParamRowRef,
+  MetallographySwitch,
+  MetallographyUseResult,
+  ParamRowAnalysisInfo,
+  ParameterMethod,
+} from '@/features/metallography/types'
+import { recordReason } from '@/lib/auditReason'
+import {
+  MetallographyDialogBoundary,
+  MetallographyLaunchLink,
+  MetallographyLinkedResult,
+  MetallographyViewAnalysisLink,
+} from './MetallographyResultLink'
+
+// Metallography dialogs load on first use only (canvas + engines stay out of Enter Results).
+const MetallographyAnalysisDialog = lazy(() =>
+  import('@/features/metallography/workbench/MetallographyAnalysisDialog').then((m) => ({
+    default: m.MetallographyAnalysisDialog,
+  })),
+)
+const MetallographyAnalysisViewDialog = lazy(() =>
+  import('@/features/metallography/view/MetallographyAnalysisView').then((m) => ({
+    default: m.MetallographyAnalysisViewDialog,
+  })),
+)
 
 export type SectionResultsDraft = SectionParameterEntry
 
@@ -190,6 +224,22 @@ const isCompleteIsoDate = (value: string) => {
 
 const formatDateDisplay = (v: string | null | undefined) => formatDate(toDateInput(v) || v)
 
+/** Analysis number of `id` from what Enter Results knows about the row. */
+const mgAnalysisNoOf = (info: ParamRowAnalysisInfo | null, id: string | null): string | null => {
+  if (!info || !id) return null
+  if (info.linked?.id === id) return info.linked.analysisNo
+  if (info.completed?.id === id) return info.completed.analysisNo
+  if (info.inProgress?.id === id) return info.inProgress.analysisNo
+  return null
+}
+
+/** Metallography dialog opened from a row: the workbench (entry) or the S3 view (review). */
+type MetallographyDialogState = {
+  paramRow: MetallographyParamRowRef
+  analysisId: string | null
+  view: boolean
+}
+
 export function SectionResultsEntryDialog({
   open,
   onOpenChange,
@@ -202,6 +252,7 @@ export function SectionResultsEntryDialog({
   onUpdateSpecificRequirement,
   readOnlyTitle = 'Submitted Results',
   layer = 'default',
+  saveError = null,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -217,6 +268,8 @@ export function SectionResultsEntryDialog({
   ) => Promise<{ sectionSpecOverride: string | null; specificRequirement: string | null }>
   readOnlyTitle?: string
   layer?: 'default' | 'nested' | 'stacked' | 'top'
+  /** Save refusal to show in the dialog (e.g. the metallography link guard). */
+  saveError?: string | null
 }) {
   const [draft, setDraft] = useState<SectionResultsDraft[]>([])
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set())
@@ -262,6 +315,27 @@ export function SectionResultsEntryDialog({
   const [envAck, setEnvAck] = useState<{ signature: string; ack: ResultEnvironmentAcknowledgement } | null>(null)
   const [envSaveError, setEnvSaveError] = useState<string | null>(null)
   const [envPreparing, setEnvPreparing] = useState(false)
+  /**
+   * Metallography (migration 20261102101700, design 3.4): module switch and
+   * mappings of these parameters, then the analyses of these result rows.
+   * Nothing shows while the migration is missing or no parameter is mapped.
+   */
+  const [mgSetup, setMgSetup] = useState<{
+    key: string
+    state: MetallographySwitch
+    methods: Record<string, ParameterMethod>
+    /** app_metallography_can_run: may start an analysis (else only open existing ones). */
+    canRun: boolean
+  } | null>(null)
+  const [mgInfo, setMgInfo] = useState<{ key: string; byRow: Record<string, ParamRowAnalysisInfo> } | null>(null)
+  const [mgRefresh, setMgRefresh] = useState(0)
+  const [mgDialog, setMgDialog] = useState<MetallographyDialogState | null>(null)
+  const [mgError, setMgError] = useState<string | null>(null)
+  const [mgUnlinking, setMgUnlinking] = useState<string | null>(null)
+  /** Microscope / camera / ruler of the analysis, offered first in the equipment picker. */
+  const [mgSuggestedEquipment, setMgSuggestedEquipment] = useState<Record<string, string[]>>({})
+  /** Result before "Use result" (Undo puts it back). */
+  const mgPrevResultsRef = useRef<Map<string, { results: string | null; nablScopeOverride?: 'Non NABL' | null }>>(new Map())
   const { user, profileName, designation } = useAuth()
   const askReason = useReasonForChange()
   const isDirector = isLaboratoryDirector(designation)
@@ -270,7 +344,8 @@ export function SectionResultsEntryDialog({
     sampleDetailsOpen ||
     editSpecOpen ||
     pickerIndex !== null ||
-    bulkDatePrompt !== null
+    bulkDatePrompt !== null ||
+    mgDialog !== null
 
   useEffect(() => {
     if (!open) {
@@ -293,6 +368,12 @@ export function SectionResultsEntryDialog({
       setEnvFetchError(null)
       setEnvAck(null)
       setEnvSaveError(null)
+      setMgSetup(null)
+      setMgInfo(null)
+      setMgDialog(null)
+      setMgError(null)
+      setMgSuggestedEquipment({})
+      mgPrevResultsRef.current = new Map()
       return
     }
     // Keep draft while open if row briefly null (parent race); do not clear section key.
@@ -489,6 +570,182 @@ export function SectionResultsEntryDialog({
       cancelled = true
     }
   }, [open, paramRowIdsKey])
+
+  // Metallography: module switch, then the mappings of these parameters (one query, silent on failure).
+  useEffect(() => {
+    if (!open || !parameterIdsKey) return
+    let cancelled = false
+    const key = parameterIdsKey
+    void (async () => {
+      const state = await fetchMetallographySwitch()
+      if (cancelled) return
+      if (state === 'missing') {
+        setMgSetup({ key, state, methods: {}, canRun: false })
+        return
+      }
+      const methods = await fetchMethodsByTestParameterIds(key.split('|').filter(Boolean)).catch(() => null)
+      if (cancelled) return
+      if (!methods || methods.status === 'missing') {
+        setMgSetup({ key, state: 'missing', methods: {}, canRun: false })
+        return
+      }
+      // Only needed when a parameter is mapped (the launch word); silent on failure.
+      const perms =
+        Object.keys(methods.data).length > 0 ? await fetchMetallographyPermissions().catch(() => null) : null
+      if (cancelled) return
+      const canRun = perms?.status === 'ok' ? perms.data.canRun : false
+      setMgSetup({ key, state, methods: methods.data, canRun })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, parameterIdsKey])
+
+  const mgCurrent = open && mgSetup?.key === parameterIdsKey ? mgSetup : null
+  const mgMethods = mgCurrent?.methods ?? {}
+  const mgCanRun = mgCurrent?.canRun ?? false
+  /** Migration applied: linked results are found and guarded even without an active mapping or with the module off. */
+  const mgPresent = Boolean(mgCurrent && mgCurrent.state !== 'missing')
+  /** Migration applied and a parameter of this section has an active mapping. */
+  const mgReady = mgPresent && Object.keys(mgMethods).length > 0
+  /** The "Metallography" word only while the module is switched on. */
+  const mgOn = mgReady && mgCurrent?.state === 'on'
+
+  // Analyses of the saved rows: hover text, linked results (Unlink), "View analysis".
+  // Runs without an active mapping too: a mapping deactivated later must not hide a saved link.
+  useEffect(() => {
+    if (!open || !mgPresent) return
+    const ids = paramRowIdsKey.split('|').filter(Boolean)
+    if (ids.length === 0) return
+    let cancelled = false
+    void fetchAnalysisInfoForParamRows(ids)
+      .then((res) => {
+        if (!cancelled && res.status === 'ok') setMgInfo({ key: paramRowIdsKey, byRow: res.data })
+      })
+      .catch(() => {
+        // Silent: the database still guards linked results at save.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, mgPresent, paramRowIdsKey, mgRefresh])
+
+  // Analysis finished in the full-page workbench (other tab): pick it up on return.
+  useEffect(() => {
+    if (!open || !mgReady || readOnly) return
+    const onFocus = () => setMgRefresh((n) => n + 1)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [open, mgReady, readOnly])
+
+  const mgInfoByRow = mgInfo?.key === paramRowIdsKey ? mgInfo.byRow : {}
+
+  const openMetallography = (p: SectionParameterEntry, analysisId: string | null, view = false) => {
+    if (!p.paramRowId || !p.testParameterId || !row?.sampleId) return
+    setMgError(null)
+    setMgDialog({
+      paramRow: {
+        paramRowId: p.paramRowId,
+        testParameterId: p.testParameterId,
+        testLabel: p.testLabel,
+        sampleId: row.sampleId,
+        unit: p.unitValue?.trim() || null,
+        decimals: mgMethods[p.testParameterId]?.decimals ?? null,
+      },
+      analysisId,
+      view,
+    })
+  }
+
+  const closeMetallography = () => {
+    setMgDialog(null)
+    setMgRefresh((n) => n + 1)
+  }
+
+  /** "Use result": the value exactly as reported by the analysis, its equipment and, when Indicative, Non NABL. */
+  const handleUseMetallographyResult = (paramRowId: string, r: MetallographyUseResult) => {
+    setMgDialog(null)
+    setMgError(null)
+    setMgRefresh((n) => n + 1)
+    const current = draft.find((p) => p.paramRowId === paramRowId)
+    if (!current) return
+    if (!mgPrevResultsRef.current.has(paramRowId)) {
+      mgPrevResultsRef.current.set(paramRowId, {
+        results: current.results,
+        nablScopeOverride: current.nablScopeOverride,
+      })
+    }
+    const suggestNonNabl =
+      r.indicative &&
+      scopeOverrideStatus === 'available' &&
+      Boolean(current.testParameterId) &&
+      nablScopeByParameterId[current.testParameterId ?? ''] === 'NABL'
+    if (suggestNonNabl) scopeTouchedRef.current.add(paramRowId)
+    // Pre-select the analysis equipment when none is recorded yet (only items usable on the test date).
+    const equipment =
+      traceability === 'available' && !equipmentUsedIsRecorded(current.equipmentUsed ?? [])
+        ? r.suggestedEquipmentIds
+            .map((id) => equipmentOptionById.get(id))
+            .filter((opt): opt is EquipmentOption => Boolean(opt))
+            .map((opt) => snapshotFromOption(opt, testDateOf(current)))
+            .filter((snap) => snap.usable !== false)
+        : []
+    if (equipment.length > 0) equipmentTouchedRef.current.add(paramRowId)
+    setMgSuggestedEquipment((prev) => ({ ...prev, [paramRowId]: r.suggestedEquipmentIds }))
+    setDraft((prev) =>
+      prev.map((p) => {
+        if (p.paramRowId !== paramRowId) return p
+        return {
+          ...p,
+          results: r.results,
+          metallographyAnalysisId: r.metallographyAnalysisId,
+          ...(suggestNonNabl ? { nablScopeOverride: 'Non NABL' as const } : {}),
+          ...(equipment.length > 0 ? { equipmentUsed: equipment } : {}),
+        }
+      }),
+    )
+  }
+
+  /** Undo a link chosen in this session; Unlink a saved one (reason, refused under review). */
+  const handleMetallographyUnlink = async (p: SectionParameterEntry, analysisNo: string | null, pending: boolean) => {
+    const id = p.paramRowId
+    if (!id) return
+    setMgError(null)
+    if (pending) {
+      const before = mgPrevResultsRef.current.get(id)
+      mgPrevResultsRef.current.delete(id)
+      setDraft((prev) =>
+        prev.map((x) => {
+          if (x.paramRowId !== id) return x
+          return {
+            ...x,
+            metallographyAnalysisId: undefined,
+            ...(before
+              ? { results: before.results, ...(before.nablScopeOverride !== undefined ? { nablScopeOverride: before.nablScopeOverride } : {}) }
+              : {}),
+          }
+        }),
+      )
+      return
+    }
+    const reason = await askReason({
+      title: 'Reason for unlinking the metallography result',
+      recordLabel: `${p.testLabel} · ${analysisNo ?? 'metallography analysis'}`,
+      description: 'The value stays in the result box and can then be edited by hand.',
+      confirmLabel: 'Unlink',
+    })
+    if (!reason) return
+    setMgUnlinking(id)
+    try {
+      await unlinkParamRow(id)
+      await recordReason('test_allocation_parameters', id, reason)
+      setMgRefresh((n) => n + 1)
+    } catch (err) {
+      setMgError(metallographyErrorText(err))
+    } finally {
+      setMgUnlinking(null)
+    }
+  }
 
   // Equipment / CRM list for the picker (entry mode only).
   useEffect(() => {
@@ -1284,17 +1541,78 @@ export function SectionResultsEntryDialog({
                             }}
                           />
                         )
-                        return readOnly ? (
-                          <>
-                            <span
-                              className="w-full break-words whitespace-pre-wrap text-center leading-relaxed"
-                              title={resultsTitle || undefined}
-                            >
-                              {resultsDisplay || '—'}
-                            </span>
-                            {meta}
-                          </>
-                        ) : (
+                        // Metallography (design 3.4): the launch word only for saved rows of
+                        // actively mapped parameters; a saved link shows on any saved row.
+                        const mgMethod = mgReady && p.testParameterId ? mgMethods[p.testParameterId] : undefined
+                        const mgRowInfo = mgPresent && p.paramRowId ? mgInfoByRow[p.paramRowId] ?? null : null
+                        const mgSavedLinkId = mgRowInfo?.linked?.id ?? null
+                        const mgLinkedId =
+                          p.metallographyAnalysisId !== undefined ? p.metallographyAnalysisId : mgSavedLinkId
+                        const mgPending = p.metallographyAnalysisId !== undefined && p.metallographyAnalysisId !== mgSavedLinkId
+                        // Without the right to run analyses, only an existing analysis can be opened.
+                        const mgCanOpen = mgCanRun || Boolean(mgRowInfo?.inProgress || mgRowInfo?.completed)
+                        const mgLaunch =
+                          mgOn && mgMethod && p.paramRowId && !readOnly && mgCanOpen ? (
+                            <MetallographyLaunchLink
+                              kind={mgMethod.analysisKind}
+                              info={mgRowInfo}
+                              linkedId={mgLinkedId}
+                              disabled={saving}
+                              onOpen={() => {
+                                const target =
+                                  mgRowInfo?.inProgress?.id ??
+                                  (mgRowInfo?.completed && mgRowInfo.completed.id !== mgLinkedId
+                                    ? mgRowInfo.completed.id
+                                    : null)
+                                openMetallography(p, target)
+                              }}
+                            />
+                          ) : null
+                        if (readOnly) {
+                          return (
+                            <>
+                              <span
+                                className="w-full break-words whitespace-pre-wrap text-center leading-relaxed"
+                                title={resultsTitle || undefined}
+                              >
+                                {resultsDisplay || '—'}
+                              </span>
+                              {meta}
+                              {mgSavedLinkId ? (
+                                <MetallographyViewAnalysisLink
+                                  analysisNo={mgAnalysisNoOf(mgRowInfo, mgSavedLinkId)}
+                                  onOpen={() => openMetallography(p, mgSavedLinkId, true)}
+                                />
+                              ) : null}
+                            </>
+                          )
+                        }
+                        if (p.paramRowId && mgLinkedId) {
+                          const linkedNo = mgAnalysisNoOf(mgRowInfo, mgLinkedId)
+                          const otherAnalysis = Boolean(
+                            mgRowInfo?.inProgress || (mgRowInfo?.completed && mgRowInfo.completed.id !== mgLinkedId),
+                          )
+                          return (
+                            <MetallographyLinkedResult
+                              resultsDisplay={resultsDisplay}
+                              resultsTitle={resultsTitle}
+                              analysisNo={linkedNo}
+                              pending={mgPending}
+                              indicative={mgRowInfo?.completed?.id === mgLinkedId && mgRowInfo.completed.indicative}
+                              footer={
+                                <>
+                                  {meta}
+                                  {otherAnalysis ? mgLaunch : null}
+                                </>
+                              }
+                              busy={mgUnlinking === p.paramRowId}
+                              disabled={saving}
+                              onOpenAnalysis={() => openMetallography(p, mgLinkedId)}
+                              onUnlink={() => void handleMetallographyUnlink(p, linkedNo, mgPending)}
+                            />
+                          )
+                        }
+                        return (
                           <TestResultsEntryCell
                             value={p.results}
                             testLabel={p.testLabel}
@@ -1303,7 +1621,16 @@ export function SectionResultsEntryDialog({
                               paramKeyFromRow(p.paramRowId, p.testLabel),
                             )}
                             onChange={(next) => updateDraft(index, { results: next })}
-                            footer={meta}
+                            footer={
+                              mgLaunch ? (
+                                <>
+                                  {meta}
+                                  {mgLaunch}
+                                </>
+                              ) : (
+                                meta
+                              )
+                            }
                           />
                         )
                       })()}
@@ -1470,6 +1797,16 @@ export function SectionResultsEntryDialog({
                   {equipmentError}
                 </span>
               ) : null}
+              {mgError ? (
+                <span className="text-[11px] font-medium text-red-300" role="alert">
+                  {mgError}
+                </span>
+              ) : null}
+              {saveError ? (
+                <span className="text-[11px] font-medium text-red-300" role="alert">
+                  {saveError}
+                </span>
+              ) : null}
             </div>
             {!readOnly ? (
               <Button
@@ -1550,7 +1887,10 @@ export function SectionResultsEntryDialog({
           loading={equipmentLoading}
           loadError={equipmentLoadError}
           initial={pickerEntry.equipmentUsed ?? []}
-          suggestedIds={readLastEquipmentSelection(equipmentParamKey(pickerEntry))}
+          suggestedIds={
+            (pickerEntry.paramRowId && mgSuggestedEquipment[pickerEntry.paramRowId]) ||
+            readLastEquipmentSelection(equipmentParamKey(pickerEntry))
+          }
           isDirector={isDirector}
           directorId={user?.id ?? ''}
           directorName={profileName.trim() || user?.email || ''}
@@ -1559,6 +1899,39 @@ export function SectionResultsEntryDialog({
           onConfirm={handlePickerConfirm}
           mode={pickerMode}
         />
+      ) : null}
+
+      {mgDialog ? (
+        <MetallographyDialogBoundary
+          onError={(message) => {
+            setMgDialog(null)
+            setMgError(message)
+          }}
+        >
+          <Suspense fallback={null}>
+            {mgDialog.view && mgDialog.analysisId ? (
+              <MetallographyAnalysisViewDialog
+                open
+                onOpenChange={(next) => {
+                  if (!next) closeMetallography()
+                }}
+                analysisId={mgDialog.analysisId}
+              />
+            ) : (
+              <MetallographyAnalysisDialog
+                open
+                onOpenChange={(next: boolean) => {
+                  if (!next) closeMetallography()
+                }}
+                paramRow={mgDialog.paramRow}
+                analysisId={mgDialog.analysisId}
+                readOnly={readOnly}
+                canRun={mgCanRun}
+                onUseResult={(r: MetallographyUseResult) => handleUseMetallographyResult(mgDialog.paramRow.paramRowId, r)}
+              />
+            )}
+          </Suspense>
+        </MetallographyDialogBoundary>
       ) : null}
 
       <SectionSampleDescViewDialog

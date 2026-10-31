@@ -87,6 +87,12 @@ export const AUDITED_TABLES: Array<{ value: string; label: string }> = [
   { value: 'lab_prefixes', label: 'Lab prefixes' },
   { value: 'user_profiles', label: 'User profiles' },
   { value: 'module_access_rules', label: 'Module access rules' },
+  { value: 'metallography_settings', label: 'Metallography settings' },
+  { value: 'metallography_parameter_methods', label: 'Metallography method setup' },
+  { value: 'metallography_scale_calibrations', label: 'Microscope calibrations (µm/px)' },
+  { value: 'metallography_analyses', label: 'Metallography analyses' },
+  { value: 'metallography_fields', label: 'Metallography image fields' },
+  { value: 'metallography_rechecks', label: 'Metallography re-checks' },
 ].sort((a, b) => a.label.localeCompare(b.label))
 
 const TABLE_LABELS = new Map(AUDITED_TABLES.map((t) => [t.value, t.label]))

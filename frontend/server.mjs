@@ -30,6 +30,7 @@ const APP_PREFIXES = [
   '/facilities',
   '/quality',
   '/sampling',
+  '/metallography',
   '/training',
   '/calibration',
   '/finance',

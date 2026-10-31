@@ -106,6 +106,7 @@ for Amit).
 52. `20261102101400_mcp_connector.sql` (MCP connector: switch, sessions, call log, 'via MCP' in the Audit Trail; staging 25 Oct, production after QM review of OQ-08)
 53. `20261102101500_results_review_guard.sql` (results review in the database: nobody reviews their own results, only the assigned reviewer (or the Director) approves, results locked while under review or approved; staging 25 Oct, production 25 Oct 18:19 IST)
 54. `20261102101600_result_nabl_scope_override.sql` (one result can be reported as Non-NABL when outside the accredited range; never the other way; locked with the results; staging 29 Oct, production 29 Oct 13:42 IST)
+55. `20261102101700_metallurgy_module.sql` (Metallurgy & Metallography, Phase 1: method setup, microscope calibrations (µm/px), analyses with their image fields and reviewer re-checks, private bucket `metallography-images`, the `test_allocation_parameters.metallography_analysis_id` link and its guard; the module stays off until the Laboratory Director switches it on; then press "Sync module catalog" and run `backend/supabase/data-fixes/20261103_module_access_metallography.sql`; staging first)
 
 Every migration is idempotent and the frontend works before and after each one, so the branch can be merged first. Apply them on a staging copy of production first and run `docs/lims-validation/OQ-test-scripts.md` there.
 
